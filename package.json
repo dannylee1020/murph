@@ -1,0 +1,42 @@
+{
+  "name": "nightclaw",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/server/index.js",
+  "imports": {
+    "#lib/*": {
+      "types": "./src/lib/*.ts",
+      "default": "./dist/lib/*.js"
+    }
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:ui": "vite --config ui/vite.config.ts",
+    "watch:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput",
+    "build": "npm run build:server && npm run build:ui",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:ui": "vite build --config ui/vite.config.ts",
+    "start": "node dist/server/index.js",
+    "preview": "npm run start",
+    "check": "npm run build:server && tsc -p tsconfig.ui.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "tslib": "2.6.2",
+    "typescript": "5.4.5",
+    "vite": "5.2.8",
+    "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.54.0",
+    "@mariozechner/pi-agent-core": "^0.70.2",
+    "@mariozechner/pi-ai": "^0.70.2",
+    "@slack/bolt": "^3.18.0",
+    "better-sqlite3": "^11.7.0",
+    "openai": "^5.10.2",
+    "typebox": "^1.1.33"
+  }
+}
