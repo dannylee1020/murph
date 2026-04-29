@@ -1,40 +1,26 @@
 # Murph
 
-**Async autopilot for distributed work.**
+A self-hosted async autopilot that handles your messaging channels while you're offline.
 
-When the people you work with are awake and you're not, every message becomes friction. You're either always-on (and burning out), or always-late (and breaking trust). The window closes before you can answer, and trust quietly erodes.
+**Goal:** Remove timezone as a productivity bottleneck. Murph handles your channels while you're away — triaging, drafting, and responding so nothing waits until you're back.
 
-Murph is a self-hosted agent that holds the line. Start a session before you log off. It watches the channels you choose, pulls context from your tools, drafts bounded replies, and applies your policy — auto-handling what's safe, queuing what's not. You wake up to a clean queue of triaged drafts, not chaos.
+Start a session before you log off. Murph watches the channels you choose, pulls context from your tools, drafts replies, and applies your policy — auto-sending what's safe, queuing the rest. You come back to triaged drafts, not chaos.
 
-Whoever's pinging you across timezones — users, teammates, contributors, customers, portfolio companies — Murph triages them while you're offline. Solo developers, founders, product managers, investors, distributed teams: if your timezone makes you miss windows, this is for you.
+Self-hosted. Bring your own model. MIT.
 
-Built first for developers. Self-hosted, hackable, MIT.
+## How it works
 
-## What it does
+1. A message comes in on a watched channel
+2. Murph pulls thread history, your preferences, and linked context (docs, tickets, prior threads)
+3. Selects a skill, narrows the tool surface, runs a grounded LLM loop
+4. Applies your policy: auto-send if low-risk, queue for review if not
+5. Logs every tool call and decision
 
-You start a session: *"Cover #support and #general for the next 8 hours. Manual review only."*
-
-When a message comes in:
-
-1. Pulls thread history, your preferences, and any linked context (docs, tickets, prior threads)
-2. Selects a relevant skill and narrows the tool surface
-3. Runs a grounded LLM loop with read-only tools
-4. Drafts a bounded response
-5. Applies your policy: auto-send if low-risk, queue for review if not
-6. Logs everything — every tool call, every decision, replayable
-
-You come back, scan the queue, approve or edit drafts in one click.
-
-## What you get
-
-| | |
-|---|---|
-| **Self-hosted** | Runs on your machine. SQLite for storage. Your data stays yours. |
-| **Bring your own model** | OpenAI and Anthropic shipped. Plugin contract for more. |
-| **Grounded** | Pulls from context sources before drafting — no hallucinated facts. |
-| **Bounded** | Deterministic policy gate. The model never decides what's safe to send. |
-| **Audit-first** | Every run, tool call, and decision is recorded and inspectable in the UI. |
-| **Hackable** | Channels, tools, context sources, skills, and providers all plug in. |
+```
+Channel event → normalize → match session → assemble context
+  → select skill → LLM loop (read-only tools) → policy gate
+  → auto_send | queue | abstain → audit + SSE to UI
+```
 
 ## Quick start
 
@@ -46,47 +32,19 @@ cp .env.example .env   # add OPENAI_API_KEY or ANTHROPIC_API_KEY
 npm run dev
 ```
 
-Open `http://localhost:5174` to set up your workspace and connect Slack.
+Open `http://localhost:5174` to connect Slack and start a session.
 
-Full setup guide (Slack app config, context source grounding, end-to-end testing): [`memory/testing-guide.md`](memory/testing-guide.md).
+## What's shipped
 
-## How it works
-
-```
-Channel event
-  → normalize to ContinuityTask
-  → match active session
-  → assemble context (thread + memory + grounding artifacts)
-  → select skill, narrow tool surface
-  → LLM loop (read-only tools only)
-  → deterministic policy gate
-  → auto_send | queue | abstain
-  → audit + SSE to UI
-```
-
-Full architecture: [`memory/architecture.md`](memory/architecture.md).
-
-## Currently shipped
-
-- **Channels:** Slack
+- **Channels:** Slack, Discord
 - **Providers:** OpenAI, Anthropic
-- **Context sources:** Notion
-- **Storage:** SQLite + inspectable markdown projections
-
-The roadmap is open: Discord, WhatsApp, Telegram, Linear, GitHub, Granola, local models, and beyond.
+- **Context sources:** Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian
+- **Tools:** Web search, file read, shell exec
+- **Storage:** SQLite with encrypted credentials
 
 ## Contributing
 
-Built in TypeScript, designed to extend. Best places to start:
-
-- **Channel adapters** — Discord, Telegram, WhatsApp, Matrix, IRC
-- **Context sources** — GitHub, Linear, Granola, Google Docs
-- **Model providers** — local llama.cpp, Gemini, Bedrock
-- **Tools** — anything an agent can safely call
-- **Skills** — packaged prompts + tool combos for specific workflows
-- **Policy profiles** — share trust profiles that work for your role
-
-Read [`memory/architecture.md`](memory/architecture.md) before opening a PR. Small, focused extensions over broad refactors.
+TypeScript, designed to extend. Channel adapters, context sources, model providers, tools, skills, and policy profiles are all pluggable.
 
 ## License
 
