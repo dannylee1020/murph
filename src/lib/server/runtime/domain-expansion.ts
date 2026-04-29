@@ -1,6 +1,7 @@
 import type {
   AgentToolInventoryItem,
   ContextSource,
+  ExpandedContextSourceNames,
   SkillManifest,
   ToolInventoryItem,
   WorkspaceMemory
@@ -59,7 +60,8 @@ export function expandToolsByDomain(input: {
       description: tool.description,
       sideEffectClass: tool.sideEffectClass,
       inputSchema: tool.inputSchema,
-      knowledgeDomains: tool.knowledgeDomains
+      knowledgeDomains: tool.knowledgeDomains,
+      retrievalEligible: tool.retrievalEligible
     }));
 }
 
@@ -67,14 +69,15 @@ export function expandContextSourcesByDomain(input: {
   selectedSkills: SkillManifest[];
   allSources: Array<Pick<ContextSource, 'name' | 'optional' | 'knowledgeDomains'>>;
   workspaceMemory: WorkspaceMemory;
-}): string[] {
+}): ExpandedContextSourceNames {
   const explicitNames = new Set(input.selectedSkills.flatMap((skill) => skill.contextSourceNames ?? []));
   const domains = skillDomains(input.selectedSkills);
-  const names = new Set<string>();
+  const explicit = new Set<string>();
+  const optional = new Set<string>();
 
   for (const source of input.allSources) {
     if (explicitNames.has(source.name) && isOptionalContextSourceEnabled(source, input.workspaceMemory)) {
-      names.add(source.name);
+      explicit.add(source.name);
     }
   }
 
@@ -84,11 +87,14 @@ export function expandContextSourcesByDomain(input: {
       intersects(source.knowledgeDomains, domains) &&
       isOptionalContextSourceEnabled(source, input.workspaceMemory)
     ) {
-      names.add(source.name);
+      optional.add(source.name);
     }
   }
 
-  return [...names];
+  return {
+    explicit: [...explicit],
+    optional: [...optional]
+  };
 }
 
 export function domainExpansionMap(input: {

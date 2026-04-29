@@ -43,6 +43,9 @@ export class Store {
   saveInstall(input: workspace.InstallInput): Workspace {
     return workspace.saveInstall(this.db, input);
   }
+  getWorkspaceByExternalId(provider: string, externalWorkspaceId: string): Workspace | undefined {
+    return workspace.getWorkspaceByExternalId(this.db, provider, externalWorkspaceId);
+  }
   getWorkspaceByTeamId(slackTeamId: string): Workspace | undefined {
     return workspace.getWorkspaceByTeamId(this.db, slackTeamId);
   }
@@ -60,19 +63,19 @@ export class Store {
   upsertUser(input: user.UpsertUserInput): AgentUser {
     return user.upsertUser(this.db, input);
   }
-  getUser(workspaceId: string, slackUserId: string): AgentUser | undefined {
-    return user.getUser(this.db, workspaceId, slackUserId);
+  getUser(workspaceId: string, userId: string): AgentUser | undefined {
+    return user.getUser(this.db, workspaceId, userId);
   }
   listUsers(workspaceId?: string): AgentUser[] {
     return user.listUsers(this.db, workspaceId);
   }
 
   // Memory (user/workspace/thread/feedback)
-  getOrCreateUserMemory(workspaceId: string, slackUserId: string): UserMemory {
-    return memory.getOrCreateUserMemory(this.db, workspaceId, slackUserId);
+  getOrCreateUserMemory(workspaceId: string, userId: string): UserMemory {
+    return memory.getOrCreateUserMemory(this.db, workspaceId, userId);
   }
-  upsertUserMemory(workspaceId: string, slackUserId: string, next: UserMemory): void {
-    memory.upsertUserMemory(this.db, workspaceId, slackUserId, next);
+  upsertUserMemory(workspaceId: string, userId: string, next: UserMemory): void {
+    memory.upsertUserMemory(this.db, workspaceId, userId, next);
   }
   getOrCreateWorkspaceMemory(workspaceId: string): WorkspaceMemory {
     return memory.getOrCreateWorkspaceMemory(this.db, workspaceId);
@@ -108,10 +111,10 @@ export class Store {
   }
   findMatchingSession(
     workspaceId: string,
-    ownerSlackUserId: string,
+    ownerUserId: string,
     channelId: string
   ): AutopilotSession | undefined {
-    return session.findMatchingSession(this.db, workspaceId, ownerSlackUserId, channelId);
+    return session.findMatchingSession(this.db, workspaceId, ownerUserId, channelId);
   }
 
   // Thread state

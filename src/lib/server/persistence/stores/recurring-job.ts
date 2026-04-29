@@ -37,7 +37,7 @@ function mapRecurringJob(row: RecurringJobRow): RecurringJobRecord {
     timezone: row.timezone,
     payload: parseJsonObject<RecurringJobRecord['payload']>(row.payload_json, {
       channelId: '',
-      ownerSlackUserId: ''
+      ownerUserId: ''
     }),
     nextRunAt: row.next_run_at,
     status: row.status,

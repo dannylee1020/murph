@@ -123,5 +123,5 @@ export async function serveStatic(
     return;
   }
 
-  sendText(res, 'Nightclaw UI has not been built. Run npm run build.', 503);
+  sendText(res, 'Murph UI has not been built. Run npm run build.', 503);
 }

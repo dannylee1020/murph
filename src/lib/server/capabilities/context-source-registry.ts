@@ -5,6 +5,7 @@ import type {
   ContinuityTask,
   Workspace
 } from '#lib/types';
+import { getRuntimeEnv } from '#lib/server/util/env';
 
 interface RegisteredContextSource {
   definition: ContextSource;
@@ -28,7 +29,8 @@ export class ContextSourceRegistry {
   }
 
   async retrieve(
-    names: string[],
+    explicitNames: string[],
+    optionalNames: string[],
     input: {
       workspace: Workspace;
       task: ContinuityTask;
@@ -36,10 +38,12 @@ export class ContextSourceRegistry {
       enabledContextSources: string[];
     }
   ): Promise<ContextArtifact[]> {
-    const requested = [...new Set(names)];
+    const env = getRuntimeEnv();
+    const requestedExplicit = [...new Set(explicitNames)];
+    const requestedOptional = [...new Set(optionalNames)].slice(0, Math.max(0, env.contextSourceMaxOptional));
     const artifacts: ContextArtifact[] = [];
 
-    for (const name of requested) {
+    for (const name of [...requestedExplicit, ...requestedOptional]) {
       const registered = this.sources.get(name);
 
       if (!registered) {
@@ -51,7 +55,13 @@ export class ContextSourceRegistry {
       }
 
       try {
-        artifacts.push(...(await registered.definition.retrieve(input)));
+        const result = await Promise.race([
+          registered.definition.retrieve(input),
+          new Promise<ContextArtifact[]>((_, reject) =>
+            setTimeout(() => reject(new Error(`Context source timed out: ${name}`)), env.contextSourceTimeoutMs)
+          )
+        ]);
+        artifacts.push(...result);
       } catch {
         continue;
       }

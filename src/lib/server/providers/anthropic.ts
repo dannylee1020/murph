@@ -31,7 +31,7 @@ const DRAFT_INPUT_SCHEMA = {
 
 const SUBMIT_DRAFT_TOOL = {
   name: 'submit_draft',
-  description: 'Submit the final Nightclaw continuity draft.',
+  description: 'Submit the final Murph continuity draft.',
   input_schema: DRAFT_INPUT_SCHEMA
 };
 

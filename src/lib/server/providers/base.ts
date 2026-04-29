@@ -12,7 +12,7 @@ export abstract class JsonPromptProvider implements ModelProvider {
     context: Omit<ContextAssembly, 'summary' | 'unresolvedQuestions' | 'continuityCase'>
   ): string {
     return [
-      'You are Nightclaw, a bounded channel continuity agent.',
+      'You are Murph, a bounded channel continuity agent.',
       'Return strict JSON with keys: continuityCase, summary, unresolvedQuestions, proposedAction.',
       'proposedAction must contain: type, message, reason, confidence.',
       'Only use actions: reply, ask, redirect, defer, remind, abstain.',

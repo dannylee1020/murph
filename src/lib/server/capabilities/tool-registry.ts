@@ -40,6 +40,10 @@ export class ToolRegistry {
     return registered.definition as ToolDefinition<TInput, TOutput>;
   }
 
+  has(name: string): boolean {
+    return this.tools.has(name);
+  }
+
   async execute<TInput, TOutput>(
     name: string,
     input: TInput,
@@ -71,6 +75,7 @@ export class ToolRegistry {
       sideEffectClass: registered.definition.sideEffectClass as ToolSideEffectClass,
       inputSchema: registered.definition.inputSchema,
       knowledgeDomains: registered.definition.knowledgeDomains,
+      retrievalEligible: registered.definition.retrievalEligible ?? false,
       optional: registered.optional,
       source: registered.source,
       sessionModes: registered.definition.sessionModes,

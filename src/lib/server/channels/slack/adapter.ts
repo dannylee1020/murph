@@ -30,7 +30,7 @@ function isScopedToChannel(session: AutopilotSession, channelId: string): boolea
 }
 
 function activeSessionForUser(sessions: AutopilotSession[], userId: string | undefined): AutopilotSession | undefined {
-  return userId ? sessions.find((session) => session.ownerSlackUserId === userId) : undefined;
+  return userId ? sessions.find((session) => session.ownerUserId === userId) : undefined;
 }
 
 export function normalizeSlackEvent(
@@ -64,7 +64,7 @@ export function normalizeSlackEvent(
     return { ignoredReason: 'missing_workspace' };
   }
 
-  const workspace = store.getWorkspaceByTeamId(workspaceId) ?? store.getWorkspaceById(workspaceId);
+  const workspace = store.getWorkspaceByExternalId('slack', workspaceId) ?? store.getWorkspaceByTeamId(workspaceId) ?? store.getWorkspaceById(workspaceId);
 
   if (!workspace) {
     return { ignoredReason: 'workspace_not_installed' };
@@ -87,9 +87,9 @@ export function normalizeSlackEvent(
   const mentionedUsers = parseMentionedUsers(text).filter((userId) => !ignoredMentionIds.has(userId));
   const mentionedSessionTarget = mentionedUsers.find((userId) => activeSessionForUser(scopedSessions, userId));
   const storedTarget = store.getThreadState(workspace.id, channelId, threadTs)?.targetUserId;
-  const storedSessionTarget = activeSessionForUser(scopedSessions, storedTarget)?.ownerSlackUserId;
+  const storedSessionTarget = activeSessionForUser(scopedSessions, storedTarget)?.ownerUserId;
   const botDirected = Boolean(workspace.botUserId && parseMentionedUsers(text).includes(workspace.botUserId));
-  const singleSessionTarget = scopedSessions.length === 1 ? scopedSessions[0].ownerSlackUserId : undefined;
+  const singleSessionTarget = scopedSessions.length === 1 ? scopedSessions[0].ownerUserId : undefined;
   const fallbackTarget = botDirected ? singleSessionTarget : undefined;
   const targetUserId = mentionedSessionTarget ?? storedSessionTarget ?? fallbackTarget;
 

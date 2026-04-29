@@ -1,0 +1,131 @@
+import { getRuntimeEnv } from '#lib/server/util/env';
+import type { ContextArtifact } from '#lib/types';
+
+interface CalendarEventsResponse {
+  items?: CalendarEvent[];
+}
+
+interface CalendarEvent {
+  id: string;
+  summary?: string;
+  description?: string;
+  htmlLink?: string;
+  start?: {
+    dateTime?: string;
+    date?: string;
+  };
+  end?: {
+    dateTime?: string;
+    date?: string;
+  };
+  attendees?: Array<{ email?: string }>;
+}
+
+export interface CalendarEventResult {
+  id: string;
+  title: string;
+  description: string;
+  url?: string;
+  start?: string;
+  end?: string;
+  attendees: string[];
+}
+
+function compact(value: string | undefined, limit = 4000): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+export function toArtifact(event: CalendarEventResult): ContextArtifact {
+  return {
+    id: `calendar:${event.id}`,
+    source: 'calendar',
+    type: 'event',
+    title: event.title,
+    text: event.description || event.title,
+    url: event.url,
+    metadata: {
+      start: event.start,
+      end: event.end,
+      attendees: event.attendees
+    }
+  };
+}
+
+export class GoogleCalendarService {
+  private readonly env = getRuntimeEnv();
+
+  isConfigured(): boolean {
+    return Boolean(this.env.googleAccessToken);
+  }
+
+  async upcomingEvents(limit = 5): Promise<{ events: CalendarEventResult[] }> {
+    return await this.listEvents({
+      maxResults: limit,
+      timeMin: new Date().toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+  }
+
+  async searchEvents(query: string, limit = 5): Promise<{ events: CalendarEventResult[] }> {
+    const from = new Date();
+    from.setDate(from.getDate() - 30);
+
+    return await this.listEvents({
+      q: query,
+      maxResults: limit,
+      timeMin: from.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+  }
+
+  private async listEvents(params: Record<string, string | number | boolean>): Promise<{ events: CalendarEventResult[] }> {
+    if (!this.env.googleAccessToken) {
+      throw new Error('GOOGLE_ACCESS_TOKEN is not configured');
+    }
+
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(this.env.googleCalendarId)}/events`);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, String(value));
+    }
+
+    const payload = await this.fetchJson<CalendarEventsResponse>(url.toString());
+    return {
+      events: (payload.items ?? []).map((event) => ({
+        id: event.id,
+        title: compact(event.summary, 200) || 'Untitled event',
+        description: compact(event.description),
+        url: event.htmlLink,
+        start: event.start?.dateTime ?? event.start?.date,
+        end: event.end?.dateTime ?? event.end?.date,
+        attendees: (event.attendees ?? []).map((attendee) => attendee.email ?? '').filter(Boolean)
+      }))
+    };
+  }
+
+  private async fetchJson<T>(url: string): Promise<T> {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${this.env.googleAccessToken}`
+      }
+    });
+    const payload = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
+
+    if (!response.ok) {
+      throw new Error(payload.error?.message ?? `Google Calendar request failed with ${response.status}`);
+    }
+
+    return payload;
+  }
+}
+
+let singleton: GoogleCalendarService | null = null;
+
+export function getGoogleCalendarService(): GoogleCalendarService {
+  if (!singleton) {
+    singleton = new GoogleCalendarService();
+  }
+
+  return singleton;
+}

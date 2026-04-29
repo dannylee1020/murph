@@ -5,7 +5,7 @@ import { readForm, redirect } from '../http.js';
 import { route, type Route } from '../router.js';
 
 async function createSessionFromInput(input: {
-  ownerSlackUserId: string;
+  ownerUserId: string;
   title: string;
   mode: SessionMode;
   channelScopeRaw: string;
@@ -20,13 +20,13 @@ async function createSessionFromInput(input: {
 
   store.upsertUser({
     workspaceId: workspace.id,
-    slackUserId: input.ownerSlackUserId,
-    displayName: input.ownerSlackUserId
+    externalUserId: input.ownerUserId,
+    displayName: input.ownerUserId
   });
 
   const session = store.createSession({
     workspaceId: workspace.id,
-    ownerSlackUserId: input.ownerSlackUserId,
+    ownerUserId: input.ownerUserId,
     title: input.title,
     mode: input.mode,
     channelScope: input.channelScopeRaw
@@ -62,15 +62,15 @@ function stopSession(sessionId: string): void {
 export const formRoutes: Route[] = [
   route('POST', '/api/sessions/start', async ({ req, res }) => {
     const formData = await readForm(req);
-    const ownerSlackUserId = String(formData.get('ownerSlackUserId') ?? '').trim();
+    const ownerUserId = String(formData.get('ownerUserId') ?? '').trim();
 
-    if (!ownerSlackUserId) {
+    if (!ownerUserId) {
       redirect(res, '/?error=owner_required', 303);
       return;
     }
 
     const response = await createSessionFromInput({
-      ownerSlackUserId,
+      ownerUserId,
       title: String(formData.get('title') ?? 'Overnight autopilot').trim() || 'Overnight autopilot',
       mode: (String(formData.get('mode') ?? 'manual_review').trim() || 'manual_review') as SessionMode,
       channelScopeRaw: String(formData.get('channelScope') ?? '').trim(),

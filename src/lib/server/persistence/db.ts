@@ -19,6 +19,8 @@ function ensureSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS workspaces (
       id TEXT PRIMARY KEY,
       slack_team_id TEXT NOT NULL UNIQUE,
+      provider TEXT,
+      external_workspace_id TEXT,
       name TEXT NOT NULL,
       bot_token_encrypted TEXT,
       bot_user_id TEXT,
@@ -29,8 +31,10 @@ function ensureSchema(db: Database.Database): void {
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,
       slack_user_id TEXT NOT NULL,
+      external_user_id TEXT,
       display_name TEXT NOT NULL,
       fallback_slack_user_id TEXT,
+      fallback_external_user_id TEXT,
       timezone TEXT NOT NULL,
       workday_start_hour INTEGER NOT NULL,
       workday_end_hour INTEGER NOT NULL,
@@ -50,6 +54,7 @@ function ensureSchema(db: Database.Database): void {
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,
       owner_slack_user_id TEXT NOT NULL,
+      owner_user_id TEXT,
       title TEXT NOT NULL,
       mode TEXT NOT NULL,
       status TEXT NOT NULL,
@@ -170,6 +175,13 @@ function ensureSchema(db: Database.Database): void {
       PRIMARY KEY (workspace_id, slack_user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS user_memory_v2 (
+      workspace_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      data_json TEXT NOT NULL,
+      PRIMARY KEY (workspace_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS workspace_memory (
       workspace_id TEXT PRIMARY KEY,
       data_json TEXT NOT NULL
@@ -198,6 +210,31 @@ function ensureSchema(db: Database.Database): void {
   ensureColumn(db, 'autopilot_sessions', 'policy_profile_name', 'TEXT');
   ensureColumn(db, 'autopilot_sessions', 'policy_override_raw', 'TEXT');
   ensureColumn(db, 'autopilot_sessions', 'policy_json', 'TEXT');
+  ensureColumn(db, 'workspaces', 'provider', 'TEXT');
+  ensureColumn(db, 'workspaces', 'external_workspace_id', 'TEXT');
+  ensureColumn(db, 'users', 'external_user_id', 'TEXT');
+  ensureColumn(db, 'users', 'fallback_external_user_id', 'TEXT');
+  ensureColumn(db, 'autopilot_sessions', 'owner_user_id', 'TEXT');
+
+  db.exec(`
+    UPDATE workspaces
+    SET provider = COALESCE(provider, 'slack'),
+        external_workspace_id = COALESCE(external_workspace_id, slack_team_id)
+    WHERE provider IS NULL OR external_workspace_id IS NULL;
+
+    UPDATE users
+    SET external_user_id = COALESCE(external_user_id, slack_user_id),
+        fallback_external_user_id = COALESCE(fallback_external_user_id, fallback_slack_user_id)
+    WHERE external_user_id IS NULL OR fallback_external_user_id IS NULL;
+
+    UPDATE autopilot_sessions
+    SET owner_user_id = COALESCE(owner_user_id, owner_slack_user_id)
+    WHERE owner_user_id IS NULL;
+
+    INSERT OR IGNORE INTO user_memory_v2 (workspace_id, user_id, data_json)
+    SELECT workspace_id, slack_user_id, data_json
+    FROM user_memory;
+  `);
 }
 
 export function getDb(): Database.Database {

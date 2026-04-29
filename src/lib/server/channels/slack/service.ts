@@ -18,6 +18,22 @@ interface ConversationsRepliesResponse {
   messages?: Array<{ user?: string; text?: string; ts?: string }>;
 }
 
+interface SearchMessagesResponse {
+  ok: boolean;
+  error?: string;
+  messages?: {
+    matches?: Array<{
+      iid?: string;
+      channel?: { id?: string; name?: string };
+      text?: string;
+      ts?: string;
+      permalink?: string;
+      username?: string;
+      user?: string;
+    }>;
+  };
+}
+
 interface ChatPostMessageResponse {
   ok: boolean;
   error?: string;
@@ -52,6 +68,16 @@ export interface SlackJoinResult {
   error?: string;
 }
 
+export interface SlackSearchResult {
+  id: string;
+  channelId: string;
+  channelName?: string;
+  threadTs: string;
+  text: string;
+  permalink?: string;
+  userId?: string;
+}
+
 export class SlackService {
   private readonly env = getRuntimeEnv();
   private readonly store = getStore();
@@ -78,7 +104,7 @@ export class SlackService {
     }
 
     if (!this.env.encryptionKey) {
-      throw new Error('NIGHTCLAW_ENCRYPTION_KEY is required to store Slack bot tokens');
+      throw new Error('MURPH_ENCRYPTION_KEY is required to store Slack bot tokens');
     }
 
     const response = await fetch('https://slack.com/api/oauth.v2.access', {
@@ -98,7 +124,8 @@ export class SlackService {
     }
 
     return this.store.saveInstall({
-      slackTeamId: payload.team.id,
+      provider: 'slack',
+      externalWorkspaceId: payload.team.id,
       name: payload.team.name ?? payload.team.id,
       botTokenEncrypted: encryptString(payload.access_token, this.env.encryptionKey),
       botUserId: payload.bot_user_id
@@ -135,6 +162,7 @@ export class SlackService {
   getBotToken(workspaceIdOrTeamId: string): string {
     const workspace =
       this.store.getWorkspaceById(workspaceIdOrTeamId) ??
+      this.store.getWorkspaceByExternalId('slack', workspaceIdOrTeamId) ??
       this.store.getWorkspaceByTeamId(workspaceIdOrTeamId) ??
       this.store.getFirstWorkspace();
 
@@ -143,7 +171,7 @@ export class SlackService {
     }
 
     if (!this.env.encryptionKey) {
-      throw new Error('NIGHTCLAW_ENCRYPTION_KEY is required to read Slack bot tokens');
+      throw new Error('MURPH_ENCRYPTION_KEY is required to read Slack bot tokens');
     }
 
     return decryptString(workspace.botTokenEncrypted, this.env.encryptionKey);
@@ -156,7 +184,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.replies', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.slackTeamId)}`,
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
@@ -183,6 +211,39 @@ export class SlackService {
     }));
   }
 
+  async searchMessages(workspace: Workspace, query: string, limit = 5): Promise<SlackSearchResult[]> {
+    const response = await fetch('https://slack.com/api/search.messages', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        query,
+        count: String(Math.max(1, Math.min(limit, 10))),
+        sort: 'timestamp',
+        sort_dir: 'desc'
+      })
+    });
+    const payload = (await response.json()) as SearchMessagesResponse;
+
+    if (!payload.ok) {
+      throw new Error(payload.error ?? 'Failed to search Slack messages');
+    }
+
+    return (payload.messages?.matches ?? [])
+      .filter((match) => match.channel?.id && match.ts)
+      .map((match) => ({
+        id: match.iid ?? `slack:${match.channel?.id}:${match.ts}`,
+        channelId: match.channel!.id!,
+        channelName: match.channel?.name,
+        threadTs: match.ts!,
+        text: match.text ?? '',
+        permalink: match.permalink,
+        userId: match.user
+      }));
+  }
+
   async postReply(workspace: Workspace, thread: ThreadRef, text: string): Promise<void> {
     await this.postMessage(workspace, thread.channelId, text, thread.threadTs);
   }
@@ -191,7 +252,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.slackTeamId)}`,
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
         'content-type': 'application/json; charset=utf-8'
       },
       body: JSON.stringify({
@@ -213,7 +274,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.info', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.slackTeamId)}`,
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
@@ -238,7 +299,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.join', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.slackTeamId)}`,
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({

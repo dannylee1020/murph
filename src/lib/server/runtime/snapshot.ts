@@ -2,6 +2,7 @@ import { listRegisteredPluginManifests } from '#lib/server/capabilities/plugins'
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getContextSourceRegistry } from '#lib/server/capabilities/context-source-registry';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
+import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
@@ -14,7 +15,9 @@ export async function getGatewaySnapshot() {
   return {
     summary: {
       ...summary,
-      installUrl: getSlackService().buildInstallUrl(),
+      installUrl: summary.workspace?.provider === 'discord'
+        ? getDiscordService().buildInstallUrl()
+        : getSlackService().buildInstallUrl() ?? getDiscordService().buildInstallUrl(),
       channelCount: getChannelRegistry().list().length,
       contextSourceCount: getContextSourceRegistry().list().length,
       toolCount: getToolRegistry().list().length,
@@ -22,7 +25,7 @@ export async function getGatewaySnapshot() {
     },
     users: summary.workspace
       ? store.listUsers(summary.workspace.id).map((user) => {
-          const memory = store.getOrCreateUserMemory(summary.workspace!.id, user.slackUserId);
+          const memory = store.getOrCreateUserMemory(summary.workspace!.id, user.externalUserId);
           return {
             ...user,
             policyConfigured: Boolean(memory.policy),

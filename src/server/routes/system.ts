@@ -10,7 +10,7 @@ export const systemRoutes: Route[] = [
     const summary = getStore().getWorkspaceSummary();
     return sendJson(res, {
       ok: true,
-      service: 'nightclaw',
+      service: 'murph',
       timestamp: new Date().toISOString(),
       installed: Boolean(summary.workspace),
       queued: summary.queuedCount,
@@ -33,6 +33,11 @@ export const systemRoutes: Route[] = [
         installed: Boolean(summary.workspace),
         oauthConfigured: Boolean(env.slackClientId && env.slackClientSecret),
         signingSecretConfigured: Boolean(env.slackSigningSecret)
+      },
+      discord: {
+        installed: Boolean(summary.workspace && summary.workspace.provider === 'discord'),
+        oauthConfigured: Boolean(env.discordClientId && env.discordClientSecret && env.discordRedirectUri),
+        botTokenConfigured: Boolean(env.discordBotToken)
       },
       provider: {
         configured: Boolean(env.openaiApiKey || env.anthropicApiKey),

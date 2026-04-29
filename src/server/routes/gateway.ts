@@ -245,7 +245,7 @@ export const gatewayRoutes: Route[] = [
       )
     });
   }),
-  route('GET', '/api/gateway/users/:slackUserId/policy', ({ res, params, url }) => {
+  route('GET', '/api/gateway/users/:userId/policy', ({ res, params, url }) => {
     const store = getStore();
     const workspace =
       (url.searchParams.get('workspaceId')
@@ -257,10 +257,10 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    const memory = store.getOrCreateUserMemory(workspace.id, params.slackUserId);
+    const memory = store.getOrCreateUserMemory(workspace.id, params.userId);
     sendJson(res, { ok: true, policy: memory.policy ?? null });
   }),
-  route('PUT', '/api/gateway/users/:slackUserId/policy', async ({ req, res, params }) => {
+  route('PUT', '/api/gateway/users/:userId/policy', async ({ req, res, params }) => {
     const body = await readJson<{
       workspaceId?: string;
       profileName?: string;
@@ -276,7 +276,7 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    const existing = store.getOrCreateUserMemory(workspace.id, params.slackUserId);
+    const existing = store.getOrCreateUserMemory(workspace.id, params.userId);
     const mode = body.sessionMode ?? 'manual_review';
     const { selectedProfile } = await resolveProfileSelection(
       mode,
@@ -301,7 +301,7 @@ export const gatewayRoutes: Route[] = [
             ? 'default'
             : 'profile'
     });
-    store.upsertUserMemory(workspace.id, params.slackUserId, {
+    store.upsertUserMemory(workspace.id, params.userId, {
       ...existing,
       forbiddenTopics: [],
       policy: profile
@@ -318,6 +318,7 @@ export const gatewayRoutes: Route[] = [
       workspaceId?: string;
       sessionId?: string;
       channelId?: string;
+      ownerUserId?: string;
       ownerSlackUserId?: string;
       localTime?: string;
       timezone?: string;
@@ -337,7 +338,8 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    if (!body.channelId || !body.ownerSlackUserId) {
+    const ownerUserId = body.ownerUserId ?? body.ownerSlackUserId;
+    if (!body.channelId || !ownerUserId) {
       sendJson(res, { ok: false, error: 'channel_and_owner_required' }, 400);
       return;
     }
@@ -359,7 +361,7 @@ export const gatewayRoutes: Route[] = [
       timezone,
       payload: {
         channelId: body.channelId,
-        ownerSlackUserId: body.ownerSlackUserId
+        ownerUserId
       },
       nextRunAt: nextDailyRun(localTime, timezone).toISOString()
     });
@@ -401,6 +403,7 @@ export const gatewayRoutes: Route[] = [
     await ensureRuntimeInitialized();
     const body = await readJson<{
       workspaceId?: string;
+      ownerUserId?: string;
       ownerSlackUserId?: string;
       title?: string;
       mode?: SessionMode;
@@ -418,7 +421,8 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    if (!body.ownerSlackUserId) {
+    const ownerUserId = body.ownerUserId ?? body.ownerSlackUserId;
+    if (!ownerUserId) {
       sendJson(res, { ok: false, error: 'owner_required' }, 400);
       return;
     }
@@ -427,7 +431,7 @@ export const gatewayRoutes: Route[] = [
     const membershipResults: ChannelEnsureMemberResult[] = [];
 
     for (const channelId of channelScope) {
-      membershipResults.push(await getChannelRegistry().ensureMember(workspace, 'slack', channelId));
+      membershipResults.push(await getChannelRegistry().ensureMember(workspace, workspace.provider, channelId));
     }
 
     const autoJoined = membershipResults
@@ -467,10 +471,10 @@ export const gatewayRoutes: Route[] = [
 
     store.upsertUser({
       workspaceId: workspace.id,
-      slackUserId: body.ownerSlackUserId,
-      displayName: body.ownerSlackUserId
+      externalUserId: ownerUserId,
+      displayName: ownerUserId
     });
-    const existingMemory = store.getOrCreateUserMemory(workspace.id, body.ownerSlackUserId);
+    const existingMemory = store.getOrCreateUserMemory(workspace.id, ownerUserId);
     const mode = body.mode ?? 'manual_review';
     const { selectedProfile } = await resolveProfileSelection(
       mode,
@@ -495,7 +499,7 @@ export const gatewayRoutes: Route[] = [
             ? 'default'
             : 'profile'
     });
-    store.upsertUserMemory(workspace.id, body.ownerSlackUserId, {
+    store.upsertUserMemory(workspace.id, ownerUserId, {
       ...existingMemory,
       forbiddenTopics: [],
       policy: policyProfile
@@ -503,7 +507,7 @@ export const gatewayRoutes: Route[] = [
 
     const session = store.createSession({
       workspaceId: workspace.id,
-      ownerSlackUserId: body.ownerSlackUserId,
+      ownerUserId,
       title: body.title?.trim() || 'Overnight autopilot',
       mode,
       channelScope,

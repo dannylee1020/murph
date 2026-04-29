@@ -75,8 +75,7 @@ export class ChannelRegistry {
     if (!adapter.ensureMember) {
       return {
         channelId,
-        status: 'error',
-        reason: `Channel adapter ${provider} does not support membership checks`
+        status: 'already_member'
       };
     }
     return await adapter.ensureMember(workspace, channelId);

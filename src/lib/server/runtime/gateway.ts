@@ -98,7 +98,7 @@ export class Gateway {
       taskId: `recurring:${job.id}:${Date.now()}`,
       channelId: job.payload.channelId,
       threadTs,
-      targetUserId: job.payload.ownerSlackUserId
+      targetUserId: job.payload.ownerUserId
     });
     emitControlPlaneEvent({ type: 'agent.run.updated', run });
     this.emitRunEvent(run.id, 'agent.run.started', { recurringJobId: job.id, jobType: job.jobType });
@@ -113,7 +113,7 @@ export class Gateway {
       sessionId: session.id,
       channelId: job.payload.channelId,
       threadTs,
-      targetUserId: job.payload.ownerSlackUserId,
+      targetUserId: job.payload.ownerUserId,
       actionType: 'reply' as const,
       message,
       reason: 'Scheduled morning digest',
@@ -186,6 +186,7 @@ export class Gateway {
   async handleTask(task: ContinuityTask): Promise<AuditRecord> {
     await ensureRuntimeInitialized();
     const workspace =
+      (task.thread.provider ? this.store.getWorkspaceByExternalId(task.thread.provider, task.workspaceId) : undefined) ??
       this.store.getWorkspaceByTeamId(task.workspaceId) ??
       this.store.getWorkspaceById(task.workspaceId) ??
       this.store.getFirstWorkspace();
@@ -229,7 +230,7 @@ export class Gateway {
       });
     }
 
-    if (task.actorUserId && task.actorUserId === session.ownerSlackUserId) {
+    if (task.actorUserId && task.actorUserId === session.ownerUserId) {
       return this.recordAudit({
         task,
         workspaceId: workspace.id,
@@ -620,7 +621,7 @@ export class Gateway {
           workspaceId: workspace.id,
           sessionId: item.sessionId,
           thread: { channelId: item.channelId, threadTs: item.threadTs },
-          targetUserId: item.targetUserId ?? session?.ownerSlackUserId ?? 'unknown',
+          targetUserId: item.targetUserId ?? session?.ownerUserId ?? 'unknown',
           receivedAt: new Date().toISOString()
         },
         workspaceId: workspace.id,
@@ -692,7 +693,7 @@ export class Gateway {
         workspaceId: workspace.id,
         sessionId: item.sessionId,
         thread: { channelId: item.channelId, threadTs: item.threadTs },
-        targetUserId: item.targetUserId ?? session?.ownerSlackUserId ?? 'unknown',
+        targetUserId: item.targetUserId ?? session?.ownerUserId ?? 'unknown',
         receivedAt: new Date().toISOString()
       },
       workspaceId: workspace.id,

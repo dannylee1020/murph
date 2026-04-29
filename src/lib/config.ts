@@ -1,4 +1,4 @@
-export const APP_NAME = 'Nightclaw';
+export const APP_NAME = 'Murph';
 
 export const V0_ALLOWED_ACTIONS = [
   'reply',
@@ -15,7 +15,7 @@ export const MEMORY_ROOT = 'memory';
 export const SKILLS_ROOT = 'skills';
 export const POLICIES_ROOT = 'policies';
 export const PLUGINS_ROOT = 'plugins';
-export const DEFAULT_SQLITE_PATH = 'data/nightclaw.sqlite';
+export const DEFAULT_SQLITE_PATH = 'data/murph.sqlite';
 export const DEFAULT_PROVIDER_MODEL: Record<'openai' | 'anthropic', string> = {
   openai: 'gpt-5.4-mini',
   anthropic: 'claude-sonnet-4-6'

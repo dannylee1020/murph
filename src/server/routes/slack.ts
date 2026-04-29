@@ -57,7 +57,9 @@ export const slackRoutes: Route[] = [
 
     const routedTask = normalized.task;
     const store = getStore();
-    const workspace = store.getWorkspaceByTeamId(routedTask.workspaceId);
+    const workspace =
+      store.getWorkspaceByExternalId('slack', routedTask.workspaceId) ??
+      store.getWorkspaceByTeamId(routedTask.workspaceId);
 
     if (!workspace) {
       console.info('[slack] ignored event', {

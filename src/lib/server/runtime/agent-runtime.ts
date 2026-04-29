@@ -36,6 +36,11 @@ export interface AgentRunResult {
   runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>;
 }
 
+interface PostLoopEvidence {
+  artifacts: ContextArtifact[];
+  linkedArtifacts: string[];
+}
+
 function inferParticipants(messages: ChannelMessage[]): string[] {
   return [...new Set(messages.map((message) => message.userId).filter(Boolean))] as string[];
 }
@@ -84,6 +89,61 @@ function requiresGrounding(context: ContextAssembly): boolean {
   return context.artifacts.length === 0 && context.skills.some((skill) => skill.groundingPolicy === 'required_when_no_artifacts');
 }
 
+function mergeArtifacts(base: ContextArtifact[], updates: ContextArtifact[]): ContextArtifact[] {
+  const merged = [...base];
+  const indexById = new Map(merged.map((artifact, index) => [artifact.id, index]));
+
+  for (const artifact of updates) {
+    const existingIndex = indexById.get(artifact.id);
+    if (existingIndex === undefined) {
+      indexById.set(artifact.id, merged.length);
+      merged.push(artifact);
+      continue;
+    }
+
+    merged[existingIndex] = artifact;
+  }
+
+  return merged;
+}
+
+function mergeLinkedArtifacts(base: string[], updates: string[]): string[] {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of [...base, ...updates]) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      merged.push(value);
+    }
+  }
+
+  return merged;
+}
+
+function notionPageArtifact(page: unknown): ContextArtifact | null {
+  if (!page || typeof page !== 'object') {
+    return null;
+  }
+
+  if (!('id' in page) || typeof page.id !== 'string' || !('title' in page) || typeof page.title !== 'string') {
+    return null;
+  }
+
+  const text = 'text' in page && typeof page.text === 'string' ? page.text : page.title;
+  const url = 'url' in page && typeof page.url === 'string' ? page.url : undefined;
+
+  return {
+    id: `notion:${page.id}`,
+    source: 'notion',
+    type: 'document',
+    title: page.title,
+    text,
+    url,
+    metadata: { notionPageId: page.id }
+  };
+}
+
 export class AgentRuntime {
   private readonly store = getStore();
   private readonly memory = getMemoryService();
@@ -92,9 +152,11 @@ export class AgentRuntime {
 
   async run(task: ContinuityTask, session: AutopilotSession, workspace: Workspace): Promise<AgentRunResult> {
     const context = await this.buildContext(task, session, workspace);
-    const { proposedAction, toolsUsed, toolResults, draft, runtimeEvents } = await this.proposeAction(context, workspace);
+    const { proposedAction, toolsUsed, toolResults, draft, runtimeEvents, postLoopEvidence } = await this.proposeAction(context, workspace);
     const enrichedContext: ContextAssembly = {
       ...context,
+      artifacts: mergeArtifacts(context.artifacts, postLoopEvidence.artifacts),
+      linkedArtifacts: mergeLinkedArtifacts(context.linkedArtifacts, postLoopEvidence.linkedArtifacts),
       summary: draft.summary,
       unresolvedQuestions: draft.unresolvedQuestions,
       continuityCase: draft.continuityCase
@@ -124,11 +186,11 @@ export class AgentRuntime {
       ChannelMessage[]
     >('channel.fetch_thread', task.thread, { workspace, task });
     const latestMessage = recentMessages.at(-1)?.text ?? '';
-    const userMemory = await this.tools.execute<{ workspaceId: string; slackUserId: string }, ContextAssembly['memory']['user']>(
+    const userMemory = await this.tools.execute<{ workspaceId: string; userId: string }, ContextAssembly['memory']['user']>(
       'user.get_preferences',
       {
         workspaceId: workspace.id,
-        slackUserId: task.targetUserId
+        userId: task.targetUserId
       },
       { workspace, task }
     );
@@ -190,7 +252,7 @@ export class AgentRuntime {
       allSources: this.contextSources.list(),
       workspaceMemory
     });
-    const artifacts = await this.contextSources.retrieve(contextSourceNames, {
+    const artifacts = await this.contextSources.retrieve(contextSourceNames.explicit, contextSourceNames.optional, {
       workspace,
       task,
       context: baseContext,
@@ -225,6 +287,7 @@ export class AgentRuntime {
     toolsUsed: string[];
     toolResults: AgentToolResult[];
     runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>;
+    postLoopEvidence: PostLoopEvidence;
   }> {
     const providerSettings = this.store.getProviderSettings(context.workspaceId);
     const provider = getModelProvider(providerSettings);
@@ -232,6 +295,10 @@ export class AgentRuntime {
       context,
       allTools: this.tools.list()
     });
+    const postLoopEvidence: PostLoopEvidence = {
+      artifacts: [],
+      linkedArtifacts: []
+    };
 
     try {
       const result = await runGroundingLoop({
@@ -254,9 +321,18 @@ export class AgentRuntime {
         retrievalToolNames: toolCallingPlan.retrievalToolNames,
         defaultToolInput: (name, input) => this.defaultToolInput(name, input, context),
         enrichToolOutput: async (name, output, toolsUsed, runtimeEvents) =>
-          await this.enrichSearchResultForGrounding(name, output, context, workspace, toolsUsed, runtimeEvents),
+          await this.enrichSearchResultForGrounding(
+            name,
+            output,
+            context,
+            workspace,
+            toolsUsed,
+            runtimeEvents,
+            postLoopEvidence
+          ),
         linkThreadArtifact: (url) => {
           this.memory.linkThreadArtifact(workspace, context.thread.ref.channelId, context.thread.ref.threadTs, url);
+          postLoopEvidence.linkedArtifacts.push(url);
         }
       });
       const draft = toolCallingPlan.retrievalPlan.required && toolCallingPlan.retrievalToolNames.length > 0 && !result.retrievalAttempted
@@ -278,7 +354,8 @@ export class AgentRuntime {
         proposedAction: { ...draft.proposedAction, toolsUsed: result.toolsUsed },
         toolsUsed: result.toolsUsed,
         toolResults: result.toolResults,
-        runtimeEvents: result.runtimeEvents
+        runtimeEvents: result.runtimeEvents,
+        postLoopEvidence
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Provider tool turn failed';
@@ -313,6 +390,7 @@ export class AgentRuntime {
           proposedAction: { ...draft.proposedAction, toolsUsed },
           toolsUsed,
           toolResults,
+          postLoopEvidence,
           runtimeEvents: [
             ...runtimeEvents,
             {
@@ -344,6 +422,7 @@ export class AgentRuntime {
           proposedAction: draft.proposedAction,
           toolsUsed,
           toolResults,
+          postLoopEvidence,
           runtimeEvents: [
             ...runtimeEvents,
             {
@@ -376,7 +455,7 @@ export class AgentRuntime {
       return {
         ...current,
         workspaceId: context.workspaceId,
-        slackUserId: context.targetUserId
+        userId: context.targetUserId
       };
     }
 
@@ -405,8 +484,17 @@ export class AgentRuntime {
     context: ContextAssembly,
     workspace: Workspace,
     toolsUsed: string[],
-    runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>
+    runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>,
+    postLoopEvidence: PostLoopEvidence
   ): Promise<unknown> {
+    if (name === 'notion.read_page') {
+      const artifact = notionPageArtifact(output);
+      if (artifact) {
+        postLoopEvidence.artifacts = mergeArtifacts(postLoopEvidence.artifacts, [artifact]);
+      }
+      return output;
+    }
+
     if (
       name !== 'notion.search' ||
       !requiresGrounding(context) ||
@@ -424,7 +512,10 @@ export class AgentRuntime {
       return output;
     }
 
-    if (!context.availableTools.some((tool) => tool.name === 'notion.read_page')) {
+    if (
+      !this.tools.has('notion.read_page') ||
+      !context.memory.workspace.enabledOptionalTools.includes('notion.read_page')
+    ) {
       return output;
     }
 
@@ -448,6 +539,12 @@ export class AgentRuntime {
       if (page && typeof page === 'object' && 'url' in page && typeof page.url === 'string') {
         this.memory.linkThreadArtifact(workspace, context.thread.ref.channelId, context.thread.ref.threadTs, page.url);
         toolsUsed.push('memory.thread.link_artifact');
+        postLoopEvidence.linkedArtifacts.push(page.url);
+      }
+
+      const artifact = notionPageArtifact(page);
+      if (artifact) {
+        postLoopEvidence.artifacts = mergeArtifacts(postLoopEvidence.artifacts, [artifact]);
       }
 
       runtimeEvents.push({

@@ -1,14 +1,56 @@
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getContextSourceRegistry } from '#lib/server/capabilities/context-source-registry';
 import { getMemoryService } from '#lib/server/memory/service';
+import { getGitHubService, toArtifact as githubToArtifact } from '#lib/server/context-sources/github';
+import { getGmailService, toArtifact as gmailToArtifact } from '#lib/server/context-sources/gmail';
+import { getGoogleCalendarService, toArtifact as calendarToArtifact } from '#lib/server/context-sources/google-calendar';
+import { getGranolaService, toArtifact as granolaToArtifact } from '#lib/server/context-sources/granola';
+import { searchLocalFiles, toArtifact as localFsToArtifact } from '#lib/server/context-sources/local-fs';
 import { getNotionService } from '#lib/server/context-sources/notion';
+import {
+  isObsidianConfigured,
+  readObsidianNote,
+  searchObsidianNotes,
+  toArtifact as obsidianToArtifact
+} from '#lib/server/context-sources/obsidian';
 import { writeThreadMemory } from '#lib/server/memory/markdown';
+import { createFileReadTool } from '#lib/server/tools/file-ops';
+import { createShellExecTool } from '#lib/server/tools/shell';
+import { createWebFetchTool } from '#lib/server/tools/web-fetch';
+import { createWebSearchTool } from '#lib/server/tools/web-search';
 import { createSlackChannelAdapter } from '#lib/server/channels/slack/adapter';
+import { getSlackService } from '#lib/server/channels/slack/service';
+import { createDiscordChannelAdapter } from '#lib/server/channels/discord/adapter';
+import { getDiscordArchiveService, readDiscordThread, toArtifact as discordToArtifact } from '#lib/server/context-sources/discord-archive';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
-import type { ChannelMessage, ToolDefinition } from '#lib/types';
+import type { ChannelMessage, ContextArtifact, ToolDefinition } from '#lib/types';
 
 let initialized = false;
+
+function slackSearchArtifact(result: {
+  id: string;
+  channelId: string;
+  channelName?: string;
+  threadTs: string;
+  text: string;
+  permalink?: string;
+  userId?: string;
+}): ContextArtifact {
+  return {
+    id: result.id,
+    source: 'slack',
+    type: 'other',
+    title: result.channelName ? `#${result.channelName}` : result.channelId,
+    text: result.text,
+    url: result.permalink,
+    metadata: {
+      channelId: result.channelId,
+      threadTs: result.threadTs,
+      userId: result.userId
+    }
+  };
+}
 
 export function registerBuiltInTools(): void {
   if (initialized) {
@@ -20,8 +62,13 @@ export function registerBuiltInTools(): void {
   const contextSources = getContextSourceRegistry();
   const store = getStore();
   const memory = getMemoryService();
+  const slack = getSlackService();
+  const discord = getDiscordArchiveService();
 
   channels.register(createSlackChannelAdapter());
+  if (discord.isConfigured()) {
+    channels.register(createDiscordChannelAdapter());
+  }
   contextSources.register(
     {
       name: 'memory.linked_artifacts',
@@ -42,7 +89,30 @@ export function registerBuiltInTools(): void {
     { optional: false, source: 'core' }
   );
 
+  if (discord.isConfigured()) {
+    contextSources.register(
+      {
+        name: 'discord.thread_search',
+        description: 'Search recent Discord messages by the current thread text.',
+        optional: true,
+        knowledgeDomains: ['team', 'coordination'],
+        async retrieve(input) {
+          const query =
+            input.context.thread.latestMessage ||
+            input.context.thread.recentMessages.map((message) => message.text).join(' ');
+          const results = await discord.searchMessages(input.workspace, query, 3);
+          return results.pendingIndex ? [] : results.results.map((result) => discordToArtifact(result));
+        }
+      },
+      { optional: true, source: 'core' }
+    );
+  }
+
   const notion = getNotionService();
+  const github = getGitHubService();
+  const granola = getGranolaService();
+  const gmail = getGmailService();
+  const calendar = getGoogleCalendarService();
 
   if (notion.isConfigured()) {
     contextSources.register(
@@ -63,6 +133,132 @@ export function registerBuiltInTools(): void {
     );
   }
 
+  if (github.isConfigured()) {
+    contextSources.register(
+      {
+        name: 'github.thread_search',
+        description: 'Search GitHub issues and pull requests by the current thread text.',
+        optional: true,
+        knowledgeDomains: ['code', 'documentation'],
+        async retrieve(input) {
+          const query =
+            input.context.thread.latestMessage ||
+            input.context.thread.recentMessages.map((message) => message.text).join(' ');
+          const results = await github.search(query, 3);
+          return results.results.map((result) => githubToArtifact(result));
+        }
+      },
+      { optional: true, source: 'core' }
+    );
+  }
+
+  if (granola.isConfigured()) {
+    contextSources.register(
+      {
+        name: 'granola.thread_search',
+        description: 'Search Granola meeting notes by the current thread text.',
+        optional: true,
+        knowledgeDomains: ['meeting'],
+        async retrieve(input) {
+          const query =
+            input.context.thread.latestMessage ||
+            input.context.thread.recentMessages.map((message) => message.text).join(' ');
+          const results = await granola.search(query, 3);
+          return results.results.map((result) => granolaToArtifact(result));
+        }
+      },
+      { optional: true, source: 'core' }
+    );
+  }
+
+  if (gmail.isConfigured()) {
+    contextSources.register(
+      {
+        name: 'gmail.thread_search',
+        description: 'Search Gmail threads by the current thread text.',
+        optional: true,
+        knowledgeDomains: ['email', 'customer'],
+        async retrieve(input) {
+          const query =
+            input.context.thread.latestMessage ||
+            input.context.thread.recentMessages.map((message) => message.text).join(' ');
+          const results = await gmail.search(query, 3);
+          return results.results.map((result) => gmailToArtifact(result));
+        }
+      },
+      { optional: true, source: 'core' }
+    );
+  }
+
+  if (calendar.isConfigured()) {
+    contextSources.register(
+      {
+        name: 'calendar.upcoming_events',
+        description: 'Load the next few upcoming Google Calendar events.',
+        optional: true,
+        knowledgeDomains: ['calendar', 'coordination'],
+        async retrieve() {
+          const results = await calendar.upcomingEvents(5);
+          return results.events.map((event) => calendarToArtifact(event));
+        }
+      },
+      { optional: true, source: 'core' }
+    );
+  }
+
+  contextSources.register(
+    {
+      name: 'localfs.thread_search',
+      description: 'Search allowlisted local files by the current thread text.',
+      optional: true,
+      knowledgeDomains: ['code', 'documentation'],
+      async retrieve(input) {
+        const query =
+          input.context.thread.latestMessage ||
+          input.context.thread.recentMessages.map((message) => message.text).join(' ');
+        const results = await searchLocalFiles(query, 3);
+        return results.map((result) => localFsToArtifact(result));
+      }
+    },
+    { optional: true, source: 'core' }
+  );
+
+  if (isObsidianConfigured()) {
+    contextSources.register(
+      {
+        name: 'obsidian.thread_search',
+        description: 'Search an Obsidian vault by the current thread text.',
+        optional: true,
+        knowledgeDomains: ['documentation', 'meeting'],
+        async retrieve(input) {
+          const query =
+            input.context.thread.latestMessage ||
+            input.context.thread.recentMessages.map((message) => message.text).join(' ');
+          const results = await searchObsidianNotes(query, 3);
+          return results.map((result) => obsidianToArtifact(result));
+        }
+      },
+      { optional: true, source: 'core' }
+    );
+  }
+
+  contextSources.register(
+    {
+      name: 'slack.thread_search',
+      description: 'Search recent Slack messages by the current thread text.',
+      optional: true,
+      knowledgeDomains: ['team', 'coordination'],
+      async retrieve(input) {
+        const query =
+          input.context.thread.latestMessage ||
+          input.context.thread.recentMessages.map((message) => message.text).join(' ');
+        const results = await slack.searchMessages(input.workspace, query, 3);
+        return results.map((result) => slackSearchArtifact(result));
+      }
+    },
+    { optional: true, source: 'core' }
+  );
+
   const tools: Array<ToolDefinition<any, any>> = [
     {
       name: 'channel.fetch_thread',
@@ -71,6 +267,35 @@ export function registerBuiltInTools(): void {
       supportsDryRun: true,
       async execute(input: { provider?: string; channelId: string; threadTs: string }, context): Promise<ChannelMessage[]> {
         return await channels.fetchThread(context.workspace, input);
+      }
+    },
+    {
+      name: 'discord.search',
+      description: 'Search Discord messages in the active guild by free-text query.',
+      sideEffectClass: 'read',
+      retrievalEligible: true,
+      optional: true,
+      requiresWorkspaceEnablement: true,
+      knowledgeDomains: ['team', 'coordination'],
+      async execute(input: { query: string; limit?: number }, context) {
+        const results = await discord.searchMessages(context.workspace, input.query, input.limit ?? 5);
+        return results;
+      }
+    },
+    {
+      name: 'discord.read_thread',
+      description: 'Read a Discord thread or message conversation by normalized thread reference.',
+      sideEffectClass: 'read',
+      retrievalEligible: false,
+      optional: true,
+      requiresWorkspaceEnablement: true,
+      knowledgeDomains: ['team', 'coordination'],
+      async execute(
+        input: { channelId: string; threadTs: string; threadChannelId?: string; rootMessageId?: string },
+        context
+      ) {
+        const thread = readDiscordThread(input);
+        return await discord.fetchThreadMessages(context.workspace, thread);
       }
     },
     {
@@ -91,7 +316,12 @@ export function registerBuiltInTools(): void {
       sessionModes: ['manual_review', 'auto_send_low_risk'],
       supportsDryRun: false,
       async execute(input: { provider?: string; channelId: string; text: string }, context): Promise<{ ok: true; ts?: string }> {
-        const result = await channels.postMessage(context.workspace, input.provider ?? 'slack', input.channelId, input.text);
+        const result = await channels.postMessage(
+          context.workspace,
+          input.provider ?? context.workspace.provider,
+          input.channelId,
+          input.text
+        );
         return { ok: true, ts: result.ts };
       }
     },
@@ -109,8 +339,8 @@ export function registerBuiltInTools(): void {
       description: 'Get the target user schedule.',
       sideEffectClass: 'read',
       supportsDryRun: true,
-      async execute(input: { workspaceId: string; slackUserId: string }) {
-        return store.getUser(input.workspaceId, input.slackUserId)?.schedule ?? null;
+      async execute(input: { workspaceId: string; userId: string }) {
+        return store.getUser(input.workspaceId, input.userId)?.schedule ?? null;
       }
     },
     {
@@ -118,8 +348,8 @@ export function registerBuiltInTools(): void {
       description: 'Get user memory and preferences.',
       sideEffectClass: 'read',
       supportsDryRun: true,
-      async execute(input: { workspaceId: string; slackUserId: string }) {
-        return memory.getUserMemory(input.workspaceId, input.slackUserId);
+      async execute(input: { workspaceId: string; userId: string }) {
+        return memory.getUserMemory(input.workspaceId, input.userId);
       }
     },
     {
@@ -266,6 +496,7 @@ export function registerBuiltInTools(): void {
         name: 'notion.search',
         description: 'Search shared Notion pages by title and return matching page IDs, titles, and URLs.',
         sideEffectClass: 'read',
+        retrievalEligible: true,
         inputSchema: {
           type: 'object',
           additionalProperties: false,
@@ -287,6 +518,7 @@ export function registerBuiltInTools(): void {
         name: 'notion.read_page',
         description: 'Read the first blocks of a shared Notion page as plain text.',
         sideEffectClass: 'read',
+        retrievalEligible: false,
         inputSchema: {
           type: 'object',
           additionalProperties: false,
@@ -306,6 +538,327 @@ export function registerBuiltInTools(): void {
       }
     );
   }
+
+  if (github.isConfigured()) {
+    tools.push(
+      {
+        name: 'github.search',
+        description: 'Search GitHub issues and pull requests by query text.',
+        sideEffectClass: 'read',
+        retrievalEligible: true,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['query'],
+          properties: {
+            query: { type: 'string' },
+            limit: { type: 'number' }
+          }
+        },
+        knowledgeDomains: ['code', 'documentation'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { query: string; limit?: number }) {
+          return await github.search(input.query, input.limit);
+        }
+      },
+      {
+        name: 'github.read_issue',
+        description: 'Read a GitHub issue by repository and number.',
+        sideEffectClass: 'read',
+        retrievalEligible: false,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['repository', 'number'],
+          properties: {
+            repository: { type: 'string' },
+            number: { type: 'number' }
+          }
+        },
+        knowledgeDomains: ['code', 'documentation'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { repository: string; number: number }) {
+          return await github.readIssue(input.repository, input.number);
+        }
+      },
+      {
+        name: 'github.read_pr',
+        description: 'Read a GitHub pull request by repository and number.',
+        sideEffectClass: 'read',
+        retrievalEligible: false,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['repository', 'number'],
+          properties: {
+            repository: { type: 'string' },
+            number: { type: 'number' }
+          }
+        },
+        knowledgeDomains: ['code', 'documentation'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { repository: string; number: number }) {
+          return await github.readPullRequest(input.repository, input.number);
+        }
+      }
+    );
+  }
+
+  if (granola.isConfigured()) {
+    tools.push(
+      {
+        name: 'granola.search',
+        description: 'Search Granola meeting notes by query text.',
+        sideEffectClass: 'read',
+        retrievalEligible: true,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['query'],
+          properties: {
+            query: { type: 'string' },
+            limit: { type: 'number' }
+          }
+        },
+        knowledgeDomains: ['meeting'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { query: string; limit?: number }) {
+          return await granola.search(input.query, input.limit);
+        }
+      },
+      {
+        name: 'granola.read_meeting',
+        description: 'Read a Granola meeting note by ID.',
+        sideEffectClass: 'read',
+        retrievalEligible: false,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['noteId'],
+          properties: {
+            noteId: { type: 'string' }
+          }
+        },
+        knowledgeDomains: ['meeting'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { noteId: string }) {
+          return await granola.readMeeting(input.noteId, true);
+        }
+      }
+    );
+  }
+
+  if (gmail.isConfigured()) {
+    tools.push(
+      {
+        name: 'gmail.search',
+        description: 'Search Gmail threads by query text.',
+        sideEffectClass: 'read',
+        retrievalEligible: true,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['query'],
+          properties: {
+            query: { type: 'string' },
+            limit: { type: 'number' }
+          }
+        },
+        knowledgeDomains: ['email', 'customer'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { query: string; limit?: number }) {
+          return await gmail.search(input.query, input.limit);
+        }
+      },
+      {
+        name: 'gmail.read_thread',
+        description: 'Read a Gmail thread by thread ID.',
+        sideEffectClass: 'read',
+        retrievalEligible: false,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['threadId'],
+          properties: {
+            threadId: { type: 'string' }
+          }
+        },
+        knowledgeDomains: ['email', 'customer'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { threadId: string }) {
+          return await gmail.readThread(input.threadId);
+        }
+      }
+    );
+  }
+
+  if (calendar.isConfigured()) {
+    tools.push({
+      name: 'calendar.search_events',
+      description: 'Search Google Calendar events by query text.',
+      sideEffectClass: 'read',
+      retrievalEligible: true,
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['query'],
+        properties: {
+          query: { type: 'string' },
+          limit: { type: 'number' }
+        }
+      },
+      knowledgeDomains: ['calendar', 'coordination'],
+      optional: true,
+      requiresWorkspaceEnablement: true,
+      supportsDryRun: true,
+      async execute(input: { query: string; limit?: number }) {
+        return await calendar.searchEvents(input.query, input.limit ?? 5);
+      }
+    });
+  }
+
+  tools.push(
+    {
+      name: 'slack.search',
+      description: 'Search Slack messages by query text.',
+      sideEffectClass: 'read',
+      retrievalEligible: true,
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['query'],
+        properties: {
+          query: { type: 'string' },
+          limit: { type: 'number' }
+        }
+      },
+      knowledgeDomains: ['team', 'coordination'],
+      optional: true,
+      requiresWorkspaceEnablement: true,
+      supportsDryRun: true,
+      async execute(input: { query: string; limit?: number }, context) {
+        return { results: await slack.searchMessages(context.workspace, input.query, input.limit) };
+      }
+    },
+    {
+      name: 'slack.read_thread',
+      description: 'Read a Slack thread by channel and thread timestamp.',
+      sideEffectClass: 'read',
+      retrievalEligible: false,
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['channelId', 'threadTs'],
+        properties: {
+          channelId: { type: 'string' },
+          threadTs: { type: 'string' }
+        }
+      },
+      knowledgeDomains: ['team', 'coordination'],
+      optional: true,
+      requiresWorkspaceEnablement: true,
+      supportsDryRun: true,
+      async execute(input: { channelId: string; threadTs: string }, context) {
+        return await slack.fetchThreadMessages(context.workspace, {
+          provider: 'slack',
+          channelId: input.channelId,
+          threadTs: input.threadTs
+        });
+      }
+    }
+  );
+
+  tools.push({
+    name: 'localfs.read',
+    description: 'Read a local file by path from allowlisted roots.',
+    sideEffectClass: 'read',
+    retrievalEligible: false,
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['path'],
+      properties: {
+        path: { type: 'string' },
+        maxBytes: { type: 'number' }
+      }
+    },
+    knowledgeDomains: ['code', 'documentation'],
+    optional: true,
+    requiresWorkspaceEnablement: true,
+    supportsDryRun: true,
+    async execute(input: { path: string; maxBytes?: number }, context) {
+      return await registry.execute('fs.read', input, context);
+    }
+  });
+
+  if (isObsidianConfigured()) {
+    tools.push(
+      {
+        name: 'obsidian.search',
+        description: 'Search an Obsidian vault by query text.',
+        sideEffectClass: 'read',
+        retrievalEligible: true,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['query'],
+          properties: {
+            query: { type: 'string' },
+            limit: { type: 'number' }
+          }
+        },
+        knowledgeDomains: ['documentation', 'meeting'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { query: string; limit?: number }) {
+          return { results: await searchObsidianNotes(input.query, input.limit ?? 3) };
+        }
+      },
+      {
+        name: 'obsidian.read_note',
+        description: 'Read an Obsidian note by path.',
+        sideEffectClass: 'read',
+        retrievalEligible: false,
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['path'],
+          properties: {
+            path: { type: 'string' }
+          }
+        },
+        knowledgeDomains: ['documentation', 'meeting'],
+        optional: true,
+        requiresWorkspaceEnablement: true,
+        supportsDryRun: true,
+        async execute(input: { path: string }) {
+          return await readObsidianNote(input.path);
+        }
+      }
+    );
+  }
+
+  tools.push(
+    createWebSearchTool(),
+    createWebFetchTool(),
+    createFileReadTool(),
+    createShellExecTool()
+  );
 
   for (const tool of tools) {
     registry.register(tool, { optional: tool.optional, source: 'core' });

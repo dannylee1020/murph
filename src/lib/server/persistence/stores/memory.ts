@@ -4,32 +4,32 @@ import type { Db } from './_shared.js';
 import { parseJsonObject } from './_shared.js';
 import { getUser } from './user.js';
 
-export function getOrCreateUserMemory(db: Db, workspaceId: string, slackUserId: string): UserMemory {
+export function getOrCreateUserMemory(db: Db, workspaceId: string, userId: string): UserMemory {
   const row = db
-    .prepare(`SELECT data_json FROM user_memory WHERE workspace_id = ? AND slack_user_id = ?`)
-    .get(workspaceId, slackUserId) as { data_json: string } | undefined;
+    .prepare(`SELECT data_json FROM user_memory_v2 WHERE workspace_id = ? AND user_id = ?`)
+    .get(workspaceId, userId) as { data_json: string } | undefined;
 
   if (row) {
     return parseJsonObject<UserMemory>(row.data_json, {
-      userId: slackUserId,
+      userId,
       preferences: [],
       forbiddenTopics: [],
       routingHints: []
     });
   }
 
-  const user = getUser(db, workspaceId, slackUserId);
+  const user = getUser(db, workspaceId, userId);
   const memory: UserMemory = {
-    userId: slackUserId,
+    userId,
     preferences: [],
-    fallbackSlackUserId: user?.fallbackSlackUserId,
+    fallbackUserId: user?.fallbackExternalUserId,
     forbiddenTopics: [],
     routingHints: []
   };
 
-  db.prepare(`INSERT INTO user_memory (workspace_id, slack_user_id, data_json) VALUES (?, ?, ?)`).run(
+  db.prepare(`INSERT INTO user_memory_v2 (workspace_id, user_id, data_json) VALUES (?, ?, ?)`).run(
     workspaceId,
-    slackUserId,
+    userId,
     JSON.stringify(memory)
   );
 
@@ -39,15 +39,15 @@ export function getOrCreateUserMemory(db: Db, workspaceId: string, slackUserId: 
 export function upsertUserMemory(
   db: Db,
   workspaceId: string,
-  slackUserId: string,
+  userId: string,
   memory: UserMemory
 ): void {
   db.prepare(
-    `INSERT INTO user_memory (workspace_id, slack_user_id, data_json)
+    `INSERT INTO user_memory_v2 (workspace_id, user_id, data_json)
      VALUES (?, ?, ?)
-     ON CONFLICT(workspace_id, slack_user_id) DO UPDATE SET
+     ON CONFLICT(workspace_id, user_id) DO UPDATE SET
        data_json = excluded.data_json`
-  ).run(workspaceId, slackUserId, JSON.stringify(memory));
+  ).run(workspaceId, userId, JSON.stringify(memory));
 }
 
 export function getOrCreateWorkspaceMemory(db: Db, workspaceId: string): WorkspaceMemory {

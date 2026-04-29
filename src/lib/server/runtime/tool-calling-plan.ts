@@ -52,7 +52,8 @@ function dedupeTools(tools: Array<AgentToolInventoryItem | ToolInventoryItem>): 
         description: tool.description,
         sideEffectClass: tool.sideEffectClass,
         inputSchema: tool.inputSchema,
-        knowledgeDomains: tool.knowledgeDomains
+        knowledgeDomains: tool.knowledgeDomains,
+        retrievalEligible: tool.retrievalEligible
       });
     }
   }
@@ -65,7 +66,7 @@ function isOptionalToolEnabled(tool: ToolInventoryItem, workspaceMemory: Workspa
 }
 
 function isRetrievalTool(tool: ToolInventoryItem): boolean {
-  return tool.sideEffectClass === 'read' && Boolean(tool.knowledgeDomains?.length);
+  return tool.sideEffectClass === 'read' && Boolean(tool.knowledgeDomains?.length) && tool.retrievalEligible === true;
 }
 
 export function classifyRuntimeQuestion(context: ContextAssembly): RuntimeQuestionKind {
@@ -126,6 +127,14 @@ export function buildRuntimeToolCallingPlan(input: {
     isOptionalToolEnabled(tool, input.context.memory.workspace) &&
     (preferred.length === 0 || tool.knowledgeDomains?.some((domain) => preferred.includes(domain)))
   );
+  if (retrievalTools.length === 0) {
+    const webSearch = input.allTools.find(
+      (tool) => tool.name === 'web.search' && isRetrievalTool(tool) && isOptionalToolEnabled(tool, input.context.memory.workspace)
+    );
+    if (webSearch) {
+      retrievalTools.push(webSearch);
+    }
+  }
   const retrievalPlan: RuntimeRetrievalPlan = needsRetrieval
     ? {
         required: retrievalTools.length > 0,
