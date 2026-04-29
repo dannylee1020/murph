@@ -6,7 +6,7 @@ import { loadPolicyProfiles } from '../src/lib/server/policies/loader';
 
 describe('policy profile loader', () => {
   it('loads markdown profiles from disk', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'nightclaw-policies-'));
+    const root = mkdtempSync(join(tmpdir(), 'murph-policies-'));
     writeFileSync(
       join(root, 'test.md'),
       [

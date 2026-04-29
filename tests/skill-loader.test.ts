@@ -33,7 +33,7 @@ function writeSkill(root: string, name: string, extraHeader = ''): void {
 
 describe('loadSkills groundingPolicy', () => {
   it('parses valid grounding policy metadata', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'nightclaw-skills-'));
+    const root = mkdtempSync(join(tmpdir(), 'murph-skills-'));
     mkdirSync(root, { recursive: true });
     writeSkill(root, 'required-docs', 'groundingPolicy: required_when_no_artifacts');
 
@@ -43,7 +43,7 @@ describe('loadSkills groundingPolicy', () => {
   });
 
   it('defaults missing grounding policy to model_choice', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'nightclaw-skills-'));
+    const root = mkdtempSync(join(tmpdir(), 'murph-skills-'));
     mkdirSync(root, { recursive: true });
     writeSkill(root, 'default-docs');
 
@@ -53,7 +53,7 @@ describe('loadSkills groundingPolicy', () => {
   });
 
   it('defaults invalid grounding policy to model_choice', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'nightclaw-skills-'));
+    const root = mkdtempSync(join(tmpdir(), 'murph-skills-'));
     mkdirSync(root, { recursive: true });
     writeSkill(root, 'invalid-docs', 'groundingPolicy: always_search');
 

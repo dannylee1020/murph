@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 async function setup() {
   vi.resetModules();
-  process.env.NIGHTCLAW_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'nightclaw-slack-membership-')), 'nightclaw.sqlite');
-  process.env.NIGHTCLAW_ENCRYPTION_KEY = 'test-key';
+  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-membership-')), 'murph.sqlite');
+  process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   const { encryptString } = await import('#lib/server/util/crypto');
   const { createSlackChannelAdapter } = await import('#lib/server/channels/slack/adapter');
   const { getStore } = await import('#lib/server/persistence/store');

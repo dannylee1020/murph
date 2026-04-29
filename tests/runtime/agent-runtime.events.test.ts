@@ -178,8 +178,8 @@ async function executeToolCall(
 
 async function setupRuntime() {
   vi.resetModules();
-  process.env.NIGHTCLAW_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'nightclaw-agent-runtime-events-')), 'nightclaw.sqlite');
-  process.env.NIGHTCLAW_ENCRYPTION_KEY = 'test-key';
+  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-agent-runtime-events-')), 'murph.sqlite');
+  process.env.MURPH_ENCRYPTION_KEY = 'test-key';
 
   const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
   const { AgentRuntime } = await import('#lib/server/runtime/agent-runtime');
@@ -246,6 +246,7 @@ async function setupRuntime() {
     description: '',
     sideEffectClass: 'read',
     knowledgeDomains: ['documentation'],
+    retrievalEligible: true,
     requiresWorkspaceEnablement: true,
     async execute(): Promise<unknown> {
       return {
@@ -259,6 +260,7 @@ async function setupRuntime() {
     description: '',
     sideEffectClass: 'read',
     knowledgeDomains: ['documentation'],
+    retrievalEligible: false,
     requiresWorkspaceEnablement: true,
     async execute(): Promise<unknown> {
       return {
@@ -394,7 +396,7 @@ describe('AgentRuntime model failure events', () => {
 
     expect(capturedUserPreferencesInput).toEqual({
       workspaceId: 'T1',
-      slackUserId: 'UOWNER'
+      userId: 'UOWNER'
     });
     expect(capturedThreadReadInput).toEqual({
       workspaceId: 'T1',
@@ -463,6 +465,17 @@ describe('AgentRuntime model failure events', () => {
         })
       ])
     );
+    expect(result.context.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'notion:page-1',
+          source: 'notion',
+          type: 'document',
+          title: 'Checkout launch readiness'
+        })
+      ])
+    );
+    expect(result.context.linkedArtifacts).toContain('https://notion.test/page-1');
   });
 
   it('broadens available tools for factual questions even when only channel-continuity is selected', async () => {
@@ -478,8 +491,7 @@ describe('AgentRuntime model failure events', () => {
       'user.get_preferences',
       'memory.workspace.read',
       'memory.thread.read',
-      'notion.search',
-      'notion.read_page'
+      'notion.search'
     ]);
   });
 });

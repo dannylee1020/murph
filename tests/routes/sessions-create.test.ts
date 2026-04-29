@@ -34,8 +34,8 @@ function jsonResponse(): any & { result: () => JsonResponse } {
 
 async function setup(results: Array<{ channelId: string; name?: string; status: string; reason?: string }>) {
   vi.resetModules();
-  process.env.NIGHTCLAW_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'nightclaw-session-route-')), 'nightclaw.sqlite');
-  process.env.NIGHTCLAW_ENCRYPTION_KEY = 'test-key';
+  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-session-route-')), 'murph.sqlite');
+  process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   const ensureMember = vi.fn();
   for (const result of results) {
     ensureMember.mockResolvedValueOnce(result);

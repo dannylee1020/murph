@@ -105,8 +105,8 @@ function runResult(taskInput: ContinuityTask, workspaceId: string): AgentRunResu
 
 async function setup() {
   vi.resetModules();
-  process.env.NIGHTCLAW_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'nightclaw-gateway-policy-')), 'nightclaw.sqlite');
-  process.env.NIGHTCLAW_ENCRYPTION_KEY = 'test-key';
+  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-gateway-policy-')), 'murph.sqlite');
+  process.env.MURPH_ENCRYPTION_KEY = 'test-key';
 
   const { getStore } = await import('#lib/server/persistence/store');
   const { getGateway } = await import('#lib/server/runtime/gateway');

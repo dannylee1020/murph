@@ -130,4 +130,62 @@ describe('selectSkills', () => {
 
     expect(selected.map((entry) => entry.name)).toEqual(['channel-continuity']);
   });
+
+  it('prefers meeting continuity over communication continuity when both match and scores tie', () => {
+    const selected = selectSkills({
+      skills: [
+        skill({ name: 'channel-continuity', triggers: ['status'], priority: 100 }),
+        skill({
+          name: 'communication-grounded-continuity',
+          triggers: ['customer call', 'recap'],
+          priority: 110,
+          knowledgeDomains: ['email', 'calendar', 'team']
+        }),
+        skill({
+          name: 'meeting-grounded-continuity',
+          triggers: ['customer call', 'recap'],
+          priority: 115,
+          knowledgeDomains: ['meeting', 'documentation']
+        })
+      ],
+      latestMessage: 'Can you share the customer call recap?',
+      channel: 'slack',
+      sessionMode: 'manual_review',
+      tools: [{ name: 'channel.fetch_thread', description: '', sideEffectClass: 'read' }],
+      workspaceMemory
+    });
+
+    expect(selected.map((entry) => entry.name)).toEqual([
+      'meeting-grounded-continuity',
+      'communication-grounded-continuity',
+      'channel-continuity'
+    ]);
+  });
+
+  it('lets trigger score beat priority when a communication prompt is more specific', () => {
+    const selected = selectSkills({
+      skills: [
+        skill({ name: 'channel-continuity', triggers: ['status'], priority: 100 }),
+        skill({
+          name: 'communication-grounded-continuity',
+          triggers: ['did we reply', 'latest email', 'did I send'],
+          priority: 110,
+          knowledgeDomains: ['email', 'calendar', 'team']
+        }),
+        skill({
+          name: 'meeting-grounded-continuity',
+          triggers: ['meeting', 'recap'],
+          priority: 115,
+          knowledgeDomains: ['meeting', 'documentation']
+        })
+      ],
+      latestMessage: 'Did we reply in the latest email, and did I send a follow up after the meeting recap?',
+      channel: 'slack',
+      sessionMode: 'manual_review',
+      tools: [{ name: 'channel.fetch_thread', description: '', sideEffectClass: 'read' }],
+      workspaceMemory
+    });
+
+    expect(selected.map((entry) => entry.name)[0]).toBe('communication-grounded-continuity');
+  });
 });

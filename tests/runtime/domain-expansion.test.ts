@@ -56,21 +56,24 @@ const tools: ToolInventoryItem[] = [
     sideEffectClass: 'read',
     requiresWorkspaceEnablement: true,
     optional: true,
-    knowledgeDomains: ['documentation']
+    knowledgeDomains: ['documentation'],
+    retrievalEligible: true
   }),
   tool({
     name: 'notion.read_page',
     sideEffectClass: 'read',
     requiresWorkspaceEnablement: true,
     optional: true,
-    knowledgeDomains: ['documentation']
+    knowledgeDomains: ['documentation'],
+    retrievalEligible: false
   }),
   tool({
     name: 'confluence.search',
     sideEffectClass: 'read',
     requiresWorkspaceEnablement: true,
     optional: true,
-    knowledgeDomains: ['documentation']
+    knowledgeDomains: ['documentation'],
+    retrievalEligible: true
   }),
   tool({
     name: 'github.search',
@@ -153,6 +156,9 @@ describe('domain expansion', () => {
       workspaceMemory
     });
 
-    expect(expanded).toEqual(['memory.linked_artifacts', 'notion.thread_search', 'confluence.thread_search']);
+    expect(expanded).toEqual({
+      explicit: ['memory.linked_artifacts'],
+      optional: ['notion.thread_search', 'confluence.thread_search']
+    });
   });
 });

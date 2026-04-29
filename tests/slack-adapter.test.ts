@@ -59,8 +59,8 @@ function slackEvent(input: Record<string, unknown>): Record<string, unknown> {
 describe('normalizeSlackEvent', () => {
   beforeEach(() => {
     vi.resetModules();
-    process.env.NIGHTCLAW_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'nightclaw-slack-adapter-')), 'nightclaw.sqlite');
-    process.env.NIGHTCLAW_ENCRYPTION_KEY = 'test-key';
+    process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-adapter-')), 'murph.sqlite');
+    process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   });
 
   it('routes ordinary channel messages that mention an active session owner', async () => {

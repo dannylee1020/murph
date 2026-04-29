@@ -87,8 +87,30 @@ function context(overrides: Partial<ContextAssembly> = {}): ContextAssembly {
 const allTools: ToolInventoryItem[] = [
   tool({ name: 'channel.fetch_thread', sideEffectClass: 'read' }),
   tool({ name: 'memory.thread.read', sideEffectClass: 'read' }),
-  tool({ name: 'notion.search', sideEffectClass: 'read', optional: true, requiresWorkspaceEnablement: true, knowledgeDomains: ['documentation'] }),
-  tool({ name: 'notion.read_page', sideEffectClass: 'read', optional: true, requiresWorkspaceEnablement: true, knowledgeDomains: ['documentation'] })
+  tool({
+    name: 'notion.search',
+    sideEffectClass: 'read',
+    optional: true,
+    requiresWorkspaceEnablement: true,
+    knowledgeDomains: ['documentation'],
+    retrievalEligible: true
+  }),
+  tool({
+    name: 'notion.read_page',
+    sideEffectClass: 'read',
+    optional: true,
+    requiresWorkspaceEnablement: true,
+    knowledgeDomains: ['documentation'],
+    retrievalEligible: false
+  }),
+  tool({
+    name: 'web.search',
+    sideEffectClass: 'read',
+    optional: true,
+    requiresWorkspaceEnablement: true,
+    knowledgeDomains: ['web'],
+    retrievalEligible: true
+  })
 ];
 
 describe('buildRuntimeToolCallingPlan', () => {
@@ -99,10 +121,9 @@ describe('buildRuntimeToolCallingPlan', () => {
     expect(plan.availableTools.map((tool) => tool.name)).toEqual([
       'channel.fetch_thread',
       'memory.thread.read',
-      'notion.search',
-      'notion.read_page'
+      'notion.search'
     ]);
-    expect(plan.retrievalToolNames).toEqual(['notion.search', 'notion.read_page']);
+    expect(plan.retrievalToolNames).toEqual(['notion.search']);
   });
 
   it('does not require retrieval when artifacts already exist', () => {
@@ -115,5 +136,23 @@ describe('buildRuntimeToolCallingPlan', () => {
 
     expect(plan.retrievalPlan.required).toBe(false);
     expect(plan.availableTools.map((tool) => tool.name)).toEqual(['channel.fetch_thread', 'memory.thread.read']);
+  });
+
+  it('falls back to web.search when no domain-matched retrieval tool is available', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        memory: {
+          ...context().memory,
+          workspace: {
+            ...workspaceMemory,
+            enabledOptionalTools: ['web.search']
+          }
+        }
+      }),
+      allTools: allTools.filter((tool) => tool.name !== 'notion.search' && tool.name !== 'notion.read_page')
+    });
+
+    expect(plan.retrievalPlan.required).toBe(true);
+    expect(plan.retrievalToolNames).toEqual(['web.search']);
   });
 });
