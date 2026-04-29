@@ -3,7 +3,7 @@ description: Continuity skill that grounds replies in shared documentation, note
 triggers: doc, docs, documentation, readiness, launch plan, go live, go-live, clear to go live, clear to launch, go/no-go, decision, signoff, approval, hold, ship, release, ready tomorrow, decision log, meeting notes, spec, PRD, RFC, wiki, regex:\b(runbook|playbook|handbook|guide|policy|notes)\b, regex:\bsource of truth\b
 allowedActions: reply, ask, redirect, defer, remind, abstain
 toolNames: channel.fetch_thread, user.get_preferences, memory.workspace.read, memory.thread.read, memory.thread.write, memory.thread.link_artifact, channel.post_reply, reminder.schedule, queue.enqueue
-knowledgeDomains: documentation
+knowledgeDomains: documentation, code
 groundingPolicy: required_when_no_artifacts
 channelNames: slack
 contextSourceNames: memory.linked_artifacts

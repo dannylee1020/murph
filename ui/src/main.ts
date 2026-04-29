@@ -22,7 +22,7 @@ type SummaryPayload = {
     };
   };
   users: Array<{
-    slackUserId: string;
+    externalUserId: string;
     displayName: string;
     schedule?: {
       timezone: string;
@@ -51,7 +51,7 @@ type SummaryPayload = {
   sessions: Array<{
     id: string;
     title: string;
-    ownerSlackUserId: string;
+    ownerUserId: string;
     mode: string;
     endsAt: string;
     channelScope: string[];
@@ -78,6 +78,7 @@ type RuntimePayload = {
 
 type SetupStatusPayload = {
   slack: { installed: boolean; oauthConfigured: boolean; signingSecretConfigured: boolean };
+  discord: { installed: boolean; oauthConfigured: boolean; botTokenConfigured: boolean };
   provider: { configured: boolean; defaultProvider: string };
   notion: {
     configured: boolean;
@@ -159,7 +160,7 @@ type RecurringJobsPayload = {
     status: string;
     payload: {
       channelId: string;
-      ownerSlackUserId: string;
+      ownerUserId: string;
     };
   }>;
 };
@@ -369,7 +370,7 @@ function shell(content: string): void {
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="/" data-link>
-          <span class="brand-mark">Nightclaw</span>
+          <span class="brand-mark">Murph</span>
           <span class="brand-text">
             <strong>Timezone</strong>
             <small>Autopilot</small>
@@ -401,7 +402,7 @@ function shell(content: string): void {
 }
 
 function loading(title: string): void {
-  shell(`<section class="page-head"><p class="eyebrow">Nightclaw</p><h1>${title}</h1><p>Loading...</p></section>`);
+  shell(`<section class="page-head"><p class="eyebrow">Murph</p><h1>${title}</h1><p>Loading...</p></section>`);
 }
 
 function errorView(error: unknown): void {
@@ -500,7 +501,7 @@ function policyPreviewHtml(payload: PolicyPreviewPayload): string {
 }
 
 async function renderDashboard(): Promise<void> {
-  setTitle('Nightclaw');
+  setTitle('Murph');
   loading('Dashboard');
   const [data, recurring, policyProfilesPayload] = await Promise.all([
     getJson<SummaryPayload>('/api/gateway/summary'),
@@ -529,7 +530,7 @@ async function renderDashboard(): Promise<void> {
           data.summary.workspace
             ? `
               <form id="start-session-form" class="form">
-                <label><span>Owner Slack User ID</span><input name="ownerSlackUserId" placeholder="U123ABC" required /></label>
+                <label><span>Owner User ID</span><input name="ownerUserId" placeholder="U123ABC" required /></label>
                 <label><span>Title</span><input name="title" value="Overnight autopilot" /></label>
                 <label>
                   <span>Mode</span>
@@ -559,7 +560,7 @@ async function renderDashboard(): Promise<void> {
                 <button type="submit">Start Session</button>
               </form>
             `
-            : `<p>Install the Slack app first.</p>${data.summary.installUrl ? '<a class="button" href="/api/slack/install">Install Slack App</a>' : ''}`
+            : `<p>Install a channel app first.</p>${data.summary.installUrl ? `<a class="button" href="${escapeHtml(data.summary.installUrl)}">Install Channel App</a>` : ''}`
         }
       </article>
 
@@ -570,14 +571,14 @@ async function renderDashboard(): Promise<void> {
             (session) => `
               <div class="list-row">
                 <strong>${escapeHtml(session.title)}</strong>
-                <span>${escapeHtml(session.ownerSlackUserId)} · ${escapeHtml(sessionModeLabel(session.mode))}</span>
+                <span>${escapeHtml(session.ownerUserId)} · ${escapeHtml(sessionModeLabel(session.mode))}</span>
                 <span title="${escapeHtml(formatExactIso(session.endsAt))}">Ends ${escapeHtml(formatDateTime(session.endsAt))}</span>
                 <span>${escapeHtml(session.channelScope.length > 0 ? session.channelScope.join(', ') : 'All channels in scope')}</span>
                 <button class="secondary stop-session" data-session-id="${escapeHtml(session.id)}">Stop</button>
               </div>
             `
           ),
-          'Start a session before logging off and Nightclaw will watch your scoped channels.'
+          'Start a session before logging off and Murph will watch your scoped channels.'
         )}
       </article>
     </section>
@@ -596,7 +597,7 @@ async function renderDashboard(): Promise<void> {
                   </select>
                 </label>
                 <label><span>Channel ID</span><input name="channelId" placeholder="C123ABC" required /></label>
-                <label><span>Owner Slack User ID</span><input name="ownerSlackUserId" value="${escapeHtml(data.sessions[0]?.ownerSlackUserId ?? '')}" required /></label>
+                <label><span>Owner User ID</span><input name="ownerUserId" value="${escapeHtml(data.sessions[0]?.ownerUserId ?? '')}" required /></label>
                 <label><span>Local Time</span><input name="localTime" type="time" value="08:30" required /></label>
                 <label><span>Timezone</span><input name="timezone" value="America/Los_Angeles" required /></label>
                 <button type="submit">Schedule Digest</button>
@@ -654,12 +655,12 @@ async function renderDashboard(): Promise<void> {
   `);
 
   const startSessionForm = app.querySelector<HTMLFormElement>('#start-session-form');
-  const startOwnerInput = startSessionForm?.querySelector<HTMLInputElement>('input[name="ownerSlackUserId"]');
+  const startOwnerInput = startSessionForm?.querySelector<HTMLInputElement>('input[name="ownerUserId"]');
   const startModeInput = startSessionForm?.querySelector<HTMLSelectElement>('select[name="mode"]');
   const startProfileInput = startSessionForm?.querySelector<HTMLSelectElement>('select[name="policyProfileName"]');
   const startPolicyInput = startSessionForm?.querySelector<HTMLTextAreaElement>('textarea[name="policyOverrideRaw"]');
   const startPolicyPreview = startSessionForm?.querySelector<HTMLDivElement>('#start-session-policy-preview');
-  const knownUsers = new Map(data.users.map((user) => [user.slackUserId.toLowerCase(), user]));
+  const knownUsers = new Map(data.users.map((user) => [user.externalUserId.toLowerCase(), user]));
 
   const refreshStartSessionPolicy = async (options: { hydrateKnownUser?: boolean } = {}): Promise<void> => {
     if (!startModeInput || !startPolicyInput || !startPolicyPreview || !startProfileInput) {
@@ -710,7 +711,7 @@ async function renderDashboard(): Promise<void> {
 
     try {
       const result = await postJson<SessionCreateResponse>('/api/gateway/sessions', {
-        ownerSlackUserId: String(formData.get('ownerSlackUserId') ?? ''),
+        ownerUserId: String(formData.get('ownerUserId') ?? ''),
         title: String(formData.get('title') ?? ''),
         mode: String(formData.get('mode') ?? 'manual_review'),
         channelScope: String(formData.get('channelScope') ?? '')
@@ -755,7 +756,7 @@ async function renderDashboard(): Promise<void> {
     await postJson('/api/gateway/recurring-jobs', {
       sessionId: String(formData.get('sessionId') ?? ''),
       channelId: String(formData.get('channelId') ?? ''),
-      ownerSlackUserId: String(formData.get('ownerSlackUserId') ?? ''),
+      ownerUserId: String(formData.get('ownerUserId') ?? ''),
       localTime: String(formData.get('localTime') ?? '08:30'),
       timezone: String(formData.get('timezone') ?? 'America/Los_Angeles')
     });
@@ -771,7 +772,7 @@ async function renderDashboard(): Promise<void> {
 }
 
 async function renderSettings(): Promise<void> {
-  setTitle('Nightclaw Settings');
+  setTitle('Murph Settings');
   loading('Settings');
   const [summary, runtime, setup, policyProfilesPayload] = await Promise.all([
     getJson<SummaryPayload>('/api/gateway/summary'),
@@ -817,6 +818,14 @@ async function renderSettings(): Promise<void> {
         </dl>
       </article>
       <article class="panel panel-status">
+        <h2><span class="status-dot ${setup.discord.installed && setup.discord.oauthConfigured && setup.discord.botTokenConfigured ? 'ok' : 'off'}" aria-hidden="true"></span>Discord</h2>
+        <dl class="details">
+          <div><dt>Install</dt><dd>${setup.discord.installed ? 'Installed' : 'Not installed'}</dd></div>
+          <div><dt>OAuth</dt><dd>${setup.discord.oauthConfigured ? 'Configured' : 'Missing'}</dd></div>
+          <div><dt>Bot token</dt><dd>${setup.discord.botTokenConfigured ? 'Configured' : 'Missing'}</dd></div>
+        </dl>
+      </article>
+      <article class="panel panel-status">
         <h2><span class="status-dot ${setup.provider.configured ? 'ok' : 'off'}" aria-hidden="true"></span>Provider</h2>
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.provider.configured ? 'Configured' : 'Missing API key'}</dd></div>
@@ -834,15 +843,16 @@ async function renderSettings(): Promise<void> {
     </section>
 
     <section class="panel">
-      <h2>Slack Install</h2>
+      <h2>Channel Installs</h2>
       ${
-        summary.summary.workspace
-          ? summary.summary.installUrl
-            ? '<p>Installed. Reinstall only when Slack scopes change or the app install needs to be refreshed.</p><a class="button" href="/api/slack/install">Reinstall Slack app</a>'
-            : '<p>Installed. Slack OAuth is not configured, so reinstall is unavailable.</p>'
-          : summary.summary.installUrl
-            ? '<a class="button" href="/api/slack/install">Install Slack app</a>'
-            : '<p>Slack OAuth is not configured.</p>'
+        [
+          setup.slack.oauthConfigured
+            ? `<a class="button" href="/api/slack/install">${setup.slack.installed ? 'Reinstall Slack app' : 'Install Slack app'}</a>`
+            : '<p>Slack OAuth is not configured.</p>',
+          setup.discord.oauthConfigured && setup.discord.botTokenConfigured
+            ? `<a class="button" href="/api/discord/install">${setup.discord.installed ? 'Reinstall Discord app' : 'Install Discord app'}</a>`
+            : '<p>Discord OAuth or bot token is not configured.</p>'
+        ].join('')
       }
     </section>
 
@@ -906,7 +916,7 @@ async function renderSettings(): Promise<void> {
                     (user) => `
                       <div class="list-row">
                         <strong>${escapeHtml(user.displayName)}</strong>
-                        <span>${escapeHtml(user.slackUserId)}</span>
+                        <span>${escapeHtml(user.externalUserId)}</span>
                         <span>${escapeHtml(policyAssignmentLabel(user))}</span>
                       </div>
                     `
@@ -916,9 +926,9 @@ async function renderSettings(): Promise<void> {
               <form id="user-policy-form" class="form">
                 <label>
                   <span>User</span>
-                  <select name="slackUserId">
+                  <select name="userId">
                     ${summary.users
-                      .map((user) => `<option value="${escapeHtml(user.slackUserId)}">${escapeHtml(`${user.displayName} (${user.slackUserId})`)}</option>`)
+                      .map((user) => `<option value="${escapeHtml(user.externalUserId)}">${escapeHtml(`${user.displayName} (${user.externalUserId})`)}</option>`)
                       .join('')}
                   </select>
                 </label>
@@ -964,7 +974,7 @@ async function renderSettings(): Promise<void> {
               </div>
             `
           ),
-          'Add a channel adapter to let Nightclaw watch a new messenger.'
+          'Add a channel adapter to let Murph watch a new messenger.'
         )}
       </article>
 
@@ -1051,12 +1061,12 @@ async function renderSettings(): Promise<void> {
 
   const userPolicyForm = app.querySelector<HTMLFormElement>('#user-policy-form');
   if (userPolicyForm) {
-    const userSelect = userPolicyForm.querySelector<HTMLSelectElement>('select[name="slackUserId"]');
+    const userSelect = userPolicyForm.querySelector<HTMLSelectElement>('select[name="userId"]');
     const modeSelect = userPolicyForm.querySelector<HTMLSelectElement>('select[name="sessionMode"]');
     const profileSelect = userPolicyForm.querySelector<HTMLSelectElement>('select[name="profileName"]');
     const policyInput = userPolicyForm.querySelector<HTMLTextAreaElement>('textarea[name="overrideRaw"]');
     const preview = userPolicyForm.querySelector<HTMLDivElement>('#user-policy-preview');
-    const usersById = new Map(summary.users.map((user) => [user.slackUserId, user]));
+    const usersById = new Map(summary.users.map((user) => [user.externalUserId, user]));
 
     const refreshUserPolicyPreview = async (): Promise<void> => {
       if (!modeSelect || !policyInput || !preview || !profileSelect) {
@@ -1117,7 +1127,7 @@ async function renderSettings(): Promise<void> {
 }
 
 async function renderReview(): Promise<void> {
-  setTitle('Nightclaw Review Queue');
+  setTitle('Murph Review Queue');
   loading('Review Queue');
   const [queuePayload, sessionsPayload] = await Promise.all([
     getJson<QueuePayload>('/api/gateway/queue'),
@@ -1138,7 +1148,7 @@ async function renderReview(): Promise<void> {
     <section class="stack">
       ${
         queuePayload.queue.length === 0
-          ? '<article class="panel"><p class="empty">Queued drafts appear here whenever Nightclaw proposes a reply under manual review. Nothing waiting right now.</p></article>'
+          ? '<article class="panel"><p class="empty">Queued drafts appear here whenever Murph proposes a reply under manual review. Nothing waiting right now.</p></article>'
           : queuePayload.queue
               .map(
                 (item) => `
@@ -1176,7 +1186,7 @@ async function renderReview(): Promise<void> {
 }
 
 async function renderAudit(): Promise<void> {
-  setTitle('Nightclaw Decisions');
+  setTitle('Murph Decisions');
   loading('Decision Log');
   const [auditPayload, tracePayload] = await Promise.all([
     getJson<AuditPayload>('/api/gateway/audit'),
@@ -1247,7 +1257,7 @@ async function renderAudit(): Promise<void> {
 }
 
 async function renderRuns(): Promise<void> {
-  setTitle('Nightclaw Runs');
+  setTitle('Murph Runs');
   loading('Runs');
   const runsPayload = await getJson<RunsPayload>('/api/gateway/runs');
   const requestedId = new URL(window.location.href).searchParams.get('id');

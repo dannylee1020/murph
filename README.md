@@ -1,91 +1,93 @@
-# Nightclaw
+# Murph
 
-## What It Is
+**Async autopilot for distributed work.**
 
-Nightclaw is a self-hosted agent runtime for asynchronous work.
+When the people you work with are awake and you're not, every message becomes friction. You're either always-on (and burning out), or always-late (and breaking trust). The window closes before you can answer, and trust quietly erodes.
 
-It helps teams keep moving when the right person is offline, unavailable, or in another timezone. Nightclaw watches selected conversations, gathers the needed context, proposes a bounded response or follow-up, and applies policy before anything is sent.
+Murph is a self-hosted agent that holds the line. Start a session before you log off. It watches the channels you choose, pulls context from your tools, drafts bounded replies, and applies your policy — auto-handling what's safe, queuing what's not. You wake up to a clean queue of triaged drafts, not chaos.
 
-The goal is not to replace people. The goal is to preserve momentum without losing control.
+Whoever's pinging you across timezones — users, teammates, contributors, customers, portfolio companies — Murph triages them while you're offline. Solo developers, founders, product managers, investors, distributed teams: if your timezone makes you miss windows, this is for you.
 
-## Why It Exists
+Built first for developers. Self-hosted, hackable, MIT.
 
-Modern teams work across chat, docs, tickets, meetings, and memory. The problem is usually not a lack of information. It is that the right context is scattered, and the right person is not always available when a decision or reply is needed.
+## What it does
 
-Nightclaw is built to close that gap.
+You start a session: *"Cover #support and #general for the next 8 hours. Manual review only."*
 
-With Nightclaw, teams can:
+When a message comes in:
 
-- keep conversations moving while someone is offline
-- gather context from connected systems before replying
-- draft bounded responses instead of making unchecked decisions
-- apply clear policy before any action is taken
-- review what happened through runs, audit logs, and queue history
+1. Pulls thread history, your preferences, and any linked context (docs, tickets, prior threads)
+2. Selects a relevant skill and narrows the tool surface
+3. Runs a grounded LLM loop with read-only tools
+4. Drafts a bounded response
+5. Applies your policy: auto-send if low-risk, queue for review if not
+6. Logs everything — every tool call, every decision, replayable
 
-In simple terms: Nightclaw acts as a controlled continuity layer between incoming work and the person who normally handles it.
+You come back, scan the queue, approve or edit drafts in one click.
 
-## Getting Started
+## What you get
 
-Install dependencies:
+| | |
+|---|---|
+| **Self-hosted** | Runs on your machine. SQLite for storage. Your data stays yours. |
+| **Bring your own model** | OpenAI and Anthropic shipped. Plugin contract for more. |
+| **Grounded** | Pulls from context sources before drafting — no hallucinated facts. |
+| **Bounded** | Deterministic policy gate. The model never decides what's safe to send. |
+| **Audit-first** | Every run, tool call, and decision is recorded and inspectable in the UI. |
+| **Hackable** | Channels, tools, context sources, skills, and providers all plug in. |
+
+## Quick start
 
 ```bash
+git clone https://github.com/<you>/murph
+cd murph
 npm install
-```
-
-Create your environment file:
-
-```bash
-cp .env.example .env
-```
-
-At minimum, configure:
-
-```bash
-NIGHTCLAW_APP_URL=http://localhost:5173
-NIGHTCLAW_SQLITE_PATH=data/nightclaw.sqlite
-NIGHTCLAW_ENCRYPTION_KEY=replace-with-32-byte-secret
-NIGHTCLAW_DEFAULT_PROVIDER=openai
-
-OPENAI_API_KEY=
-# or
-ANTHROPIC_API_KEY=
-```
-
-Start the app:
-
-```bash
+cp .env.example .env   # add OPENAI_API_KEY or ANTHROPIC_API_KEY
 npm run dev
 ```
 
-By default:
+Open `http://localhost:5174` to set up your workspace and connect Slack.
 
-- gateway: `http://localhost:5173`
-- UI: `http://localhost:5174`
+Full setup guide (Slack app config, context source grounding, end-to-end testing): [`memory/testing-guide.md`](memory/testing-guide.md).
 
-For local end-to-end testing, the current built-in path is:
+## How it works
 
-- Slack for messaging
-- OpenAI or Anthropic for model execution
-- optional Notion grounding
-- SQLite for local persistence
-
-For real-world local testing setup, including Slack and Notion, see:
-
-```text
-memory/testing-guide.md
 ```
+Channel event
+  → normalize to ContinuityTask
+  → match active session
+  → assemble context (thread + memory + grounding artifacts)
+  → select skill, narrow tool surface
+  → LLM loop (read-only tools only)
+  → deterministic policy gate
+  → auto_send | queue | abstain
+  → audit + SSE to UI
+```
+
+Full architecture: [`memory/architecture.md`](memory/architecture.md).
+
+## Currently shipped
+
+- **Channels:** Slack
+- **Providers:** OpenAI, Anthropic
+- **Context sources:** Notion
+- **Storage:** SQLite + inspectable markdown projections
+
+The roadmap is open: Discord, WhatsApp, Telegram, Linear, GitHub, Granola, local models, and beyond.
 
 ## Contributing
 
-Nightclaw is designed to be extended.
+Built in TypeScript, designed to extend. Best places to start:
 
-Useful contribution areas include:
+- **Channel adapters** — Discord, Telegram, WhatsApp, Matrix, IRC
+- **Context sources** — GitHub, Linear, Granola, Google Docs
+- **Model providers** — local llama.cpp, Gemini, Bedrock
+- **Tools** — anything an agent can safely call
+- **Skills** — packaged prompts + tool combos for specific workflows
+- **Policy profiles** — share trust profiles that work for your role
 
-- new messenger adapters
-- new model providers
-- new tools and context sources
-- new skills
-- new policy profiles
-- reliability, evaluation, and operator experience improvements
+Read [`memory/architecture.md`](memory/architecture.md) before opening a PR. Small, focused extensions over broad refactors.
 
-Before changing code, read the existing runtime shape and keep changes focused. Small, clear extensions are preferred over broad refactors.
+## License
+
+MIT.

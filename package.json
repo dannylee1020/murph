@@ -1,5 +1,5 @@
 {
-  "name": "nightclaw",
+  "name": "murph",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -37,6 +37,7 @@
     "@slack/bolt": "^3.18.0",
     "better-sqlite3": "^11.7.0",
     "openai": "^5.10.2",
-    "typebox": "^1.1.33"
+    "typebox": "^1.1.33",
+    "ws": "^8.20.0"
   }
 }

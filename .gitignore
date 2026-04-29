@@ -34,3 +34,4 @@ pnpm-debug.log*
 memory/
 *.impeccable.md
 .claudeignore
+*.todo

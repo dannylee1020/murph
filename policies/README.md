@@ -1,6 +1,6 @@
 # Policy Profiles
 
-Policy profiles in this directory define the reusable rules Nightclaw applies before it sends, queues, or abstains on a continuity action.
+Policy profiles in this directory define the reusable rules Murph applies before it sends, queues, or abstains on a continuity action.
 
 These files are profile inputs, not a separate policy engine. The runtime loads `policies/*.md`, parses the metadata header plus the body, and compiles the result into the same `CompiledPolicy` shape used everywhere else.
 
