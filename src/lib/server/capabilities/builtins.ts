@@ -125,7 +125,7 @@ export function registerBuiltInTools(): void {
           const query =
             input.context.thread.latestMessage ||
             input.context.thread.recentMessages.map((message) => message.text).join(' ');
-          const results = await notion.search(query, 3);
+          const results = await notion.search(query, 3, input.workspace.id);
           return results.results.map((result) => notion.toArtifact(result));
         }
       },
@@ -144,7 +144,7 @@ export function registerBuiltInTools(): void {
           const query =
             input.context.thread.latestMessage ||
             input.context.thread.recentMessages.map((message) => message.text).join(' ');
-          const results = await github.search(query, 3);
+          const results = await github.search(query, 3, input.workspace.id);
           return results.results.map((result) => githubToArtifact(result));
         }
       },
@@ -510,8 +510,8 @@ export function registerBuiltInTools(): void {
         optional: true,
         requiresWorkspaceEnablement: true,
         supportsDryRun: true,
-        async execute(input: { query: string; limit?: number }) {
-          return await notion.search(input.query, input.limit);
+        async execute(input: { query: string; limit?: number }, context) {
+          return await notion.search(input.query, input.limit, context.workspace.id);
         }
       },
       {
@@ -532,8 +532,8 @@ export function registerBuiltInTools(): void {
         optional: true,
         requiresWorkspaceEnablement: true,
         supportsDryRun: true,
-        async execute(input: { pageId: string; maxBlocks?: number }) {
-          return await notion.readPage(input.pageId, input.maxBlocks);
+        async execute(input: { pageId: string; maxBlocks?: number }, context) {
+          return await notion.readPage(input.pageId, input.maxBlocks, context.workspace.id);
         }
       }
     );
@@ -559,8 +559,8 @@ export function registerBuiltInTools(): void {
         optional: true,
         requiresWorkspaceEnablement: true,
         supportsDryRun: true,
-        async execute(input: { query: string; limit?: number }) {
-          return await github.search(input.query, input.limit);
+        async execute(input: { query: string; limit?: number }, context) {
+          return await github.search(input.query, input.limit, context.workspace.id);
         }
       },
       {
@@ -581,8 +581,8 @@ export function registerBuiltInTools(): void {
         optional: true,
         requiresWorkspaceEnablement: true,
         supportsDryRun: true,
-        async execute(input: { repository: string; number: number }) {
-          return await github.readIssue(input.repository, input.number);
+        async execute(input: { repository: string; number: number }, context) {
+          return await github.readIssue(input.repository, input.number, context.workspace.id);
         }
       },
       {
@@ -603,8 +603,8 @@ export function registerBuiltInTools(): void {
         optional: true,
         requiresWorkspaceEnablement: true,
         supportsDryRun: true,
-        async execute(input: { repository: string; number: number }) {
-          return await github.readPullRequest(input.repository, input.number);
+        async execute(input: { repository: string; number: number }, context) {
+          return await github.readPullRequest(input.repository, input.number, context.workspace.id);
         }
       }
     );

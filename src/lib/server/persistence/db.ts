@@ -205,6 +205,20 @@ function ensureSchema(db: Database.Database): void {
       note TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS integration_credentials (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      credential_kind TEXT NOT NULL,
+      credential_encrypted TEXT NOT NULL,
+      metadata_json TEXT,
+      status TEXT NOT NULL DEFAULT 'connected',
+      error_message TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(workspace_id, provider)
+    );
   `);
 
   ensureColumn(db, 'autopilot_sessions', 'policy_profile_name', 'TEXT');

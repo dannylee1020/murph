@@ -1,4 +1,5 @@
 import { getRuntimeEnv } from '#lib/server/util/env';
+import { resolveCredential } from '#lib/server/integrations/credentials';
 import type { ContextArtifact } from '#lib/types';
 
 interface NotionSearchResponse {
@@ -169,16 +170,17 @@ export function getNotionStatus(): {
 export class NotionService {
   private readonly env = getRuntimeEnv();
 
-  isConfigured(): boolean {
-    return Boolean(this.env.notionApiKey);
+  isConfigured(workspaceId?: string): boolean {
+    return Boolean(resolveCredential(workspaceId, 'notion'));
   }
 
-  async search(query: string, limit = this.env.notionMaxResults): Promise<NotionSearchOutput> {
-    if (!this.env.notionApiKey) {
+  async search(query: string, limit = this.env.notionMaxResults, workspaceId?: string): Promise<NotionSearchOutput> {
+    const credential = resolveCredential(workspaceId, 'notion')?.value;
+    if (!credential) {
       throw new Error('NOTION_API_KEY is required');
     }
 
-    const apiResults = await this.searchByTitle(query, limit);
+    const apiResults = await this.searchByTitle(query, limit, credential);
 
     if (apiResults.length > 0 || this.env.notionAllowedPageIds.length === 0) {
       return {
@@ -187,7 +189,7 @@ export class NotionService {
       };
     }
 
-    const scanned = await this.searchAllowedPages(query, limit);
+    const scanned = await this.searchAllowedPages(query, limit, credential);
     return {
       results: scanned,
       strategy: 'allowed_page_scan',
@@ -195,8 +197,9 @@ export class NotionService {
     };
   }
 
-  async readPage(pageId: string, maxBlocks = 40): Promise<NotionPageText> {
-    if (!this.env.notionApiKey) {
+  async readPage(pageId: string, maxBlocks = 40, workspaceId?: string): Promise<NotionPageText> {
+    const credential = resolveCredential(workspaceId, 'notion')?.value;
+    if (!credential) {
       throw new Error('NOTION_API_KEY is required');
     }
 
@@ -208,8 +211,8 @@ export class NotionService {
       throw new Error('Notion page is not in NOTION_ALLOWED_PAGE_IDS');
     }
 
-    const pageMeta = await this.readPageMeta(pageId);
-    const blocks = await this.readBlocks(pageId, maxBlocks);
+    const pageMeta = await this.readPageMeta(pageId, credential);
+    const blocks = await this.readBlocks(pageId, maxBlocks, credential);
     const lines = blocks.map(blockText).filter(Boolean);
 
     return {
@@ -232,11 +235,11 @@ export class NotionService {
     };
   }
 
-  private async searchByTitle(query: string, limit: number): Promise<NotionSearchItem[]> {
+  private async searchByTitle(query: string, limit: number, credential: string): Promise<NotionSearchItem[]> {
     const response = await fetch('https://api.notion.com/v1/search', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.env.notionApiKey}`,
+        authorization: `Bearer ${credential}`,
         'content-type': 'application/json',
         'notion-version': this.env.notionVersion
       },
@@ -271,13 +274,13 @@ export class NotionService {
       }));
   }
 
-  private async searchAllowedPages(query: string, limit: number): Promise<NotionSearchItem[]> {
+  private async searchAllowedPages(query: string, limit: number, credential: string): Promise<NotionSearchItem[]> {
     const terms = this.queryTerms(query);
     const scored: Array<NotionSearchItem & { score: number }> = [];
 
     for (const pageId of this.env.notionAllowedPageIds) {
       try {
-        const page = await this.readPage(pageId, 80);
+        const page = await this.readPageWithCredential(pageId, 80, credential);
         const score = this.scorePage(page, terms);
 
         if (score > 0) {
@@ -326,10 +329,23 @@ export class NotionService {
     return score;
   }
 
-  private async readPageMeta(pageId: string): Promise<{ title: string; url?: string }> {
+  private async readPageWithCredential(pageId: string, maxBlocks: number, credential: string): Promise<NotionPageText> {
+    const pageMeta = await this.readPageMeta(pageId, credential);
+    const blocks = await this.readBlocks(pageId, maxBlocks, credential);
+    const lines = blocks.map(blockText).filter(Boolean);
+
+    return {
+      id: pageId,
+      title: pageMeta.title,
+      url: pageMeta.url,
+      text: lines.join('\n').slice(0, 6000)
+    };
+  }
+
+  private async readPageMeta(pageId: string, credential: string): Promise<{ title: string; url?: string }> {
     const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
       headers: {
-        authorization: `Bearer ${this.env.notionApiKey}`,
+        authorization: `Bearer ${credential}`,
         'notion-version': this.env.notionVersion
       }
     });
@@ -345,7 +361,7 @@ export class NotionService {
     };
   }
 
-  private async readBlocks(blockId: string, maxBlocks: number): Promise<NotionBlock[]> {
+  private async readBlocks(blockId: string, maxBlocks: number, credential: string): Promise<NotionBlock[]> {
     const blocks: NotionBlock[] = [];
     let cursor: string | undefined;
 
@@ -357,7 +373,7 @@ export class NotionService {
 
       const response = await fetch(`https://api.notion.com/v1/blocks/${blockId}/children?${params.toString()}`, {
         headers: {
-          authorization: `Bearer ${this.env.notionApiKey}`,
+          authorization: `Bearer ${credential}`,
           'notion-version': this.env.notionVersion
         }
       });

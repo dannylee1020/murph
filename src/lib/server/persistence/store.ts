@@ -26,6 +26,7 @@ import type {
 import * as action from './stores/action.js';
 import * as audit from './stores/audit.js';
 import * as briefing from './stores/briefing.js';
+import * as integrationCredentials from './stores/integration-credentials.js';
 import * as memory from './stores/memory.js';
 import * as providerSettings from './stores/provider-settings.js';
 import * as recurringJob from './stores/recurring-job.js';
@@ -229,6 +230,25 @@ export class Store {
   }
   getWorkspaceSummary(): WorkspaceSummary {
     return briefing.getWorkspaceSummary(this.db);
+  }
+
+  // Integration credentials
+  saveIntegrationCredential(
+    input: integrationCredentials.SaveIntegrationCredentialInput
+  ): integrationCredentials.IntegrationCredential {
+    return integrationCredentials.saveCredential(this.db, input);
+  }
+  getIntegrationCredential(
+    workspaceId: string,
+    provider: string
+  ): integrationCredentials.IntegrationCredential | undefined {
+    return integrationCredentials.getCredential(this.db, workspaceId, provider);
+  }
+  listIntegrationCredentials(workspaceId: string): integrationCredentials.IntegrationCredential[] {
+    return integrationCredentials.listCredentials(this.db, workspaceId);
+  }
+  deleteIntegrationCredential(workspaceId: string, provider: string): boolean {
+    return integrationCredentials.deleteCredential(this.db, workspaceId, provider);
   }
 }
 

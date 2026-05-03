@@ -88,6 +88,28 @@ type SetupStatusPayload = {
   };
 };
 
+type IntegrationStatusPayload = {
+  ok: boolean;
+  workspaceId: string;
+  integrations: Array<{
+    provider: string;
+    name: string;
+    authType: string;
+    status: 'connected' | 'disconnected';
+    source?: 'database' | 'env';
+    envKey: string;
+    tools: string[];
+    contextSources: string[];
+    canDisconnect: boolean;
+    metadata: {
+      masked?: string;
+      account?: string;
+      validatedAt?: string;
+    };
+    errorMessage?: string;
+  }>;
+};
+
 type QueuePayload = {
   queue: Array<{
     id: string;
@@ -481,6 +503,38 @@ function list(items: string[], emptyText: string): string {
   return `<ul class="list">${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
 }
 
+function integrationStatusLabel(integration: IntegrationStatusPayload['integrations'][number]): string {
+  if (integration.status !== 'connected') {
+    return 'Not connected';
+  }
+  return integration.source === 'env' ? 'Connected via environment' : 'Connected';
+}
+
+function integrationCard(integration: IntegrationStatusPayload['integrations'][number]): string {
+  const connected = integration.status === 'connected';
+  const metadata = [
+    integration.metadata.account ? `Account: ${integration.metadata.account}` : '',
+    integration.metadata.masked ? `Key: ${integration.metadata.masked}` : '',
+    integration.metadata.validatedAt ? `Validated ${formatRelative(integration.metadata.validatedAt)}` : ''
+  ].filter(Boolean);
+
+  return `
+    <article class="panel panel-status">
+      <h2><span class="status-dot ${connected ? 'ok' : 'off'}" aria-hidden="true"></span>${escapeHtml(integration.name)}</h2>
+      <dl class="details">
+        <div><dt>Status</dt><dd>${escapeHtml(integrationStatusLabel(integration))}</dd></div>
+        <div><dt>Credential</dt><dd>${escapeHtml(integration.source === 'env' ? integration.envKey : integration.metadata.masked ?? 'Not stored')}</dd></div>
+        <div><dt>Capabilities</dt><dd>${escapeHtml([...integration.contextSources, ...integration.tools].join(', ') || 'None')}</dd></div>
+      </dl>
+      ${metadata.length > 0 ? `<p class="empty">${escapeHtml(metadata.join(' · '))}</p>` : ''}
+      <div class="actions">
+        <button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${connected && integration.source === 'env' ? 'Override' : 'Connect'}</button>
+        ${integration.canDisconnect ? `<button type="button" class="secondary disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
+      </div>
+    </article>
+  `;
+}
+
 function policyPreviewHtml(payload: PolicyPreviewPayload): string {
   const warnings = payload.warnings.map((warning) => `<p class="empty">${escapeHtml(warning)}</p>`).join('');
   const compiled = payload.compiled;
@@ -774,11 +828,12 @@ async function renderDashboard(): Promise<void> {
 async function renderSettings(): Promise<void> {
   setTitle('Murph Settings');
   loading('Settings');
-  const [summary, runtime, setup, policyProfilesPayload] = await Promise.all([
+  const [summary, runtime, setup, policyProfilesPayload, integrationsPayload] = await Promise.all([
     getJson<SummaryPayload>('/api/gateway/summary'),
     getJson<RuntimePayload>('/api/gateway/runtime'),
     getJson<SetupStatusPayload>('/api/setup/status'),
-    getJson<PolicyProfilesPayload>('/api/gateway/policy-profiles')
+    getJson<PolicyProfilesPayload>('/api/gateway/policy-profiles'),
+    getJson<IntegrationStatusPayload>('/api/integrations/status')
   ]);
   const toggleRows = [
     ...runtime.tools
@@ -832,14 +887,6 @@ async function renderSettings(): Promise<void> {
           <div><dt>Default</dt><dd>${escapeHtml(setup.provider.defaultProvider)}</dd></div>
         </dl>
       </article>
-      <article class="panel panel-status">
-        <h2><span class="status-dot ${setup.notion.configured ? 'ok' : 'off'}" aria-hidden="true"></span>Notion</h2>
-        <dl class="details">
-          <div><dt>Status</dt><dd>${setup.notion.configured ? 'Configured' : 'Missing token'}</dd></div>
-          <div><dt>API version</dt><dd>${escapeHtml(setup.notion.version)}</dd></div>
-          <div><dt>Allowed roots</dt><dd>${setup.notion.pageAllowlistCount + setup.notion.dataSourceAllowlistCount}</dd></div>
-        </dl>
-      </article>
     </section>
 
     <section class="panel">
@@ -854,6 +901,13 @@ async function renderSettings(): Promise<void> {
             : '<p>Discord OAuth or bot token is not configured.</p>'
         ].join('')
       }
+    </section>
+
+    <section>
+      <h2>Integrations</h2>
+      <div class="grid two">
+        ${integrationsPayload.integrations.map(integrationCard).join('')}
+      </div>
     </section>
 
     <section class="grid two">
@@ -1045,6 +1099,43 @@ async function renderSettings(): Promise<void> {
         enabledContextSources: contextInputs.filter((entry) => entry.checked).map((entry) => entry.dataset.capabilityName),
         defaultPolicyProfileName: runtime.defaultPolicyProfileName
       });
+      await renderSettings();
+    });
+  });
+
+  app.querySelectorAll<HTMLButtonElement>('.connect-integration').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const provider = button.dataset.provider ?? '';
+      const credential = window.prompt(`Enter ${provider} API key`);
+      if (!credential) {
+        return;
+      }
+
+      try {
+        await postJson(`/api/integrations/${encodeURIComponent(provider)}/connect`, {
+          workspaceId: integrationsPayload.workspaceId,
+          credential
+        });
+        dashboardNotice = `Connected ${provider}.`;
+        await renderSettings();
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Integration could not be connected.');
+      }
+    });
+  });
+
+  app.querySelectorAll<HTMLButtonElement>('.disconnect-integration').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const provider = button.dataset.provider ?? '';
+      const response = await fetch(`/api/integrations/${encodeURIComponent(provider)}/disconnect?workspaceId=${encodeURIComponent(integrationsPayload.workspaceId)}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: string };
+        window.alert(payload.error ?? 'Integration could not be disconnected.');
+        return;
+      }
+      dashboardNotice = `Disconnected ${provider}.`;
       await renderSettings();
     });
   });

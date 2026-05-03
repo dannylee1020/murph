@@ -1,4 +1,4 @@
-import { getRuntimeEnv } from '#lib/server/util/env';
+import { resolveCredential } from '#lib/server/integrations/credentials';
 import type { ContextArtifact } from '#lib/types';
 
 interface GitHubSearchResponse {
@@ -114,14 +114,13 @@ export function toArtifact(result: GitHubSearchResult | GitHubReadResult): Conte
 }
 
 export class GitHubService {
-  private readonly env = getRuntimeEnv();
-
-  isConfigured(): boolean {
-    return Boolean(this.env.githubPat);
+  isConfigured(workspaceId?: string): boolean {
+    return Boolean(resolveCredential(workspaceId, 'github'));
   }
 
-  async search(query: string, limit = 5): Promise<{ results: GitHubSearchResult[] }> {
-    if (!this.env.githubPat) {
+  async search(query: string, limit = 5, workspaceId?: string): Promise<{ results: GitHubSearchResult[] }> {
+    const credential = resolveCredential(workspaceId, 'github')?.value;
+    if (!credential) {
       throw new Error('GITHUB_PAT is not configured');
     }
 
@@ -129,35 +128,37 @@ export class GitHubService {
     url.searchParams.set('q', query);
     url.searchParams.set('per_page', String(Math.max(1, Math.min(limit, 10))));
 
-    const payload = await this.fetchJson<GitHubSearchResponse>(url.toString());
+    const payload = await this.fetchJson<GitHubSearchResponse>(url.toString(), credential);
     return {
       results: (payload.items ?? []).map(searchItemToResult)
     };
   }
 
-  async readIssue(repository: string, number: number): Promise<GitHubReadResult> {
-    if (!this.env.githubPat) {
+  async readIssue(repository: string, number: number, workspaceId?: string): Promise<GitHubReadResult> {
+    const credential = resolveCredential(workspaceId, 'github')?.value;
+    if (!credential) {
       throw new Error('GITHUB_PAT is not configured');
     }
 
-    const payload = await this.fetchJson<GitHubIssueResponse>(`https://api.github.com/repos/${repository}/issues/${number}`);
+    const payload = await this.fetchJson<GitHubIssueResponse>(`https://api.github.com/repos/${repository}/issues/${number}`, credential);
     return readItemToResult(repository, payload, 'issue');
   }
 
-  async readPullRequest(repository: string, number: number): Promise<GitHubReadResult> {
-    if (!this.env.githubPat) {
+  async readPullRequest(repository: string, number: number, workspaceId?: string): Promise<GitHubReadResult> {
+    const credential = resolveCredential(workspaceId, 'github')?.value;
+    if (!credential) {
       throw new Error('GITHUB_PAT is not configured');
     }
 
-    const payload = await this.fetchJson<GitHubPullResponse>(`https://api.github.com/repos/${repository}/pulls/${number}`);
+    const payload = await this.fetchJson<GitHubPullResponse>(`https://api.github.com/repos/${repository}/pulls/${number}`, credential);
     return readItemToResult(repository, payload, 'pull_request');
   }
 
-  private async fetchJson<T>(url: string): Promise<T> {
+  private async fetchJson<T>(url: string, credential: string): Promise<T> {
     const response = await fetch(url, {
       headers: {
         Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${this.env.githubPat}`,
+        Authorization: `Bearer ${credential}`,
         'User-Agent': 'murph'
       }
     });
