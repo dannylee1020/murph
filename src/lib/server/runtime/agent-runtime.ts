@@ -2,8 +2,8 @@ import { getContextSourceRegistry } from '#lib/server/capabilities/context-sourc
 import { getMemoryService } from '#lib/server/memory/service';
 import { getModelProvider } from '#lib/server/providers/index';
 import { runGroundingLoop } from '#lib/server/runtime/pi-agent-loop';
-import { domainExpansionMap, expandContextSourcesByDomain, expandToolsByDomain } from '#lib/server/runtime/domain-expansion';
-import { buildRuntimeToolCallingPlan } from '#lib/server/runtime/tool-calling-plan';
+import { expandContextSourcesByDomain } from '#lib/server/runtime/domain-expansion';
+import { buildRuntimeToolCallingPlan, listAvailableTools } from '#lib/server/runtime/tool-calling-plan';
 import { outputSummary, truncateToolOutput } from '#lib/server/runtime/tool-output';
 import { selectSkills } from '#lib/server/skills/selection';
 import { loadSkills } from '#lib/server/skills/loader';
@@ -166,10 +166,7 @@ export class AgentRuntime {
       context: enrichedContext,
       proposedAction,
       selectedSkillNames: enrichedContext.skills.map((skill) => skill.name),
-      domainExpansion: domainExpansionMap({
-        selectedSkills: enrichedContext.skills,
-        availableTools: enrichedContext.availableTools
-      }),
+      domainExpansion: {},
       toolsUsed,
       toolResults,
       runtimeEvents
@@ -215,18 +212,23 @@ export class AgentRuntime {
     const allTools = this.tools.list();
     const selectedSkills = selectSkills({
       skills: allSkills,
-      latestMessage,
       channel: task.thread.provider ?? 'slack',
       sessionMode: session.mode,
-      tools: allTools,
+      tools: allTools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        sideEffectClass: tool.sideEffectClass,
+        inputSchema: tool.inputSchema,
+        knowledgeDomains: tool.knowledgeDomains,
+        retrievalEligible: tool.retrievalEligible
+      })),
       workspaceMemory,
-      fallbackSkillName: 'channel-continuity',
-      limit: 3
+      fallbackSkillName: 'channel-continuity'
     });
-    const availableTools = expandToolsByDomain({
-      selectedSkills,
+    const { availableTools } = listAvailableTools({
       allTools,
-      workspaceMemory
+      workspaceMemory,
+      sessionMode: session.mode
     });
     const baseContext: Omit<ContextAssembly, 'artifacts' | 'summary' | 'unresolvedQuestions' | 'continuityCase'> = {
       workspaceId: workspace.id,
@@ -262,16 +264,7 @@ export class AgentRuntime {
     return {
       ...baseContext,
       artifacts,
-      availableTools: buildRuntimeToolCallingPlan({
-        context: {
-          ...baseContext,
-          artifacts,
-          continuityCase: inferCaseFromText(latestMessage),
-          summary: latestMessage,
-          unresolvedQuestions: latestMessage.includes('?') ? [latestMessage] : []
-        },
-        allTools
-      }).availableTools,
+      availableTools,
       continuityCase: inferCaseFromText(latestMessage),
       summary: latestMessage,
       unresolvedQuestions: latestMessage.includes('?') ? [latestMessage] : []
@@ -317,7 +310,7 @@ export class AgentRuntime {
         provider: provider.name,
         model: providerSettings?.model,
         maxToolCallsPerRun: MAX_TOOL_CALLS_PER_RUN,
-        retrievalPlan: toolCallingPlan.retrievalPlan,
+        groundingDirective: toolCallingPlan.groundingDirective,
         retrievalToolNames: toolCallingPlan.retrievalToolNames,
         defaultToolInput: (name, input) => this.defaultToolInput(name, input, context),
         enrichToolOutput: async (name, output, toolsUsed, runtimeEvents) =>
@@ -335,7 +328,7 @@ export class AgentRuntime {
           postLoopEvidence.linkedArtifacts.push(url);
         }
       });
-      const draft = toolCallingPlan.retrievalPlan.required && toolCallingPlan.retrievalToolNames.length > 0 && !result.retrievalAttempted
+      const draft = toolCallingPlan.groundingDirective.required && toolCallingPlan.retrievalToolNames.length > 0 && !result.retrievalAttempted
         ? {
             continuityCase: result.draft.continuityCase,
             summary: result.draft.summary,

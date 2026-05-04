@@ -245,6 +245,33 @@ export const gatewayRoutes: Route[] = [
       )
     });
   }),
+  route('PUT', '/api/gateway/users/:userId/schedule', async ({ req, res, params }) => {
+    const body = await readJson<{
+      workspaceId?: string;
+      displayName?: string;
+      timezone?: string;
+      workdayStartHour?: number;
+      workdayEndHour?: number;
+    }>(req);
+    const store = getStore();
+    const workspace =
+      (body.workspaceId ? store.getWorkspaceById(body.workspaceId) : undefined) ?? store.getFirstWorkspace();
+
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'workspace_not_installed' }, 400);
+      return;
+    }
+
+    const user = store.upsertUser({
+      workspaceId: workspace.id,
+      externalUserId: params.userId,
+      displayName: body.displayName ?? params.userId,
+      timezone: body.timezone,
+      workdayStartHour: body.workdayStartHour,
+      workdayEndHour: body.workdayEndHour
+    });
+    sendJson(res, { ok: true, user });
+  }),
   route('GET', '/api/gateway/users/:userId/policy', ({ res, params, url }) => {
     const store = getStore();
     const workspace =

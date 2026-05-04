@@ -40,7 +40,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 gateway.ensureStarted();
 
-createServer((req, res) => {
+const server = createServer((req, res) => {
   void handleRequest(req, res).catch((error) => {
     console.error(error);
     if (!res.headersSent) {
@@ -49,6 +49,14 @@ createServer((req, res) => {
       res.end();
     }
   });
-}).listen(port, () => {
+});
+
+server.listen(port, () => {
   console.log(`Murph server listening on http://localhost:${port}`);
 });
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    server.close(() => process.exit(0));
+  });
+}

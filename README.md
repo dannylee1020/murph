@@ -28,10 +28,16 @@ git clone https://github.com/<you>/murph
 cd murph
 npm install
 cp .env.example .env   # add OPENAI_API_KEY or ANTHROPIC_API_KEY
+npm run dev:server
+```
+
+In a second terminal:
+
+```bash
 npm run dev
 ```
 
-Open `http://localhost:5174` to connect Slack and start a session.
+Open `http://localhost:5174` to connect Slack and start a session. The API server runs on `http://localhost:5173`.
 
 ## What's included
 
@@ -51,7 +57,8 @@ Open `http://localhost:5174` to connect Slack and start a session.
 
 ```bash
 npm install
-npm run dev        # starts server + UI
+npm run dev:server # starts the API server
+npm run dev        # starts the UI
 npm test           # run tests
 ```
 

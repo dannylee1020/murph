@@ -51,9 +51,44 @@ interface ConversationsInfoResponse {
   };
 }
 
+interface ConversationsListResponse {
+  ok: boolean;
+  error?: string;
+  channels?: Array<{
+    id?: string;
+    name?: string;
+    is_member?: boolean;
+    is_private?: boolean;
+    is_archived?: boolean;
+  }>;
+}
+
 interface ConversationsJoinResponse {
   ok: boolean;
   error?: string;
+}
+
+interface UsersListResponse {
+  ok: boolean;
+  error?: string;
+  members?: Array<{
+    id: string;
+    name?: string;
+    real_name?: string;
+    is_bot?: boolean;
+    deleted?: boolean;
+    profile?: {
+      display_name?: string;
+      real_name?: string;
+      image_48?: string;
+    };
+  }>;
+}
+
+export interface SlackMember {
+  id: string;
+  displayName: string;
+  avatar?: string;
 }
 
 export interface SlackChannelInfo {
@@ -61,6 +96,10 @@ export interface SlackChannelInfo {
   name?: string;
   isMember: boolean;
   isPrivate: boolean;
+}
+
+export interface SlackChannelChoice extends SlackChannelInfo {
+  displayName: string;
 }
 
 export interface SlackJoinResult {
@@ -82,23 +121,23 @@ export class SlackService {
   private readonly env = getRuntimeEnv();
   private readonly store = getStore();
 
-  buildInstallUrl(): string | undefined {
+  buildInstallUrl(appUrl = this.env.appUrl): string | undefined {
     if (!this.env.slackClientId) {
       return undefined;
     }
 
-    const redirectUri = `${this.env.appUrl}/api/slack/oauth/callback`;
+    const redirectUri = `${appUrl}/api/slack/oauth/callback`;
     const params = new URLSearchParams({
       client_id: this.env.slackClientId,
       scope:
-        'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read,im:history,mpim:history',
+        'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read,im:history,mpim:history,users:read',
       redirect_uri: redirectUri
     });
 
     return `https://slack.com/oauth/v2/authorize?${params.toString()}`;
   }
 
-  async exchangeCode(code: string): Promise<Workspace> {
+  async exchangeCode(code: string, appUrl = this.env.appUrl): Promise<Workspace> {
     if (!this.env.slackClientId || !this.env.slackClientSecret) {
       throw new Error('Slack OAuth is not configured');
     }
@@ -114,7 +153,7 @@ export class SlackService {
         client_id: this.env.slackClientId,
         client_secret: this.env.slackClientSecret,
         code,
-        redirect_uri: `${this.env.appUrl}/api/slack/oauth/callback`
+        redirect_uri: `${appUrl}/api/slack/oauth/callback`
       })
     });
     const payload = (await response.json()) as OAuthExchangeResponse;
@@ -293,6 +332,69 @@ export class SlackService {
       isMember: Boolean(payload.channel.is_member),
       isPrivate: Boolean(payload.channel.is_private)
     };
+  }
+
+  async listMembers(workspace: Workspace): Promise<SlackMember[]> {
+    const response = await fetch('https://slack.com/api/users.list', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({ limit: '200' })
+    });
+    const payload = (await response.json()) as UsersListResponse;
+
+    if (!payload.ok) {
+      throw new Error(payload.error ?? 'Failed to list Slack members');
+    }
+
+    return (payload.members ?? [])
+      .filter((m) => !m.is_bot && !m.deleted && m.id !== 'USLACKBOT')
+      .map((m) => ({
+        id: m.id,
+        displayName: m.profile?.display_name || m.profile?.real_name || m.real_name || m.name || m.id,
+        avatar: m.profile?.image_48
+      }));
+  }
+
+  async listChannels(workspace: Workspace): Promise<SlackChannelChoice[]> {
+    const response = await fetch('https://slack.com/api/conversations.list', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        types: 'public_channel,private_channel',
+        exclude_archived: 'true',
+        limit: '200'
+      })
+    });
+    const payload = (await response.json()) as ConversationsListResponse;
+
+    if (!payload.ok) {
+      throw new Error(payload.error ?? 'Failed to list Slack channels');
+    }
+
+    return (payload.channels ?? [])
+      .filter((channel) => channel.id && channel.name && !channel.is_archived)
+      .map((channel) => ({
+        id: channel.id!,
+        name: channel.name,
+        displayName: `#${channel.name}`,
+        isMember: Boolean(channel.is_member),
+        isPrivate: Boolean(channel.is_private)
+      }))
+      .sort((a, b) => {
+        if (a.isMember !== b.isMember) {
+          return a.isMember ? -1 : 1;
+        }
+        if (a.isPrivate !== b.isPrivate) {
+          return a.isPrivate ? 1 : -1;
+        }
+        return a.displayName.localeCompare(b.displayName);
+      });
   }
 
   async joinChannel(workspace: Workspace, channelId: string): Promise<SlackJoinResult> {

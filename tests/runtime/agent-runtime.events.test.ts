@@ -478,7 +478,7 @@ describe('AgentRuntime model failure events', () => {
     expect(result.context.linkedArtifacts).toContain('https://notion.test/page-1');
   });
 
-  it('broadens available tools for factual questions even when only channel-continuity is selected', async () => {
+  it('exposes every workspace-enabled tool to the agent regardless of the selected skill', async () => {
     enabledOptionalTools = ['notion.search', 'notion.read_page'];
     runAgentLoopMock.mockImplementation(async () => [finalAssistantMessage(fallbackDraft)]);
 
@@ -486,12 +486,14 @@ describe('AgentRuntime model failure events', () => {
     const result = await runtime.run(task(), session(), workspace());
 
     expect(result.context.skills.map((skill) => skill.name)).toEqual(['channel-continuity']);
-    expect(result.context.availableTools.map((tool) => tool.name)).toEqual([
+    const toolNames = result.context.availableTools.map((tool) => tool.name);
+    expect(toolNames).toEqual(expect.arrayContaining([
       'channel.fetch_thread',
       'user.get_preferences',
       'memory.workspace.read',
       'memory.thread.read',
-      'notion.search'
-    ]);
+      'notion.search',
+      'notion.read_page'
+    ]));
   });
 });

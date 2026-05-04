@@ -1,18 +1,12 @@
 import type {
-  AgentToolInventoryItem,
   ContextSource,
   ExpandedContextSourceNames,
   SkillManifest,
-  ToolInventoryItem,
   WorkspaceMemory
 } from '#lib/types';
 
 function skillDomains(skills: SkillManifest[]): Set<string> {
   return new Set(skills.flatMap((skill) => skill.knowledgeDomains ?? []));
-}
-
-function isOptionalToolEnabled(tool: ToolInventoryItem, workspaceMemory: WorkspaceMemory): boolean {
-  return !tool.requiresWorkspaceEnablement || workspaceMemory.enabledOptionalTools.includes(tool.name);
 }
 
 function isOptionalContextSourceEnabled(source: Pick<ContextSource, 'name' | 'optional'>, workspaceMemory: WorkspaceMemory): boolean {
@@ -23,48 +17,11 @@ function intersects(values: string[] | undefined, domains: Set<string>): boolean
   return Boolean(values?.some((value) => domains.has(value)));
 }
 
-const PRELOADED_CONTEXT_TOOLS = new Set([
-  'channel.fetch_thread',
-  'user.get_preferences',
-  'memory.workspace.read',
-  'memory.thread.read'
-]);
-
-export function expandToolsByDomain(input: {
-  selectedSkills: SkillManifest[];
-  allTools: ToolInventoryItem[];
-  workspaceMemory: WorkspaceMemory;
-}): AgentToolInventoryItem[] {
-  const explicitNames = new Set(input.selectedSkills.flatMap((skill) => skill.toolNames));
-  const domains = skillDomains(input.selectedSkills);
-  const domainTools = input.allTools.filter(
-    (tool) =>
-      !explicitNames.has(tool.name) &&
-      tool.sideEffectClass === 'read' &&
-      intersects(tool.knowledgeDomains, domains) &&
-      isOptionalToolEnabled(tool, input.workspaceMemory)
-  );
-  const explicitTools = input.allTools.filter((tool) => {
-    if (!explicitNames.has(tool.name)) {
-      return false;
-    }
-
-    return domainTools.length === 0 || !PRELOADED_CONTEXT_TOOLS.has(tool.name);
-  });
-
-  return [...domainTools, ...explicitTools]
-    .filter((tool) => tool.sideEffectClass === 'read')
-    .filter((tool) => isOptionalToolEnabled(tool, input.workspaceMemory))
-    .map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      sideEffectClass: tool.sideEffectClass,
-      inputSchema: tool.inputSchema,
-      knowledgeDomains: tool.knowledgeDomains,
-      retrievalEligible: tool.retrievalEligible
-    }));
-}
-
+/**
+ * Selects context sources to pre-fetch for a run. Context sources are NOT tools the
+ * LLM picks — they are background retrievals attached to the prompt. Selection here
+ * still uses skill `knowledgeDomains` so we don't fetch unrelated sources every turn.
+ */
 export function expandContextSourcesByDomain(input: {
   selectedSkills: SkillManifest[];
   allSources: Array<Pick<ContextSource, 'name' | 'optional' | 'knowledgeDomains'>>;
@@ -95,26 +52,4 @@ export function expandContextSourcesByDomain(input: {
     explicit: [...explicit],
     optional: [...optional]
   };
-}
-
-export function domainExpansionMap(input: {
-  selectedSkills: SkillManifest[];
-  availableTools: AgentToolInventoryItem[];
-}): Record<string, string[]> {
-  const explicitNames = new Set(input.selectedSkills.flatMap((skill) => skill.toolNames));
-  const domains = skillDomains(input.selectedSkills);
-  const expansion: Record<string, string[]> = {};
-
-  for (const domain of domains) {
-    const names = input.availableTools
-      .filter((tool) => !explicitNames.has(tool.name))
-      .filter((tool) => tool.knowledgeDomains?.includes(domain))
-      .map((tool) => tool.name);
-
-    if (names.length > 0) {
-      expansion[domain] = names;
-    }
-  }
-
-  return expansion;
 }

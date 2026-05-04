@@ -10,6 +10,18 @@ import { route, type Route } from '../router.js';
 
 const gateway = getGateway();
 
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function publicAppUrl(req: Parameters<typeof toHeaders>[0], url: URL): string {
+  const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
+  const host = forwardedHost ?? req.headers.host ?? url.host;
+  const forwardedProto = firstHeaderValue(req.headers['x-forwarded-proto']);
+  const proto = forwardedProto ?? (host.includes('localhost') || host.startsWith('127.') ? 'http' : 'https');
+  return `${proto}://${host}`;
+}
+
 function slackLogFields(payload: Record<string, unknown>, event?: Record<string, unknown>): Record<string, unknown> {
   return {
     eventId: typeof payload.event_id === 'string' ? payload.event_id : undefined,
@@ -95,11 +107,11 @@ export const slackRoutes: Route[] = [
     });
     sendJson(res, { ok: true, taskId: routedTask.id, audit });
   }),
-  route('GET', '/api/slack/install', ({ res }) => {
-    const url = getSlackService().buildInstallUrl();
+  route('GET', '/api/slack/install', ({ req, res, url: requestUrl }) => {
+    const url = getSlackService().buildInstallUrl(publicAppUrl(req, requestUrl));
     redirect(res, url ?? '/settings?error=slack_not_configured');
   }),
-  route('GET', '/api/slack/oauth/callback', async ({ res, url }) => {
+  route('GET', '/api/slack/oauth/callback', async ({ req, res, url }) => {
     const code = url.searchParams.get('code');
 
     if (!code) {
@@ -107,7 +119,7 @@ export const slackRoutes: Route[] = [
       return;
     }
 
-    const workspace = await getSlackService().exchangeCode(code);
+    const workspace = await getSlackService().exchangeCode(code, publicAppUrl(req, url));
     const env = getRuntimeEnv();
 
     getStore().upsertProviderSettings({
@@ -116,6 +128,38 @@ export const slackRoutes: Route[] = [
       model: DEFAULT_PROVIDER_MODEL[env.defaultProvider]
     });
 
-    redirect(res, '/settings?installed=1');
+    redirect(res, '/setup?step=slack&success=1');
+  }),
+  route('GET', '/api/slack/members', async ({ res }) => {
+    const store = getStore();
+    const workspace = store.getFirstWorkspace();
+
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'no_workspace', members: [] }, 400);
+      return;
+    }
+
+    try {
+      const members = await getSlackService().listMembers(workspace);
+      sendJson(res, { ok: true, members });
+    } catch (error) {
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'Failed to list members', members: [] }, 500);
+    }
+  }),
+  route('GET', '/api/slack/channels', async ({ res }) => {
+    const store = getStore();
+    const workspace = store.getFirstWorkspace();
+
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'no_workspace', channels: [] }, 400);
+      return;
+    }
+
+    try {
+      const channels = await getSlackService().listChannels(workspace);
+      sendJson(res, { ok: true, channels });
+    } catch (error) {
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'Failed to list Slack channels', channels: [] }, 500);
+    }
   })
 ];

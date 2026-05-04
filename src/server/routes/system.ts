@@ -43,7 +43,8 @@ export const systemRoutes: Route[] = [
         configured: Boolean(env.openaiApiKey || env.anthropicApiKey),
         defaultProvider: env.defaultProvider
       },
-      notion: getNotionStatus()
+      notion: getNotionStatus(),
+      userConfigured: summary.userCount > 0
     });
   })
 ];

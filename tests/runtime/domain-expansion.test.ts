@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { domainExpansionMap, expandContextSourcesByDomain, expandToolsByDomain } from '../../src/lib/server/runtime/domain-expansion';
-import type { ContextSource, SkillManifest, ToolInventoryItem, WorkspaceMemory } from '../../src/lib/types';
+import { expandContextSourcesByDomain } from '../../src/lib/server/runtime/domain-expansion';
+import type { ContextSource, SkillManifest, WorkspaceMemory } from '../../src/lib/types';
 
 const workspaceMemory: WorkspaceMemory = {
   workspaceId: 'workspace',
   channelMappings: [],
   escalationRules: [],
-  enabledOptionalTools: ['notion.search', 'notion.read_page', 'confluence.search', 'docs.write'],
+  enabledOptionalTools: [],
   enabledContextSources: ['notion.thread_search', 'confluence.thread_search'],
   enabledPlugins: []
 };
@@ -15,7 +15,7 @@ function skill(overrides: Partial<SkillManifest> = {}): SkillManifest {
   return {
     name: 'documentation-grounded-continuity',
     description: '',
-    triggers: ['readiness'],
+    triggers: [],
     allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
     toolNames: ['channel.fetch_thread', 'memory.thread.read'],
     knowledgeDomains: ['documentation'],
@@ -32,15 +32,6 @@ function skill(overrides: Partial<SkillManifest> = {}): SkillManifest {
   };
 }
 
-function tool(input: Partial<ToolInventoryItem> & Pick<ToolInventoryItem, 'name' | 'sideEffectClass'>): ToolInventoryItem {
-  return {
-    description: input.name,
-    optional: false,
-    source: 'test',
-    ...input
-  };
-}
-
 function source(input: Pick<ContextSource, 'name'> & Partial<ContextSource>): Pick<ContextSource, 'name' | 'optional' | 'knowledgeDomains'> {
   return {
     optional: false,
@@ -48,102 +39,7 @@ function source(input: Pick<ContextSource, 'name'> & Partial<ContextSource>): Pi
   };
 }
 
-const tools: ToolInventoryItem[] = [
-  tool({ name: 'channel.fetch_thread', sideEffectClass: 'read' }),
-  tool({ name: 'memory.thread.read', sideEffectClass: 'read' }),
-  tool({
-    name: 'notion.search',
-    sideEffectClass: 'read',
-    requiresWorkspaceEnablement: true,
-    optional: true,
-    knowledgeDomains: ['documentation'],
-    retrievalEligible: true
-  }),
-  tool({
-    name: 'notion.read_page',
-    sideEffectClass: 'read',
-    requiresWorkspaceEnablement: true,
-    optional: true,
-    knowledgeDomains: ['documentation'],
-    retrievalEligible: false
-  }),
-  tool({
-    name: 'confluence.search',
-    sideEffectClass: 'read',
-    requiresWorkspaceEnablement: true,
-    optional: true,
-    knowledgeDomains: ['documentation'],
-    retrievalEligible: true
-  }),
-  tool({
-    name: 'github.search',
-    sideEffectClass: 'read',
-    requiresWorkspaceEnablement: true,
-    optional: true,
-    knowledgeDomains: ['code']
-  }),
-  tool({
-    name: 'docs.write',
-    sideEffectClass: 'write',
-    requiresWorkspaceEnablement: true,
-    optional: true,
-    knowledgeDomains: ['documentation']
-  })
-];
-
-describe('domain expansion', () => {
-  it('prioritizes enabled domain retrieval tools over already-preloaded context tools', () => {
-    const expanded = expandToolsByDomain({
-      selectedSkills: [skill()],
-      allTools: tools,
-      workspaceMemory
-    });
-
-    expect(expanded.map((entry) => entry.name)).toEqual([
-      'notion.search',
-      'notion.read_page',
-      'confluence.search'
-    ]);
-  });
-
-  it('does not expose disabled domain tools, mismatched domains, or write tools', () => {
-    const expanded = expandToolsByDomain({
-      selectedSkills: [skill()],
-      allTools: tools,
-      workspaceMemory: {
-        ...workspaceMemory,
-        enabledOptionalTools: ['notion.search', 'docs.write', 'github.search']
-      }
-    });
-
-    expect(expanded.map((entry) => entry.name)).toEqual(['notion.search']);
-  });
-
-  it('keeps explicit context tools when no domain retrieval tools are available', () => {
-    const expanded = expandToolsByDomain({
-      selectedSkills: [skill()],
-      allTools: tools,
-      workspaceMemory: {
-        ...workspaceMemory,
-        enabledOptionalTools: []
-      }
-    });
-
-    expect(expanded.map((entry) => entry.name)).toEqual(['channel.fetch_thread', 'memory.thread.read']);
-  });
-
-  it('reports tools added through domain expansion', () => {
-    const expanded = expandToolsByDomain({
-      selectedSkills: [skill()],
-      allTools: tools,
-      workspaceMemory
-    });
-
-    expect(domainExpansionMap({ selectedSkills: [skill()], availableTools: expanded })).toEqual({
-      documentation: ['notion.search', 'notion.read_page', 'confluence.search']
-    });
-  });
-
+describe('expandContextSourcesByDomain', () => {
   it('expands enabled context sources by selected skill domain', () => {
     const expanded = expandContextSourcesByDomain({
       selectedSkills: [skill()],
@@ -160,5 +56,17 @@ describe('domain expansion', () => {
       explicit: ['memory.linked_artifacts'],
       optional: ['notion.thread_search', 'confluence.thread_search']
     });
+  });
+
+  it('skips optional sources whose workspace allowlist is empty', () => {
+    const expanded = expandContextSourcesByDomain({
+      selectedSkills: [skill()],
+      allSources: [
+        source({ name: 'notion.thread_search', optional: true, knowledgeDomains: ['documentation'] })
+      ],
+      workspaceMemory: { ...workspaceMemory, enabledContextSources: [] }
+    });
+
+    expect(expanded).toEqual({ explicit: [], optional: [] });
   });
 });

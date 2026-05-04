@@ -129,6 +129,16 @@ export function getFirstWorkspace(db: Db): Workspace | undefined {
   return row ? mapWorkspace(row) : undefined;
 }
 
+export function listWorkspaces(db: Db): Workspace[] {
+  const rows = db
+    .prepare(
+      `SELECT id, slack_team_id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id, installed_at
+       FROM workspaces ORDER BY installed_at ASC`
+    )
+    .all() as WorkspaceRow[];
+  return rows.map(mapWorkspace);
+}
+
 export function saveSlackEvent(db: Db, input: SlackEventInput): boolean {
   const result = db
     .prepare(

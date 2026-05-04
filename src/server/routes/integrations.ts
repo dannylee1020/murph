@@ -3,6 +3,10 @@ import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { getIntegration, INTEGRATIONS, readEnvCredential } from '#lib/server/integrations/registry';
 import { maskCredential } from '#lib/server/integrations/credentials';
+import {
+  enableIntegrationCapabilities,
+  disableIntegrationCapabilities
+} from '#lib/server/integrations/capabilities';
 import { readJson, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 
@@ -127,6 +131,7 @@ export const integrationRoutes: Route[] = [
           validatedAt: new Date().toISOString()
         }
       });
+      enableIntegrationCapabilities(workspace.id, definition);
       sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
     } catch (error) {
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
@@ -146,6 +151,9 @@ export const integrationRoutes: Route[] = [
     }
 
     getStore().deleteIntegrationCredential(workspace.id, definition.provider);
+    if (!readEnvCredential(definition.provider)) {
+      disableIntegrationCapabilities(workspace.id, definition);
+    }
     sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
   })
 ];

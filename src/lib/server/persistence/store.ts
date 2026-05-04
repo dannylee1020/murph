@@ -56,6 +56,9 @@ export class Store {
   getFirstWorkspace(): Workspace | undefined {
     return workspace.getFirstWorkspace(this.db);
   }
+  listWorkspaces(): Workspace[] {
+    return workspace.listWorkspaces(this.db);
+  }
   saveSlackEvent(input: workspace.SlackEventInput): boolean {
     return workspace.saveSlackEvent(this.db, input);
   }

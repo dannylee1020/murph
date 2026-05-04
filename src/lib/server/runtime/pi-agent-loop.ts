@@ -5,7 +5,7 @@ import { DEFAULT_PROVIDER_MODEL } from '#lib/config';
 import { buildGroundingPrompt } from '#lib/server/runtime/grounding-prompt';
 import { toTypeBoxSchema } from '#lib/server/runtime/pi-tool-schema';
 import { outputSummary, truncateToolOutput } from '#lib/server/runtime/tool-output';
-import type { RuntimeRetrievalPlan } from '#lib/server/runtime/tool-calling-plan';
+import type { GroundingDirective } from '#lib/server/runtime/tool-calling-plan';
 import type {
   AgentToolResult,
   ContextAssembly,
@@ -121,7 +121,7 @@ export interface GroundingLoopInput {
   provider: ProviderName;
   model?: string;
   maxToolCallsPerRun: number;
-  retrievalPlan?: RuntimeRetrievalPlan;
+  groundingDirective?: GroundingDirective;
   retrievalToolNames: string[];
   defaultToolInput(name: string, input: unknown): unknown;
   enrichToolOutput(
@@ -176,7 +176,7 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
 
   const prompt: UserMessage = {
     role: 'user',
-    content: buildGroundingPrompt(input.context, input.retrievalPlan),
+    content: buildGroundingPrompt(input.context, input.groundingDirective),
     timestamp: Date.now()
   };
   const agentContext: PiAgentContext = {

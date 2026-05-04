@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildRuntimeToolCallingPlan } from '../../src/lib/server/runtime/tool-calling-plan';
+import {
+  buildRuntimeToolCallingPlan,
+  listAvailableTools
+} from '../../src/lib/server/runtime/tool-calling-plan';
 import type { ContextAssembly, SkillManifest, ToolInventoryItem, WorkspaceMemory } from '../../src/lib/types';
 
 const workspaceMemory: WorkspaceMemory = {
@@ -15,7 +18,7 @@ function skill(overrides: Partial<SkillManifest> = {}): SkillManifest {
   return {
     name: 'channel-continuity',
     description: '',
-    triggers: ['status'],
+    triggers: [],
     allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
     toolNames: ['channel.fetch_thread', 'memory.thread.read'],
     channelNames: ['slack'],
@@ -72,10 +75,7 @@ function context(overrides: Partial<ContextAssembly> = {}): ContextAssembly {
     },
     artifacts: [],
     skills: [skill()],
-    availableTools: [
-      { name: 'channel.fetch_thread', description: '', sideEffectClass: 'read' },
-      { name: 'memory.thread.read', description: '', sideEffectClass: 'read' }
-    ],
+    availableTools: [],
     summary: '',
     unresolvedQuestions: [],
     continuityCase: 'status_request',
@@ -113,46 +113,65 @@ const allTools: ToolInventoryItem[] = [
   })
 ];
 
-describe('buildRuntimeToolCallingPlan', () => {
-  it('requires retrieval and broadens available tools for factual questions without artifacts', () => {
-    const plan = buildRuntimeToolCallingPlan({ context: context(), allTools });
+describe('listAvailableTools', () => {
+  it('exposes only tools the workspace has enabled', () => {
+    const result = listAvailableTools({ allTools, workspaceMemory });
 
-    expect(plan.retrievalPlan.required).toBe(true);
-    expect(plan.availableTools.map((tool) => tool.name)).toEqual([
+    expect(result.availableTools.map((t) => t.name)).toEqual([
       'channel.fetch_thread',
       'memory.thread.read',
-      'notion.search'
+      'notion.search',
+      'notion.read_page'
     ]);
+    expect(result.retrievalToolNames).toEqual(['notion.search']);
+  });
+
+  it('hides workspace-enablement-required tools when not allowlisted', () => {
+    const result = listAvailableTools({
+      allTools,
+      workspaceMemory: { ...workspaceMemory, enabledOptionalTools: [] }
+    });
+
+    expect(result.availableTools.map((t) => t.name)).toEqual([
+      'channel.fetch_thread',
+      'memory.thread.read'
+    ]);
+    expect(result.retrievalToolNames).toEqual([]);
+  });
+});
+
+describe('buildRuntimeToolCallingPlan', () => {
+  it('marks grounding required when a skill demands it and no artifacts are linked', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        skills: [skill({ groundingPolicy: 'required_when_no_artifacts' })]
+      }),
+      allTools
+    });
+
+    expect(plan.groundingDirective.required).toBe(true);
+    expect(plan.availableTools.map((t) => t.name)).toContain('notion.search');
     expect(plan.retrievalToolNames).toEqual(['notion.search']);
   });
 
-  it('does not require retrieval when artifacts already exist', () => {
+  it('does not require grounding when artifacts already exist', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
+        skills: [skill({ groundingPolicy: 'required_when_no_artifacts' })],
         artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Checkout', text: 'ready' }]
       }),
       allTools
     });
 
-    expect(plan.retrievalPlan.required).toBe(false);
-    expect(plan.availableTools.map((tool) => tool.name)).toEqual(['channel.fetch_thread', 'memory.thread.read']);
+    expect(plan.groundingDirective.required).toBe(false);
   });
 
-  it('falls back to web.search when no domain-matched retrieval tool is available', () => {
+  it('does not require grounding when no skill demands it, even without artifacts', () => {
     const plan = buildRuntimeToolCallingPlan({
-      context: context({
-        memory: {
-          ...context().memory,
-          workspace: {
-            ...workspaceMemory,
-            enabledOptionalTools: ['web.search']
-          }
-        }
-      }),
-      allTools: allTools.filter((tool) => tool.name !== 'notion.search' && tool.name !== 'notion.read_page')
+      context: context({ skills: [skill()] }),
+      allTools
     });
 
-    expect(plan.retrievalPlan.required).toBe(true);
-    expect(plan.retrievalToolNames).toEqual(['web.search']);
+    expect(plan.groundingDirective.required).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildGroundingPrompt } from '../../src/lib/server/runtime/grounding-prompt';
-import type { RuntimeRetrievalPlan } from '../../src/lib/server/runtime/tool-calling-plan';
+import type { GroundingDirective } from '../../src/lib/server/runtime/tool-calling-plan';
 import type { ContextAssembly } from '../../src/lib/types';
 
 function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolvedQuestions' | 'continuityCase'>> = {}): Omit<ContextAssembly, 'summary' | 'unresolvedQuestions' | 'continuityCase'> {
@@ -43,7 +43,7 @@ function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolve
     skills: [
       {
         name: 'documentation-grounded-continuity',
-        description: '',
+        description: 'Grounds replies in documentation.',
         triggers: [],
         allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
         toolNames: [],
@@ -56,8 +56,8 @@ function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolve
         appliesTo: ['channel_thread'],
         priority: 1,
         riskLevel: 'low',
-        abstainConditions: [],
-        instructions: ''
+        abstainConditions: ['missing documentation grounding'],
+        instructions: 'Choose the best documentation tool before answering.'
       }
     ],
     availableTools: [
@@ -74,28 +74,40 @@ function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolve
   };
 }
 
-const retrievalRequired: RuntimeRetrievalPlan = {
+const requiredDirective: GroundingDirective = {
   required: true,
-  reason: 'Current context is insufficient for a factual answer; retrieval should be attempted before drafting.',
-  questionKind: 'factual_status',
-  preferredDomains: ['documentation'],
-  failureDisposition: 'queue_review'
+  reason: 'Skill "documentation-grounded-continuity" requires retrieval grounding before drafting because no artifacts are linked to this thread.'
 };
 
 describe('buildGroundingPrompt', () => {
-  it('requires a search tool call when required-grounding skills have no artifacts', () => {
-    const prompt = buildGroundingPrompt(context(), retrievalRequired);
-
-    expect(prompt).toContain('You MUST call a relevant retrieval/search tool before drafting');
-    expect(prompt).toContain('"name":"notion.search"');
+  it('renders the murph identity preamble', () => {
+    const prompt = buildGroundingPrompt(context());
+    expect(prompt).toContain('You are Murph');
+    expect(prompt).toContain('Return strict JSON');
   });
 
-  it('allows a no-tool answer when grounding is not required', () => {
-    const prompt = buildGroundingPrompt(context({
-      artifacts: [{ id: 'artifact-1', source: 'notion', type: 'document', title: 'Launch plan', text: 'Ready.' }]
-    }));
+  it('renders each selected skill as a readable system block', () => {
+    const prompt = buildGroundingPrompt(context());
+    expect(prompt).toContain('## Skill: documentation-grounded-continuity');
+    expect(prompt).toContain('Grounds replies in documentation.');
+    expect(prompt).toContain('Allowed actions: reply, ask, redirect, defer, remind, abstain');
+    expect(prompt).toContain('Choose the best documentation tool before answering.');
+  });
 
-    expect(prompt).toContain('If the provided context is already sufficient, answer without calling tools.');
-    expect(prompt).not.toContain('You MUST call a relevant search tool before drafting');
+  it('lists each available tool with its description', () => {
+    const prompt = buildGroundingPrompt(context());
+    expect(prompt).toContain('- notion.search (documentation): Search documentation');
+  });
+
+  it('inserts a strict directive when grounding is required', () => {
+    const prompt = buildGroundingPrompt(context(), requiredDirective);
+    expect(prompt).toContain('You MUST call a relevant retrieval/search tool before drafting');
+  });
+
+  it('lets the model skip retrieval when not required', () => {
+    const prompt = buildGroundingPrompt(context({
+      artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Launch plan', text: 'Ready.' }]
+    }));
+    expect(prompt).not.toContain('You MUST call a relevant retrieval/search tool before drafting');
   });
 });

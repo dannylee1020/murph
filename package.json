@@ -11,7 +11,8 @@
     }
   },
   "scripts": {
-    "dev": "node scripts/dev.mjs",
+    "dev": "npm run dev:ui",
+    "dev:server": "npm run build:server && npm run start",
     "dev:ui": "vite --config ui/vite.config.ts",
     "watch:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput",
     "build": "npm run build:server && npm run build:ui",
