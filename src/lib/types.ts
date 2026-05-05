@@ -146,6 +146,7 @@ export interface WorkspaceMemory {
     enabledOptionalTools: string[];
     enabledContextSources: string[];
     enabledPlugins: string[];
+    confirmedChannels?: string[];
     defaultPolicyProfileName?: string;
 }
 
@@ -176,22 +177,16 @@ export interface FeedbackRecord {
 export interface SkillManifest {
     name: string;
     description: string;
-    triggers: string[];
-    allowedActions: ContinuityActionType[];
-    toolNames: string[];
     knowledgeDomains?: string[];
     groundingPolicy?:
         | 'model_choice'
         | 'prefer_search'
         | 'required_when_no_artifacts';
     channelNames?: string[];
+    sessionModes?: SessionMode[];
     contextSourceNames?: string[];
-    knowledgeRequirements: string[];
-    sessionModes: SessionMode[];
-    appliesTo: string[];
     priority: number;
-    riskLevel: 'low' | 'medium' | 'high';
-    abstainConditions: string[];
+    riskLevel?: 'low' | 'medium' | 'high';
     instructions: string;
 }
 

@@ -63,6 +63,7 @@ export function getOrCreateWorkspaceMemory(db: Db, workspaceId: string): Workspa
       enabledOptionalTools: [],
       enabledContextSources: [],
       enabledPlugins: [],
+      confirmedChannels: [],
       defaultPolicyProfileName: undefined
     });
   }
@@ -74,6 +75,7 @@ export function getOrCreateWorkspaceMemory(db: Db, workspaceId: string): Workspa
     enabledOptionalTools: [],
     enabledContextSources: [],
     enabledPlugins: [],
+    confirmedChannels: [],
     defaultPolicyProfileName: undefined
   };
 

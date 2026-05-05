@@ -50,6 +50,17 @@ async function validateCredential(provider: string, credential: string): Promise
     return { account: payload.name };
   }
 
+  if (provider === 'granola') {
+    const response = await fetch('https://public-api.granola.ai/v1/notes?page_size=1', {
+      headers: { Authorization: `Bearer ${credential}` }
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error(payload.message ?? `Granola validation failed with ${response.status}`);
+    }
+    return {};
+  }
+
   throw new Error('Unsupported integration provider');
 }
 
@@ -62,10 +73,13 @@ function statusFor(provider: string, workspaceId: string) {
   return {
     provider: definition.provider,
     name: definition.name,
+    description: definition.description,
     authType: definition.authType,
+    credentialLabel: definition.credentialLabel,
     status: source ? 'connected' : 'disconnected',
     source,
     envKey: definition.envKey,
+    installPath: definition.installPath,
     tools: definition.tools,
     contextSources: definition.contextSources,
     canDisconnect: source === 'database',

@@ -52,14 +52,8 @@ export function toArtifact(event: CalendarEventResult): ContextArtifact {
 }
 
 export class GoogleCalendarService {
-  private readonly env = getRuntimeEnv();
-
-  isConfigured(): boolean {
-    return Boolean(this.env.googleAccessToken);
-  }
-
-  async upcomingEvents(limit = 5): Promise<{ events: CalendarEventResult[] }> {
-    return await this.listEvents({
+  async upcomingEvents(accessToken: string, limit = 5): Promise<{ events: CalendarEventResult[] }> {
+    return await this.listEvents(accessToken, {
       maxResults: limit,
       timeMin: new Date().toISOString(),
       singleEvents: true,
@@ -67,30 +61,39 @@ export class GoogleCalendarService {
     });
   }
 
-  async searchEvents(query: string, limit = 5): Promise<{ events: CalendarEventResult[] }> {
+  async searchEvents(
+    accessToken: string,
+    query: string,
+    limit = 5,
+    options?: { timeMin?: string; timeMax?: string }
+  ): Promise<{ events: CalendarEventResult[] }> {
     const from = new Date();
     from.setDate(from.getDate() - 30);
+    const to = new Date();
+    to.setDate(to.getDate() + 60);
 
-    return await this.listEvents({
-      q: query,
+    const params: Record<string, string | number | boolean> = {
       maxResults: limit,
-      timeMin: from.toISOString(),
+      timeMin: options?.timeMin ?? from.toISOString(),
+      timeMax: options?.timeMax ?? to.toISOString(),
       singleEvents: true,
       orderBy: 'startTime'
-    });
-  }
-
-  private async listEvents(params: Record<string, string | number | boolean>): Promise<{ events: CalendarEventResult[] }> {
-    if (!this.env.googleAccessToken) {
-      throw new Error('GOOGLE_ACCESS_TOKEN is not configured');
+    };
+    if (query) {
+      params.q = query;
     }
 
-    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(this.env.googleCalendarId)}/events`);
+    return await this.listEvents(accessToken, params);
+  }
+
+  private async listEvents(accessToken: string, params: Record<string, string | number | boolean>): Promise<{ events: CalendarEventResult[] }> {
+    const calendarId = getRuntimeEnv().googleCalendarId;
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, String(value));
     }
 
-    const payload = await this.fetchJson<CalendarEventsResponse>(url.toString());
+    const payload = await this.fetchJson<CalendarEventsResponse>(accessToken, url.toString());
     return {
       events: (payload.items ?? []).map((event) => ({
         id: event.id,
@@ -104,11 +107,9 @@ export class GoogleCalendarService {
     };
   }
 
-  private async fetchJson<T>(url: string): Promise<T> {
+  private async fetchJson<T>(accessToken: string, url: string): Promise<T> {
     const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${this.env.googleAccessToken}`
-      }
+      headers: { Authorization: `Bearer ${accessToken}` }
     });
     const payload = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
 

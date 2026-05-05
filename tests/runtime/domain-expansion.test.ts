@@ -15,18 +15,12 @@ function skill(overrides: Partial<SkillManifest> = {}): SkillManifest {
   return {
     name: 'documentation-grounded-continuity',
     description: '',
-    triggers: [],
-    allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
-    toolNames: ['channel.fetch_thread', 'memory.thread.read'],
     knowledgeDomains: ['documentation'],
     channelNames: ['slack'],
     contextSourceNames: ['memory.linked_artifacts'],
-    knowledgeRequirements: [],
     sessionModes: ['manual_review'],
-    appliesTo: ['channel_thread'],
     priority: 120,
     riskLevel: 'low',
-    abstainConditions: [],
     instructions: '',
     ...overrides
   };

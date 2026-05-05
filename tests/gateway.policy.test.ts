@@ -13,17 +13,11 @@ function skill(): SkillManifest {
   return {
     name: 'channel-continuity',
     description: '',
-    triggers: [],
-    allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
-    toolNames: ['channel.fetch_thread'],
     channelNames: ['slack'],
     contextSourceNames: ['memory.linked_artifacts'],
-    knowledgeRequirements: [],
     sessionModes: ['manual_review'],
-    appliesTo: ['channel_thread'],
     priority: 1,
     riskLevel: 'low',
-    abstainConditions: [],
     instructions: ''
   };
 }

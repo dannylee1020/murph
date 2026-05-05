@@ -25,13 +25,67 @@ export async function loadSkills(root = SKILLS_ROOT): Promise<SkillManifest[]> {
   }
 }
 
-function parseCsv(value?: string): string[] {
-  return value ? value.split(',').map((item) => item.trim()).filter(Boolean) : [];
+function parseYamlValue(raw: string): string | number | string[] {
+  const trimmed = raw.trim();
+
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    return trimmed
+      .slice(1, -1)
+      .split(',')
+      .map((item) => item.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+  }
+
+  const num = Number(trimmed);
+  if (Number.isFinite(num) && trimmed !== '') {
+    return num;
+  }
+
+  return trimmed;
 }
 
-function parseNumber(value: string | undefined, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function parseFrontmatter(header: string): Record<string, string | number | string[]> {
+  const result: Record<string, string | number | string[]> = {};
+
+  for (const line of header.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed === '---') continue;
+
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx === -1) continue;
+
+    const key = trimmed.slice(0, colonIdx).trim();
+    const value = trimmed.slice(colonIdx + 1).trim();
+    if (!key) continue;
+
+    result[key] = parseYamlValue(value);
+  }
+
+  return result;
+}
+
+function asStringArray(value: string | number | string[] | undefined): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function asString(value: string | number | string[] | undefined): string | undefined {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return undefined;
+}
+
+function asNumber(value: string | number | string[] | undefined, fallback: number): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
 }
 
 function parseGroundingPolicy(value: string | undefined): SkillManifest['groundingPolicy'] {
@@ -40,45 +94,36 @@ function parseGroundingPolicy(value: string | undefined): SkillManifest['groundi
 
 async function parseSkillFile(filePath: string): Promise<SkillManifest | null> {
   const content = await readFile(filePath, 'utf8');
-  const [header, ...rest] = content.split('\n---\n');
+  const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
-  if (!rest.length) {
-    return null;
+  if (!match) {
+    const [header, ...rest] = content.split('\n---\n');
+    if (!rest.length) return null;
+    const metadata = parseFrontmatter(header);
+    return buildManifest(metadata, rest.join('\n---\n').trim(), filePath);
   }
 
-  const metadata = header
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .reduce<Record<string, string>>((acc, line) => {
-      const [key, ...valueParts] = line.split(':');
-      if (!key || valueParts.length === 0) {
-        return acc;
-      }
+  const metadata = parseFrontmatter(match[1]);
+  return buildManifest(metadata, match[2].trim(), filePath);
+}
 
-      acc[key.trim()] = valueParts.join(':').trim();
-      return acc;
-    }, {});
-
-  const actionList = parseCsv(metadata.allowedActions);
+function buildManifest(
+  metadata: Record<string, string | number | string[]>,
+  instructions: string,
+  filePath: string
+): SkillManifest {
+  const riskLevel = asString(metadata.riskLevel);
 
   return {
-    name: metadata.name ?? path.basename(filePath, '.md'),
-    description: metadata.description ?? 'No description provided.',
-    triggers: parseCsv(metadata.triggers),
-    allowedActions: (actionList.length > 0 ? actionList : ['abstain']) as SkillManifest['allowedActions'],
-    toolNames: parseCsv(metadata.toolNames),
-    knowledgeDomains: parseCsv(metadata.knowledgeDomains),
-    groundingPolicy: parseGroundingPolicy(metadata.groundingPolicy),
-    channelNames: parseCsv(metadata.channelNames),
-    contextSourceNames: parseCsv(metadata.contextSourceNames),
-    knowledgeRequirements: parseCsv(metadata.knowledgeRequirements),
-    sessionModes: parseCsv(metadata.sessionModes) as SkillManifest['sessionModes'],
-    appliesTo: parseCsv(metadata.appliesTo),
-    priority: parseNumber(metadata.priority, 10),
-    riskLevel:
-      metadata.riskLevel === 'medium' || metadata.riskLevel === 'high' ? metadata.riskLevel : 'low',
-    abstainConditions: parseCsv(metadata.abstainConditions),
-    instructions: rest.join('\n---\n').trim()
+    name: asString(metadata.name) ?? path.basename(filePath, '.md'),
+    description: asString(metadata.description) ?? 'No description provided.',
+    knowledgeDomains: asStringArray(metadata.knowledgeDomains),
+    groundingPolicy: parseGroundingPolicy(asString(metadata.groundingPolicy)),
+    channelNames: asStringArray(metadata.channelNames),
+    sessionModes: asStringArray(metadata.sessionModes) as SkillManifest['sessionModes'],
+    contextSourceNames: asStringArray(metadata.contextSourceNames),
+    priority: asNumber(metadata.priority, 10),
+    riskLevel: riskLevel === 'medium' || riskLevel === 'high' ? riskLevel : 'low',
+    instructions
   };
 }

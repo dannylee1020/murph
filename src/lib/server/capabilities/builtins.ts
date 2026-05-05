@@ -4,6 +4,7 @@ import { getMemoryService } from '#lib/server/memory/service';
 import { getGitHubService, toArtifact as githubToArtifact } from '#lib/server/context-sources/github';
 import { getGmailService, toArtifact as gmailToArtifact } from '#lib/server/context-sources/gmail';
 import { getGoogleCalendarService, toArtifact as calendarToArtifact } from '#lib/server/context-sources/google-calendar';
+import { getValidGoogleAccessToken } from '#lib/server/integrations/google-oauth';
 import { getGranolaService, toArtifact as granolaToArtifact } from '#lib/server/context-sources/granola';
 import { searchLocalFiles, toArtifact as localFsToArtifact } from '#lib/server/context-sources/local-fs';
 import { getNotionService } from '#lib/server/context-sources/notion';
@@ -171,40 +172,38 @@ export function registerBuiltInTools(): void {
     );
   }
 
-  if (gmail.isConfigured()) {
-    contextSources.register(
-      {
-        name: 'gmail.thread_search',
-        description: 'Search Gmail threads by the current thread text.',
-        optional: true,
-        knowledgeDomains: ['email', 'customer'],
-        async retrieve(input) {
-          const query =
-            input.context.thread.latestMessage ||
-            input.context.thread.recentMessages.map((message) => message.text).join(' ');
-          const results = await gmail.search(query, 3);
-          return results.results.map((result) => gmailToArtifact(result));
-        }
-      },
-      { optional: true, source: 'core' }
-    );
-  }
+  contextSources.register(
+    {
+      name: 'gmail.thread_search',
+      description: 'Search Gmail threads by the current thread text.',
+      optional: true,
+      knowledgeDomains: ['email', 'customer'],
+      async retrieve(input) {
+        const token = await getValidGoogleAccessToken(input.workspace.id);
+        const query =
+          input.context.thread.latestMessage ||
+          input.context.thread.recentMessages.map((message) => message.text).join(' ');
+        const results = await gmail.search(token, query, 3);
+        return results.results.map((result) => gmailToArtifact(result));
+      }
+    },
+    { optional: true, source: 'core' }
+  );
 
-  if (calendar.isConfigured()) {
-    contextSources.register(
-      {
-        name: 'calendar.upcoming_events',
-        description: 'Load the next few upcoming Google Calendar events.',
-        optional: true,
-        knowledgeDomains: ['calendar', 'coordination'],
-        async retrieve() {
-          const results = await calendar.upcomingEvents(5);
-          return results.events.map((event) => calendarToArtifact(event));
-        }
-      },
-      { optional: true, source: 'core' }
-    );
-  }
+  contextSources.register(
+    {
+      name: 'calendar.upcoming_events',
+      description: 'Load the next few upcoming Google Calendar events.',
+      optional: true,
+      knowledgeDomains: ['calendar', 'coordination'],
+      async retrieve(input) {
+        const token = await getValidGoogleAccessToken(input.workspace.id);
+        const results = await calendar.upcomingEvents(token, 5);
+        return results.events.map((event) => calendarToArtifact(event));
+      }
+    },
+    { optional: true, source: 'core' }
+  );
 
   contextSources.register(
     {
@@ -658,58 +657,10 @@ export function registerBuiltInTools(): void {
     );
   }
 
-  if (gmail.isConfigured()) {
-    tools.push(
-      {
-        name: 'gmail.search',
-        description: 'Search Gmail threads by query text.',
-        sideEffectClass: 'read',
-        retrievalEligible: true,
-        inputSchema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['query'],
-          properties: {
-            query: { type: 'string' },
-            limit: { type: 'number' }
-          }
-        },
-        knowledgeDomains: ['email', 'customer'],
-        optional: true,
-        requiresWorkspaceEnablement: true,
-        supportsDryRun: true,
-        async execute(input: { query: string; limit?: number }) {
-          return await gmail.search(input.query, input.limit);
-        }
-      },
-      {
-        name: 'gmail.read_thread',
-        description: 'Read a Gmail thread by thread ID.',
-        sideEffectClass: 'read',
-        retrievalEligible: false,
-        inputSchema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['threadId'],
-          properties: {
-            threadId: { type: 'string' }
-          }
-        },
-        knowledgeDomains: ['email', 'customer'],
-        optional: true,
-        requiresWorkspaceEnablement: true,
-        supportsDryRun: true,
-        async execute(input: { threadId: string }) {
-          return await gmail.readThread(input.threadId);
-        }
-      }
-    );
-  }
-
-  if (calendar.isConfigured()) {
-    tools.push({
-      name: 'calendar.search_events',
-      description: 'Search Google Calendar events by query text.',
+  tools.push(
+    {
+      name: 'gmail.search',
+      description: 'Search Gmail threads by query text.',
       sideEffectClass: 'read',
       retrievalEligible: true,
       inputSchema: {
@@ -721,15 +672,66 @@ export function registerBuiltInTools(): void {
           limit: { type: 'number' }
         }
       },
-      knowledgeDomains: ['calendar', 'coordination'],
+      knowledgeDomains: ['email', 'customer'],
       optional: true,
       requiresWorkspaceEnablement: true,
       supportsDryRun: true,
-      async execute(input: { query: string; limit?: number }) {
-        return await calendar.searchEvents(input.query, input.limit ?? 5);
+      async execute(input: { query: string; limit?: number }, context) {
+        const token = await getValidGoogleAccessToken(context.workspace.id);
+        return await gmail.search(token, input.query, input.limit);
       }
-    });
-  }
+    },
+    {
+      name: 'gmail.read_thread',
+      description: 'Read a Gmail thread by thread ID.',
+      sideEffectClass: 'read',
+      retrievalEligible: false,
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['threadId'],
+        properties: {
+          threadId: { type: 'string' }
+        }
+      },
+      knowledgeDomains: ['email', 'customer'],
+      optional: true,
+      requiresWorkspaceEnablement: true,
+      supportsDryRun: true,
+      async execute(input: { threadId: string }, context) {
+        const token = await getValidGoogleAccessToken(context.workspace.id);
+        return await gmail.readThread(token, input.threadId);
+      }
+    }
+  );
+
+  tools.push({
+    name: 'calendar.search_events',
+    description: 'Search Google Calendar events. Use timeMin/timeMax (ISO 8601) to scope by date range. Pass an empty query to list all events in the range.',
+    sideEffectClass: 'read',
+    retrievalEligible: true,
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        query: { type: 'string', description: 'Text to match against event titles and descriptions. Omit to list all events in the time range.' },
+        limit: { type: 'number' },
+        timeMin: { type: 'string', description: 'ISO 8601 start of search window (inclusive). Defaults to 30 days ago.' },
+        timeMax: { type: 'string', description: 'ISO 8601 end of search window (inclusive). Defaults to 60 days from now.' }
+      }
+    },
+    knowledgeDomains: ['calendar', 'coordination'],
+    optional: true,
+    requiresWorkspaceEnablement: true,
+    supportsDryRun: true,
+    async execute(input: { query?: string; limit?: number; timeMin?: string; timeMax?: string }, context) {
+      const token = await getValidGoogleAccessToken(context.workspace.id);
+      return await calendar.searchEvents(token, input.query ?? '', input.limit ?? 5, {
+        timeMin: input.timeMin,
+        timeMax: input.timeMax
+      });
+    }
+  });
 
   tools.push(
     {
@@ -781,29 +783,6 @@ export function registerBuiltInTools(): void {
       }
     }
   );
-
-  tools.push({
-    name: 'localfs.read',
-    description: 'Read a local file by path from allowlisted roots.',
-    sideEffectClass: 'read',
-    retrievalEligible: false,
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['path'],
-      properties: {
-        path: { type: 'string' },
-        maxBytes: { type: 'number' }
-      }
-    },
-    knowledgeDomains: ['code', 'documentation'],
-    optional: true,
-    requiresWorkspaceEnablement: true,
-    supportsDryRun: true,
-    async execute(input: { path: string; maxBytes?: number }, context) {
-      return await registry.execute('fs.read', input, context);
-    }
-  });
 
   if (isObsidianConfigured()) {
     tools.push(

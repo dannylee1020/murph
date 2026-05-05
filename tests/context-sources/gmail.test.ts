@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 describe('GmailService', () => {
   beforeEach(() => {
     vi.resetModules();
-    process.env.GOOGLE_ACCESS_TOKEN = 'google-token';
   });
 
   it('searches threads and reads thread content', async () => {
@@ -54,7 +53,7 @@ describe('GmailService', () => {
 
     const { getGmailService, toArtifact } = await import('#lib/server/context-sources/gmail');
     const gmail = getGmailService();
-    const search = await gmail.search('launch timeline', 3);
+    const search = await gmail.search('google-token', 'launch timeline', 3);
 
     expect(search.results[0]).toEqual(expect.objectContaining({
       id: 'thread-1',

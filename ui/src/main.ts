@@ -95,7 +95,10 @@ type IntegrationStatusPayload = {
   integrations: Array<{
     provider: string;
     name: string;
+    description: string;
     authType: string;
+    credentialLabel: string;
+    installPath?: string;
     status: 'connected' | 'disconnected';
     source?: 'database' | 'env';
     envKey: string;
@@ -719,16 +722,6 @@ function integrationStatusLabel(integration: IntegrationStatusPayload['integrati
   return integration.source === 'env' ? 'Connected via environment' : 'Connected';
 }
 
-function integrationDescription(integration: IntegrationStatusPayload['integrations'][number]): string {
-  if (integration.provider === 'github') {
-    return 'Connect issues, pull requests, and repository context.';
-  }
-  if (integration.provider === 'notion') {
-    return 'Connect docs and team knowledge pages.';
-  }
-  return 'Connect this service so Murph can use it for better replies.';
-}
-
 function integrationCredentialLabel(integration: IntegrationStatusPayload['integrations'][number]): string {
   if (integration.status !== 'connected') {
     return 'Not connected';
@@ -739,7 +732,7 @@ function integrationCredentialLabel(integration: IntegrationStatusPayload['integ
   return integration.metadata.masked ?? 'Saved in Murph';
 }
 
-function integrationCard(integration: IntegrationStatusPayload['integrations'][number]): string {
+function integrationCard(integration: IntegrationStatusPayload['integrations'][number], workspaceId: string): string {
   const connected = integration.status === 'connected';
   const metadata = [
     integration.metadata.account ? `Account: ${integration.metadata.account}` : '',
@@ -747,17 +740,24 @@ function integrationCard(integration: IntegrationStatusPayload['integrations'][n
     integration.metadata.validatedAt ? `Validated ${formatRelative(integration.metadata.validatedAt)}` : ''
   ].filter(Boolean);
 
+  const installHref = integration.installPath
+    ? `${integration.installPath}?workspaceId=${encodeURIComponent(workspaceId)}`
+    : '';
+
   return `
     <article class="panel panel-status">
       <h2><span class="status-dot ${connected ? 'ok' : 'off'}" aria-hidden="true"></span>${escapeHtml(integration.name)}</h2>
-      <p>${escapeHtml(integrationDescription(integration))}</p>
+      <p>${escapeHtml(integration.description)}</p>
       <dl class="details">
         <div><dt>Status</dt><dd>${escapeHtml(integrationStatusLabel(integration))}</dd></div>
         <div><dt>Key</dt><dd>${escapeHtml(integrationCredentialLabel(integration))}</dd></div>
       </dl>
       ${metadata.length > 0 ? `<p class="empty">${escapeHtml(metadata.join(' · '))}</p>` : ''}
       <div class="actions">
-        <button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${connected && integration.source === 'env' ? 'Override' : 'Connect'}</button>
+        ${integration.authType === 'oauth' && installHref
+          ? `<a class="button" href="${escapeHtml(installHref)}">${connected ? 'Reconnect' : 'Connect with Google'}</a>`
+          : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${connected && integration.source === 'env' ? 'Override' : 'Connect'}</button>`
+        }
         ${integration.canDisconnect ? `<button type="button" class="secondary disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
       </div>
     </article>
@@ -1322,6 +1322,18 @@ async function renderDashboard(): Promise<void> {
 async function renderSettings(): Promise<void> {
   setTitle('Murph Admin');
   loading('Admin');
+
+  const params = new URLSearchParams(window.location.search);
+  let settingsNotice = '';
+  if (params.get('error') === 'google_not_configured') {
+    settingsNotice = '<div class="notice danger">Google OAuth is not configured. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> environment variables.</div>';
+  } else if (params.get('google') === 'connected') {
+    settingsNotice = '<div class="notice success">Google account connected.</div>';
+  }
+  if (settingsNotice) {
+    history.replaceState(null, '', '/settings');
+  }
+
   const [summary, setup, integrationsPayload] = await Promise.all([
     getJson<SummaryPayload>('/api/gateway/summary'),
     getJson<SetupStatusPayload>('/api/setup/status'),
@@ -1329,6 +1341,7 @@ async function renderSettings(): Promise<void> {
   ]);
 
   shell(`
+    ${settingsNotice}
     <section class="page-head">
       <p class="eyebrow">Setup</p>
       <h1>Admin</h1>
@@ -1337,7 +1350,7 @@ async function renderSettings(): Promise<void> {
 
     <dl class="kpis">
       ${metric('Workspace', summary.summary.workspace?.name ?? 'Not installed')}
-      ${metric('AI provider', summary.summary.provider ? `${summary.summary.provider.provider} / ${summary.summary.provider.model}` : 'Not configured')}
+      ${metric('AI provider', setup.provider.configured ? `${setup.provider.defaultProvider}` : 'Not configured')}
       ${metric('Slack', setup.slack.installed ? 'Connected' : 'Not connected')}
       ${metric('Discord', setup.discord.installed ? 'Connected' : 'Not connected')}
     </dl>
@@ -1387,7 +1400,7 @@ async function renderSettings(): Promise<void> {
       <h2>Integrations</h2>
       <p class="empty">Connect optional sources Murph can use for more grounded replies.</p>
       <div class="grid two">
-        ${integrationsPayload.integrations.map(integrationCard).join('')}
+        ${integrationsPayload.integrations.map((i) => integrationCard(i, integrationsPayload.workspaceId)).join('')}
       </div>
     </section>
   `);
@@ -1399,7 +1412,8 @@ async function renderSettings(): Promise<void> {
       const provider = button.dataset.provider ?? '';
       const integration = integrationsByProvider.get(provider);
       const name = integration?.name ?? provider;
-      const credential = window.prompt(`Enter your ${name} API key`);
+      const label = integration?.credentialLabel ?? 'API key';
+      const credential = window.prompt(`Enter your ${name} ${label.toLowerCase()}`);
       if (!credential) {
         return;
       }
@@ -1420,10 +1434,12 @@ async function renderSettings(): Promise<void> {
   app.querySelectorAll<HTMLButtonElement>('.disconnect-integration').forEach((button) => {
     button.addEventListener('click', async () => {
       const provider = button.dataset.provider ?? '';
-      const name = integrationsByProvider.get(provider)?.name ?? provider;
-      const response = await fetch(`/api/integrations/${encodeURIComponent(provider)}/disconnect?workspaceId=${encodeURIComponent(integrationsPayload.workspaceId)}`, {
-        method: 'DELETE'
-      });
+      const integration = integrationsByProvider.get(provider);
+      const name = integration?.name ?? provider;
+      const disconnectUrl = integration?.authType === 'oauth'
+        ? `/api/${encodeURIComponent(provider)}/disconnect?workspaceId=${encodeURIComponent(integrationsPayload.workspaceId)}`
+        : `/api/integrations/${encodeURIComponent(provider)}/disconnect?workspaceId=${encodeURIComponent(integrationsPayload.workspaceId)}`;
+      const response = await fetch(disconnectUrl, { method: 'DELETE' });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({})) as { error?: string };
         window.alert(payload.error ?? 'Integration could not be disconnected.');
@@ -1794,7 +1810,7 @@ async function render(): Promise<void> {
       return;
     }
 
-    if (pathname === '/admin') {
+    if (pathname === '/admin' || pathname === '/settings') {
       await renderSettings();
     } else if (pathname === '/review') {
       await renderReview();

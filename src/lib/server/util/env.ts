@@ -28,6 +28,8 @@ export interface RuntimeEnv {
   obsidianVaultPath?: string;
   granolaApiKey?: string;
   googleAccessToken?: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
   googleCalendarId: string;
   webSearchBackend: 'tavily' | 'brave';
   tavilyApiKey?: string;
@@ -77,6 +79,8 @@ export function getRuntimeEnv(): RuntimeEnv {
     obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH,
     granolaApiKey: process.env.GRANOLA_API_KEY,
     googleAccessToken: process.env.GOOGLE_ACCESS_TOKEN,
+    googleClientId: process.env.GOOGLE_CLIENT_ID,
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
     googleCalendarId: process.env.GOOGLE_CALENDAR_ID ?? 'primary',
     webSearchBackend: process.env.MURPH_WEB_SEARCH_BACKEND === 'brave' ? 'brave' : 'tavily',
     tavilyApiKey: process.env.TAVILY_API_KEY,

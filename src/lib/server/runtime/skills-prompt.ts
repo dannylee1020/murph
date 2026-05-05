@@ -1,20 +1,12 @@
 import type { SkillManifest } from '#lib/types';
 
-function joinList(values: string[] | undefined): string | undefined {
-  if (!values || values.length === 0) {
-    return undefined;
-  }
-  return values.join(', ');
-}
-
 function describeGroundingPolicy(policy: SkillManifest['groundingPolicy']): string | undefined {
   switch (policy) {
     case 'required_when_no_artifacts':
-      return 'Required when no linked artifacts are already attached to the thread.';
+      return 'You must retrieve evidence before drafting a response.';
     case 'prefer_search':
       return 'Prefer calling a retrieval tool before drafting.';
     case 'model_choice':
-      return 'Decide whether retrieval is needed based on the request.';
     default:
       return undefined;
   }
@@ -22,29 +14,16 @@ function describeGroundingPolicy(policy: SkillManifest['groundingPolicy']): stri
 
 function renderSkill(skill: SkillManifest): string {
   const lines: string[] = [];
-  lines.push(`## Skill: ${skill.name}`);
+  lines.push(`## ${skill.name}`);
   lines.push(skill.description);
-
-  const allowedActions = joinList(skill.allowedActions);
-  if (allowedActions) {
-    lines.push(`Allowed actions: ${allowedActions}`);
-  }
-
-  lines.push(`Risk level: ${skill.riskLevel}`);
 
   const grounding = describeGroundingPolicy(skill.groundingPolicy);
   if (grounding) {
-    lines.push(`Grounding policy: ${grounding}`);
+    lines.push(`**Grounding:** ${grounding}`);
   }
 
-  const knowledgeDomains = joinList(skill.knowledgeDomains);
-  if (knowledgeDomains) {
-    lines.push(`Knowledge domains: ${knowledgeDomains}`);
-  }
-
-  const abstain = joinList(skill.abstainConditions);
-  if (abstain) {
-    lines.push(`Abstain when: ${abstain}`);
+  if (skill.riskLevel && skill.riskLevel !== 'low') {
+    lines.push(`**Risk level:** ${skill.riskLevel}`);
   }
 
   const body = skill.instructions?.trim();
@@ -67,8 +46,8 @@ export function buildSkillsSystemBlock(skills: SkillManifest[]): string {
 
   const intro =
     skills.length === 1
-      ? 'The following skill applies to this request. Read it carefully and follow its guidance:'
-      : `The following ${skills.length} skills apply to this request. Read each one and follow the combined guidance:`;
+      ? 'The following skill applies to this request. Follow its guidance:'
+      : `The following ${skills.length} skills apply to this request. Follow the combined guidance:`;
 
   return [intro, '', ...skills.map(renderSkill)].join('\n\n');
 }

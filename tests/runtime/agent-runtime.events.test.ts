@@ -279,17 +279,10 @@ function channelSkill(): SkillManifest {
   return {
     name: 'channel-continuity',
     description: '',
-    triggers: ['status'],
-    allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
-    toolNames: ['channel.fetch_thread', 'user.get_preferences', 'memory.workspace.read', 'memory.thread.read'],
     channelNames: ['slack'],
-    contextSourceNames: [],
-    knowledgeRequirements: [],
     sessionModes: ['manual_review'],
-    appliesTo: ['channel_thread'],
     priority: 100,
     riskLevel: 'low',
-    abstainConditions: [],
     instructions: ''
   };
 }
@@ -298,8 +291,6 @@ function documentationSkill(): SkillManifest {
   return {
     ...channelSkill(),
     name: 'documentation-grounded-continuity',
-    triggers: ['status'],
-    toolNames: ['channel.fetch_thread'],
     knowledgeDomains: ['documentation'],
     groundingPolicy: 'required_when_no_artifacts',
     priority: 120

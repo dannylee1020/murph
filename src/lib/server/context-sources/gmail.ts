@@ -1,4 +1,3 @@
-import { getRuntimeEnv } from '#lib/server/util/env';
 import type { ContextArtifact } from '#lib/types';
 
 interface GmailThreadListResponse {
@@ -81,34 +80,20 @@ export function toArtifact(thread: GmailThreadResult): ContextArtifact {
 }
 
 export class GmailService {
-  private readonly env = getRuntimeEnv();
-
-  isConfigured(): boolean {
-    return Boolean(this.env.googleAccessToken);
-  }
-
-  async search(query: string, limit = 3): Promise<{ results: GmailThreadResult[] }> {
-    if (!this.env.googleAccessToken) {
-      throw new Error('GOOGLE_ACCESS_TOKEN is not configured');
-    }
-
+  async search(accessToken: string, query: string, limit = 3): Promise<{ results: GmailThreadResult[] }> {
     const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/threads');
     url.searchParams.set('q', query);
     url.searchParams.set('maxResults', String(Math.max(1, Math.min(limit, 10))));
-    const list = await this.fetchJson<GmailThreadListResponse>(url.toString());
-    const threads = await Promise.all((list.threads ?? []).map((thread) => this.readThread(thread.id)));
+    const list = await this.fetchJson<GmailThreadListResponse>(accessToken, url.toString());
+    const threads = await Promise.all((list.threads ?? []).map((thread) => this.readThread(accessToken, thread.id)));
 
     return { results: threads };
   }
 
-  async readThread(threadId: string): Promise<GmailThreadResult> {
-    if (!this.env.googleAccessToken) {
-      throw new Error('GOOGLE_ACCESS_TOKEN is not configured');
-    }
-
+  async readThread(accessToken: string, threadId: string): Promise<GmailThreadResult> {
     const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}`);
     url.searchParams.set('format', 'full');
-    const thread = await this.fetchJson<GmailThreadResponse>(url.toString());
+    const thread = await this.fetchJson<GmailThreadResponse>(accessToken, url.toString());
     const messages = thread.messages ?? [];
     const latest = messages.at(-1);
     const subject = headerValue(latest?.payload?.headers, 'subject');
@@ -129,11 +114,9 @@ export class GmailService {
     };
   }
 
-  private async fetchJson<T>(url: string): Promise<T> {
+  private async fetchJson<T>(accessToken: string, url: string): Promise<T> {
     const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${this.env.googleAccessToken}`
-      }
+      headers: { Authorization: `Bearer ${accessToken}` }
     });
     const payload = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
 

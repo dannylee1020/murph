@@ -6,6 +6,7 @@ import { dispatchRoute, type Route } from './router.js';
 import { formRoutes } from './routes/forms.js';
 import { gatewayRoutes } from './routes/gateway.js';
 import { discordRoutes } from './routes/discord.js';
+import { googleRoutes } from './routes/google.js';
 import { integrationRoutes } from './routes/integrations.js';
 import { slackRoutes } from './routes/slack.js';
 import { systemRoutes } from './routes/system.js';
@@ -15,7 +16,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
 const staticRoot = path.resolve(repoRoot, 'dist/ui');
 const port = Number(process.env.PORT ?? 5173);
-const routes: Route[] = [...systemRoutes, ...gatewayRoutes, ...integrationRoutes, ...slackRoutes, ...discordRoutes, ...formRoutes];
+const routes: Route[] = [...systemRoutes, ...gatewayRoutes, ...integrationRoutes, ...googleRoutes, ...slackRoutes, ...discordRoutes, ...formRoutes];
 const gateway = getGateway();
 
 function notFound(res: ServerResponse): void {

@@ -5,16 +5,10 @@ import type { SkillManifest, WorkspaceMemory } from '../src/lib/types';
 function skill(input: Partial<SkillManifest> & { name: string; priority: number }): SkillManifest {
   return {
     description: input.name,
-    triggers: [],
-    allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
-    toolNames: ['channel.fetch_thread'],
     channelNames: ['slack'],
     contextSourceNames: ['memory.linked_artifacts'],
-    knowledgeRequirements: [],
     sessionModes: ['manual_review'],
-    appliesTo: ['channel_thread'],
     riskLevel: 'low',
-    abstainConditions: [],
     instructions: '',
     ...input
   };
@@ -94,14 +88,14 @@ describe('selectSkills', () => {
     expect(selected.map((entry) => entry.name)).toEqual(['channel-continuity']);
   });
 
-  it('drops skills that require unavailable tools but keeps the fallback', () => {
+  it('drops skills that require unavailable context sources but keeps the fallback', () => {
     const selected = selectSkills({
       skills: [
         skill({ name: 'channel-continuity', priority: 100 }),
         skill({
-          name: 'needs-missing-tool',
+          name: 'needs-missing-source',
           priority: 120,
-          toolNames: ['channel.fetch_thread', 'integration.unavailable']
+          contextSourceNames: ['notion.thread_search']
         })
       ],
       channel: 'slack',
@@ -113,14 +107,14 @@ describe('selectSkills', () => {
     expect(selected.map((entry) => entry.name)).toEqual(['channel-continuity']);
   });
 
-  it('keeps skills whose required tool is available via the workspace optional allowlist', () => {
+  it('keeps skills whose required context source is enabled in workspace memory', () => {
     const selected = selectSkills({
       skills: [
         skill({ name: 'channel-continuity', priority: 100 }),
         skill({
           name: 'documentation-grounded-continuity',
           priority: 120,
-          toolNames: ['channel.fetch_thread', 'notion.search']
+          contextSourceNames: ['notion.thread_search']
         })
       ],
       channel: 'slack',
@@ -128,7 +122,7 @@ describe('selectSkills', () => {
       tools: [{ name: 'channel.fetch_thread', description: '', sideEffectClass: 'read' }],
       workspaceMemory: {
         ...workspaceMemory,
-        enabledOptionalTools: ['notion.search']
+        enabledContextSources: ['notion.thread_search']
       }
     });
 

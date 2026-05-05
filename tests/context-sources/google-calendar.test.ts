@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 describe('GoogleCalendarService', () => {
   beforeEach(() => {
     vi.resetModules();
-    process.env.GOOGLE_ACCESS_TOKEN = 'google-token';
     process.env.GOOGLE_CALENDAR_ID = 'primary';
   });
 
@@ -27,7 +26,7 @@ describe('GoogleCalendarService', () => {
 
     const { getGoogleCalendarService, toArtifact } = await import('#lib/server/context-sources/google-calendar');
     const calendar = getGoogleCalendarService();
-    const result = await calendar.upcomingEvents(3);
+    const result = await calendar.upcomingEvents('google-token', 3);
 
     expect(result.events[0]).toEqual(expect.objectContaining({
       id: 'event-1',

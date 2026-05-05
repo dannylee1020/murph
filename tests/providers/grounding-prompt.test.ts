@@ -44,19 +44,12 @@ function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolve
       {
         name: 'documentation-grounded-continuity',
         description: 'Grounds replies in documentation.',
-        triggers: [],
-        allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
-        toolNames: [],
         knowledgeDomains: ['documentation'],
         groundingPolicy: 'required_when_no_artifacts',
         channelNames: ['slack'],
-        contextSourceNames: [],
-        knowledgeRequirements: [],
         sessionModes: ['manual_review'],
-        appliesTo: ['channel_thread'],
         priority: 1,
         riskLevel: 'low',
-        abstainConditions: ['missing documentation grounding'],
         instructions: 'Choose the best documentation tool before answering.'
       }
     ],
@@ -88,9 +81,8 @@ describe('buildGroundingPrompt', () => {
 
   it('renders each selected skill as a readable system block', () => {
     const prompt = buildGroundingPrompt(context());
-    expect(prompt).toContain('## Skill: documentation-grounded-continuity');
+    expect(prompt).toContain('## documentation-grounded-continuity');
     expect(prompt).toContain('Grounds replies in documentation.');
-    expect(prompt).toContain('Allowed actions: reply, ask, redirect, defer, remind, abstain');
     expect(prompt).toContain('Choose the best documentation tool before answering.');
   });
 

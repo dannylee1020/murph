@@ -6,9 +6,8 @@ import type {
   WorkspaceMemory
 } from '#lib/types';
 
-function hasAvailableCapabilities(
+function hasAvailableContextSources(
   skill: SkillManifest,
-  tools: AgentToolInventoryItem[],
   workspaceMemory: WorkspaceMemory,
   fallbackSkillName: string
 ): boolean {
@@ -16,18 +15,11 @@ function hasAvailableCapabilities(
     return true;
   }
 
-  const availableTools = new Set(tools.map((tool) => tool.name));
-  const optionalTools = new Set(workspaceMemory.enabledOptionalTools);
   const enabledContextSources = new Set(workspaceMemory.enabledContextSources);
 
-  const hasTools = skill.toolNames.every(
-    (tool) => availableTools.has(tool) || optionalTools.has(tool)
-  );
-  const hasContextSources = (skill.contextSourceNames ?? []).every(
+  return (skill.contextSourceNames ?? []).every(
     (source) => enabledContextSources.has(source) || source === 'memory.linked_artifacts'
   );
-
-  return hasTools && hasContextSources;
 }
 
 /**
@@ -51,8 +43,8 @@ export function selectSkills(input: {
 
   const eligible = input.skills
     .filter((skill) => !skill.channelNames?.length || skill.channelNames.includes(input.channel))
-    .filter((skill) => !skill.sessionModes.length || skill.sessionModes.includes(input.sessionMode))
-    .filter((skill) => hasAvailableCapabilities(skill, input.tools, input.workspaceMemory, fallbackSkillName))
+    .filter((skill) => !skill.sessionModes?.length || skill.sessionModes.includes(input.sessionMode))
+    .filter((skill) => hasAvailableContextSources(skill, input.workspaceMemory, fallbackSkillName))
     .sort((a, b) => {
       if (b.priority !== a.priority) {
         return b.priority - a.priority;

@@ -455,9 +455,12 @@ export const gatewayRoutes: Route[] = [
     }
 
     const channelScope = body.channelScope ?? [];
+    const workspaceMemory = store.getOrCreateWorkspaceMemory(workspace.id);
+    const confirmed = new Set(workspaceMemory.confirmedChannels ?? []);
+    const uncheckedChannels = channelScope.filter((id) => !confirmed.has(id));
     const membershipResults: ChannelEnsureMemberResult[] = [];
 
-    for (const channelId of channelScope) {
+    for (const channelId of uncheckedChannels) {
       membershipResults.push(await getChannelRegistry().ensureMember(workspace, workspace.provider, channelId));
     }
 
@@ -494,6 +497,14 @@ export const gatewayRoutes: Route[] = [
         409
       );
       return;
+    }
+
+    const newlyConfirmed = membershipResults
+      .filter((result) => result.status === 'already_member' || result.status === 'joined')
+      .map((result) => result.channelId);
+    if (newlyConfirmed.length > 0) {
+      workspaceMemory.confirmedChannels = [...new Set([...confirmed, ...newlyConfirmed])];
+      store.upsertWorkspaceMemory(workspaceMemory);
     }
 
     store.upsertUser({

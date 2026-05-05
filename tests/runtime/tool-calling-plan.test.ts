@@ -18,17 +18,10 @@ function skill(overrides: Partial<SkillManifest> = {}): SkillManifest {
   return {
     name: 'channel-continuity',
     description: '',
-    triggers: [],
-    allowedActions: ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'],
-    toolNames: ['channel.fetch_thread', 'memory.thread.read'],
     channelNames: ['slack'],
-    contextSourceNames: [],
-    knowledgeRequirements: [],
     sessionModes: ['manual_review'],
-    appliesTo: ['channel_thread'],
     priority: 100,
     riskLevel: 'low',
-    abstainConditions: [],
     instructions: '',
     ...overrides
   };

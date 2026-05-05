@@ -37,15 +37,9 @@ function context(overrides: Partial<ContextAssembly> = {}): ContextAssembly {
       {
         name: 'channel-continuity',
         description: '',
-        triggers: [],
-        allowedActions: ['reply'],
-        toolNames: [],
-        knowledgeRequirements: [],
         sessionModes: ['manual_review', 'auto_send_low_risk', 'dry_run'],
-        appliesTo: [],
         priority: 1,
         riskLevel: 'low',
-        abstainConditions: [],
         instructions: ''
       }
     ],
