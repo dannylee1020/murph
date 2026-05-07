@@ -55,6 +55,10 @@ function sessionModeAllowsTool(tool: ToolInventoryItem, sessionMode?: SessionMod
   return tool.sessionModes.includes(sessionMode);
 }
 
+function isSourceArtifact(artifact: ContextAssembly['artifacts'][number]): boolean {
+  return artifact.source !== 'memory.linked_artifacts';
+}
+
 /**
  * Lists every tool the agent is allowed to see for this run, gated only by:
  *   - workspace allowlist (`enabledOptionalTools`)
@@ -95,7 +99,7 @@ export function buildRuntimeToolCallingPlan(input: {
   });
   const groundingDirective = buildGroundingDirective({
     skills: input.context.skills,
-    hasArtifacts: input.context.artifacts.length > 0
+    hasSourceArtifacts: input.context.artifacts.some(isSourceArtifact)
   });
 
   return {

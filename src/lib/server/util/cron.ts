@@ -1,4 +1,4 @@
-interface LocalDateTime {
+export interface LocalDateTime {
   year: number;
   month: number;
   day: number;
@@ -31,7 +31,7 @@ function localTimestamp(input: LocalDateTime): number {
   return Date.UTC(input.year, input.month - 1, input.day, input.hour, input.minute);
 }
 
-function localDateTimeToUtc(input: LocalDateTime, timezone: string): Date {
+export function localDateTimeToUtc(input: LocalDateTime, timezone: string): Date {
   let guess = new Date(localTimestamp(input));
 
   for (let index = 0; index < 3; index += 1) {

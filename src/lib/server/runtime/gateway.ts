@@ -9,7 +9,15 @@ import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { evaluatePolicy } from '#lib/server/runtime/policy';
-import type { AuditRecord, AutopilotSession, ContinuityTask, RecurringJobRecord, ReviewItem, RuntimeEventType } from '#lib/types';
+import type { AgentToolResult, AuditRecord, AutopilotSession, ContinuityTask, RecurringJobRecord, ReviewItem, RuntimeEventType } from '#lib/types';
+
+function failedToolNames(results: AgentToolResult[]): string[] {
+  return results.filter((result) => !result.ok).map((result) => result.name);
+}
+
+function shouldPersistThreadSummary(proposedAction: { type: string; confidence: number }, failedTools: string[]): boolean {
+  return failedTools.length === 0 && proposedAction.type === 'reply' && proposedAction.confidence >= 0.7;
+}
 
 export class Gateway {
   private readonly agentRuntime = new AgentRuntime();
@@ -307,6 +315,8 @@ export class Gateway {
       nextHeartbeatAt: proposedAction.followUpAt
     });
 
+    const failedTools = failedToolNames(runResult.toolResults);
+    const persistThreadSummary = shouldPersistThreadSummary(proposedAction, failedTools);
     await this.tools.execute<
       {
         workspaceId: string;
@@ -324,21 +334,31 @@ export class Gateway {
         channelId: task.thread.channelId,
         threadTs: task.thread.threadTs,
         targetUserId: task.targetUserId,
-        summary: context.summary,
+        summary: persistThreadSummary ? context.summary : undefined,
         openQuestions: context.unresolvedQuestions
       },
       { workspace, session, task, workspaceMemory }
     );
     toolsUsed.push('memory.thread.write');
-    await this.tools.execute<{ context: typeof context }, unknown>(
-      'memory.thread.write_markdown',
-      { context },
-      { workspace, session, task, workspaceMemory }
-    );
-    toolsUsed.push('memory.thread.write_markdown');
-    this.emitRunEvent(run.id, 'agent.memory.written', {
-      tools: ['memory.thread.write', 'memory.thread.write_markdown']
-    });
+    if (persistThreadSummary) {
+      await this.tools.execute<{ context: typeof context }, unknown>(
+        'memory.thread.write_markdown',
+        { context },
+        { workspace, session, task, workspaceMemory }
+      );
+      toolsUsed.push('memory.thread.write_markdown');
+      this.emitRunEvent(run.id, 'agent.memory.written', {
+        tools: ['memory.thread.write', 'memory.thread.write_markdown']
+      });
+    } else {
+      this.emitRunEvent(run.id, 'agent.memory.skipped', {
+        reason: failedTools.length > 0
+          ? 'Tool failures make the draft unsafe to persist as thread summary.'
+          : 'Only high-confidence replies are persisted as durable thread summaries.',
+        failedTools,
+        skipped: ['summary', 'markdown']
+      });
+    }
 
     let executionResult = 'No outbound action taken.';
 

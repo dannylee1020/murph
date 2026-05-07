@@ -3,7 +3,7 @@ import type { SkillManifest } from '#lib/types';
 function describeGroundingPolicy(policy: SkillManifest['groundingPolicy']): string | undefined {
   switch (policy) {
     case 'required_when_no_artifacts':
-      return 'You must retrieve evidence before drafting a response.';
+      return 'You must retrieve evidence from all available sources before drafting a response.';
     case 'prefer_search':
       return 'Prefer calling a retrieval tool before drafting.';
     case 'model_choice':
@@ -54,14 +54,14 @@ export function buildSkillsSystemBlock(skills: SkillManifest[]): string {
 
 /**
  * Returns a strict directive when any selected skill demands grounding before drafting
- * and the thread has no linked artifacts. Caller decides whether to inject it into the prompt.
+ * and no source evidence is already present in the current run.
  */
 export function buildGroundingDirective(input: {
   skills: SkillManifest[];
-  hasArtifacts: boolean;
+  hasSourceArtifacts: boolean;
 }): { required: boolean; reason: string } {
-  if (input.hasArtifacts) {
-    return { required: false, reason: 'Linked artifacts already provide grounding for this thread.' };
+  if (input.hasSourceArtifacts) {
+    return { required: false, reason: 'Current-run source artifacts already provide grounding for this thread.' };
   }
 
   const requiredSkill = input.skills.find(
@@ -70,7 +70,7 @@ export function buildGroundingDirective(input: {
   if (requiredSkill) {
     return {
       required: true,
-      reason: `Skill "${requiredSkill.name}" requires retrieval grounding before drafting because no artifacts are linked to this thread.`
+      reason: `Skill "${requiredSkill.name}" requires retrieval grounding before drafting because no current-run source evidence is present.`
     };
   }
 

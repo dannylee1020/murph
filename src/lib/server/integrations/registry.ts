@@ -59,7 +59,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     envKey: 'GOOGLE_ACCESS_TOKEN',
     credentialLabel: 'Google account',
     installPath: '/api/google/install',
-    tools: ['gmail.search', 'gmail.read_thread', 'calendar.search_events'],
+    tools: ['gmail.search', 'gmail.read_thread', 'calendar.search_events', 'calendar.check_availability'],
     contextSources: ['gmail.thread_search', 'calendar.upcoming_events']
   }
 ];

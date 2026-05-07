@@ -147,7 +147,7 @@ describe('buildRuntimeToolCallingPlan', () => {
     expect(plan.retrievalToolNames).toEqual(['notion.search']);
   });
 
-  it('does not require grounding when artifacts already exist', () => {
+  it('does not require grounding when source artifacts already exist in the current run', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
         skills: [skill({ groundingPolicy: 'required_when_no_artifacts' })],
@@ -157,6 +157,43 @@ describe('buildRuntimeToolCallingPlan', () => {
     });
 
     expect(plan.groundingDirective.required).toBe(false);
+  });
+
+  it('still requires grounding when only linked thread-memory pointers exist', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        skills: [skill({ groundingPolicy: 'required_when_no_artifacts' })],
+        linkedArtifacts: ['https://example.com/doc'],
+        memory: {
+          ...context().memory,
+          thread: {
+            ...context().memory.thread,
+            linkedArtifacts: ['https://example.com/doc']
+          }
+        }
+      }),
+      allTools
+    });
+
+    expect(plan.groundingDirective.required).toBe(true);
+  });
+
+  it('still requires grounding when only thread memory summary contains a factual claim', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        skills: [skill({ groundingPolicy: 'required_when_no_artifacts' })],
+        memory: {
+          ...context().memory,
+          thread: {
+            ...context().memory.thread,
+            summary: 'Calendar checks show next Thursday is unavailable.'
+          }
+        }
+      }),
+      allTools
+    });
+
+    expect(plan.groundingDirective.required).toBe(true);
   });
 
   it('does not require grounding when no skill demands it, even without artifacts', () => {

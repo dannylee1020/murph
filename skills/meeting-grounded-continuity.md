@@ -9,8 +9,7 @@ priority: 115
 
 When a thread asks what was said or decided in a meeting:
 
-- Search for transcript or note evidence before answering from memory or channel recap
-- Use documentation only as supporting context when it clarifies the meeting outcome
+- Search all available sources — transcripts, notes, documentation, and communication — for evidence before answering
 - Ask a narrow follow-up when the meeting record is missing or incomplete
 - Do not overstate decisions that are not explicitly present in retrieved meeting evidence
 - Abstain when: transcript missing, question better answered by code/docs sources, requires quoting an unretrieved meeting

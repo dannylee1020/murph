@@ -468,6 +468,7 @@ export type RuntimeEventType =
     | 'agent.tool.completed'
     | 'agent.policy.decided'
     | 'agent.memory.written'
+    | 'agent.memory.skipped'
     | 'agent.action.queued'
     | 'agent.action.sent'
     | 'agent.run.completed'

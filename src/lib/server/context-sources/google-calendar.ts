@@ -31,6 +31,15 @@ export interface CalendarEventResult {
   attendees: string[];
 }
 
+export interface CalendarAvailabilityResult {
+  timezone: string;
+  windowStart: string;
+  windowEnd: string;
+  hasConflicts: boolean;
+  eventCount: number;
+  busyBlocks: Array<{ start?: string; end?: string; title: string }>;
+}
+
 function compact(value: string | undefined, limit = 4000): string {
   return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
@@ -84,6 +93,34 @@ export class GoogleCalendarService {
     }
 
     return await this.listEvents(accessToken, params);
+  }
+
+  async checkAvailability(
+    accessToken: string,
+    input: { timezone: string; windowStart: string; windowEnd: string }
+  ): Promise<CalendarAvailabilityResult> {
+    const result = await this.listEvents(accessToken, {
+      maxResults: 250,
+      timeMin: input.windowStart,
+      timeMax: input.windowEnd,
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+
+    const busyBlocks = result.events.map((event) => ({
+      start: event.start,
+      end: event.end,
+      title: event.title
+    }));
+
+    return {
+      timezone: input.timezone,
+      windowStart: input.windowStart,
+      windowEnd: input.windowEnd,
+      hasConflicts: busyBlocks.length > 0,
+      eventCount: busyBlocks.length,
+      busyBlocks
+    };
   }
 
   private async listEvents(accessToken: string, params: Record<string, string | number | boolean>): Promise<{ events: CalendarEventResult[] }> {

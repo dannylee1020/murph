@@ -9,7 +9,9 @@ priority: 110
 
 When a thread asks about recent communication, scheduling, or follow-ups:
 
-- Search email, calendar, and team-history sources before answering
+- Search all available sources — email, calendar, team history, documentation, and notes — for relevant evidence before answering
+- For availability or scheduling questions, call `calendar.search_events` with explicit `timeMin` and `timeMax` for the requested window and a limit large enough to cover that window
+- For “is <day> good for a sync?” without a specific time, call `calendar.check_availability` with `window: workday` for that date and answer directly from the conflict result
 - Answer only from retrieved evidence that directly supports the draft
 - Ask a narrow follow-up when the communication trail is missing or ambiguous
 - Do not send emails, schedule meetings, or make commitments on the user's behalf

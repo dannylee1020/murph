@@ -154,11 +154,12 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
     label: tool.name,
     description: tool.description,
     parameters: toTypeBoxSchema(tool.inputSchema),
-    executionMode: 'sequential',
+    executionMode: 'parallel',
     execute: async (toolCallId, params) => {
       const normalizedInput = input.defaultToolInput(tool.name, params);
       const output = await registry.execute(tool.name, normalizedInput, {
         workspace: input.workspace,
+        task: input.context.task,
         workspaceMemory: input.context.memory.workspace
       });
 
@@ -191,7 +192,7 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
     {
       model: getModel(input.provider as any, (input.model ?? DEFAULT_PROVIDER_MODEL[input.provider]) as any),
       convertToLlm,
-      toolExecution: 'sequential',
+      toolExecution: 'parallel',
       beforeToolCall: async ({ toolCall }) => {
         const rawName = rawToolName(toolCall.name, aliasToRaw);
         let definition;

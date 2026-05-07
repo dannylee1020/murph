@@ -2,7 +2,7 @@ import { getContextSourceRegistry } from '#lib/server/capabilities/context-sourc
 import { getMemoryService } from '#lib/server/memory/service';
 import { getModelProvider } from '#lib/server/providers/index';
 import { runGroundingLoop } from '#lib/server/runtime/pi-agent-loop';
-import { expandContextSourcesByDomain } from '#lib/server/runtime/domain-expansion';
+import { expandContextSources } from '#lib/server/runtime/domain-expansion';
 import { buildRuntimeToolCallingPlan, listAvailableTools } from '#lib/server/runtime/tool-calling-plan';
 import { outputSummary, truncateToolOutput } from '#lib/server/runtime/tool-output';
 import { selectSkills } from '#lib/server/skills/selection';
@@ -24,7 +24,7 @@ import type {
   Workspace
 } from '#lib/types';
 
-const MAX_TOOL_CALLS_PER_RUN = 6;
+const MAX_TOOL_CALLS_PER_RUN = 12;
 
 export interface AgentRunResult {
   context: ContextAssembly;
@@ -249,7 +249,7 @@ export class AgentRuntime {
       availableTools,
       linkedArtifacts: threadMemory.linkedArtifacts
     };
-    const contextSourceNames = expandContextSourcesByDomain({
+    const contextSourceNames = expandContextSources({
       selectedSkills,
       allSources: this.contextSources.list(),
       workspaceMemory

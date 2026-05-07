@@ -25,6 +25,7 @@ import { createDiscordChannelAdapter } from '#lib/server/channels/discord/adapte
 import { getDiscordArchiveService, readDiscordThread, toArtifact as discordToArtifact } from '#lib/server/context-sources/discord-archive';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
+import { localDateTimeToUtc } from '#lib/server/util/cron';
 import type { ChannelMessage, ContextArtifact, ToolDefinition } from '#lib/types';
 
 let initialized = false;
@@ -51,6 +52,51 @@ function slackSearchArtifact(result: {
       userId: result.userId
     }
   };
+}
+
+function compactCalendarEvents(events: Array<{ title: string; start?: string; end?: string }>) {
+  return events.map((event) => ({
+    title: event.title,
+    start: event.start,
+    end: event.end
+  }));
+}
+
+function parseLocalDate(value: string): { year: number; month: number; day: number } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    throw new Error('date must use YYYY-MM-DD format');
+  }
+
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3])
+  };
+}
+
+function workdayWindowForDate(input: { date: string; timezone: string; workdayStartHour: number; workdayEndHour: number }) {
+  if (input.workdayEndHour <= input.workdayStartHour) {
+    throw new Error('user workday is invalid');
+  }
+
+  const { year, month, day } = parseLocalDate(input.date);
+  const windowStart = localDateTimeToUtc({
+    year,
+    month,
+    day,
+    hour: input.workdayStartHour,
+    minute: 0
+  }, input.timezone).toISOString();
+  const windowEnd = localDateTimeToUtc({
+    year,
+    month,
+    day,
+    hour: input.workdayEndHour,
+    minute: 0
+  }, input.timezone).toISOString();
+
+  return { windowStart, windowEnd };
 }
 
 export function registerBuiltInTools(): void {
@@ -707,7 +753,7 @@ export function registerBuiltInTools(): void {
 
   tools.push({
     name: 'calendar.search_events',
-    description: 'Search Google Calendar events. Use timeMin/timeMax (ISO 8601) to scope by date range. Pass an empty query to list all events in the range.',
+    description: 'Search Google Calendar events. Use timeMin/timeMax (ISO 8601) to scope by date range. Pass an empty query to list all events in the range. For availability questions, use a limit large enough to cover the full window.',
     sideEffectClass: 'read',
     retrievalEligible: true,
     inputSchema: {
@@ -726,9 +772,80 @@ export function registerBuiltInTools(): void {
     supportsDryRun: true,
     async execute(input: { query?: string; limit?: number; timeMin?: string; timeMax?: string }, context) {
       const token = await getValidGoogleAccessToken(context.workspace.id);
-      return await calendar.searchEvents(token, input.query ?? '', input.limit ?? 5, {
+      const result = await calendar.searchEvents(token, input.query ?? '', input.limit ?? 25, {
         timeMin: input.timeMin,
         timeMax: input.timeMax
+      });
+      return {
+        query: input.query ?? '',
+        windowStart: input.timeMin,
+        windowEnd: input.timeMax,
+        eventCount: result.events.length,
+        events: compactCalendarEvents(result.events)
+      };
+    }
+  });
+
+  tools.push({
+    name: 'calendar.check_availability',
+    description: 'Check whether the target user has calendar conflicts in a specific window. Use window=workday with YYYY-MM-DD for questions like "is Thursday good for a sync?" without a specific time.',
+    sideEffectClass: 'read',
+    retrievalEligible: true,
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['date', 'window'],
+      properties: {
+        date: { type: 'string', description: 'Target local date in YYYY-MM-DD format.' },
+        window: { type: 'string', enum: ['workday', 'custom'] },
+        timeMin: { type: 'string', description: 'ISO 8601 custom window start. Required when window=custom.' },
+        timeMax: { type: 'string', description: 'ISO 8601 custom window end. Required when window=custom.' }
+      }
+    },
+    knowledgeDomains: ['calendar', 'coordination'],
+    optional: true,
+    requiresWorkspaceEnablement: true,
+    supportsDryRun: true,
+    async execute(
+      input: { date: string; window: 'workday' | 'custom'; timeMin?: string; timeMax?: string },
+      context
+    ) {
+      const token = await getValidGoogleAccessToken(context.workspace.id);
+      const targetUserId = context.task?.targetUserId;
+      let timezone: string;
+      let windowStart: string;
+      let windowEnd: string;
+
+      if (input.window === 'custom') {
+        if (!input.timeMin || !input.timeMax) {
+          throw new Error('timeMin and timeMax are required when window=custom');
+        }
+        timezone = targetUserId
+          ? store.getUser(context.workspace.id, targetUserId)?.schedule.timezone ?? 'UTC'
+          : 'UTC';
+        windowStart = input.timeMin;
+        windowEnd = input.timeMax;
+      } else {
+        if (!targetUserId) {
+          throw new Error('Target user is unavailable');
+        }
+        const user = store.getUser(context.workspace.id, targetUserId);
+        if (!user) {
+          throw new Error('Target user schedule is unavailable');
+        }
+        timezone = user.schedule.timezone;
+        ({ windowStart, windowEnd } = workdayWindowForDate({
+          date: input.date,
+          timezone,
+          workdayStartHour: user.schedule.workdayStartHour,
+          workdayEndHour: user.schedule.workdayEndHour
+        }));
+      }
+
+      return await calendar.checkAvailability(token, {
+        timezone,
+        windowStart,
+        windowEnd
       });
     }
   });

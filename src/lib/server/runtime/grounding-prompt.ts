@@ -19,7 +19,7 @@ function describeAvailableTools(context: Pick<ContextAssembly, 'availableTools'>
     const domains = tool.knowledgeDomains?.length ? ` (${tool.knowledgeDomains.join(', ')})` : '';
     return `- ${tool.name}${domains}: ${tool.description}`;
   });
-  return ['Tools you may call (pick the right one based on its description and domains):', ...lines].join('\n');
+  return ['Tools you may call. When the question could benefit from multiple sources, call several retrieval tools rather than just one:', ...lines].join('\n');
 }
 
 function describeGroundingDirective(directive?: GroundingDirective): string {
@@ -27,9 +27,17 @@ function describeGroundingDirective(directive?: GroundingDirective): string {
     return 'If the provided context is already sufficient, answer without calling tools.';
   }
   if (directive.required) {
-    return `Grounding required: ${directive.reason} You MUST call a relevant retrieval/search tool before drafting. If results are weak or empty, explain what you searched and queue the thread for review.`;
+    return `Grounding required: ${directive.reason} You MUST call all relevant retrieval/search tools before drafting to gather evidence from every available source. If results are weak or empty, explain what you searched and queue the thread for review.`;
   }
   return `${directive.reason} Call a retrieval tool only when it materially improves the answer.`;
+}
+
+function describeMemoryBoundary(): string {
+  return [
+    'Thread memory is conversation context, not source-of-truth evidence.',
+    'Use it to understand what the thread has been discussing, but do not answer factual or current-state questions from thread memory alone.',
+    'For factual or current claims, rely on current-run source artifacts, successful current-run tool results, or explicit source documents retrieved in this run.'
+  ].join(' ');
 }
 
 function contextWithoutSkills(
@@ -52,6 +60,7 @@ export function buildGroundingPrompt(
 
   sections.push(describeAvailableTools(context));
   sections.push(describeGroundingDirective(directive));
+  sections.push(describeMemoryBoundary());
   sections.push('');
   sections.push('Thread, memory, and artifact context:');
   sections.push(JSON.stringify(contextWithoutSkills(context)));

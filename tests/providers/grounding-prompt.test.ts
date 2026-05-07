@@ -69,7 +69,7 @@ function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolve
 
 const requiredDirective: GroundingDirective = {
   required: true,
-  reason: 'Skill "documentation-grounded-continuity" requires retrieval grounding before drafting because no artifacts are linked to this thread.'
+  reason: 'Skill "documentation-grounded-continuity" requires retrieval grounding before drafting because no current-run source evidence is present.'
 };
 
 describe('buildGroundingPrompt', () => {
@@ -88,18 +88,35 @@ describe('buildGroundingPrompt', () => {
 
   it('lists each available tool with its description', () => {
     const prompt = buildGroundingPrompt(context());
+    expect(prompt).toContain('call several retrieval tools rather than just one');
     expect(prompt).toContain('- notion.search (documentation): Search documentation');
   });
 
   it('inserts a strict directive when grounding is required', () => {
     const prompt = buildGroundingPrompt(context(), requiredDirective);
-    expect(prompt).toContain('You MUST call a relevant retrieval/search tool before drafting');
+    expect(prompt).toContain('You MUST call all relevant retrieval/search tools before drafting');
+  });
+
+  it('describes thread memory as context rather than source evidence', () => {
+    const prompt = buildGroundingPrompt(context({
+      memory: {
+        ...context().memory,
+        thread: {
+          ...context().memory.thread,
+          summary: 'Calendar says next Thursday is unavailable.'
+        }
+      }
+    }));
+
+    expect(prompt).toContain('Thread memory is conversation context, not source-of-truth evidence.');
+    expect(prompt).toContain('do not answer factual or current-state questions from thread memory alone');
   });
 
   it('lets the model skip retrieval when not required', () => {
     const prompt = buildGroundingPrompt(context({
+      linkedArtifacts: ['https://example.com/launch-plan'],
       artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Launch plan', text: 'Ready.' }]
     }));
-    expect(prompt).not.toContain('You MUST call a relevant retrieval/search tool before drafting');
+    expect(prompt).not.toContain('You MUST call all relevant retrieval/search tools before drafting');
   });
 });

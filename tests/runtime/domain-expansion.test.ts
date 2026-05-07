@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandContextSourcesByDomain } from '../../src/lib/server/runtime/domain-expansion';
+import { expandContextSources } from '../../src/lib/server/runtime/domain-expansion';
 import type { ContextSource, SkillManifest, WorkspaceMemory } from '../../src/lib/types';
 
 const workspaceMemory: WorkspaceMemory = {
@@ -7,7 +7,7 @@ const workspaceMemory: WorkspaceMemory = {
   channelMappings: [],
   escalationRules: [],
   enabledOptionalTools: [],
-  enabledContextSources: ['notion.thread_search', 'confluence.thread_search'],
+  enabledContextSources: ['notion.thread_search', 'confluence.thread_search', 'github.thread_search'],
   enabledPlugins: []
 };
 
@@ -33,9 +33,9 @@ function source(input: Pick<ContextSource, 'name'> & Partial<ContextSource>): Pi
   };
 }
 
-describe('expandContextSourcesByDomain', () => {
-  it('expands enabled context sources by selected skill domain', () => {
-    const expanded = expandContextSourcesByDomain({
+describe('expandContextSources', () => {
+  it('expands all enabled context sources regardless of selected skill domain', () => {
+    const expanded = expandContextSources({
       selectedSkills: [skill()],
       allSources: [
         source({ name: 'memory.linked_artifacts', knowledgeDomains: ['documentation'] }),
@@ -48,12 +48,12 @@ describe('expandContextSourcesByDomain', () => {
 
     expect(expanded).toEqual({
       explicit: ['memory.linked_artifacts'],
-      optional: ['notion.thread_search', 'confluence.thread_search']
+      optional: ['notion.thread_search', 'confluence.thread_search', 'github.thread_search']
     });
   });
 
   it('skips optional sources whose workspace allowlist is empty', () => {
-    const expanded = expandContextSourcesByDomain({
+    const expanded = expandContextSources({
       selectedSkills: [skill()],
       allSources: [
         source({ name: 'notion.thread_search', optional: true, knowledgeDomains: ['documentation'] })
@@ -62,5 +62,20 @@ describe('expandContextSourcesByDomain', () => {
     });
 
     expect(expanded).toEqual({ explicit: [], optional: [] });
+  });
+
+  it('includes enabled sources from unrelated domains', () => {
+    const expanded = expandContextSources({
+      selectedSkills: [skill({ knowledgeDomains: ['documentation'] })],
+      allSources: [
+        source({ name: 'gmail.thread_search', optional: true, knowledgeDomains: ['email'] })
+      ],
+      workspaceMemory: {
+        ...workspaceMemory,
+        enabledContextSources: ['gmail.thread_search']
+      }
+    });
+
+    expect(expanded).toEqual({ explicit: [], optional: ['gmail.thread_search'] });
   });
 });

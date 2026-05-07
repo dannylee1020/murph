@@ -270,6 +270,103 @@ describe('runGroundingLoop', () => {
     });
   });
 
+  it('configures model-requested tool calls for parallel execution', async () => {
+    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
+    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const registry = getToolRegistry();
+    registry.register({
+      name: 'notion.search',
+      description: '',
+      sideEffectClass: 'read',
+      async execute() {
+        return { ok: true };
+      }
+    });
+
+    runAgentLoopMock.mockImplementation(async (_prompts, agentContext, config) => {
+      expect(config.toolExecution).toBe('parallel');
+      expect(agentContext.tools?.[0]?.executionMode).toBe('parallel');
+      return [finalAssistantMessage()];
+    });
+
+    await runGroundingLoop({
+      context: {
+        ...baseContext(),
+        availableTools: [{ name: 'notion.search', description: '', sideEffectClass: 'read' }]
+      },
+      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      provider: 'openai',
+      maxToolCallsPerRun: 6,
+      retrievalToolNames: ['notion.search'],
+      defaultToolInput: (_, toolInput) => toolInput,
+      enrichToolOutput: async (_, output) => output,
+      linkThreadArtifact: () => undefined
+    });
+  });
+
+  it('passes the current task into model-directed tool execution', async () => {
+    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
+    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const registry = getToolRegistry();
+    registry.register({
+      name: 'calendar.check_availability',
+      description: '',
+      sideEffectClass: 'read',
+      async execute(_input, context) {
+        return { targetUserId: context.task?.targetUserId };
+      }
+    });
+
+    runAgentLoopMock.mockImplementation(async (_prompts, agentContext, _config, emit) => {
+      const calendarAlias = alias('calendar.check_availability');
+      const tool = agentContext.tools?.find((entry) => entry.name === calendarAlias);
+      if (!tool) {
+        throw new Error('Missing calendar.check_availability tool alias');
+      }
+
+      emit({ type: 'turn_start' });
+      const result = await tool.execute('call-1', { date: '2026-05-14', window: 'workday' });
+      emit({ type: 'tool_execution_end', toolCallId: 'call-1', toolName: calendarAlias, result, isError: false });
+      emit({
+        type: 'message_end',
+        message: {
+          role: 'toolResult' as const,
+          toolCallId: 'call-1',
+          toolName: calendarAlias,
+          content: result.content,
+          details: result.details,
+          isError: false,
+          timestamp: Date.now()
+        }
+      });
+
+      return [finalAssistantMessage()];
+    });
+
+    const result = await runGroundingLoop({
+      context: {
+        ...baseContext(),
+        availableTools: [{ name: 'calendar.check_availability', description: '', sideEffectClass: 'read' }]
+      },
+      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      provider: 'openai',
+      maxToolCallsPerRun: 6,
+      retrievalToolNames: ['calendar.check_availability'],
+      defaultToolInput: (_, toolInput) => toolInput,
+      enrichToolOutput: async (_, output) => output,
+      linkThreadArtifact: () => undefined
+    });
+
+    expect(result.toolResults).toEqual([
+      {
+        id: 'call-1',
+        name: 'calendar.check_availability',
+        ok: true,
+        output: { targetUserId: 'owner' }
+      }
+    ]);
+  });
+
   it('maps tool_execution_end once and preserves tool-result source order', async () => {
     const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
     const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
