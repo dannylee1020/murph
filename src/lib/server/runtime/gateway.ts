@@ -9,7 +9,21 @@ import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { evaluatePolicy } from '#lib/server/runtime/policy';
-import type { AgentToolResult, AuditRecord, AutopilotSession, ContinuityTask, RecurringJobRecord, ReviewItem, RuntimeEventType } from '#lib/types';
+import { SessionContextBuilder } from '#lib/server/runtime/session-context';
+import type {
+  ActionContextSnapshot,
+  AgentToolResult,
+  AuditRecord,
+  AutopilotSession,
+  ChannelMessage,
+  ContextAssembly,
+  ContinuityTask,
+  RecurringJobRecord,
+  ReviewItem,
+  RuntimeEventType,
+  Workspace,
+  WorkspaceMemory
+} from '#lib/types';
 
 function failedToolNames(results: AgentToolResult[]): string[] {
   return results.filter((result) => !result.ok).map((result) => result.name);
@@ -19,11 +33,25 @@ function shouldPersistThreadSummary(proposedAction: { type: string; confidence: 
   return failedTools.length === 0 && proposedAction.type === 'reply' && proposedAction.confidence >= 0.7;
 }
 
+function compactSnapshotText(text: string, limit = 1000): string {
+  const compacted = text.replace(/\s+/g, ' ').trim();
+  return compacted.length > limit ? `${compacted.slice(0, limit - 3)}...` : compacted;
+}
+
+function snapshotMessages(messages: ChannelMessage[]): ActionContextSnapshot['thread']['messages'] {
+  return messages.slice(-50).map((message) => ({
+    ts: message.ts,
+    authorId: message.authorId ?? message.userId,
+    text: compactSnapshotText(message.text)
+  }));
+}
+
 export class Gateway {
   private readonly agentRuntime = new AgentRuntime();
   private readonly memory = getMemoryService();
   private readonly store = getStore();
   private readonly tools = getToolRegistry();
+  private readonly sessionContextBuilder = new SessionContextBuilder();
   private heartbeatHandle: NodeJS.Timeout | null = null;
 
   ensureStarted(): void {
@@ -126,7 +154,16 @@ export class Gateway {
       message,
       reason: 'Scheduled morning digest',
       confidence: 1,
-      provider: this.store.getProviderSettings(workspace.id)?.provider
+      provider: this.store.getProviderSettings(workspace.id)?.provider,
+      contextSnapshot: {
+        summary: 'Scheduled morning digest.',
+        continuityCase: 'unknown' as const,
+        thread: {
+          channelId: job.payload.channelId,
+          threadTs,
+          messages: []
+        }
+      }
     };
 
     if (session.mode === 'auto_send_low_risk') {
@@ -189,6 +226,60 @@ export class Gateway {
     }
 
     return lines.join('\n');
+  }
+
+  async buildSessionContext(
+    workspace: Workspace,
+    session: AutopilotSession,
+    workspaceMemory: WorkspaceMemory
+  ) {
+    const owner = this.store.getUser(workspace.id, session.ownerUserId);
+    return await this.sessionContextBuilder.build({
+      workspace,
+      session,
+      workspaceMemory,
+      timezone: owner?.schedule.timezone
+    });
+  }
+
+  private async buildActionContextSnapshot(input: {
+    context: ContextAssembly;
+    task: ContinuityTask;
+    workspace: Workspace;
+    session: AutopilotSession;
+    workspaceMemory: WorkspaceMemory;
+  }): Promise<ActionContextSnapshot> {
+    let messages = input.context.thread.recentMessages;
+
+    if (messages.length === 0) {
+      try {
+        messages = await this.tools.execute<{ channelId: string; threadTs: string }, ChannelMessage[]>(
+          'channel.fetch_thread',
+          {
+            channelId: input.task.thread.channelId,
+            threadTs: input.task.thread.threadTs
+          },
+          {
+            workspace: input.workspace,
+            session: input.session,
+            task: input.task,
+            workspaceMemory: input.workspaceMemory
+          }
+        );
+      } catch {
+        messages = [];
+      }
+    }
+
+    return {
+      summary: input.context.summary ?? input.context.thread.latestMessage,
+      continuityCase: input.context.continuityCase,
+      thread: {
+        channelId: input.task.thread.channelId,
+        threadTs: input.task.thread.threadTs,
+        messages: snapshotMessages(messages)
+      }
+    };
   }
 
   async handleTask(task: ContinuityTask): Promise<AuditRecord> {
@@ -316,6 +407,13 @@ export class Gateway {
     });
 
     const failedTools = failedToolNames(runResult.toolResults);
+    const contextSnapshot = await this.buildActionContextSnapshot({
+      context,
+      task,
+      workspace,
+      session,
+      workspaceMemory
+    });
     const persistThreadSummary = shouldPersistThreadSummary(proposedAction, failedTools);
     await this.tools.execute<
       {
@@ -420,7 +518,8 @@ export class Gateway {
         message: proposedAction.message,
         reason: message,
         confidence: proposedAction.confidence,
-        provider: this.store.getProviderSettings(workspace.id)?.provider
+        provider: this.store.getProviderSettings(workspace.id)?.provider,
+        contextSnapshot
       });
 
       this.emitRunEvent(run.id, 'agent.run.failed', { error: message });
@@ -461,6 +560,7 @@ export class Gateway {
               reason: string;
               confidence: number;
               provider?: AuditRecord['provider'];
+              contextSnapshot?: ActionContextSnapshot;
             },
             ReviewItem
           >(
@@ -476,7 +576,8 @@ export class Gateway {
               message: proposedAction.message,
               reason: proposedAction.reason,
               confidence: proposedAction.confidence,
-              provider: this.store.getProviderSettings(workspace.id)?.provider
+              provider: this.store.getProviderSettings(workspace.id)?.provider,
+              contextSnapshot
             },
             { workspace, session, task, workspaceMemory }
           )
@@ -491,7 +592,8 @@ export class Gateway {
             message: proposedAction.message,
             reason: proposedAction.reason,
             confidence: proposedAction.confidence,
-            provider: this.store.getProviderSettings(workspace.id)?.provider
+            provider: this.store.getProviderSettings(workspace.id)?.provider,
+            contextSnapshot
           });
     if (decision.disposition === 'queued') {
       toolsUsed.push('queue.enqueue');

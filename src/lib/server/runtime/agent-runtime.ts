@@ -9,6 +9,7 @@ import { selectSkills } from '#lib/server/skills/selection';
 import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
+import { sessionContextToArtifact } from '#lib/server/runtime/session-context';
 import type {
   AgentToolResult,
   AutopilotSession,
@@ -260,14 +261,17 @@ export class AgentRuntime {
       context: baseContext,
       enabledContextSources: workspaceMemory.enabledContextSources
     });
+    const sessionContext = session.contextSnapshot ?? this.store.getSessionContext(session.id);
+    const sessionArtifacts = sessionContext ? [sessionContextToArtifact(sessionContext)] : [];
 
     return {
       ...baseContext,
-      artifacts,
+      artifacts: mergeArtifacts(sessionArtifacts, artifacts),
       availableTools,
       continuityCase: inferCaseFromText(latestMessage),
       summary: latestMessage,
-      unresolvedQuestions: latestMessage.includes('?') ? [latestMessage] : []
+      unresolvedQuestions: latestMessage.includes('?') ? [latestMessage] : [],
+      sessionContext
     };
   }
 

@@ -237,6 +237,26 @@ export const gatewayRoutes: Route[] = [
 
     sendJson(res, { events: getStore().listAgentRunEvents(params.id) });
   }),
+  route('GET', '/api/gateway/triage', ({ res, url }) => {
+    const store = getStore();
+    const workspaceId = url.searchParams.get('workspaceId') ?? undefined;
+    const requestedSessionId = url.searchParams.get('sessionId') ?? undefined;
+    const sessions = store.listCompletedSessions(workspaceId, 20);
+    const session = requestedSessionId
+      ? store.getSessionById(requestedSessionId)
+      : sessions[0];
+
+    if (requestedSessionId && (!session || (workspaceId && session.workspaceId !== workspaceId))) {
+      sendJson(res, { ok: false, error: 'not_found' }, 404);
+      return;
+    }
+
+    sendJson(res, {
+      session: session ?? null,
+      sessions,
+      items: session ? store.listTriageItems(workspaceId, session.id) : []
+    });
+  }),
   route('GET', '/api/gateway/queue', ({ res, url }) => {
     sendJson(res, {
       queue: getStore().listReviewQueue(
@@ -543,7 +563,7 @@ export const gatewayRoutes: Route[] = [
       policy: policyProfile
     });
 
-    const session = store.createSession({
+    let session = store.createSession({
       workspaceId: workspace.id,
       ownerUserId,
       title: body.title?.trim() || 'Overnight autopilot',
@@ -554,9 +574,24 @@ export const gatewayRoutes: Route[] = [
       policy: policyProfile,
       endsAt: new Date(Date.now() + Math.max(1, body.durationHours ?? 10) * 60 * 60 * 1000).toISOString()
     });
+    const sessionContext = await gateway.buildSessionContext(workspace, session, workspaceMemory);
+    session = store.setSessionContext(session.id, sessionContext) ?? session;
     emitControlPlaneEvent({ type: 'session.updated', session });
 
-    sendJson(res, { ok: true, session, autoJoined }, 201);
+    sendJson(res, { ok: true, session, autoJoined, sessionContext }, 201);
+  }),
+  route('GET', '/api/gateway/sessions/:id/context', ({ res, params }) => {
+    const session = getStore().getSessionById(params.id);
+    if (!session) {
+      sendJson(res, { ok: false, error: 'not_found' }, 404);
+      return;
+    }
+
+    sendJson(res, {
+      ok: true,
+      session,
+      context: getStore().getSessionContext(params.id) ?? null
+    });
   }),
   route('GET', '/api/gateway/sessions/:id', ({ res, params }) => {
     const session = getStore().getSessionById(params.id);

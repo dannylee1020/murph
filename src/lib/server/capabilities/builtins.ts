@@ -513,6 +513,7 @@ export function registerBuiltInTools(): void {
         reason: string;
         confidence: number;
         provider?: any;
+        contextSnapshot?: any;
       }) {
         return store.insertAction(input);
       }

@@ -88,13 +88,14 @@ describe('buildGroundingPrompt', () => {
 
   it('lists each available tool with its description', () => {
     const prompt = buildGroundingPrompt(context());
-    expect(prompt).toContain('call several retrieval tools rather than just one');
+    expect(prompt).toContain('avoid unrelated sources even when they are available');
     expect(prompt).toContain('- notion.search (documentation): Search documentation');
   });
 
   it('inserts a strict directive when grounding is required', () => {
     const prompt = buildGroundingPrompt(context(), requiredDirective);
-    expect(prompt).toContain('You MUST call all relevant retrieval/search tools before drafting');
+    expect(prompt).toContain('You MUST call the relevant retrieval/search tools before drafting');
+    expect(prompt).toContain('do not call unrelated tools');
   });
 
   it('describes thread memory as context rather than source evidence', () => {
@@ -117,6 +118,6 @@ describe('buildGroundingPrompt', () => {
       linkedArtifacts: ['https://example.com/launch-plan'],
       artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Launch plan', text: 'Ready.' }]
     }));
-    expect(prompt).not.toContain('You MUST call all relevant retrieval/search tools before drafting');
+    expect(prompt).not.toContain('You MUST call the relevant retrieval/search tools before drafting');
   });
 });

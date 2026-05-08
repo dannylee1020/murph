@@ -15,7 +15,9 @@ import type {
   RecurringJobRecord,
   ReminderRecord,
   ReviewItem,
+  SessionContextSnapshot,
   SessionStatus,
+  TriageItem,
   ThreadMemory,
   ThreadStateRecord,
   UserMemory,
@@ -107,6 +109,15 @@ export class Store {
   listActiveSessions(workspaceId?: string): AutopilotSession[] {
     return session.listActiveSessions(this.db, workspaceId);
   }
+  listCompletedSessions(workspaceId?: string, limit = 20): AutopilotSession[] {
+    return session.listCompletedSessions(this.db, workspaceId, limit);
+  }
+  getSessionContext(id: string): SessionContextSnapshot | undefined {
+    return session.getSessionContext(this.db, id);
+  }
+  setSessionContext(id: string, context: SessionContextSnapshot): AutopilotSession | undefined {
+    return session.setSessionContext(this.db, id, context);
+  }
   stopSession(id: string, status: SessionStatus = 'stopped'): void {
     session.stopSession(this.db, id, status);
   }
@@ -149,6 +160,9 @@ export class Store {
   }
   listReviewQueue(workspaceId?: string, sessionId?: string): ReviewItem[] {
     return action.listReviewQueue(this.db, workspaceId, sessionId);
+  }
+  listTriageItems(workspaceId?: string, sessionId?: string): TriageItem[] {
+    return action.listTriageItems(this.db, workspaceId, sessionId);
   }
 
   // Audit

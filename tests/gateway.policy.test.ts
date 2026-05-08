@@ -43,6 +43,7 @@ function runResult(
     summary?: string;
     unresolvedQuestions?: string[];
     toolResults?: AgentToolResult[];
+    recentMessages?: ContextAssembly['thread']['recentMessages'];
   } = {}
 ): AgentRunResult {
   const context: ContextAssembly = {
@@ -52,7 +53,7 @@ function runResult(
     thread: {
       ref: taskInput.thread,
       latestMessage: '<@UOWNER> can you confirm this?',
-      recentMessages: [
+      recentMessages: overrides.recentMessages ?? [
         {
           provider: 'slack',
           userId: taskInput.actorUserId,
@@ -107,10 +108,37 @@ function runResult(
   };
 }
 
-async function setup(overrides: { toolResults?: AgentToolResult[] } = {}) {
+async function setup(
+  overrides: {
+    proposedAction?: Partial<AgentRunResult['proposedAction']>;
+    summary?: string;
+    unresolvedQuestions?: string[];
+    toolResults?: AgentToolResult[];
+    recentMessages?: ContextAssembly['thread']['recentMessages'];
+    sessionMode?: 'manual_review' | 'auto_send_low_risk';
+  } = {}
+) {
   vi.resetModules();
   process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-gateway-policy-')), 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
+  const fetchThread = vi.fn().mockResolvedValue([
+    {
+      provider: 'slack',
+      userId: 'UASKER',
+      text: 'Fetched fallback thread message',
+      ts: '111.333',
+      messageId: 'm2'
+    }
+  ]);
+
+  vi.doMock('#lib/server/capabilities/channel-registry', () => ({
+    getChannelRegistry: () => ({
+      register: vi.fn(),
+      fetchThread,
+      postReply: vi.fn(),
+      postMessage: vi.fn()
+    })
+  }));
 
   const { getStore } = await import('#lib/server/persistence/store');
   const { getGateway } = await import('#lib/server/runtime/gateway');
@@ -133,13 +161,13 @@ async function setup(overrides: { toolResults?: AgentToolResult[] } = {}) {
     workspaceId: workspace.id,
     ownerSlackUserId: 'UOWNER',
     title: 'Coverage',
-    mode: 'manual_review',
+    mode: overrides.sessionMode ?? 'manual_review',
     channelScope: ['C1'],
     endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
   });
   const runSpy = vi.spyOn(AgentRuntime.prototype, 'run').mockImplementation(async (input) => runResult(input, workspace.id, overrides));
 
-  return { store, gateway: getGateway(), workspace, session, runSpy };
+  return { store, gateway: getGateway(), workspace, session, runSpy, fetchThread };
 }
 
 describe('Gateway session-first policy', () => {
@@ -227,6 +255,53 @@ describe('Gateway session-first policy', () => {
 
     const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222');
     expect(memory.summary).toBe('Existing neutral context.');
+  });
+
+  it('records a triage context snapshot with the action', async () => {
+    const { gateway, store, workspace, session } = await setup({
+      sessionMode: 'auto_send_low_risk',
+      proposedAction: {
+        type: 'reply',
+        message: 'I can handle this.',
+        confidence: 0.95
+      }
+    });
+
+    await gateway.handleTask(task());
+    store.stopSession(session.id);
+
+    const [item] = store.listTriageItems(workspace.id, session.id);
+    expect(item.contextSnapshot).toMatchObject({
+      summary: 'Owner was asked to confirm status.',
+      continuityCase: 'clarification',
+      thread: {
+        channelId: 'C1',
+        threadTs: '111.222',
+        messages: [
+          {
+            authorId: 'UASKER',
+            text: '<@UOWNER> can you confirm this?'
+          }
+        ]
+      }
+    });
+  });
+
+  it('fetches thread messages once when runtime context has no recent messages', async () => {
+    const { gateway, store, workspace, session, fetchThread } = await setup({
+      sessionMode: 'auto_send_low_risk',
+      recentMessages: []
+    });
+
+    await gateway.handleTask(task());
+    store.stopSession(session.id);
+
+    const [item] = store.listTriageItems(workspace.id, session.id);
+    expect(fetchThread).toHaveBeenCalledOnce();
+    expect(item.contextSnapshot?.thread.messages[0]).toMatchObject({
+      authorId: 'UASKER',
+      text: 'Fetched fallback thread message'
+    });
   });
 
   it('abstains when the event actor is the session owner', async () => {

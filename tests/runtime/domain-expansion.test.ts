@@ -34,7 +34,7 @@ function source(input: Pick<ContextSource, 'name'> & Partial<ContextSource>): Pi
 }
 
 describe('expandContextSources', () => {
-  it('expands all enabled context sources regardless of selected skill domain', () => {
+  it('expands enabled context sources matching selected skill domains', () => {
     const expanded = expandContextSources({
       selectedSkills: [skill()],
       allSources: [
@@ -48,7 +48,7 @@ describe('expandContextSources', () => {
 
     expect(expanded).toEqual({
       explicit: ['memory.linked_artifacts'],
-      optional: ['notion.thread_search', 'confluence.thread_search', 'github.thread_search']
+      optional: ['notion.thread_search', 'confluence.thread_search']
     });
   });
 
@@ -64,7 +64,7 @@ describe('expandContextSources', () => {
     expect(expanded).toEqual({ explicit: [], optional: [] });
   });
 
-  it('includes enabled sources from unrelated domains', () => {
+  it('does not prefetch enabled sources from unrelated domains', () => {
     const expanded = expandContextSources({
       selectedSkills: [skill({ knowledgeDomains: ['documentation'] })],
       allSources: [
@@ -76,6 +76,6 @@ describe('expandContextSources', () => {
       }
     });
 
-    expect(expanded).toEqual({ explicit: [], optional: ['gmail.thread_search'] });
+    expect(expanded).toEqual({ explicit: [], optional: [] });
   });
 });

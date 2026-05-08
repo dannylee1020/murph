@@ -55,6 +55,12 @@ type SummaryPayload = {
     mode: string;
     endsAt: string;
     channelScope: string[];
+    contextSnapshot?: {
+      builtAt: string;
+      summary: string;
+      warnings?: string[];
+      sections: Array<{ source: string }>;
+    };
   }>;
   traces: Array<{
     run: { id: string; sessionId?: string; status: string; taskId: string };
@@ -125,6 +131,31 @@ type QueuePayload = {
     reason: string;
     message: string;
     disposition?: string;
+  }>;
+};
+
+type TriagePayload = {
+  session: { id: string; title: string; mode: string; status: string; stoppedAt?: string } | null;
+  sessions: Array<{ id: string; title: string; mode: string; status: string; stoppedAt?: string }>;
+  items: Array<{
+    id: string;
+    sessionId?: string;
+    threadTs: string;
+    channelId: string;
+    targetUserId?: string;
+    action: string;
+    disposition?: string;
+    reason: string;
+    message: string;
+    confidence?: number;
+    createdAt: string;
+    contextSnapshot?: {
+      summary: string;
+      continuityCase: string;
+      thread: {
+        messages: Array<{ ts: string; authorId?: string; text: string }>;
+      };
+    };
   }>;
 };
 
@@ -201,6 +232,7 @@ type ChannelActionItem = {
 type SessionCreateResponse = {
   ok: boolean;
   session?: { id: string };
+  sessionContext?: { summary: string; warnings?: string[] };
   autoJoined?: ChannelActionItem[];
   error?: string;
   requiresInvitation?: ChannelActionItem[];
@@ -245,6 +277,7 @@ let dashboardError = '';
 const navItems = [
   { href: '/', label: 'Home' },
   { href: '/review', label: 'Review' },
+  { href: '/triage', label: 'Triage' },
   { href: '/activity', label: 'Activity' },
   { href: '/admin', label: 'Admin' }
 ];
@@ -1178,6 +1211,7 @@ async function renderDashboard(): Promise<void> {
                 <span>${escapeHtml(plainLanguageModeLabel(session.mode))}</span>
                 <span title="${escapeHtml(formatExactIso(session.endsAt))}">Until ${escapeHtml(formatDateTime(session.endsAt))}</span>
                 <span>${escapeHtml(session.channelScope.length > 0 ? session.channelScope.map((id) => selectedChannelNames.get(id) ?? id).join(', ') : 'All accessible channels')}</span>
+                <span>${escapeHtml(session.contextSnapshot ? `Context: ${session.contextSnapshot.summary}` : 'Context pending')}</span>
                 <button class="secondary stop-session" data-session-id="${escapeHtml(session.id)}">Stop</button>
               </div>
             `
@@ -1269,7 +1303,7 @@ async function renderDashboard(): Promise<void> {
     const tz = String(formData.get('timezone') ?? userTz);
 
     try {
-      await postJson<SessionCreateResponse>('/api/gateway/sessions', {
+      const response = await postJson<SessionCreateResponse>('/api/gateway/sessions', {
         ownerUserId: getCurrentUserId(),
         title: 'Watching overnight',
         mode,
@@ -1277,7 +1311,9 @@ async function renderDashboard(): Promise<void> {
         durationHours: calculateDurationHours(endHour, tz)
       });
       dashboardError = '';
-      dashboardNotice = `Murph is now watching. You'll see drafts in Review.`;
+      dashboardNotice = response.sessionContext?.warnings?.length
+        ? `Murph is watching. Session context built with ${response.sessionContext.warnings.length} warning${response.sessionContext.warnings.length === 1 ? '' : 's'}.`
+        : `Murph is watching. ${response.sessionContext?.summary ?? 'Session context is ready.'}`;
       await renderDashboard();
     } catch (error) {
       if (error instanceof ApiError) {
@@ -1507,6 +1543,103 @@ async function renderReview(): Promise<void> {
       });
       await renderReview();
     });
+  });
+}
+
+function dispositionPill(disposition: string | undefined): string {
+  if (disposition === 'auto_sent') return '<span class="pill pill-ok">Auto-sent</span>';
+  if (disposition === 'abstained') return '<span class="pill pill-muted">Abstained</span>';
+  return `<span class="pill pill-muted">${escapeHtml(titleCase(disposition ?? 'unknown'))}</span>`;
+}
+
+function renderTriageItem(item: TriagePayload['items'][number]): string {
+  const messages = item.contextSnapshot?.thread.messages ?? [];
+  const excerpt = messages.at(-1)?.text ?? item.message ?? item.reason;
+  const confidence = typeof item.confidence === 'number' ? `${Math.round(item.confidence * 100)}%` : '—';
+
+  return `
+    <article class="panel">
+      <h2>${dispositionPill(item.disposition)} ${escapeHtml(item.channelId)} / ${escapeHtml(item.threadTs)}</h2>
+      <dl class="details">
+        <div><dt>Recorded</dt><dd title="${escapeHtml(formatExactIso(item.createdAt))}">${escapeHtml(formatRelative(item.createdAt))}</dd></div>
+        <div><dt>Action</dt><dd>${escapeHtml(titleCase(item.action))}</dd></div>
+        <div><dt>Confidence</dt><dd>${escapeHtml(confidence)}</dd></div>
+        <div><dt>Case</dt><dd>${escapeHtml(titleCase(item.contextSnapshot?.continuityCase ?? 'unknown'))}</dd></div>
+        <div><dt>Thread summary</dt><dd>${escapeHtml(item.contextSnapshot?.summary ?? 'No thread snapshot was captured for this action.')}</dd></div>
+        <div><dt>Thread excerpt</dt><dd>${escapeHtml(excerpt || 'No thread messages captured.')}</dd></div>
+        <div><dt>Murph response</dt><dd>${escapeHtml(item.message || 'No message drafted')}</dd></div>
+        <div><dt>Reason</dt><dd>${escapeHtml(item.reason)}</dd></div>
+      </dl>
+    </article>
+  `;
+}
+
+async function renderTriage(): Promise<void> {
+  setTitle('Murph Triage');
+  loading('Triage');
+  const selectedSessionId = new URLSearchParams(window.location.search).get('sessionId');
+  const payload = await getJson<TriagePayload>(
+    `/api/gateway/triage${selectedSessionId ? `?sessionId=${encodeURIComponent(selectedSessionId)}` : ''}`
+  );
+  const grouped = new Map<string, TriagePayload['items']>();
+  for (const item of payload.items) {
+    const items = grouped.get(item.channelId) ?? [];
+    items.push(item);
+    grouped.set(item.channelId, items);
+  }
+
+  shell(`
+    <section class="page-head">
+      <p class="eyebrow">Morning catchup</p>
+      <h1>Triage</h1>
+      <p>${escapeHtml(
+        payload.session
+          ? `${payload.session.title} (${sessionModeLabel(payload.session.mode)})`
+          : 'No completed sessions yet.'
+      )}</p>
+    </section>
+
+    <section class="stack">
+      <article class="panel">
+        <h2>Session</h2>
+        ${
+          payload.sessions.length === 0
+            ? '<p class="empty">Completed sleep sessions will appear here after Murph stops or expires a session.</p>'
+            : `<label><span>Completed session</span><select id="triage-session-select">
+                ${payload.sessions
+                  .map(
+                    (session) => `
+                      <option value="${escapeHtml(session.id)}" ${session.id === payload.session?.id ? 'selected' : ''}>
+                        ${escapeHtml(session.title)} · ${escapeHtml(formatRelative(session.stoppedAt))}
+                      </option>
+                    `
+                  )
+                  .join('')}
+              </select></label>`
+        }
+      </article>
+
+      ${
+        payload.items.length === 0
+          ? '<article class="panel"><p class="empty">No auto-sent or abstained actions were recorded for this session.</p></article>'
+          : [...grouped.entries()]
+              .map(
+                ([channelId, items]) => `
+                  <section class="stack">
+                    <h2>${escapeHtml(channelId)}</h2>
+                    ${items.map(renderTriageItem).join('')}
+                  </section>
+                `
+              )
+              .join('')
+      }
+    </section>
+  `);
+
+  app.querySelector<HTMLSelectElement>('#triage-session-select')?.addEventListener('change', (event) => {
+    const sessionId = (event.currentTarget as HTMLSelectElement).value;
+    history.pushState(null, '', `/triage?sessionId=${encodeURIComponent(sessionId)}`);
+    void renderTriage();
   });
 }
 
@@ -1814,6 +1947,8 @@ async function render(): Promise<void> {
       await renderSettings();
     } else if (pathname === '/review') {
       await renderReview();
+    } else if (pathname === '/triage') {
+      await renderTriage();
     } else if (pathname === '/activity') {
       await renderActivity();
     } else if (pathname === '/runs') {

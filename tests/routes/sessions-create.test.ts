@@ -91,6 +91,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
 
     expect(response.status).toBe(201);
     expect(response.body.autoJoined).toEqual([]);
+    expect(response.body.sessionContext.summary).toBe('No connected source context was found for this session.');
     expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
     expect(ensureMember).toHaveBeenCalledWith(expect.objectContaining({ id: workspace.id }), 'slack', 'C1');
   });

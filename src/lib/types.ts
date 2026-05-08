@@ -101,6 +101,26 @@ export interface ContextArtifact {
     metadata?: Record<string, unknown>;
 }
 
+export interface SessionContextSnapshot {
+    builtAt: string;
+    date: string;
+    handoffDoc?: {
+        source: 'notion';
+        title: string;
+        url?: string;
+        text: string;
+    };
+    sections: Array<{
+        source: 'notion' | 'granola' | 'github' | 'gmail' | 'calendar';
+        title: string;
+        summary: string;
+        url?: string;
+        metadata?: Record<string, unknown>;
+    }>;
+    summary: string;
+    warnings?: string[];
+}
+
 export interface UserMemory {
     userId: string;
     preferences: string[];
@@ -212,6 +232,7 @@ export interface ContextAssembly {
     unresolvedQuestions: string[];
     continuityCase: ContinuityCase;
     linkedArtifacts: string[];
+    sessionContext?: SessionContextSnapshot;
 }
 
 export interface ContinuityTask {
@@ -368,6 +389,24 @@ export interface ReviewItem {
     createdAt: string;
 }
 
+export interface ActionContextSnapshot {
+    summary: string;
+    continuityCase: ContinuityCase;
+    thread: {
+        channelId: string;
+        threadTs: string;
+        messages: Array<{
+            ts: string;
+            authorId?: string;
+            text: string;
+        }>;
+    };
+}
+
+export interface TriageItem extends ReviewItem {
+    contextSnapshot?: ActionContextSnapshot;
+}
+
 export interface ThreadStateRecord {
     workspaceId: string;
     sessionId?: string;
@@ -521,6 +560,7 @@ export interface AutopilotSession {
     startedAt: string;
     endsAt: string;
     stoppedAt?: string;
+    contextSnapshot?: SessionContextSnapshot;
 }
 
 export interface MorningBriefing {

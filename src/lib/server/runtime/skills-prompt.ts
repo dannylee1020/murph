@@ -3,7 +3,7 @@ import type { SkillManifest } from '#lib/types';
 function describeGroundingPolicy(policy: SkillManifest['groundingPolicy']): string | undefined {
   switch (policy) {
     case 'required_when_no_artifacts':
-      return 'You must retrieve evidence from all available sources before drafting a response.';
+      return 'You must retrieve evidence from all relevant sources before drafting a response.';
     case 'prefer_search':
       return 'Prefer calling a retrieval tool before drafting.';
     case 'model_choice':

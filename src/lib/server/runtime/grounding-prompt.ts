@@ -19,7 +19,7 @@ function describeAvailableTools(context: Pick<ContextAssembly, 'availableTools'>
     const domains = tool.knowledgeDomains?.length ? ` (${tool.knowledgeDomains.join(', ')})` : '';
     return `- ${tool.name}${domains}: ${tool.description}`;
   });
-  return ['Tools you may call. When the question could benefit from multiple sources, call several retrieval tools rather than just one:', ...lines].join('\n');
+  return ['Tools you may call. Call the retrieval tools that are relevant to the request; avoid unrelated sources even when they are available:', ...lines].join('\n');
 }
 
 function describeGroundingDirective(directive?: GroundingDirective): string {
@@ -27,7 +27,7 @@ function describeGroundingDirective(directive?: GroundingDirective): string {
     return 'If the provided context is already sufficient, answer without calling tools.';
   }
   if (directive.required) {
-    return `Grounding required: ${directive.reason} You MUST call all relevant retrieval/search tools before drafting to gather evidence from every available source. If results are weak or empty, explain what you searched and queue the thread for review.`;
+    return `Grounding required: ${directive.reason} You MUST call the relevant retrieval/search tools before drafting. Use every source that is materially relevant to this request, but do not call unrelated tools. If results are weak or empty, explain what you searched and queue the thread for review.`;
   }
   return `${directive.reason} Call a retrieval tool only when it materially improves the answer.`;
 }

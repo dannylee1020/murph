@@ -62,6 +62,7 @@ function ensureSchema(db: Database.Database): void {
       policy_profile_name TEXT,
       policy_override_raw TEXT,
       policy_json TEXT,
+      session_context_json TEXT,
       started_at TEXT NOT NULL,
       ends_at TEXT NOT NULL,
       stopped_at TEXT
@@ -95,6 +96,7 @@ function ensureSchema(db: Database.Database): void {
       reason TEXT NOT NULL,
       confidence REAL NOT NULL,
       provider TEXT,
+      context_snapshot_json TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -224,11 +226,13 @@ function ensureSchema(db: Database.Database): void {
   ensureColumn(db, 'autopilot_sessions', 'policy_profile_name', 'TEXT');
   ensureColumn(db, 'autopilot_sessions', 'policy_override_raw', 'TEXT');
   ensureColumn(db, 'autopilot_sessions', 'policy_json', 'TEXT');
+  ensureColumn(db, 'autopilot_sessions', 'session_context_json', 'TEXT');
   ensureColumn(db, 'workspaces', 'provider', 'TEXT');
   ensureColumn(db, 'workspaces', 'external_workspace_id', 'TEXT');
   ensureColumn(db, 'users', 'external_user_id', 'TEXT');
   ensureColumn(db, 'users', 'fallback_external_user_id', 'TEXT');
   ensureColumn(db, 'autopilot_sessions', 'owner_user_id', 'TEXT');
+  ensureColumn(db, 'continuity_actions', 'context_snapshot_json', 'TEXT');
 
   db.exec(`
     UPDATE workspaces
