@@ -82,8 +82,29 @@ type RuntimePayload = {
   defaultPolicyProfileName?: string;
 };
 
+type SetupCheckStatus = 'ok' | 'warning' | 'action_required' | 'error';
+
+type SetupDoctorPayload = {
+  ok: boolean;
+  ready: boolean;
+  nextStep: 'core' | 'ai' | 'slack_config' | 'slack_oauth' | 'identity' | 'channels' | 'ready';
+  checks: Array<{
+    id: string;
+    label: string;
+    status: SetupCheckStatus;
+    message: string;
+    fix?: string;
+  }>;
+};
+
 type SetupStatusPayload = {
-  slack: { installed: boolean; oauthConfigured: boolean; signingSecretConfigured: boolean };
+  slack: {
+    installed: boolean;
+    oauthConfigured: boolean;
+    signingSecretConfigured: boolean;
+    eventsMode: 'socket' | 'http';
+    socketConfigured: boolean;
+  };
   discord: { installed: boolean; oauthConfigured: boolean; botTokenConfigured: boolean };
   provider: { configured: boolean; defaultProvider: string };
   notion: {
@@ -748,50 +769,48 @@ function list(items: string[], emptyText: string): string {
   return `<ul class="list">${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
 }
 
-function integrationStatusLabel(integration: IntegrationStatusPayload['integrations'][number]): string {
-  if (integration.status !== 'connected') {
-    return 'Not connected';
-  }
-  return integration.source === 'env' ? 'Connected via environment' : 'Connected';
-}
-
-function integrationCredentialLabel(integration: IntegrationStatusPayload['integrations'][number]): string {
-  if (integration.status !== 'connected') {
-    return 'Not connected';
-  }
-  if (integration.source === 'env') {
-    return 'Set on this server';
-  }
-  return integration.metadata.masked ?? 'Saved in Murph';
-}
-
 function integrationCard(integration: IntegrationStatusPayload['integrations'][number], workspaceId: string): string {
   const connected = integration.status === 'connected';
-  const metadata = [
-    integration.metadata.account ? `Account: ${integration.metadata.account}` : '',
-    integration.metadata.masked ? `Key: ${integration.metadata.masked}` : '',
-    integration.metadata.validatedAt ? `Validated ${formatRelative(integration.metadata.validatedAt)}` : ''
-  ].filter(Boolean);
-
   const installHref = integration.installPath
     ? `${integration.installPath}?workspaceId=${encodeURIComponent(workspaceId)}`
     : '';
+
+  const detailRows: string[] = [];
+  if (connected) {
+    if (integration.metadata.account) {
+      detailRows.push(`<div><dt>Account</dt><dd>${escapeHtml(integration.metadata.account)}</dd></div>`);
+    } else if (integration.source === 'env') {
+      detailRows.push(`<div><dt>Key</dt><dd>Set on this server</dd></div>`);
+    } else if (integration.metadata.masked) {
+      detailRows.push(`<div><dt>Key</dt><dd>${escapeHtml(integration.metadata.masked)}</dd></div>`);
+    }
+    if (integration.metadata.validatedAt) {
+      detailRows.push(`<div><dt>Validated</dt><dd>${escapeHtml(formatRelative(integration.metadata.validatedAt))}</dd></div>`);
+    }
+  } else {
+    const authLabel = integration.authType === 'oauth' ? 'OAuth' : 'API key';
+    detailRows.push(`<div><dt>Auth</dt><dd>${escapeHtml(authLabel)}</dd></div>`);
+    if (integration.tools.length > 0) {
+      const toolsLabel = integration.tools.length === 1 ? '1 tool' : `${integration.tools.length} tools`;
+      detailRows.push(`<div><dt>Adds</dt><dd>${escapeHtml(toolsLabel)}</dd></div>`);
+    }
+  }
+
+  const primaryLabel = connected
+    ? integration.source === 'env' ? 'Override' : 'Reconnect'
+    : 'Connect';
+  const primaryCta = integration.authType === 'oauth' && installHref
+    ? `<a class="button" href="${escapeHtml(installHref)}">${connected ? 'Reconnect' : 'Connect with Google'}</a>`
+    : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${primaryLabel}</button>`;
 
   return `
     <article class="panel panel-status">
       <h2><span class="status-dot ${connected ? 'ok' : 'off'}" aria-hidden="true"></span>${escapeHtml(integration.name)}</h2>
       <p>${escapeHtml(integration.description)}</p>
-      <dl class="details">
-        <div><dt>Status</dt><dd>${escapeHtml(integrationStatusLabel(integration))}</dd></div>
-        <div><dt>Key</dt><dd>${escapeHtml(integrationCredentialLabel(integration))}</dd></div>
-      </dl>
-      ${metadata.length > 0 ? `<p class="empty">${escapeHtml(metadata.join(' · '))}</p>` : ''}
+      <dl class="details">${detailRows.join('')}</dl>
       <div class="actions">
-        ${integration.authType === 'oauth' && installHref
-          ? `<a class="button" href="${escapeHtml(installHref)}">${connected ? 'Reconnect' : 'Connect with Google'}</a>`
-          : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${connected && integration.source === 'env' ? 'Override' : 'Connect'}</button>`
-        }
-        ${integration.canDisconnect ? `<button type="button" class="secondary disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
+        ${primaryCta}
+        ${integration.canDisconnect ? `<button type="button" class="ghost disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
       </div>
     </article>
   `;
@@ -835,6 +854,32 @@ function calculateDurationHours(endHour: number, timezone: string): number {
   return Math.max(1, Math.min(hoursUntil, 24));
 }
 
+function setupStepForNextStep(nextStep: SetupDoctorPayload['nextStep']): number {
+  if (nextStep === 'ai') return 1;
+  if (nextStep === 'slack_config') return 2;
+  if (nextStep === 'slack_oauth') return 3;
+  if (nextStep === 'identity') return 4;
+  if (nextStep === 'channels') return 5;
+  if (nextStep === 'ready') return 6;
+  return 0;
+}
+
+function setupCheckList(checks: SetupDoctorPayload['checks']): string {
+  return `
+    <div class="setup-check-list">
+      ${checks
+        .filter((check) => ['ai_provider', 'slack_socket', 'slack_oauth_config', 'slack_installed', 'identity'].includes(check.id))
+        .map((check) => `
+          <div class="setup-check ${escapeHtml(check.status)}">
+            <strong>${escapeHtml(check.label)}</strong>
+            <span>${escapeHtml(check.message)}</span>
+          </div>
+        `)
+        .join('')}
+    </div>
+  `;
+}
+
 async function renderSetup(): Promise<void> {
   setTitle('Murph Setup');
   if (setupWizardState.selectedChannels.length === 0) {
@@ -844,17 +889,23 @@ async function renderSetup(): Promise<void> {
 
   const params = new URLSearchParams(window.location.search);
   if (params.get('step') === 'slack' && params.get('success') === '1') {
-    setupWizardState.currentStep = 2;
+    setupWizardState.currentStep = 4;
     history.replaceState(null, '', '/setup');
   }
 
-  const setup = await getJson<SetupStatusPayload>('/api/setup/status');
-  if (setup.slack.installed && setupWizardState.currentStep < 2) {
-    setupWizardState.currentStep = 2;
+  const [setup, doctor] = await Promise.all([
+    getJson<SetupStatusPayload>('/api/setup/status'),
+    getJson<SetupDoctorPayload>('/api/setup/doctor')
+  ]);
+  if (setupWizardState.currentStep === 0 && doctor.nextStep !== 'core') {
+    setupWizardState.currentStep = setupStepForNextStep(doctor.nextStep);
+  }
+  if (setup.slack.installed && setupWizardState.currentStep < 4) {
+    setupWizardState.currentStep = 4;
   }
 
   const step = setupWizardState.currentStep;
-  const totalSteps = 5;
+  const totalSteps = 7;
 
   const dots = `
     ${Array.from({ length: totalSteps }, (_, i) => {
@@ -869,8 +920,9 @@ async function renderSetup(): Promise<void> {
   if (step === 0) {
     stepContent = `
       <div class="wizard-step">
-        <h1>Murph watches your team chat while you sleep</h1>
-        <p>Set up takes about 2 minutes. You'll connect Slack, pick your identity, and set your schedule.</p>
+        <h1>Set up Murph</h1>
+        <p>The installer got the server running. Finish the product setup here: add an AI key, connect Slack, pick yourself, and set your schedule.</p>
+        ${setupCheckList(doctor.checks)}
         <div class="wizard-actions">
           <button type="button" id="wizard-next">Get started</button>
         </div>
@@ -879,7 +931,66 @@ async function renderSetup(): Promise<void> {
   } else if (step === 1) {
     stepContent = `
       <div class="wizard-step">
-        <h1>Connect Slack</h1>
+        <h1>Add an AI provider</h1>
+        <p>Murph needs OpenAI or Anthropic before it can draft replies.</p>
+        ${setup.provider.configured
+          ? `<div class="setup-success">${escapeHtml(setup.provider.defaultProvider)} is configured</div>
+             <div class="wizard-actions">
+               <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
+               <button type="button" id="wizard-next">Continue</button>
+             </div>`
+          : `<form class="form" id="ai-provider-form">
+               <label>
+                 <span>Provider</span>
+                 <select name="provider">
+                   <option value="openai">OpenAI</option>
+                   <option value="anthropic">Anthropic</option>
+                 </select>
+               </label>
+               <label>
+                 <span>API key</span>
+                 <input type="password" name="apiKey" autocomplete="off" required />
+               </label>
+             </form>
+             <div class="wizard-actions">
+               <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
+               <button type="button" id="wizard-next">Save and continue</button>
+             </div>`
+        }
+      </div>
+    `;
+  } else if (step === 2) {
+    stepContent = `
+      <div class="wizard-step">
+        <h1>Create the Slack app</h1>
+        <p>Use the manifest at <code>docs/slack-socket-mode-manifest.yml</code>, enable Socket Mode, then paste the app credentials here.</p>
+        ${setup.slack.socketConfigured && setup.slack.oauthConfigured
+          ? `<div class="setup-success">Slack app config is ready</div>`
+          : `<form class="form" id="slack-config-form">
+               <label>
+                 <span>App-level token</span>
+                 <input type="password" name="appToken" placeholder="xapp-..." autocomplete="off" ${setup.slack.socketConfigured ? '' : 'required'} />
+               </label>
+               <label>
+                 <span>Client ID</span>
+                 <input name="clientId" autocomplete="off" ${setup.slack.oauthConfigured ? '' : 'required'} />
+               </label>
+               <label>
+                 <span>Client secret</span>
+                 <input type="password" name="clientSecret" autocomplete="off" ${setup.slack.oauthConfigured ? '' : 'required'} />
+               </label>
+             </form>`
+        }
+        <div class="wizard-actions">
+          <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
+          <button type="button" id="wizard-next">${setup.slack.socketConfigured && setup.slack.oauthConfigured ? 'Continue' : 'Save and continue'}</button>
+        </div>
+      </div>
+    `;
+  } else if (step === 3) {
+    stepContent = `
+      <div class="wizard-step">
+        <h1>Connect Slack workspace</h1>
         <p>Murph needs access to your Slack workspace to watch channels while you're away.</p>
         ${setup.slack.installed
           ? `<div class="setup-success">Slack connected</div>
@@ -889,12 +1000,15 @@ async function renderSetup(): Promise<void> {
              </div>`
           : `<div class="wizard-actions">
                <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
-               <a class="button" href="/api/slack/install">Connect Slack workspace</a>
+               ${setup.slack.oauthConfigured
+                 ? '<a class="button" href="/api/slack/install">Connect Slack workspace</a>'
+                 : '<button type="button" id="wizard-next" disabled>Add Slack credentials first</button>'
+               }
              </div>`
         }
       </div>
     `;
-  } else if (step === 2) {
+  } else if (step === 4) {
     stepContent = `
       <div class="wizard-step">
         <h1>Which one are you?</h1>
@@ -906,7 +1020,7 @@ async function renderSetup(): Promise<void> {
         </div>
       </div>
     `;
-  } else if (step === 3) {
+  } else if (step === 5) {
     stepContent = `
       <div class="wizard-step">
         <h1>Which channels should Murph watch?</h1>
@@ -918,7 +1032,7 @@ async function renderSetup(): Promise<void> {
         </div>
       </div>
     `;
-  } else if (step === 4) {
+  } else if (step === 6) {
     stepContent = `
       <div class="wizard-step">
         <h1>Set your schedule</h1>
@@ -955,7 +1069,7 @@ async function renderSetup(): Promise<void> {
     </div>
   `;
 
-  if (step === 2) {
+  if (step === 4) {
     const container = app.querySelector<HTMLDivElement>('#member-list-container');
     try {
       const membersPayload = await getJson<SlackMembersPayload>('/api/slack/members');
@@ -1010,7 +1124,7 @@ async function renderSetup(): Promise<void> {
     }
   }
 
-  if (step === 3) {
+  if (step === 5) {
     const container = app.querySelector<HTMLDivElement>('#channel-list-container');
     const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
     try {
@@ -1066,12 +1180,39 @@ async function renderSetup(): Promise<void> {
   }
 
   app.querySelector<HTMLButtonElement>('#wizard-next')?.addEventListener('click', async () => {
-    if (step === 2 && !setupWizardState.selectedUserId) return;
-    if (step === 3 && setupWizardState.selectedChannelIds.length === 0) {
+    if (step === 1 && !setup.provider.configured) {
+      const form = app.querySelector<HTMLFormElement>('#ai-provider-form');
+      const formData = form ? new FormData(form) : new FormData();
+      const provider = String(formData.get('provider') ?? 'openai');
+      const apiKey = String(formData.get('apiKey') ?? '').trim();
+      if (!apiKey) return;
+      await postJson('/api/setup/env', {
+        MURPH_DEFAULT_PROVIDER: provider,
+        ...(provider === 'anthropic' ? { ANTHROPIC_API_KEY: apiKey } : { OPENAI_API_KEY: apiKey })
+      });
+    }
+
+    if (step === 2 && !(setup.slack.socketConfigured && setup.slack.oauthConfigured)) {
+      const form = app.querySelector<HTMLFormElement>('#slack-config-form');
+      const formData = form ? new FormData(form) : new FormData();
+      const appToken = String(formData.get('appToken') ?? '').trim();
+      const clientId = String(formData.get('clientId') ?? '').trim();
+      const clientSecret = String(formData.get('clientSecret') ?? '').trim();
+      if ((!setup.slack.socketConfigured && !appToken) || (!setup.slack.oauthConfigured && (!clientId || !clientSecret))) return;
+      await postJson('/api/setup/env', {
+        SLACK_EVENTS_MODE: 'socket',
+        SLACK_APP_TOKEN: appToken,
+        SLACK_CLIENT_ID: clientId,
+        SLACK_CLIENT_SECRET: clientSecret
+      });
+    }
+
+    if (step === 4 && !setupWizardState.selectedUserId) return;
+    if (step === 5 && setupWizardState.selectedChannelIds.length === 0) {
       setupWizardState.selectedChannels = [];
     }
 
-    if (step === 4) {
+    if (step === 6) {
       const form = app.querySelector<HTMLFormElement>('#schedule-form');
       if (form) {
         const formData = new FormData(form);
@@ -1397,7 +1538,8 @@ async function renderSettings(): Promise<void> {
         <p>Let Murph watch Slack channels and prepare replies while you are away.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.slack.installed ? 'Connected' : 'Not connected'}</dd></div>
-          <div><dt>Setup</dt><dd>${setup.slack.oauthConfigured && setup.slack.signingSecretConfigured ? 'Ready to install' : 'Missing server settings'}</dd></div>
+          <div><dt>Events</dt><dd>${setup.slack.eventsMode === 'socket' ? 'Socket Mode' : 'HTTP'}</dd></div>
+          <div><dt>Setup</dt><dd>${setup.slack.oauthConfigured && setup.slack.socketConfigured ? 'Ready to install' : 'Missing app settings'}</dd></div>
         </dl>
         <div class="actions">
           ${

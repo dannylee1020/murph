@@ -1,0 +1,524 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_URL_DEFAULT="http://localhost:5173"
+SQLITE_PATH_DEFAULT="data/murph.sqlite"
+LOG_FILE=".murph-install.log"
+DEFAULT_INSTALL_DIR="$HOME/.murph/app"
+SOURCE_ARCHIVE_URL="https://github.com/dannylee1020/murph/archive/refs/heads/master.tar.gz"
+BIN_DIR_DEFAULT="$HOME/.local/bin"
+
+force=false
+no_start=false
+skip_build=false
+simple=false
+doctor=false
+original_args=("$@")
+
+have_command() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+usage() {
+  cat <<'EOF'
+Usage: ./install.sh [--force] [--no-start] [--skip-build] [--simple] [--doctor]
+
+Options:
+  --force      Regenerate .env and rebuild even when files already exist.
+  --no-start   Do not ask to start the server after installation.
+  --skip-build Skip npm run build.
+  --simple     Skip terminal prompts and finish setup in the browser.
+  --doctor     Check the local install and exit.
+  -h, --help   Show this help.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force)
+      force=true
+      ;;
+    --no-start)
+      no_start=true
+      ;;
+    --skip-build)
+      skip_build=true
+      ;;
+    --simple)
+      simple=true
+      ;;
+    --dev-setup)
+      printf '%s\n' '--dev-setup is no longer needed; developer setup is the default.'
+      ;;
+    --doctor)
+      doctor=true
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      usage
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+is_murph_checkout() {
+  [[ -f package.json && -f install.sh ]] && grep -q '"name"[[:space:]]*:[[:space:]]*"murph"' package.json
+}
+
+bootstrap_from_archive() {
+  if [[ "${MURPH_BOOTSTRAPPED:-}" == "1" ]]; then
+    printf 'Murph installer could not find a valid checkout in %s.\n' "$(pwd)"
+    exit 1
+  fi
+
+  local install_dir="${MURPH_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+  local archive_url="${MURPH_SOURCE_ARCHIVE:-$SOURCE_ARCHIVE_URL}"
+  local tmp_dir archive_file source_dir
+
+  for required in curl tar mktemp; do
+    if ! have_command "$required"; then
+      printf 'Murph needs %s for curl-based installation.\n' "$required"
+      exit 1
+    fi
+  done
+
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/murph-install.XXXXXX")"
+  archive_file="$tmp_dir/murph.tar.gz"
+
+  cleanup_bootstrap() {
+    rm -rf "$tmp_dir"
+  }
+  trap cleanup_bootstrap EXIT
+
+  printf 'Installing Murph into %s\n' "$install_dir"
+  printf 'Downloading %s\n' "$archive_url"
+  curl -fsSL "$archive_url" -o "$archive_file"
+  tar -xzf "$archive_file" -C "$tmp_dir"
+
+  source_dir=""
+  for candidate in "$tmp_dir"/*; do
+    if [[ -d "$candidate" ]]; then
+      source_dir="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$source_dir" || ! -f "$source_dir/package.json" ]]; then
+    printf 'Downloaded archive did not contain a Murph source tree.\n'
+    exit 1
+  fi
+
+  mkdir -p "$install_dir"
+  cp -R "$source_dir"/. "$install_dir"/
+
+  printf 'Murph source is ready in %s\n' "$install_dir"
+  cd "$install_dir"
+  MURPH_BOOTSTRAPPED=1 bash ./install.sh "$@"
+  exit $?
+}
+
+if ! is_murph_checkout; then
+  bootstrap_from_archive "${original_args[@]}"
+fi
+
+: > "$LOG_FILE"
+
+section() {
+  printf '\n%s\n' "$1"
+  printf '%s\n' "----------------------------------------"
+}
+
+fail() {
+  printf '\nInstall failed: %s\n' "$1"
+  printf 'See %s for the full log.\n' "$LOG_FILE"
+  exit 1
+}
+
+run_logged() {
+  "$@" 2>&1 | tee -a "$LOG_FILE"
+  return "${PIPESTATUS[0]}"
+}
+
+node_install_help() {
+  cat <<'EOF'
+Murph needs Node.js 18 or newer.
+
+Install Node with your normal toolchain, then rerun ./install.sh.
+
+macOS:
+  brew install node
+  or download the LTS installer from https://nodejs.org/
+
+Linux:
+  Use your distro package manager, NodeSource, Volta, asdf, fnm, or nvm.
+  Node downloads: https://nodejs.org/
+
+Windows:
+  Use WSL for this installer, or follow the manual setup in README.md.
+EOF
+}
+
+check_node() {
+  section "Checking environment"
+
+  if ! have_command node; then
+    node_install_help
+    fail "Node.js was not found."
+  fi
+
+  local version major
+  version="$(node --version)"
+  major="${version#v}"
+  major="${major%%.*}"
+
+  if ! [[ "$major" =~ ^[0-9]+$ ]] || [[ "$major" -lt 18 ]]; then
+    node_install_help
+    fail "Node.js 18 or newer is required. Found $version."
+  fi
+
+  if ! have_command npm; then
+    fail "npm was not found. Reinstall Node.js with npm included."
+  fi
+
+  printf 'Node: %s\n' "$version"
+  printf 'npm: %s\n' "$(npm --version)"
+}
+
+generate_secret() {
+  if have_command openssl; then
+    openssl rand -hex 32
+  else
+    node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+  fi
+}
+
+env_value() {
+  local key="$1"
+  if [[ ! -f .env ]]; then
+    return
+  fi
+  grep -E "^[[:space:]]*(export[[:space:]]+)?${key}=" .env | tail -n 1 | sed -E "s/^[[:space:]]*(export[[:space:]]+)?${key}=//; s/^['\"]//; s/['\"]$//"
+}
+
+doctor_check() {
+  local label="$1"
+  local status="$2"
+  local message="$3"
+  printf '%-28s %s %s\n' "$label" "$status" "$message"
+}
+
+run_doctor() {
+  section "Murph install doctor"
+
+  local problems=0
+  if [[ -f .env ]]; then
+    doctor_check ".env" "ok" "present"
+  else
+    doctor_check ".env" "missing" "run ./install.sh"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -n "$(env_value MURPH_ENCRYPTION_KEY)" ]]; then
+    doctor_check "Encryption key" "ok" "configured"
+  else
+    doctor_check "Encryption key" "missing" "set MURPH_ENCRYPTION_KEY"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -n "$(env_value OPENAI_API_KEY)" || -n "$(env_value ANTHROPIC_API_KEY)" ]]; then
+    doctor_check "AI provider" "ok" "configured"
+  else
+    doctor_check "AI provider" "missing" "add OpenAI or Anthropic key in .env or browser setup"
+    problems=$((problems + 1))
+  fi
+
+  if [[ "$(env_value SLACK_EVENTS_MODE)" == "http" ]]; then
+    doctor_check "Slack events" "warning" "HTTP mode needs a public Events URL"
+  elif [[ -n "$(env_value SLACK_APP_TOKEN)" ]]; then
+    doctor_check "Slack Socket Mode" "ok" "app-level token configured"
+  else
+    doctor_check "Slack Socket Mode" "missing" "add SLACK_APP_TOKEN"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -n "$(env_value SLACK_CLIENT_ID)" && -n "$(env_value SLACK_CLIENT_SECRET)" ]]; then
+    doctor_check "Slack OAuth" "ok" "client credentials configured"
+  else
+    doctor_check "Slack OAuth" "missing" "add Slack client ID and secret"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -d node_modules ]]; then
+    doctor_check "Dependencies" "ok" "node_modules present"
+  else
+    doctor_check "Dependencies" "missing" "run npm install"
+    problems=$((problems + 1))
+  fi
+
+  if [[ -d dist ]]; then
+    doctor_check "Build" "ok" "dist present"
+  else
+    doctor_check "Build" "missing" "run npm run build"
+    problems=$((problems + 1))
+  fi
+
+  if [[ "$problems" -gt 0 ]]; then
+    printf '\n%s item(s) still need setup.\n' "$problems"
+    exit 1
+  fi
+
+  printf '\nCore install looks ready.\n'
+  exit 0
+}
+
+prompt_llm_key() {
+  LLM_PROVIDER=""
+  LLM_KEY=""
+
+  if [[ ! -t 0 ]]; then
+    return
+  fi
+
+  printf '\nMurph needs OpenAI or Anthropic to answer messages.\n'
+  printf 'You can paste a key now or leave this blank and edit .env later.\n'
+  printf 'Choose provider: [1] OpenAI  [2] Anthropic  [enter] Skip: '
+  local choice
+  read -r choice
+
+  case "$choice" in
+    1)
+      LLM_PROVIDER="openai"
+      ;;
+    2)
+      LLM_PROVIDER="anthropic"
+      ;;
+    "")
+      return
+      ;;
+    *)
+      printf 'Skipping LLM key setup.\n'
+      return
+      ;;
+  esac
+
+  printf 'Paste API key: '
+  read -rs LLM_KEY
+  printf '\n'
+}
+
+write_env_file() {
+  local encryption_key="$1"
+  local openai_key=""
+  local anthropic_key=""
+  local provider="openai"
+
+  if [[ "${LLM_PROVIDER:-}" == "openai" ]]; then
+    openai_key="${LLM_KEY:-}"
+    provider="openai"
+  elif [[ "${LLM_PROVIDER:-}" == "anthropic" ]]; then
+    anthropic_key="${LLM_KEY:-}"
+    provider="anthropic"
+  fi
+
+  umask 077
+  cat > .env <<EOF
+# Core
+MURPH_APP_URL=$APP_URL_DEFAULT
+MURPH_SQLITE_PATH=$SQLITE_PATH_DEFAULT
+MURPH_ENCRYPTION_KEY=$encryption_key
+
+# LLM provider. Add one key before expecting Murph to answer messages.
+MURPH_DEFAULT_PROVIDER=$provider
+OPENAI_API_KEY=$openai_key
+ANTHROPIC_API_KEY=$anthropic_key
+
+# Slack channel setup
+SLACK_EVENTS_MODE=socket
+SLACK_APP_TOKEN=
+SLACK_CLIENT_ID=
+SLACK_CLIENT_SECRET=
+SLACK_SIGNING_SECRET=
+
+# Discord channel setup
+DISCORD_BOT_TOKEN=
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
+DISCORD_REDIRECT_URI=
+EOF
+}
+
+configure_env() {
+  section "Configuring Murph"
+
+  mkdir -p data
+  printf 'Created data/ if it was missing.\n'
+
+  if [[ -f .env && "$force" != true ]]; then
+    printf '.env already exists. Leaving it unchanged.\n'
+    return
+  fi
+
+  if [[ -f .env && "$force" == true ]]; then
+    local backup=".env.backup.$(date +%Y%m%d%H%M%S)"
+    cp .env "$backup"
+    printf 'Backed up existing .env to %s.\n' "$backup"
+  fi
+
+  if [[ "$simple" != true ]]; then
+    prompt_llm_key
+  fi
+  write_env_file "$(generate_secret)"
+  printf 'Wrote .env with a fresh MURPH_ENCRYPTION_KEY.\n'
+}
+
+install_dependencies() {
+  section "Installing dependencies"
+
+  if [[ -d node_modules && "$force" != true ]]; then
+    printf 'node_modules already exists. Running npm install to reconcile packages.\n'
+  fi
+
+  if ! run_logged npm install; then
+    if grep -qi 'better-sqlite3' "$LOG_FILE"; then
+      cat <<'EOF'
+
+npm install failed while building better-sqlite3.
+
+Common fixes:
+  macOS:          xcode-select --install
+  Debian/Ubuntu:  sudo apt-get install build-essential python3
+
+After installing build tools, rerun ./install.sh.
+EOF
+    fi
+    fail "npm install failed."
+  fi
+}
+
+build_app() {
+  if [[ "$skip_build" == true ]]; then
+    section "Skipping build"
+    printf 'Skipped npm run build because --skip-build was provided.\n'
+    return
+  fi
+
+  section "Building Murph"
+  run_logged npm run build || fail "npm run build failed."
+}
+
+install_cli() {
+  section "Installing CLI"
+
+  if [[ ! -f bin/murph ]]; then
+    printf 'bin/murph is missing. Skipping CLI install.\n'
+    return
+  fi
+
+  local bin_dir="${MURPH_BIN_DIR:-$BIN_DIR_DEFAULT}"
+  mkdir -p "$bin_dir"
+  chmod +x bin/murph
+  ln -sf "$(pwd)/bin/murph" "$bin_dir/murph"
+  printf 'Installed murph CLI at %s/murph.\n' "$bin_dir"
+
+  case ":$PATH:" in
+    *":$bin_dir:"*)
+      ;;
+    *)
+      cat <<EOF
+Add Murph to your PATH:
+  export PATH="$bin_dir:\$PATH"
+EOF
+      ;;
+  esac
+}
+
+print_next_steps() {
+  section "Next steps"
+
+  local build_status="Production build ready"
+  if [[ "$skip_build" == true ]]; then
+    build_status="Build skipped; run murph build before murph start"
+  fi
+
+  cat <<EOF
+Installed:
+  - Dependencies installed
+  - $build_status
+  - .env present
+  - SQLite data directory ready
+
+Agent-ready checklist:
+  - Add an OpenAI or Anthropic key if you skipped the terminal prompt.
+  - Create a Slack app with Socket Mode, then connect your workspace.
+  - Open $APP_URL_DEFAULT/setup for identity, channels, and schedule.
+
+Local app:
+  $APP_URL_DEFAULT
+
+Day-to-day commands:
+  murph start
+  murph status
+  murph doctor
+  murph logs -f
+
+Slack app setup:
+  App dashboard: https://api.slack.com/apps
+  Enable Socket Mode and create an app-level token with connections:write.
+  Add SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET in .env or browser setup.
+  OAuth callback for local installs: $APP_URL_DEFAULT/api/slack/oauth/callback
+  No Slack Events URL is needed when SLACK_EVENTS_MODE=socket.
+
+Discord app setup:
+  App dashboard: https://discord.com/developers/applications
+  DISCORD_REDIRECT_URI: <public-origin>/api/discord/oauth/callback
+
+Optional context sources such as Notion, GitHub, Google, Granola, Obsidian, and web search can be added later.
+Full configuration reference: .env.example
+Local health check: murph doctor
+Install log: $LOG_FILE
+EOF
+}
+
+maybe_start() {
+  if [[ "$no_start" == true ]]; then
+    return
+  fi
+
+  if [[ ! -t 0 ]]; then
+    return
+  fi
+
+  printf '\nStart Murph now? [y/N] '
+  local answer
+  read -r answer
+  case "$answer" in
+    y|Y|yes|YES)
+      printf 'Starting Murph. Open %s in your browser.\n' "$APP_URL_DEFAULT"
+      if [[ -x bin/murph ]]; then
+        bin/murph start
+      elif command -v murph >/dev/null 2>&1; then
+        murph start
+      else
+        npm start
+      fi
+      ;;
+    *)
+      printf 'Start later with: murph start\n'
+      ;;
+  esac
+}
+
+check_node
+if [[ "$doctor" == true ]]; then
+  run_doctor
+fi
+configure_env
+install_dependencies
+build_app
+install_cli
+print_next_steps
+maybe_start

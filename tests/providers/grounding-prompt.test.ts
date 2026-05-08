@@ -79,6 +79,14 @@ describe('buildGroundingPrompt', () => {
     expect(prompt).toContain('Return strict JSON');
   });
 
+  it('renders channel reply style guidance', () => {
+    const prompt = buildGroundingPrompt(context());
+    expect(prompt).toContain('Write like a teammate in the channel, not a chatbot.');
+    expect(prompt).toContain('Use simple words and 1-3 short sentences by default.');
+    expect(prompt).toContain('Lead with the answer or status, not setup phrases.');
+    expect(prompt).toContain('If uncertain, say what is missing and defer instead of padding.');
+  });
+
   it('renders each selected skill as a readable system block', () => {
     const prompt = buildGroundingPrompt(context());
     expect(prompt).toContain('## documentation-grounded-continuity');

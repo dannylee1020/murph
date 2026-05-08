@@ -1,0 +1,353 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_SOURCE" ]]; do
+  SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"
+  LINK_TARGET="$(readlink "$SCRIPT_SOURCE")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_SOURCE="$LINK_TARGET"
+  else
+    SCRIPT_SOURCE="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"
+DEFAULT_APP_DIR="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+
+MURPH_HOME="${MURPH_HOME:-$HOME/.murph}"
+MURPH_APP_DIR="${MURPH_APP_DIR:-$DEFAULT_APP_DIR}"
+MURPH_PID_FILE="${MURPH_PID_FILE:-$MURPH_HOME/murph.pid}"
+MURPH_LOG_FILE="${MURPH_LOG_FILE:-$MURPH_HOME/murph.log}"
+MURPH_PORT="${MURPH_PORT:-5173}"
+MURPH_URL="${MURPH_URL:-http://localhost:$MURPH_PORT}"
+SOURCE_ARCHIVE_URL="${MURPH_SOURCE_ARCHIVE:-https://github.com/dannylee1020/murph/archive/refs/heads/master.tar.gz}"
+
+usage() {
+  cat <<'EOF'
+Usage: murph <command> [options]
+
+Commands:
+  start [--background]  Start Murph in the foreground or background.
+  stop [--force]        Stop the background Murph process.
+  restart              Restart Murph in the background.
+  status               Show process and health status.
+  doctor               Check local setup.
+  logs [-f]            Show runtime logs.
+  open                 Open Murph setup in a browser.
+  build                Build Murph.
+  update               Download latest source, install dependencies, and build.
+  help                 Show this help.
+EOF
+}
+
+fail() {
+  printf '%s\n' "$1" >&2
+  exit 1
+}
+
+have_command() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+require_app() {
+  if [[ ! -f "$MURPH_APP_DIR/package.json" ]]; then
+    cat >&2 <<EOF
+Murph is not installed at $MURPH_APP_DIR.
+Install with:
+  curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash
+EOF
+    exit 1
+  fi
+}
+
+require_runtime() {
+  require_app
+  [[ -f "$MURPH_APP_DIR/.env" ]] || fail "Murph is missing .env. Run: murph doctor"
+  [[ -f "$MURPH_APP_DIR/dist/server/index.js" ]] || fail "Murph is not built. Run: murph build"
+}
+
+pid_value() {
+  [[ -f "$MURPH_PID_FILE" ]] || return 1
+  local pid
+  pid="$(cat "$MURPH_PID_FILE" 2>/dev/null || true)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$pid"
+}
+
+is_pid_running() {
+  local pid="$1"
+  kill -0 "$pid" >/dev/null 2>&1
+}
+
+health_check() {
+  have_command curl || return 1
+  curl -fsS --max-time 2 "$MURPH_URL/api/health" >/dev/null 2>&1
+}
+
+wait_for_health() {
+  local attempt
+  for attempt in {1..20}; do
+    if health_check; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
+start_foreground() {
+  require_runtime
+  if health_check; then
+    printf 'Murph is already running at %s\n' "$MURPH_URL"
+    return
+  fi
+
+  printf 'Starting Murph on %s\n' "$MURPH_URL"
+  printf 'Press Ctrl-C to stop.\n'
+  cd "$MURPH_APP_DIR"
+  PORT="$MURPH_PORT" npm start
+}
+
+start_background() {
+  require_runtime
+  mkdir -p "$MURPH_HOME"
+
+  if health_check; then
+    printf 'Murph is already running at %s\n' "$MURPH_URL"
+    return
+  fi
+
+  local pid
+  if pid="$(pid_value)" && ! is_pid_running "$pid"; then
+    rm -f "$MURPH_PID_FILE"
+  fi
+
+  cd "$MURPH_APP_DIR"
+  nohup env PORT="$MURPH_PORT" node dist/server/index.js >>"$MURPH_LOG_FILE" 2>&1 &
+  pid="$!"
+  printf '%s\n' "$pid" >"$MURPH_PID_FILE"
+
+  if wait_for_health; then
+    printf 'Murph started in the background.\n'
+    printf 'URL: %s/setup\n' "$MURPH_URL"
+    printf 'PID: %s\n' "$pid"
+    printf 'Logs: %s\n' "$MURPH_LOG_FILE"
+    return
+  fi
+
+  printf 'Murph did not become healthy after startup.\n' >&2
+  printf 'Last log lines:\n' >&2
+  tail -n 30 "$MURPH_LOG_FILE" >&2 2>/dev/null || true
+  exit 1
+}
+
+stop_background() {
+  local force=false
+  if [[ "${1:-}" == "--force" ]]; then
+    force=true
+  elif [[ $# -gt 0 ]]; then
+    fail "Unknown stop option: $1"
+  fi
+
+  local pid
+  if ! pid="$(pid_value)"; then
+    rm -f "$MURPH_PID_FILE"
+    printf 'Murph is not running in background mode.\n'
+    return
+  fi
+
+  if ! is_pid_running "$pid"; then
+    rm -f "$MURPH_PID_FILE"
+    printf 'Removed stale PID file.\n'
+    return
+  fi
+
+  kill "$pid" >/dev/null 2>&1 || true
+  local attempt
+  for attempt in {1..20}; do
+    if ! is_pid_running "$pid"; then
+      rm -f "$MURPH_PID_FILE"
+      printf 'Murph stopped.\n'
+      return
+    fi
+    sleep 0.25
+  done
+
+  if [[ "$force" == true ]]; then
+    kill -9 "$pid" >/dev/null 2>&1 || true
+    rm -f "$MURPH_PID_FILE"
+    printf 'Murph force-stopped.\n'
+    return
+  fi
+
+  fail "Murph did not stop within 5 seconds. Run: murph stop --force"
+}
+
+status() {
+  local pid=""
+  if pid="$(pid_value)" && is_pid_running "$pid"; then
+    if health_check; then
+      printf 'Murph is running.\n'
+      printf 'URL: %s\n' "$MURPH_URL"
+      printf 'PID: %s\n' "$pid"
+      return
+    fi
+    printf 'Murph PID exists, but the health check is failing.\n'
+    printf 'PID: %s\n' "$pid"
+    printf 'Run: murph logs\n'
+    return 1
+  fi
+
+  if health_check; then
+    printf 'Murph is responding at %s, but no CLI PID file exists.\n' "$MURPH_URL"
+    return
+  fi
+
+  rm -f "$MURPH_PID_FILE"
+  printf 'Murph is not running.\n'
+  printf 'Start with: murph start\n'
+}
+
+doctor() {
+  require_app
+  cd "$MURPH_APP_DIR"
+  ./install.sh --doctor
+}
+
+show_logs() {
+  local follow=false
+  if [[ "${1:-}" == "-f" || "${1:-}" == "--follow" ]]; then
+    follow=true
+  elif [[ $# -gt 0 ]]; then
+    fail "Unknown logs option: $1"
+  fi
+
+  local log_file="$MURPH_LOG_FILE"
+  if [[ ! -f "$log_file" && -f "$MURPH_APP_DIR/.murph-install.log" ]]; then
+    log_file="$MURPH_APP_DIR/.murph-install.log"
+  fi
+  [[ -f "$log_file" ]] || fail "No Murph logs found yet."
+
+  if [[ "$follow" == true ]]; then
+    tail -f "$log_file"
+  else
+    tail -n 100 "$log_file"
+  fi
+}
+
+open_app() {
+  local url="$MURPH_URL/setup"
+  if have_command open; then
+    open "$url"
+  elif have_command xdg-open; then
+    xdg-open "$url"
+  else
+    printf '%s\n' "$url"
+  fi
+}
+
+build_app() {
+  require_app
+  cd "$MURPH_APP_DIR"
+  npm run build
+}
+
+update_app() {
+  require_app
+  local was_running=false
+  local pid
+  if pid="$(pid_value)" && is_pid_running "$pid"; then
+    was_running=true
+    stop_background
+  fi
+
+  local tmp_dir archive_file source_dir candidate
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/murph-update.XXXXXX")"
+  archive_file="$tmp_dir/murph.tar.gz"
+  cleanup_update() {
+    rm -rf "$tmp_dir"
+  }
+  trap cleanup_update EXIT
+
+  have_command curl || fail "curl is required for murph update."
+  have_command tar || fail "tar is required for murph update."
+
+  printf 'Downloading latest Murph source.\n'
+  curl -fsSL "$SOURCE_ARCHIVE_URL" -o "$archive_file"
+  tar -xzf "$archive_file" -C "$tmp_dir"
+
+  source_dir=""
+  for candidate in "$tmp_dir"/*; do
+    if [[ -d "$candidate" ]]; then
+      source_dir="$candidate"
+      break
+    fi
+  done
+  [[ -n "$source_dir" && -f "$source_dir/package.json" ]] || fail "Downloaded archive did not contain a Murph source tree."
+
+  cp -R "$source_dir"/. "$MURPH_APP_DIR"/
+  cd "$MURPH_APP_DIR"
+  npm install
+  npm run build
+
+  if [[ "$was_running" == true ]]; then
+    start_background
+  else
+    printf 'Murph updated. Start with: murph start\n'
+  fi
+}
+
+command="${1:-help}"
+shift || true
+
+case "$command" in
+  start)
+    if [[ "${1:-}" == "--background" ]]; then
+      shift
+      [[ $# -eq 0 ]] || fail "Unknown start option: $1"
+      start_background
+    elif [[ $# -eq 0 ]]; then
+      start_foreground
+    else
+      fail "Unknown start option: $1"
+    fi
+    ;;
+  stop)
+    stop_background "$@"
+    ;;
+  restart)
+    [[ $# -eq 0 ]] || fail "restart does not accept options."
+    stop_background
+    start_background
+    ;;
+  status)
+    [[ $# -eq 0 ]] || fail "status does not accept options."
+    status
+    ;;
+  doctor)
+    [[ $# -eq 0 ]] || fail "doctor does not accept options."
+    doctor
+    ;;
+  logs)
+    show_logs "$@"
+    ;;
+  open)
+    [[ $# -eq 0 ]] || fail "open does not accept options."
+    open_app
+    ;;
+  build)
+    [[ $# -eq 0 ]] || fail "build does not accept options."
+    build_app
+    ;;
+  update)
+    [[ $# -eq 0 ]] || fail "update does not accept options."
+    update_app
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac

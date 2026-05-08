@@ -2,53 +2,195 @@
 
 A self-hosted async autopilot that handles your messaging channels while you're offline.
 
-**Goal:** Remove timezone as a productivity bottleneck. Murph handles your channels while you're away — triaging, drafting, and responding so nothing waits until you're back.
-
-Start a session before you log off. Murph watches the channels you choose, pulls context, and handles requests grounded to your policy - executing what's safe, queueing the rest for review. Teams get unblocked and you start the morning with clean todo.
+Start a session before you log off. Murph watches the channels you choose, pulls relevant context from your connected tools, and handles incoming requests — sending safe responses automatically and queuing the rest for your review. Teams get unblocked and you start the morning with a clean inbox.
 
 
 ## How it works
 
-1. A message comes in on a watched channel
-2. Murph pulls thread history, your preferences, and linked context (docs, tickets, prior threads)
-3. Selects a skill, narrows the tool surface, runs a grounded LLM loop
-4. Applies your policy: execute and send if low-risk, queue for review if not
-5. Logs every tool call and decision
+1. A message arrives on a watched channel
+2. Murph assembles context — thread history, your preferences, and linked sources (docs, email, meeting notes, calendar)
+3. Picks the right skill for the request and retrieves only the sources that are relevant
+4. Runs a grounded LLM loop, then applies your policy: send if low-risk, queue if not
+5. Logs every tool call and decision for full auditability
 
 ```
 Channel event → normalize → match session → assemble context
-  → select skill → LLM loop (read-only tools) → policy gate
+  → select skill → LLM loop → policy gate
   → auto_send | queue | abstain → audit + SSE to UI
 ```
 
-## Quick start
+### Sessions and context
+
+When you start a session, Murph builds a **session context snapshot** — a one-time pull of your handoff notes and today's relevant data from connected sources. This gives every action during the session a shared baseline without re-fetching on every message.
+
+After a session ends, the **triage view** shows what Murph handled, what it queued, and what it skipped, along with the context snapshot behind each decision so you can review with full transparency.
+
+### Skills
+
+Skills define how Murph handles different types of requests. Each skill declares which knowledge domains it needs (email, calendar, documentation, meetings) so context retrieval stays focused. Built-in skills cover:
+
+- **Channel continuity** — general thread follow-ups
+- **Communication** — email, scheduling, and follow-up questions
+- **Meeting** — questions about what was said or decided in meetings
+- **Documentation** — fact-finding from shared docs and code
+- **Morning digest** — a scheduled summary of overnight activity
+
+### Policy
+
+You control how much autonomy Murph has through policy profiles:
+
+- **Auto-send low-risk** — send safe responses, queue everything else
+- **Manual review** — queue all drafts for your approval
+- Per-user overrides for confidence thresholds and allowed action types
+
+
+## Installation
+
+Run the installer from any terminal.
 
 ```bash
-git clone https://github.com/<you>/murph
-cd murph
-npm install
-cp .env.example .env   # add OPENAI_API_KEY or ANTHROPIC_API_KEY
-npm run dev:server
+curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash
 ```
 
-In a second terminal:
+The installer will:
+
+1. Check that Node.js 18+ and npm are available
+2. Download Murph into `~/.murph/app`
+3. Install dependencies
+4. Build the server and UI
+5. Create `.env` with local defaults and a generated encryption key
+6. Create the local SQLite data directory
+7. Prompt for an OpenAI or Anthropic API key
+8. Install the `murph` CLI into `~/.local/bin`
+9. Offer to start Murph
+
+Open:
+
+```text
+http://localhost:5173/setup
+```
+
+If you skip startup, run:
 
 ```bash
+murph start
+```
+
+To install somewhere else:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | MURPH_INSTALL_DIR=/path/to/murph bash
+```
+
+Run a local setup check any time:
+
+```bash
+murph doctor
+```
+
+### Simple setup
+
+Use this if you want minimal terminal interaction and browser-based setup.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash -s -- --simple
+```
+
+This runs the same install flow, but skips API-key prompts. After startup, open `http://localhost:5173/setup` and finish setup in the browser.
+
+The browser setup asks for:
+
+1. OpenAI or Anthropic API key
+2. Slack app credentials
+3. Slack workspace connection
+4. Your Slack identity
+5. Channels Murph should watch
+6. Your work schedule
+
+Useful installer flags:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash -s -- --simple
+curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash -s -- --no-start
+curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash -s -- --skip-build
+curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash -s -- --force
+curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash -s -- --doctor
+```
+
+If you already have a Murph checkout, run `./install.sh` from that directory.
+
+### Day-to-day commands
+
+```bash
+murph start              # start in the foreground
+murph start --background # start in the background
+murph status             # check process and health
+murph logs -f            # follow logs
+murph stop               # stop the background process
+murph restart            # restart in the background
+murph doctor             # check local setup
+murph open               # open the setup page
+murph update             # update the installed app
+```
+
+If your shell cannot find `murph`, add the user-local bin directory to your PATH:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Slack app setup
+
+Slack uses Socket Mode by default.
+
+1. Create a Slack app at `https://api.slack.com/apps`
+2. Use `docs/slack-socket-mode-manifest.yml` as the app manifest
+3. Enable Socket Mode
+4. Create an app-level token with `connections:write`
+5. Add `SLACK_APP_TOKEN`, `SLACK_CLIENT_ID`, and `SLACK_CLIENT_SECRET` in `.env` or browser setup
+6. Set the OAuth callback URL to:
+
+```text
+http://localhost:5173/api/slack/oauth/callback
+```
+
+No Slack Events URL is needed when `SLACK_EVENTS_MODE=socket`.
+
+### Manual setup
+
+Use this path if you do not want to run the installer.
+
+```bash
+npm install
+cp .env.example .env   # add OPENAI_API_KEY or ANTHROPIC_API_KEY
+npm run build
+npm start
+```
+
+For development, run the API server and UI separately:
+
+```bash
+npm run dev:server
 npm run dev
 ```
 
-Open `http://localhost:5174` to connect Slack and start a session. The API server runs on `http://localhost:5173`.
+The production server runs on `http://localhost:5173`. The Vite dev UI usually runs on `http://localhost:5174`.
 
-## What's included
+### What you can connect
 
-- **Channels:** Slack, Discord
-- **Providers:** OpenAI, Anthropic
-- **Context sources:** Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian
-- **Tools:** Web search, file read, shell exec
-- **Storage:** SQLite with encrypted credentials
+| Category | Options |
+|---|---|
+| **Channels** | Slack, Discord |
+| **LLM providers** | OpenAI, Anthropic |
+| **Context sources** | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian |
+| **Built-in tools** | Web search, file read, shell exec |
+| **Storage** | SQLite with encrypted credentials |
+
+Integrations are configured per-workspace from the settings page.
 
 
 ## Contributing
+
 - **Channels** — add a messaging platform (Slack and Discord exist as references)
 - **Context sources** — connect a new data source (Notion, GitHub, Gmail, etc.)
 - **Tools** — give the agent new capabilities

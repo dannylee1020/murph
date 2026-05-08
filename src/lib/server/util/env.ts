@@ -11,6 +11,8 @@ export interface RuntimeEnv {
   slackClientId?: string;
   slackClientSecret?: string;
   slackSigningSecret?: string;
+  slackAppToken?: string;
+  slackEventsMode: 'socket' | 'http';
   discordBotToken?: string;
   discordClientId?: string;
   discordClientSecret?: string;
@@ -62,6 +64,8 @@ export function getRuntimeEnv(): RuntimeEnv {
     slackClientId: process.env.SLACK_CLIENT_ID,
     slackClientSecret: process.env.SLACK_CLIENT_SECRET,
     slackSigningSecret: process.env.SLACK_SIGNING_SECRET,
+    slackAppToken: process.env.SLACK_APP_TOKEN,
+    slackEventsMode: process.env.SLACK_EVENTS_MODE === 'http' ? 'http' : 'socket',
     discordBotToken: process.env.DISCORD_BOT_TOKEN,
     discordClientId: process.env.DISCORD_CLIENT_ID,
     discordClientSecret: process.env.DISCORD_CLIENT_SECRET,
@@ -93,4 +97,8 @@ export function getRuntimeEnv(): RuntimeEnv {
   };
 
   return cachedEnv;
+}
+
+export function resetRuntimeEnvCache(): void {
+  cachedEnv = null;
 }

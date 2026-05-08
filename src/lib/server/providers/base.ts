@@ -1,13 +1,6 @@
 import type { ContextAssembly, ModelProvider, ProviderDraftResult } from '#lib/types';
 import { buildSkillsSystemBlock } from '#lib/server/runtime/skills-prompt';
-
-const MURPH_IDENTITY = [
-  'You are Murph, a bounded channel continuity agent that watches a teammate\'s threads while they are offline.',
-  'Return strict JSON with keys: continuityCase, summary, unresolvedQuestions, proposedAction.',
-  'proposedAction must contain: type, message, reason, confidence.',
-  'Only use actions: reply, ask, redirect, defer, remind, abstain.',
-  'Be conservative and avoid speculative claims.'
-].join('\n');
+import { MURPH_PROMPT_GUIDANCE } from '#lib/server/runtime/prompt-guidance';
 
 function safeParseResult(content: string): ProviderDraftResult {
   const parsed = JSON.parse(content) as ProviderDraftResult;
@@ -28,7 +21,7 @@ export abstract class JsonPromptProvider implements ModelProvider {
     context: Omit<ContextAssembly, 'summary' | 'unresolvedQuestions' | 'continuityCase'>
   ): string {
     const skillsBlock = buildSkillsSystemBlock(context.skills);
-    const sections: string[] = [MURPH_IDENTITY];
+    const sections: string[] = [MURPH_PROMPT_GUIDANCE];
 
     if (skillsBlock) {
       sections.push(skillsBlock);

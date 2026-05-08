@@ -1,5 +1,6 @@
 import { registerBuiltInTools } from '#lib/server/capabilities/builtins';
 import { getDiscordGatewayClient } from '#lib/server/channels/discord/gateway-client';
+import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-client';
 import { loadRuntimePlugins } from '#lib/server/capabilities/plugins';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#lib/server/integrations/capabilities';
 import { getStore } from '#lib/server/persistence/store';
@@ -26,6 +27,7 @@ export async function ensureRuntimeInitialized(): Promise<void> {
     pending = (async () => {
       registerBuiltInTools();
       getDiscordGatewayClient().ensureStarted();
+      getSlackSocketModeClient().ensureStarted();
       await loadRuntimePlugins();
       reconcileIntegrationCapabilities();
       initialized = true;

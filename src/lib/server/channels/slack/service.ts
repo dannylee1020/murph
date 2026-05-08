@@ -118,8 +118,11 @@ export interface SlackSearchResult {
 }
 
 export class SlackService {
-  private readonly env = getRuntimeEnv();
   private readonly store = getStore();
+
+  private get env() {
+    return getRuntimeEnv();
+  }
 
   buildInstallUrl(appUrl = this.env.appUrl): string | undefined {
     if (!this.env.slackClientId) {
