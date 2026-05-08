@@ -261,9 +261,10 @@ update_app() {
     stop_background
   fi
 
-  local tmp_dir archive_file source_dir candidate
+  local tmp_dir archive_file source_dir candidate preserve_dir
   tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/murph-update.XXXXXX")"
   archive_file="$tmp_dir/murph.tar.gz"
+  preserve_dir="$tmp_dir/preserve"
   cleanup_update() {
     rm -rf "$tmp_dir"
   }
@@ -285,7 +286,23 @@ update_app() {
   done
   [[ -n "$source_dir" && -f "$source_dir/package.json" ]] || fail "Downloaded archive did not contain a Murph source tree."
 
+  mkdir -p "$preserve_dir"
+  if [[ -f "$MURPH_APP_DIR/.env" ]]; then
+    cp "$MURPH_APP_DIR/.env" "$preserve_dir/.env"
+  fi
+  if [[ -d "$MURPH_APP_DIR/data" ]]; then
+    cp -R "$MURPH_APP_DIR/data" "$preserve_dir/data"
+  fi
+
   cp -R "$source_dir"/. "$MURPH_APP_DIR"/
+  if [[ -f "$preserve_dir/.env" ]]; then
+    cp "$preserve_dir/.env" "$MURPH_APP_DIR/.env"
+  fi
+  if [[ -d "$preserve_dir/data" ]]; then
+    rm -rf "$MURPH_APP_DIR/data"
+    cp -R "$preserve_dir/data" "$MURPH_APP_DIR/data"
+  fi
+
   cd "$MURPH_APP_DIR"
   npm install
   npm run build
