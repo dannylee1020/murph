@@ -28,6 +28,10 @@ export class ContextSourceRegistry {
     });
   }
 
+  has(name: string): boolean {
+    return this.sources.has(name);
+  }
+
   async retrieve(
     explicitNames: string[],
     optionalNames: string[],

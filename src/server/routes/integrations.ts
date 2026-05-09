@@ -1,7 +1,9 @@
 import { encryptString } from '#lib/server/util/crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
-import { getIntegration, INTEGRATIONS, readEnvCredential } from '#lib/server/integrations/registry';
+import { getIntegration, listIntegrations, readEnvCredential } from '#lib/server/integrations/registry';
+import { loadIntegrationAdapters } from '#lib/server/integrations/adapter-loader';
+import { registerBuiltInIntegrationAdapters } from '#lib/server/integrations/register-builtins';
 import { maskCredential } from '#lib/server/integrations/credentials';
 import {
   enableIntegrationCapabilities,
@@ -61,7 +63,12 @@ async function validateCredential(provider: string, credential: string): Promise
     return {};
   }
 
-  throw new Error('Unsupported integration provider');
+  return {};
+}
+
+async function ensureIntegrationRegistryLoaded(): Promise<void> {
+  registerBuiltInIntegrationAdapters();
+  await loadIntegrationAdapters();
 }
 
 function statusFor(provider: string, workspaceId: string) {
@@ -93,7 +100,8 @@ function statusFor(provider: string, workspaceId: string) {
 }
 
 export const integrationRoutes: Route[] = [
-  route('GET', '/api/integrations/status', ({ res, url }) => {
+  route('GET', '/api/integrations/status', async ({ res, url }) => {
+    await ensureIntegrationRegistryLoaded();
     const workspace = getTargetWorkspace(url.searchParams.get('workspaceId') ?? undefined);
     if (!workspace) {
       sendJson(res, { ok: false, error: 'workspace_required' }, 400);
@@ -103,10 +111,11 @@ export const integrationRoutes: Route[] = [
     sendJson(res, {
       ok: true,
       workspaceId: workspace.id,
-      integrations: INTEGRATIONS.map((integration) => statusFor(integration.provider, workspace.id))
+      integrations: listIntegrations().map((integration) => statusFor(integration.provider, workspace.id))
     });
   }),
   route('POST', '/api/integrations/:provider/connect', async ({ req, res, params }) => {
+    await ensureIntegrationRegistryLoaded();
     const definition = getIntegration(params.provider);
     if (!definition) {
       sendJson(res, { ok: false, error: 'unsupported_provider' }, 404);
@@ -151,7 +160,8 @@ export const integrationRoutes: Route[] = [
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
     }
   }),
-  route('DELETE', '/api/integrations/:provider/disconnect', ({ res, params, url }) => {
+  route('DELETE', '/api/integrations/:provider/disconnect', async ({ res, params, url }) => {
+    await ensureIntegrationRegistryLoaded();
     const definition = getIntegration(params.provider);
     if (!definition) {
       sendJson(res, { ok: false, error: 'unsupported_provider' }, 404);

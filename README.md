@@ -148,11 +148,13 @@ Slack uses Socket Mode by default.
 3. Enable Socket Mode
 4. Create an app-level token with `connections:write`
 5. Add `SLACK_APP_TOKEN`, `SLACK_CLIENT_ID`, and `SLACK_CLIENT_SECRET` in `.env` or browser setup
-6. Set the OAuth callback URL to:
+6. Confirm the OAuth callback URL is registered in Slack:
 
 ```text
 http://localhost:5173/api/slack/oauth/callback
 ```
+
+If Slack says `redirect_uri did not match any configured URIs`, add that exact URL under **OAuth & Permissions → Redirect URLs**, then retry the install.
 
 No Slack Events URL is needed when `SLACK_EVENTS_MODE=socket`.
 
@@ -188,11 +190,84 @@ The production server runs on `http://localhost:5173`. The Vite dev UI usually r
 
 Integrations are configured per-workspace from the settings page.
 
+### Adding integrations
+
+Murph integrations are adapters. First-party integrations live in provider folders:
+
+```text
+src/lib/server/integrations/github/index.ts
+src/lib/server/integrations/notion/index.ts
+src/lib/server/integrations/granola/index.ts
+src/lib/server/integrations/google/index.ts
+```
+
+Custom integrations use the same adapter shape. An adapter can add:
+
+- **Tools** the agent can call
+- **Context sources** Murph can retrieve from during grounding
+- **Session context** pulled once when a session starts
+- **Credential metadata** for setup and status UI
+
+For local/custom integrations, use either layout:
+
+```text
+~/.murph/integrations/linear.js
+~/.murph/integrations/linear/index.js
+```
+
+During development, you can also use a repo-local directory:
+
+```text
+./integrations/linear.js
+./integrations/linear/index.js
+```
+
+Restart Murph after adding or editing an adapter.
+
+Minimal custom adapter:
+
+```js
+export default {
+  id: 'linear',
+  name: 'Linear',
+  description: 'Issues and project context.',
+  credential: {
+    authType: 'api_key',
+    credentialKind: 'api_key',
+    envKey: 'LINEAR_API_KEY',
+    credentialLabel: 'API key'
+  },
+  isConfigured() {
+    return Boolean(process.env.LINEAR_API_KEY);
+  },
+  tools: [
+    {
+      name: 'linear.search',
+      description: 'Search Linear issues.',
+      sideEffectClass: 'read',
+      optional: true,
+      requiresWorkspaceEnablement: true,
+      async execute(input) {
+        return { results: [] };
+      }
+    }
+  ],
+  contextSources: [],
+  sessionContext: {
+    async contribute() {
+      return { sections: [] };
+    }
+  }
+};
+```
+
+Use a unique `id`. Built-in integrations such as `github`, `notion`, `granola`, and `google` cannot be overridden by custom adapters.
+
 
 ## Contributing
 
 - **Channels** — add a messaging platform (Slack and Discord exist as references)
-- **Context sources** — connect a new data source (Notion, GitHub, Gmail, etc.)
+- **Integrations** — add a data source, tool set, or session-context contributor
 - **Tools** — give the agent new capabilities
 - **Skills** — define how the agent handles specific types of requests
 - **Providers** — plug in a different LLM

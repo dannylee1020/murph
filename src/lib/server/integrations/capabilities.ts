@@ -1,6 +1,6 @@
 import { getStore } from '#lib/server/persistence/store';
 import type { IntegrationDefinition } from './registry.js';
-import { INTEGRATIONS, readEnvCredential } from './registry.js';
+import { listIntegrations, readEnvCredential } from './registry.js';
 
 function unionUnique(existing: string[], additions: string[]): string[] {
   const set = new Set(existing);
@@ -58,7 +58,7 @@ export function disableIntegrationCapabilities(
  */
 export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string): void {
   const store = getStore();
-  for (const definition of INTEGRATIONS) {
+  for (const definition of listIntegrations()) {
     const stored = store.getIntegrationCredential(workspaceId, definition.provider);
     const hasDbCred = stored?.status === 'connected';
     const hasEnvCred = Boolean(readEnvCredential(definition.provider));

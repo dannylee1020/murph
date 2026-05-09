@@ -105,13 +105,13 @@ export interface SessionContextSnapshot {
     builtAt: string;
     date: string;
     handoffDoc?: {
-        source: 'notion';
+        source: string;
         title: string;
         url?: string;
         text: string;
     };
     sections: Array<{
-        source: 'notion' | 'granola' | 'github' | 'gmail' | 'calendar';
+        source: string;
         title: string;
         summary: string;
         url?: string;

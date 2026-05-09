@@ -5,6 +5,8 @@ features:
     display_name: Murph
     always_online: false
 oauth_config:
+  redirect_urls:
+    - http://localhost:5173/api/slack/oauth/callback
   scopes:
     bot:
       - app_mentions:read

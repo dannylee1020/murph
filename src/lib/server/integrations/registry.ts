@@ -1,6 +1,7 @@
-import { getRuntimeEnv } from '#lib/server/util/env';
+import { listAdapters } from './adapter-registry.js';
+import { readEnvCredential } from './env-credentials.js';
 
-export type IntegrationProvider = 'github' | 'notion' | 'granola' | 'google';
+export type IntegrationProvider = string;
 export type IntegrationAuthType = 'api_key' | 'oauth';
 
 export interface IntegrationDefinition {
@@ -64,22 +65,28 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   }
 ];
 
-export function getIntegration(provider: string): IntegrationDefinition | undefined {
-  return INTEGRATIONS.find((integration) => integration.provider === provider);
+export function listIntegrations(): IntegrationDefinition[] {
+  const adapters = listAdapters();
+  if (adapters.length === 0) {
+    return INTEGRATIONS;
+  }
+
+  return adapters.map((adapter) => ({
+    provider: adapter.id,
+    name: adapter.name,
+    description: adapter.description,
+    authType: adapter.credential.authType,
+    credentialKind: adapter.credential.credentialKind,
+    envKey: adapter.credential.envKey,
+    credentialLabel: adapter.credential.credentialLabel,
+    installPath: adapter.credential.installPath,
+    tools: (adapter.tools ?? []).map((tool) => tool.name),
+    contextSources: (adapter.contextSources ?? []).map((source) => source.name)
+  }));
 }
 
-export function readEnvCredential(provider: string): string | undefined {
-  const env = getRuntimeEnv();
-  switch (provider) {
-    case 'github':
-      return env.githubPat;
-    case 'notion':
-      return env.notionApiKey;
-    case 'granola':
-      return env.granolaApiKey;
-    case 'google':
-      return env.googleAccessToken;
-    default:
-      return undefined;
-  }
+export function getIntegration(provider: string): IntegrationDefinition | undefined {
+  return listIntegrations().find((integration) => integration.provider === provider);
 }
+
+export { readEnvCredential };

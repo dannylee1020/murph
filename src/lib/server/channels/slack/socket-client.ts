@@ -34,6 +34,7 @@ export class SlackSocketModeClient {
       appToken: env.slackAppToken,
       logLevel: LogLevel.WARN
     });
+    this.patchSocketModeDisconnectRace(this.client);
 
     this.client.on('slack_event', (envelope: SlackSocketEventEnvelope) => {
       void this.handleEnvelope(envelope);
@@ -42,6 +43,7 @@ export class SlackSocketModeClient {
       console.info('[slack] socket mode connected');
     });
     this.client.on('disconnected', (error?: unknown) => {
+      this.started = false;
       if (error) {
         console.warn('[slack] socket mode disconnected:', error instanceof Error ? error.message : error);
       }
@@ -57,6 +59,29 @@ export class SlackSocketModeClient {
       this.started = false;
       console.warn('[slack] socket mode start failed:', error instanceof Error ? error.message : error);
     });
+  }
+
+  private patchSocketModeDisconnectRace(client: SocketModeClient): void {
+    const socketClient = client as SocketModeClient & {
+      onWebSocketMessage?: (event: { data: unknown }) => Promise<void>;
+    };
+    const original = socketClient.onWebSocketMessage;
+    if (!original) {
+      return;
+    }
+
+    socketClient.onWebSocketMessage = async (event) => {
+      try {
+        await original.call(client, event);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("Unhandled event 'server explicit disconnect' in state 'connecting'")) {
+          console.warn('[slack] socket mode ignored disconnect while connecting; waiting for reconnect');
+          return;
+        }
+        throw error;
+      }
+    };
   }
 
   async handleEnvelope(envelope: SlackSocketEventEnvelope): Promise<void> {

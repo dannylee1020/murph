@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const start = vi.fn();
 const on = vi.fn();
+const onWebSocketMessage = vi.fn();
 const socketConstructor = vi.fn(function SocketModeClientMock() {
-  return { on, start };
+  return { on, start, onWebSocketMessage };
 });
 const handleSlackEventEnvelope = vi.fn();
 
@@ -21,6 +22,8 @@ describe('SlackSocketModeClient', () => {
     vi.resetModules();
     socketConstructor.mockClear();
     on.mockClear();
+    onWebSocketMessage.mockReset();
+    onWebSocketMessage.mockResolvedValue(undefined);
     start.mockReset();
     start.mockResolvedValue({});
     handleSlackEventEnvelope.mockReset();
@@ -55,6 +58,19 @@ describe('SlackSocketModeClient', () => {
     expect(socketConstructor).toHaveBeenCalledWith({ appToken: 'xapp-test', logLevel: 'warn' });
     expect(on).toHaveBeenCalledWith('slack_event', expect.any(Function));
     expect(start).toHaveBeenCalledOnce();
+  });
+
+  it('does not crash when Slack disconnects while the socket is connecting', async () => {
+    process.env.SLACK_APP_TOKEN = 'xapp-test';
+    onWebSocketMessage.mockRejectedValueOnce(
+      new Error("Unhandled event 'server explicit disconnect' in state 'connecting'.")
+    );
+    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+
+    new SlackSocketModeClient().ensureStarted();
+    const client = socketConstructor.mock.results[0].value;
+
+    await expect(client.onWebSocketMessage({ data: '{"type":"disconnect"}' })).resolves.toBeUndefined();
   });
 
   it('acks and handles Slack Events API envelopes', async () => {
