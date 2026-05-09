@@ -313,7 +313,7 @@ function session(): AutopilotSession {
   return {
     id: 'session-1',
     workspaceId: 'T1',
-    ownerSlackUserId: 'UOWNER',
+    ownerUserId: 'UOWNER',
     title: 'Coverage',
     mode: 'manual_review',
     status: 'active',
@@ -326,7 +326,8 @@ function session(): AutopilotSession {
 function workspace(): Workspace {
   return {
     id: 'T1',
-    slackTeamId: 'T1',
+    provider: 'slack',
+    externalWorkspaceId: 'T1',
     name: 'Test',
     botTokenEncrypted: 'token',
     botUserId: 'UTZBOT',

@@ -51,7 +51,8 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
   const { getStore } = await import('#lib/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
-    slackTeamId: 'T1',
+    provider: 'slack',
+    externalWorkspaceId: 'T1',
     name: 'Test Workspace',
     botTokenEncrypted: 'token',
     botUserId: 'UTZBOT'
@@ -84,7 +85,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     ]);
 
     const response = await post({
-      ownerSlackUserId: 'UOWNER',
+      ownerUserId: 'UOWNER',
       channelScope: ['C1'],
       mode: 'manual_review'
     });
@@ -103,7 +104,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     ]);
 
     const response = await post({
-      ownerSlackUserId: 'UOWNER',
+      ownerUserId: 'UOWNER',
       channelScope: ['C1', 'C2'],
       mode: 'manual_review'
     });
@@ -119,7 +120,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     ]);
 
     const response = await post({
-      ownerSlackUserId: 'UOWNER',
+      ownerUserId: 'UOWNER',
       channelScope: ['G1'],
       mode: 'manual_review'
     });
@@ -146,7 +147,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     ]);
 
     const response = await post({
-      ownerSlackUserId: 'UOWNER',
+      ownerUserId: 'UOWNER',
       channelScope: ['C1'],
       mode: 'manual_review'
     });
@@ -162,7 +163,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     ]);
 
     const response = await post({
-      ownerSlackUserId: 'UOWNER',
+      ownerUserId: 'UOWNER',
       channelScope: ['C1'],
       mode: 'manual_review',
       policyProfileName: 'founder-coverage',

@@ -12,7 +12,8 @@ async function setup() {
   const { getStore } = await import('#lib/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
-    slackTeamId: 'T1',
+    provider: 'slack',
+    externalWorkspaceId: 'T1',
     name: 'Test Workspace',
     botTokenEncrypted: encryptString('xoxb-test', 'test-key'),
     botUserId: 'UTZBOT'

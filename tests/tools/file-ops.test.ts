@@ -21,7 +21,7 @@ describe('fs.read tool', () => {
     process.env.MURPH_FILE_READ_ALLOWED_ROOTS = root;
 
     const tool = await loadTool();
-    const result = await tool.execute({ path: file }, { workspace: { id: 'T1', slackTeamId: 'T1', name: 'Test' } });
+    const result = await tool.execute({ path: file }, { workspace: { id: 'T1', provider: 'slack' as const, externalWorkspaceId: 'T1', name: 'Test' } });
 
     expect(result.text).toBe('launch checklist');
     expect(result.path).toBe(file);
@@ -35,7 +35,7 @@ describe('fs.read tool', () => {
 
     const tool = await loadTool();
 
-    await expect(tool.execute({ path: outside }, { workspace: { id: 'T1', slackTeamId: 'T1', name: 'Test' } })).rejects.toThrow(
+    await expect(tool.execute({ path: outside }, { workspace: { id: 'T1', provider: 'slack' as const, externalWorkspaceId: 'T1', name: 'Test' } })).rejects.toThrow(
       /outside allowed read roots/
     );
   });
@@ -44,7 +44,7 @@ describe('fs.read tool', () => {
     process.env.MURPH_FILE_READ_ALLOWED_ROOTS = '/';
     const tool = await loadTool();
 
-    await expect(tool.execute({ path: '~/.ssh/id_rsa' }, { workspace: { id: 'T1', slackTeamId: 'T1', name: 'Test' } })).rejects.toThrow(
+    await expect(tool.execute({ path: '~/.ssh/id_rsa' }, { workspace: { id: 'T1', provider: 'slack' as const, externalWorkspaceId: 'T1', name: 'Test' } })).rejects.toThrow(
       /blocked by Murph safety policy/
     );
   });

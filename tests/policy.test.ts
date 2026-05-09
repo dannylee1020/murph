@@ -55,7 +55,7 @@ function session(mode: AutopilotSession['mode']): AutopilotSession {
   return {
     id: 'session',
     workspaceId: 'workspace',
-    ownerSlackUserId: 'U1',
+    ownerUserId: 'U1',
     title: 'Overnight',
     mode,
     status: 'active',

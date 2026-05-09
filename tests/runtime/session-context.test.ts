@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AutopilotSession, ToolDefinition, Workspace, WorkspaceMemory } from '../../src/lib/types';
+import type { AutopilotSession, Workspace, WorkspaceMemory } from '../../src/lib/types';
 
 const workspace: Workspace = {
   id: 'W1',
@@ -34,56 +34,62 @@ const workspaceMemory: WorkspaceMemory = {
   enabledPlugins: []
 };
 
-function tool<TInput, TOutput>(definition: ToolDefinition<TInput, TOutput>): ToolDefinition<TInput, TOutput> {
-  return {
-    sideEffectClass: 'read',
-    retrievalEligible: true,
-    optional: true,
-    requiresWorkspaceEnablement: true,
-    supportsDryRun: true,
-    ...definition
-  };
-}
-
 describe('SessionContextBuilder', () => {
   beforeEach(() => {
     vi.resetModules();
   });
 
   it('builds a session context from the named Notion handoff and same-day sources', async () => {
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
+    const { registerAdapter } = await import('#lib/server/integrations/adapter-registry');
     const { SessionContextBuilder } = await import('#lib/server/runtime/session-context');
-    const registry = getToolRegistry();
 
-    registry.register(tool({
-      name: 'notion.search',
-      description: 'Search Notion',
-      async execute() {
-        return { results: [{ id: 'page-1', title: 'Murph Handoff 2026-05-07', url: 'https://notion.test/page-1' }] };
+    registerAdapter({
+      id: 'test-context',
+      name: 'Test Context',
+      description: 'Test session context adapter.',
+      credential: {
+        authType: 'api_key',
+        credentialKind: 'api_key',
+        envKey: 'TEST_CONTEXT_API_KEY',
+        credentialLabel: 'API key'
+      },
+      isConfigured: () => true,
+      sessionContext: {
+        async contribute() {
+          return {
+            handoffDoc: {
+              source: 'notion',
+              title: 'Murph Handoff 2026-05-07',
+              url: 'https://notion.test/page-1',
+              text: 'Launch is waiting on QA.'
+            },
+            sections: [
+              {
+                source: 'notion',
+                title: 'Murph Handoff 2026-05-07',
+                summary: 'Launch is waiting on QA.',
+                url: 'https://notion.test/page-1'
+              },
+              {
+                source: 'github',
+                title: 'Fix checkout launch bug',
+                summary: 'PR updated today',
+                url: 'https://github.test/pr'
+              },
+              {
+                source: 'calendar',
+                title: 'Launch sync',
+                summary: '2026-05-07T17:00:00Z - 2026-05-07T18:00:00Z',
+                metadata: {
+                  start: '2026-05-07T17:00:00Z',
+                  end: '2026-05-07T18:00:00Z'
+                }
+              }
+            ]
+          };
+        }
       }
-    }));
-    registry.register(tool({
-      name: 'notion.read_page',
-      description: 'Read Notion page',
-      retrievalEligible: false,
-      async execute() {
-        return { title: 'Murph Handoff 2026-05-07', url: 'https://notion.test/page-1', text: 'Launch is waiting on QA.' };
-      }
-    }));
-    registry.register(tool({
-      name: 'github.search',
-      description: 'Search GitHub',
-      async execute() {
-        return { results: [{ title: 'Fix checkout launch bug', body: 'PR updated today', url: 'https://github.test/pr' }] };
-      }
-    }));
-    registry.register(tool({
-      name: 'calendar.search_events',
-      description: 'Search Calendar',
-      async execute() {
-        return { events: [{ title: 'Launch sync', start: '2026-05-07T17:00:00Z', end: '2026-05-07T18:00:00Z' }] };
-      }
-    }));
+    }, { source: 'user' });
 
     const context = await new SessionContextBuilder().build({
       workspace,

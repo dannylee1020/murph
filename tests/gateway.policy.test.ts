@@ -145,21 +145,22 @@ async function setup(
   const { AgentRuntime } = await import('#lib/server/runtime/agent-runtime');
   const store = getStore();
   const workspace = store.saveInstall({
-    slackTeamId: 'T1',
+    provider: 'slack',
+    externalWorkspaceId: 'T1',
     name: 'Test Workspace',
     botTokenEncrypted: 'test-token',
     botUserId: 'UTZBOT'
   });
   store.upsertUser({
     workspaceId: workspace.id,
-    slackUserId: 'UOWNER',
+    externalUserId: 'UOWNER',
     displayName: 'Owner',
     workdayStartHour: 0,
     workdayEndHour: 23
   });
   const session = store.createSession({
     workspaceId: workspace.id,
-    ownerSlackUserId: 'UOWNER',
+    ownerUserId: 'UOWNER',
     title: 'Coverage',
     mode: overrides.sessionMode ?? 'manual_review',
     channelScope: ['C1'],

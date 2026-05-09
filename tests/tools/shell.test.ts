@@ -9,7 +9,7 @@ async function loadTool() {
 describe('shell.exec tool', () => {
   it('runs allowed read-only commands', async () => {
     const tool = await loadTool();
-    const result = await tool.execute({ command: 'pwd' }, { workspace: { id: 'T1', slackTeamId: 'T1', name: 'Test' } });
+    const result = await tool.execute({ command: 'pwd' }, { workspace: { id: 'T1', provider: 'slack' as const, externalWorkspaceId: 'T1', name: 'Test' } });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim().length).toBeGreaterThan(0);
@@ -18,7 +18,7 @@ describe('shell.exec tool', () => {
   it('rejects shell composition tokens', async () => {
     const tool = await loadTool();
 
-    await expect(tool.execute({ command: 'pwd && ls' }, { workspace: { id: 'T1', slackTeamId: 'T1', name: 'Test' } })).rejects.toThrow(
+    await expect(tool.execute({ command: 'pwd && ls' }, { workspace: { id: 'T1', provider: 'slack' as const, externalWorkspaceId: 'T1', name: 'Test' } })).rejects.toThrow(
       /composition tokens/
     );
   });
@@ -26,7 +26,7 @@ describe('shell.exec tool', () => {
   it('rejects disallowed git subcommands', async () => {
     const tool = await loadTool();
 
-    await expect(tool.execute({ command: 'git reset --hard' }, { workspace: { id: 'T1', slackTeamId: 'T1', name: 'Test' } })).rejects.toThrow(
+    await expect(tool.execute({ command: 'git reset --hard' }, { workspace: { id: 'T1', provider: 'slack' as const, externalWorkspaceId: 'T1', name: 'Test' } })).rejects.toThrow(
       /Subcommand is not allowed/
     );
   });

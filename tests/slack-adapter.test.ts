@@ -21,7 +21,8 @@ async function setup(): Promise<SlackAdapterTestContext> {
   const store = await loadStore();
   const { normalizeSlackEvent } = await import('../src/lib/server/channels/slack/adapter');
   const workspace = store.saveInstall({
-    slackTeamId: 'T1',
+    provider: 'slack',
+    externalWorkspaceId: 'T1',
     name: 'Test Workspace',
     botTokenEncrypted: 'test-token',
     botUserId: 'UTZBOT'
@@ -29,13 +30,13 @@ async function setup(): Promise<SlackAdapterTestContext> {
 
   store.upsertUser({
     workspaceId: workspace.id,
-    slackUserId: 'UOWNER',
+    externalUserId: 'UOWNER',
     displayName: 'Owner'
   });
 
   const session = store.createSession({
     workspaceId: workspace.id,
-    ownerSlackUserId: 'UOWNER',
+    ownerUserId: 'UOWNER',
     title: 'Overnight coverage',
     mode: 'manual_review',
     channelScope: ['C1'],
@@ -118,12 +119,12 @@ describe('normalizeSlackEvent', () => {
     const { store, workspace, normalizeSlackEvent } = await setup();
     store.upsertUser({
       workspaceId: workspace.id,
-      slackUserId: 'UOTHER',
+      externalUserId: 'UOTHER',
       displayName: 'Other Owner'
     });
     store.createSession({
       workspaceId: workspace.id,
-      ownerSlackUserId: 'UOTHER',
+      ownerUserId: 'UOTHER',
       title: 'Other coverage',
       mode: 'manual_review',
       channelScope: ['C1'],

@@ -159,7 +159,7 @@ describe('runGroundingLoop', () => {
 
     const result = await runGroundingLoop({
       context: baseContext(),
-      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
       provider: 'openai',
       maxToolCallsPerRun: 6,
       retrievalToolNames: [],
@@ -212,7 +212,7 @@ describe('runGroundingLoop', () => {
         ...baseContext(),
         availableTools: [{ name: 'memory.thread.link_artifact', description: '', sideEffectClass: 'write' }]
       },
-      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
       provider: 'openai',
       maxToolCallsPerRun: 6,
       retrievalToolNames: [],
@@ -260,7 +260,7 @@ describe('runGroundingLoop', () => {
         ...baseContext(),
         availableTools: [{ name: 'notion.search', description: '', sideEffectClass: 'read' }]
       },
-      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
       provider: 'openai',
       maxToolCallsPerRun: 1,
       retrievalToolNames: ['notion.search'],
@@ -294,7 +294,7 @@ describe('runGroundingLoop', () => {
         ...baseContext(),
         availableTools: [{ name: 'notion.search', description: '', sideEffectClass: 'read' }]
       },
-      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
       provider: 'openai',
       maxToolCallsPerRun: 6,
       retrievalToolNames: ['notion.search'],
@@ -348,7 +348,7 @@ describe('runGroundingLoop', () => {
         ...baseContext(),
         availableTools: [{ name: 'calendar.check_availability', description: '', sideEffectClass: 'read' }]
       },
-      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
       provider: 'openai',
       maxToolCallsPerRun: 6,
       retrievalToolNames: ['calendar.check_availability'],
@@ -426,7 +426,7 @@ describe('runGroundingLoop', () => {
         ...baseContext(),
         availableTools: [{ name: 'notion.search', description: '', sideEffectClass: 'read' }]
       },
-      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
       provider: 'openai',
       maxToolCallsPerRun: 6,
       retrievalToolNames: ['notion.search'],
@@ -454,7 +454,7 @@ describe('runGroundingLoop', () => {
           { name: 'notion__search', description: '', sideEffectClass: 'read' }
         ]
       },
-      workspace: { id: 'workspace', slackTeamId: 'workspace', name: 'Workspace' },
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
       provider: 'openai',
       maxToolCallsPerRun: 6,
       retrievalToolNames: ['notion.search', 'notion__search'],

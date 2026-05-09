@@ -37,7 +37,8 @@ describe('SlackService searchMessages', () => {
     const { getSlackService } = await import('#lib/server/channels/slack/service');
     const store = getStore();
     const workspace = store.saveInstall({
-      slackTeamId: 'T1',
+      provider: 'slack',
+      externalWorkspaceId: 'T1',
       name: 'Test Workspace',
       botTokenEncrypted: encryptString('xoxb-test-token', 'test-key'),
       botUserId: 'UBOT'

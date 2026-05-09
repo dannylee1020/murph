@@ -13,7 +13,8 @@ async function setup(options: { githubPat?: string } = {}) {
   const { encryptString } = await import('#lib/server/util/crypto');
   const store = getStore();
   const workspace = store.saveInstall({
-    slackTeamId: 'T1',
+    provider: 'slack',
+    externalWorkspaceId: 'T1',
     name: 'Test Workspace',
     botTokenEncrypted: 'token',
     botUserId: 'UTZBOT'

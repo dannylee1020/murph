@@ -27,7 +27,9 @@ describe('calendar tools', () => {
 
     const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
     const { registerBuiltInTools } = await import('#lib/server/capabilities/builtins');
+    const { registerBuiltInIntegrationAdapters } = await import('#lib/server/integrations/register-builtins');
     registerBuiltInTools();
+    registerBuiltInIntegrationAdapters();
     const registry = getToolRegistry();
 
     const output = await registry.execute('calendar.search_events', {
@@ -79,8 +81,10 @@ describe('calendar tools', () => {
 
     const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
     const { registerBuiltInTools } = await import('#lib/server/capabilities/builtins');
+    const { registerBuiltInIntegrationAdapters } = await import('#lib/server/integrations/register-builtins');
     const { getStore } = await import('#lib/server/persistence/store');
     registerBuiltInTools();
+    registerBuiltInIntegrationAdapters();
     const store = getStore();
     store.upsertUser({
       workspaceId: 'workspace',
@@ -136,7 +140,9 @@ describe('calendar tools', () => {
 
     const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
     const { registerBuiltInTools } = await import('#lib/server/capabilities/builtins');
+    const { registerBuiltInIntegrationAdapters } = await import('#lib/server/integrations/register-builtins');
     registerBuiltInTools();
+    registerBuiltInIntegrationAdapters();
     const registry = getToolRegistry();
 
     await expect(registry.execute('calendar.check_availability', {

@@ -9,7 +9,7 @@ async function loadRegistry() {
 
 function baseInput() {
   return {
-    workspace: { id: 'T1', slackTeamId: 'T1', name: 'Test' },
+    workspace: { id: 'T1', provider: 'slack' as const, externalWorkspaceId: 'T1', name: 'Test' },
     task: {
       id: 'task-1',
       source: 'slack_event' as const,

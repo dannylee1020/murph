@@ -32,14 +32,15 @@ async function setup() {
   const { getStore } = await import('#lib/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
-    slackTeamId: 'T1',
+    provider: 'slack',
+    externalWorkspaceId: 'T1',
     name: 'Test Workspace',
     botTokenEncrypted: 'token',
     botUserId: 'UTZBOT'
   });
   const older = store.createSession({
     workspaceId: workspace.id,
-    ownerSlackUserId: 'UOWNER',
+    ownerUserId: 'UOWNER',
     title: 'Older coverage',
     mode: 'manual_review',
     channelScope: ['C1'],
@@ -49,7 +50,7 @@ async function setup() {
   await new Promise((resolve) => setTimeout(resolve, 5));
   const latest = store.createSession({
     workspaceId: workspace.id,
-    ownerSlackUserId: 'UOWNER',
+    ownerUserId: 'UOWNER',
     title: 'Latest coverage',
     mode: 'auto_send_low_risk',
     channelScope: ['C1'],
