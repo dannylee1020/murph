@@ -426,7 +426,6 @@ describe('AgentRuntime model failure events', () => {
       resultCount: 1,
       titles: ['Checkout launch readiness'],
       strategy: 'notion_api_search',
-      scannedAllowedPageCount: undefined,
       autoReadPageTitle: 'Checkout launch readiness',
       keys: ['results', 'strategy', 'autoReadPage']
     });

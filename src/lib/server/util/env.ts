@@ -23,8 +23,6 @@ export interface RuntimeEnv {
   defaultProvider: ProviderName;
   notionApiKey?: string;
   notionVersion: string;
-  notionAllowedPageIds: string[];
-  notionAllowedDataSourceIds: string[];
   notionMaxResults: number;
   githubPat?: string;
   obsidianVaultPath?: string;
@@ -76,8 +74,6 @@ export function getRuntimeEnv(): RuntimeEnv {
     defaultProvider: process.env.MURPH_DEFAULT_PROVIDER === 'anthropic' ? 'anthropic' : 'openai',
     notionApiKey: process.env.NOTION_API_KEY,
     notionVersion: process.env.NOTION_VERSION ?? '2026-03-11',
-    notionAllowedPageIds: csvEnv(process.env.NOTION_ALLOWED_PAGE_IDS),
-    notionAllowedDataSourceIds: csvEnv(process.env.NOTION_ALLOWED_DATA_SOURCE_IDS),
     notionMaxResults: Number(process.env.NOTION_MAX_RESULTS ?? 3),
     githubPat: process.env.GITHUB_PAT,
     obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH,

@@ -109,8 +109,6 @@ type SetupStatusPayload = {
   provider: { configured: boolean; defaultProvider: string };
   notion: {
     configured: boolean;
-    pageAllowlistCount: number;
-    dataSourceAllowlistCount: number;
     version: string;
   };
   userConfigured: boolean;

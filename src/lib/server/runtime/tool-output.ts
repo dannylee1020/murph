@@ -33,10 +33,6 @@ export function outputSummary(output: unknown): Record<string, unknown> {
           .map((entry) => entry && typeof entry === 'object' && 'title' in entry ? String(entry.title) : undefined)
           .filter(Boolean),
         strategy: 'strategy' in output ? String(output.strategy) : undefined,
-        scannedAllowedPageCount:
-          'scannedAllowedPageCount' in output && typeof output.scannedAllowedPageCount === 'number'
-            ? output.scannedAllowedPageCount
-            : undefined,
         autoReadPageTitle:
           'autoReadPage' in output && output.autoReadPage && typeof output.autoReadPage === 'object' && 'title' in output.autoReadPage
             ? String(output.autoReadPage.title)
