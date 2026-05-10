@@ -164,6 +164,9 @@ export class Store {
   listTriageItems(workspaceId?: string, sessionId?: string): TriageItem[] {
     return action.listTriageItems(this.db, workspaceId, sessionId);
   }
+  countTriageItemsBySession(workspaceId?: string, sessionIds: string[] = []): Map<string, number> {
+    return action.countTriageItemsBySession(this.db, workspaceId, sessionIds);
+  }
 
   // Audit
   insertAudit(input: AuditRecord): void {

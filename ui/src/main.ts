@@ -164,7 +164,7 @@ type QueuePayload = {
 
 type TriagePayload = {
   session: { id: string; title: string; mode: string; status: string; stoppedAt?: string } | null;
-  sessions: Array<{ id: string; title: string; mode: string; status: string; stoppedAt?: string }>;
+  sessions: Array<{ id: string; title: string; mode: string; status: string; stoppedAt?: string; triageItemCount?: number }>;
   items: Array<{
     id: string;
     sessionId?: string;
@@ -793,6 +793,72 @@ function list(items: string[], emptyText: string): string {
   return `<ul class="list">${items.map((item) => `<li>${item}</li>`).join('')}</ul>`;
 }
 
+function sessionScopeLabel(session: SummaryPayload['sessions'][number], channelNames: Map<string, string>): string {
+  return session.channelScope.length > 0
+    ? session.channelScope.map((id) => channelNames.get(id) ?? id).join(', ')
+    : 'All accessible channels';
+}
+
+function activeSessionRows(
+  sessions: SummaryPayload['sessions'],
+  channelNames: Map<string, string>
+): string {
+  if (sessions.length === 0) {
+    return '<p class="empty">Murph is not watching right now.</p>';
+  }
+
+  return `<ul class="list active-session-list">${sessions
+    .map(
+      (session) => `
+        <li>
+          <div class="list-row active-session-row">
+            <strong>${escapeHtml(session.title)}</strong>
+            <span>${escapeHtml(plainLanguageModeLabel(session.mode))}</span>
+            <span title="${escapeHtml(formatExactIso(session.endsAt))}">Until ${escapeHtml(formatDateTime(session.endsAt))}</span>
+            <span>${escapeHtml(sessionScopeLabel(session, channelNames))}</span>
+            <span>${escapeHtml(session.contextSnapshot ? `Context ready: ${session.contextSnapshot.summary}` : 'Context pending')}</span>
+            <button class="secondary stop-session" data-session-id="${escapeHtml(session.id)}">Stop</button>
+          </div>
+        </li>
+      `
+    )
+    .join('')}</ul>`;
+}
+
+function githubRepositorySummary(integration: IntegrationStatusPayload['integrations'][number]): string {
+  const repos = integration.metadata.repositories ?? [];
+  if (repos.length > 0) {
+    return `${repos.length} ${repos.length === 1 ? 'repository' : 'repositories'} selected`;
+  }
+  return integration.metadata.needsRepoScope
+    ? 'Choose repositories before retrieval is enabled'
+    : 'No repositories selected';
+}
+
+function githubRepositoryDialog(workspaceId: string): string {
+  return `
+    <dialog class="modal" id="github-repo-dialog">
+      <div class="modal-panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">GitHub</p>
+            <h2>Repository scope</h2>
+          </div>
+          <button type="button" class="ghost close-github-repos" aria-label="Close repository picker">Close</button>
+        </div>
+        <p class="modal-intro">Choose the repositories Murph can use when grounding replies with GitHub context.</p>
+        <div class="github-repo-picker" data-workspace-id="${escapeHtml(workspaceId)}">
+          <div class="github-repo-list"><p class="empty">Open this panel to load repositories.</p></div>
+          <div class="actions">
+            <button type="button" class="secondary close-github-repos">Cancel</button>
+            <button type="button" class="save-github-repos" disabled>Save repositories</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+  `;
+}
+
 function integrationCard(integration: IntegrationStatusPayload['integrations'][number], workspaceId: string): string {
   const connected = integration.status === 'connected';
   const installHref = integration.installPath
@@ -812,8 +878,7 @@ function integrationCard(integration: IntegrationStatusPayload['integrations'][n
       detailRows.push(`<div><dt>Validated</dt><dd>${escapeHtml(formatRelative(integration.metadata.validatedAt))}</dd></div>`);
     }
     if (integration.provider === 'github') {
-      const repos = integration.metadata.repositories ?? [];
-      detailRows.push(`<div><dt>Repositories</dt><dd>${repos.length > 0 ? escapeHtml(repos.join(', ')) : 'Choose repos before retrieval is enabled'}</dd></div>`);
+      detailRows.push(`<div><dt>Repositories</dt><dd>${escapeHtml(githubRepositorySummary(integration))}</dd></div>`);
     }
   } else {
     const authLabel = integration.authType === 'oauth' ? 'OAuth' : 'API key';
@@ -838,17 +903,9 @@ function integrationCard(integration: IntegrationStatusPayload['integrations'][n
       <dl class="details">${detailRows.join('')}</dl>
       <div class="actions">
         ${primaryCta}
+        ${connected && integration.provider === 'github' ? '<button type="button" class="secondary manage-github-repos">Manage repositories</button>' : ''}
         ${integration.canDisconnect ? `<button type="button" class="ghost disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
       </div>
-      ${connected && integration.provider === 'github' ? `
-        <div class="github-repo-picker" data-workspace-id="${escapeHtml(workspaceId)}">
-          <p class="empty">${integration.metadata.needsRepoScope ? 'Choose repositories before Murph uses GitHub for retrieval.' : 'Repository scope controls what Murph can search.'}</p>
-          <div class="github-repo-list"><p class="empty">Loading repositories...</p></div>
-          <div class="actions">
-            <button type="button" class="secondary save-github-repos" disabled>Save repositories</button>
-          </div>
-        </div>
-      ` : ''}
     </article>
   `;
 }
@@ -1298,11 +1355,8 @@ async function renderSetup(): Promise<void> {
 async function renderDashboard(): Promise<void> {
   setTitle('Murph');
   loading('Home');
-  const [data, recurring, policyProfilesPayload, runtime, setupStatus] = await Promise.all([
+  const [data, setupStatus] = await Promise.all([
     getJson<SummaryPayload>('/api/gateway/summary'),
-    getJson<RecurringJobsPayload>('/api/gateway/recurring-jobs'),
-    getJson<PolicyProfilesPayload>('/api/gateway/policy-profiles'),
-    getJson<RuntimePayload>('/api/gateway/runtime'),
     getJson<SetupStatusPayload>('/api/setup/status')
   ]);
 
@@ -1330,7 +1384,7 @@ async function renderDashboard(): Promise<void> {
     ${sessionFeedbackHtml()}
     ${sessionErrorHtml()}
 
-    <section class="grid two">
+    <section>
       <article class="panel go-to-sleep-card">
         <h2>Go to sleep</h2>
         <p>Murph will watch your accessible channels and queue drafts for your review.</p>
@@ -1390,95 +1444,14 @@ async function renderDashboard(): Promise<void> {
             </fieldset>
           </details>
         </form>
-      </article>
 
-      <article class="panel">
-        <h2>Active sessions</h2>
-        ${list(
-          data.sessions.map(
-            (session) => `
-              <div class="list-row">
-                <strong>${escapeHtml(session.title)}</strong>
-                <span>${escapeHtml(plainLanguageModeLabel(session.mode))}</span>
-                <span title="${escapeHtml(formatExactIso(session.endsAt))}">Until ${escapeHtml(formatDateTime(session.endsAt))}</span>
-                <span>${escapeHtml(session.channelScope.length > 0 ? session.channelScope.map((id) => selectedChannelNames.get(id) ?? id).join(', ') : 'All accessible channels')}</span>
-                <span>${escapeHtml(session.contextSnapshot ? `Context: ${session.contextSnapshot.summary}` : 'Context pending')}</span>
-                <button class="secondary stop-session" data-session-id="${escapeHtml(session.id)}">Stop</button>
-              </div>
-            `
-          ),
-          'No active sessions. Start watching before you go to sleep.'
-        )}
-      </article>
-    </section>
-
-    <section class="grid two">
-      <article class="panel">
-        <h2>Schedule Morning Digest</h2>
-        ${
-          data.sessions.length > 0
-            ? `
-              <form id="schedule-digest-form" class="form">
-                <label>
-                  <span>Session</span>
-                  <select name="sessionId">
-                    ${data.sessions.map((session) => `<option value="${escapeHtml(session.id)}">${escapeHtml(session.title)}</option>`).join('')}
-                  </select>
-                </label>
-                <label><span>Channel ID</span><input name="channelId" placeholder="C123ABC" required /></label>
-                <label><span>Owner User ID</span><input name="ownerUserId" value="${escapeHtml(data.sessions[0]?.ownerUserId ?? '')}" required /></label>
-                <label><span>Local Time</span><input name="localTime" type="time" value="08:30" required /></label>
-                <label><span>Timezone</span><input name="timezone" value="America/Los_Angeles" required /></label>
-                <button type="submit">Schedule Digest</button>
-              </form>
-            `
-            : '<p>Start a session before scheduling a morning digest.</p>'
-        }
-      </article>
-
-      <article class="panel">
-        <h2>Morning Digest Jobs</h2>
-        ${list(
-          recurring.jobs.map(
-            (job) => `
-              <div class="list-row">
-                <strong>${escapeHtml(job.payload.channelId)} at ${escapeHtml(job.localTime)}</strong>
-                <span>${escapeHtml(job.timezone)} · ${escapeHtml(titleCase(job.status))}</span>
-                <span title="${escapeHtml(formatExactIso(job.nextRunAt))}">Next ${escapeHtml(formatRelative(job.nextRunAt))}</span>
-                <button class="secondary delete-recurring-job" data-job-id="${escapeHtml(job.id)}">Delete</button>
-              </div>
-            `
-          ),
-          'Schedule a digest to get a morning summary in a chosen channel.'
-        )}
-      </article>
-    </section>
-
-    <section class="grid two">
-      <article class="panel">
-        <h2>Latest Briefing</h2>
-        ${
-          data.summary.latestBriefing
-            ? `<p><strong>${escapeHtml(data.summary.latestBriefing.session.title)}</strong></p>
-               <p>${data.summary.latestBriefing.handledCount} handled, ${data.summary.latestBriefing.queuedCount} queued, ${data.summary.latestBriefing.abstainedCount} abstained, ${data.summary.latestBriefing.failedCount} failed</p>`
-            : '<p>No completed session briefing yet.</p>'
-        }
-      </article>
-
-      <article class="panel">
-        <h2>Recent Traces</h2>
-        ${list(
-          data.traces.map(
-            (trace) => `
-              <div class="list-row">
-                <strong>${escapeHtml(trace.run.taskId)}</strong>
-                <span>${escapeHtml(trace.executionResult)}</span>
-                <span title="${escapeHtml(formatExactIso(trace.createdAt))}">${escapeHtml(formatRelative(trace.createdAt))}</span>
-              </div>
-            `
-          ),
-          'Decision traces appear here once the agent handles Slack threads.'
-        )}
+        <section class="active-session-inline">
+          <div class="section-head">
+            <h2>Currently watching</h2>
+            <span class="section-meta">${escapeHtml(formatSessionStatus(data.summary.activeSessionCount))}</span>
+          </div>
+          ${activeSessionRows(data.sessions, selectedChannelNames)}
+        </section>
       </article>
     </section>
   `);
@@ -1524,26 +1497,6 @@ async function renderDashboard(): Promise<void> {
       await renderDashboard();
     });
   });
-
-  app.querySelector<HTMLFormElement>('#schedule-digest-form')?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget as HTMLFormElement);
-    await postJson('/api/gateway/recurring-jobs', {
-      sessionId: String(formData.get('sessionId') ?? ''),
-      channelId: String(formData.get('channelId') ?? ''),
-      ownerUserId: getCurrentUserId(),
-      localTime: String(formData.get('localTime') ?? '08:30'),
-      timezone: String(formData.get('timezone') ?? userTz)
-    });
-    await renderDashboard();
-  });
-
-  app.querySelectorAll<HTMLButtonElement>('.delete-recurring-job').forEach((button) => {
-    button.addEventListener('click', async () => {
-      await fetch(`/api/gateway/recurring-jobs/${button.dataset.jobId}`, { method: 'DELETE' });
-      await renderDashboard();
-    });
-  });
 }
 
 async function renderSettings(): Promise<void> {
@@ -1569,6 +1522,7 @@ async function renderSettings(): Promise<void> {
 
   shell(`
     ${settingsNotice}
+    ${sessionFeedbackHtml()}
     <section class="page-head">
       <p class="eyebrow">Setup</p>
       <h1>Admin</h1>
@@ -1626,23 +1580,26 @@ async function renderSettings(): Promise<void> {
 
     <section>
       <h2>Integrations</h2>
-      <p class="empty">Connect optional sources Murph can use for more grounded replies.</p>
+      <p class="section-copy">Connect optional sources Murph can use for more grounded replies.</p>
       <div class="grid two">
         ${integrationsPayload.integrations.map((i) => integrationCard(i, integrationsPayload.workspaceId)).join('')}
       </div>
     </section>
+
+    ${githubRepositoryDialog(integrationsPayload.workspaceId)}
   `);
 
   const integrationsByProvider = new Map(integrationsPayload.integrations.map((integration) => [integration.provider, integration]));
 
-  app.querySelectorAll<HTMLDivElement>('.github-repo-picker').forEach(async (picker) => {
-    const workspaceId = picker.dataset.workspaceId ?? integrationsPayload.workspaceId;
-    const listEl = picker.querySelector<HTMLDivElement>('.github-repo-list');
-    const saveButton = picker.querySelector<HTMLButtonElement>('.save-github-repos');
-    if (!listEl || !saveButton) {
-      return;
-    }
+  async function loadGithubRepositories(): Promise<void> {
+    const picker = app.querySelector<HTMLDivElement>('.github-repo-picker');
+    const workspaceId = picker?.dataset.workspaceId ?? integrationsPayload.workspaceId;
+    const listEl = picker?.querySelector<HTMLDivElement>('.github-repo-list');
+    const saveButton = picker?.querySelector<HTMLButtonElement>('.save-github-repos');
+    if (!picker || !listEl || !saveButton) return;
 
+    listEl.innerHTML = '<p class="empty">Loading repositories...</p>';
+    saveButton.disabled = true;
     try {
       const payload = await getJson<GitHubRepositoriesPayload>(
         `/api/integrations/github/repositories?workspaceId=${encodeURIComponent(workspaceId)}`
@@ -1681,6 +1638,24 @@ async function renderSettings(): Promise<void> {
     } catch (error) {
       listEl.innerHTML = `<p class="empty">${escapeHtml(error instanceof Error ? error.message : 'Could not load GitHub repositories.')}</p>`;
     }
+  }
+
+  app.querySelector<HTMLButtonElement>('.manage-github-repos')?.addEventListener('click', async () => {
+    const dialog = app.querySelector<HTMLDialogElement>('#github-repo-dialog');
+    dialog?.showModal();
+    await loadGithubRepositories();
+  });
+
+  app.querySelectorAll<HTMLButtonElement>('.close-github-repos').forEach((button) => {
+    button.addEventListener('click', () => {
+      app.querySelector<HTMLDialogElement>('#github-repo-dialog')?.close();
+    });
+  });
+
+  app.querySelector<HTMLDialogElement>('#github-repo-dialog')?.addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) {
+      (event.currentTarget as HTMLDialogElement).close();
+    }
   });
 
   app.querySelectorAll<HTMLButtonElement>('.save-github-repos').forEach((button) => {
@@ -1696,6 +1671,7 @@ async function renderSettings(): Promise<void> {
       try {
         await putJson('/api/integrations/github/repositories', { workspaceId, repositories });
         dashboardNotice = repositories.length > 0 ? 'GitHub repositories saved.' : 'GitHub retrieval disabled until repositories are selected.';
+        app.querySelector<HTMLDialogElement>('#github-repo-dialog')?.close();
         await renderSettings();
       } catch (error) {
         window.alert(error instanceof Error ? error.message : 'Could not save GitHub repositories.');
@@ -1751,20 +1727,12 @@ async function renderSettings(): Promise<void> {
 async function renderReview(): Promise<void> {
   setTitle('Murph Review Queue');
   loading('Review Queue');
-  const [queuePayload, sessionsPayload] = await Promise.all([
-    getJson<QueuePayload>('/api/gateway/queue'),
-    getJson<SessionsPayload>('/api/gateway/sessions')
-  ]);
+  const queuePayload = await getJson<QueuePayload>('/api/gateway/queue');
 
   shell(`
     <section class="page-head">
       <p class="eyebrow">Manual review</p>
       <h1>Review Queue</h1>
-      <p>${escapeHtml(
-        sessionsPayload.sessions.length > 0
-          ? `Active sessions: ${sessionsPayload.sessions.map((session) => `${session.title} (${sessionModeLabel(session.mode)})`).join(', ')}`
-          : 'No active sessions.'
-      )}</p>
     </section>
 
     <section class="stack">
@@ -1776,12 +1744,12 @@ async function renderReview(): Promise<void> {
                 (item) => `
                   <article class="panel">
                     <h2>${escapeHtml(item.channelId)} / ${escapeHtml(item.threadTs)}</h2>
+                    <p class="draft-text">${escapeHtml(item.message || 'No message drafted')}</p>
                     <dl class="details">
                       <div><dt>Session</dt><dd>${escapeHtml(item.sessionId ?? '—')}</dd></div>
                       <div><dt>Owner</dt><dd>${escapeHtml(item.targetUserId ?? 'Unknown')}</dd></div>
                       <div><dt>Action</dt><dd>${escapeHtml(titleCase(item.action))}</dd></div>
                       <div><dt>Reason</dt><dd>${escapeHtml(item.reason)}</dd></div>
-                      <div><dt>Draft</dt><dd>${escapeHtml(item.message || 'No message drafted')}</dd></div>
                     </dl>
                     <div class="actions">
                       <button data-review-id="${escapeHtml(item.id)}" data-action="approve_send">Approve and Send</button>
@@ -1835,6 +1803,24 @@ function renderTriageItem(item: TriagePayload['items'][number]): string {
   `;
 }
 
+function renderTriageSessionLink(session: TriagePayload['sessions'][number], selectedSessionId: string | undefined): string {
+  const isSelected = session.id === selectedSessionId;
+  const count = session.triageItemCount ?? 0;
+  return `
+    <a
+      class="session-history-row ${isSelected ? 'active' : ''}"
+      href="/triage?sessionId=${escapeHtml(session.id)}"
+      data-link
+      ${isSelected ? 'aria-current="page"' : ''}
+    >
+      <strong>${escapeHtml(session.title)}</strong>
+      <span>${escapeHtml(sessionModeLabel(session.mode))} · ${escapeHtml(titleCase(session.status))}</span>
+      <span title="${escapeHtml(formatExactIso(session.stoppedAt))}">${escapeHtml(formatRelative(session.stoppedAt))}</span>
+      <small>${count} ${count === 1 ? 'action' : 'actions'}</small>
+    </a>
+  `;
+}
+
 async function renderTriage(): Promise<void> {
   setTitle('Murph Triage');
   loading('Triage');
@@ -1860,48 +1846,53 @@ async function renderTriage(): Promise<void> {
       )}</p>
     </section>
 
-    <section class="stack">
-      <article class="panel">
-        <h2>Session</h2>
+    <section class="triage-layout">
+      <aside class="panel session-history">
+        <h2>Completed sessions</h2>
         ${
           payload.sessions.length === 0
             ? '<p class="empty">Completed sleep sessions will appear here after Murph stops or expires a session.</p>'
-            : `<label><span>Completed session</span><select id="triage-session-select">
-                ${payload.sessions
-                  .map(
-                    (session) => `
-                      <option value="${escapeHtml(session.id)}" ${session.id === payload.session?.id ? 'selected' : ''}>
-                        ${escapeHtml(session.title)} · ${escapeHtml(formatRelative(session.stoppedAt))}
-                      </option>
-                    `
-                  )
-                  .join('')}
-              </select></label>`
+            : `<div class="session-history-list">
+                ${payload.sessions.map((session) => renderTriageSessionLink(session, payload.session?.id)).join('')}
+              </div>`
         }
-      </article>
+      </aside>
 
-      ${
-        payload.items.length === 0
-          ? '<article class="panel"><p class="empty">No auto-sent or abstained actions were recorded for this session.</p></article>'
-          : [...grouped.entries()]
-              .map(
-                ([channelId, items]) => `
-                  <section class="stack">
-                    <h2>${escapeHtml(channelId)}</h2>
-                    ${items.map(renderTriageItem).join('')}
-                  </section>
-                `
-              )
-              .join('')
-      }
+      <section class="triage-detail stack">
+        ${
+          payload.session
+            ? `<article class="panel selected-session-summary">
+                <h2>${escapeHtml(payload.session.title)}</h2>
+                <dl class="details">
+                  <div><dt>Mode</dt><dd>${escapeHtml(sessionModeLabel(payload.session.mode))}</dd></div>
+                  <div><dt>Status</dt><dd>${escapeHtml(titleCase(payload.session.status))}</dd></div>
+                  <div><dt>Stopped</dt><dd title="${escapeHtml(formatExactIso(payload.session.stoppedAt))}">${escapeHtml(formatRelative(payload.session.stoppedAt))}</dd></div>
+                  <div><dt>Recorded</dt><dd>${payload.items.length} ${payload.items.length === 1 ? 'action' : 'actions'}</dd></div>
+                </dl>
+              </article>`
+            : ''
+        }
+
+        ${
+          payload.items.length === 0
+            ? '<article class="panel"><p class="empty">No auto-sent or abstained actions were recorded for this session.</p></article>'
+            : [...grouped.entries()]
+                .map(
+                  ([channelId, items]) => `
+                    <section class="stack channel-triage-group">
+                      <div class="section-head">
+                        <h2>${escapeHtml(channelId)}</h2>
+                        <span class="section-meta">${items.length} ${items.length === 1 ? 'item' : 'items'}</span>
+                      </div>
+                      ${items.map(renderTriageItem).join('')}
+                    </section>
+                  `
+                )
+                .join('')
+        }
+      </section>
     </section>
   `);
-
-  app.querySelector<HTMLSelectElement>('#triage-session-select')?.addEventListener('change', (event) => {
-    const sessionId = (event.currentTarget as HTMLSelectElement).value;
-    history.pushState(null, '', `/triage?sessionId=${encodeURIComponent(sessionId)}`);
-    void renderTriage();
-  });
 }
 
 async function renderAudit(): Promise<void> {

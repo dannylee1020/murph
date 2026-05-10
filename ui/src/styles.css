@@ -1,16 +1,16 @@
 :root {
   color-scheme: light;
 
-  /* Ink / paper. Cool ivory, near-black ink — no warm tint. */
-  --ink: oklch(20% 0.012 250);
-  --ink-soft: oklch(36% 0.012 250);
-  --muted: oklch(54% 0.01 250);
-  --faint: oklch(74% 0.006 250);
-  --rule: oklch(88% 0.005 250);
-  --rule-strong: oklch(72% 0.008 250);
-  --paper: oklch(98.5% 0.003 250);
-  --surface: oklch(100% 0 0);
-  --tint: oklch(95% 0.008 250);
+  /* Ink / paper. Warm, quiet, and intentionally low-chroma. */
+  --ink: oklch(20% 0.018 78);
+  --ink-soft: oklch(36% 0.016 78);
+  --muted: oklch(54% 0.014 78);
+  --faint: oklch(74% 0.01 78);
+  --rule: oklch(88% 0.009 78);
+  --rule-strong: oklch(72% 0.012 78);
+  --paper: oklch(98.2% 0.012 82);
+  --surface: oklch(97% 0.012 82);
+  --tint: oklch(94% 0.014 82);
 
   /* Accent — a single deep mark, used like punctuation. */
   --accent: oklch(42% 0.14 25);
@@ -20,13 +20,13 @@
   /* Status hues, kept muted. */
   --ok: oklch(58% 0.11 150);
   --warn: oklch(70% 0.13 75);
+  --danger: var(--accent);
 
-  /* Type — system stack, but more deliberate. */
+  /* Type — Switzer first, with system fallbacks when it is not installed. */
   --font-sans:
-    "Inter", ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", system-ui,
+    "Switzer", ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", system-ui,
     sans-serif;
-  --font-display:
-    ui-serif, "Iowan Old Style", "Source Serif 4", "Charter", "Georgia", serif;
+  --font-display: var(--font-sans);
   --font-mono:
     ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
 
@@ -216,9 +216,9 @@ input[type="time"] {
   display: block;
   font-family: var(--font-display);
   font-size: 1.75rem;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  font-style: italic;
+  font-weight: 600;
+  letter-spacing: 0;
+  font-style: normal;
 }
 
 .brand-tag {
@@ -324,8 +324,8 @@ h1 {
   margin-bottom: 16px;
   font-family: var(--font-display);
   font-size: var(--text-2xl);
-  font-weight: 400;
-  letter-spacing: -0.025em;
+  font-weight: 500;
+  letter-spacing: 0;
   line-height: 1;
 }
 
@@ -333,7 +333,7 @@ h2 {
   margin-bottom: 20px;
   font-size: var(--text-md);
   font-weight: 500;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   line-height: 1.25;
 }
 
@@ -362,6 +362,12 @@ h2 {
   font-size: var(--text-xs);
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
+}
+
+.section-copy {
+  margin: -10px 0 24px;
+  color: var(--muted);
+  font-size: var(--text-sm);
 }
 
 h3 {
@@ -423,9 +429,9 @@ p {
   color: var(--ink);
   font-family: var(--font-display);
   font-size: var(--text-md);
-  font-weight: 400;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   line-height: 1.2;
   overflow-wrap: break-word;
 }
@@ -587,8 +593,7 @@ p {
   color: var(--ink);
   text-decoration: none;
   border-radius: 0;
-  border-left: 1px solid transparent;
-  transition: background 120ms ease, border-left-color 120ms ease;
+  transition: background 120ms ease, box-shadow 120ms ease;
   cursor: pointer;
 }
 
@@ -598,7 +603,7 @@ p {
 
 .list-row.run-item.active {
   background: var(--tint);
-  border-left-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
 }
 
 .list > li:has(.run-item) {
@@ -689,11 +694,11 @@ p {
 .notice {
   display: grid;
   gap: 8px;
-  padding: 14px 16px;
-  border: 0;
-  border-left: 2px solid var(--ink);
+  padding: 14px 0;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
   border-radius: 0;
-  background: var(--tint);
+  background: transparent;
   font-size: var(--text-sm);
   margin-bottom: 32px;
 }
@@ -703,14 +708,12 @@ p {
 }
 
 .notice.success {
-  border-left-color: var(--ok);
-  background: color-mix(in oklch, var(--ok), var(--paper) 92%);
+  border-top-color: var(--ok);
   color: var(--ink);
 }
 
 .notice.danger {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
+  border-top-color: var(--accent);
   color: var(--ink);
 }
 
@@ -908,8 +911,8 @@ code {
   margin: 0 0 6px;
   font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  letter-spacing: 0;
   text-transform: none;
   color: var(--ink);
 }
@@ -965,9 +968,25 @@ code {
   margin: 0;
   font-family: var(--font-display);
   font-size: var(--text-md);
-  font-weight: 400;
-  letter-spacing: -0.01em;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--ink);
+}
+
+.active-session-inline {
+  margin-top: 36px;
+}
+
+.active-session-row {
+  padding-right: 0;
+}
+
+.draft-text {
+  margin: -4px 0 20px;
+  max-width: 68ch;
+  color: var(--ink);
+  font-size: var(--text-md);
+  line-height: 1.55;
 }
 
 button.primary-large {
@@ -1277,8 +1296,7 @@ button.primary-large:hover {
 }
 
 .tool-call:hover > summary {
-  background: linear-gradient(var(--tint), var(--tint));
-  background-clip: content-box;
+  background: var(--tint);
 }
 
 .tool-call-name {
@@ -1287,7 +1305,7 @@ button.primary-large:hover {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   font-weight: 500;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   overflow-wrap: anywhere;
 }
 
@@ -1355,6 +1373,119 @@ button.primary-large:hover {
   color: color-mix(in oklch, var(--ok), var(--ink) 30%);
 }
 
+/* ---------- Triage history ---------- */
+
+.triage-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.session-history {
+  position: sticky;
+  top: 32px;
+}
+
+.session-history-list {
+  display: grid;
+  gap: 0;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  border-top: 1px solid var(--rule);
+}
+
+.session-history-row {
+  display: grid;
+  gap: 4px;
+  padding: 14px 8px;
+  margin: 0 -8px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+
+.session-history-row:hover {
+  background: var(--tint);
+}
+
+.session-history-row.active {
+  background: var(--tint);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+}
+
+.session-history-row strong {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.session-history-row span,
+.session-history-row small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+.channel-triage-group {
+  gap: 18px;
+}
+
+/* ---------- Modal ---------- */
+
+.modal {
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 48px));
+  padding: 0;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.modal::backdrop {
+  background: oklch(20% 0.018 78 / 0.28);
+}
+
+.modal-panel {
+  display: grid;
+  gap: 22px;
+  padding: 28px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.modal-head .eyebrow {
+  margin-bottom: 8px;
+}
+
+.modal-intro {
+  margin: 0;
+  color: var(--muted);
+}
+
+.modal .github-repo-list .member-list {
+  max-height: 360px;
+}
+
 /* ---------- Wizard / Setup ---------- */
 
 .wizard-container {
@@ -1388,9 +1519,9 @@ button.primary-large:hover {
 .wizard-brand {
   font-family: var(--font-display);
   font-size: 1.5rem;
-  font-style: italic;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--ink);
 }
 
@@ -1423,8 +1554,8 @@ button.primary-large:hover {
 .wizard-step h1 {
   font-family: var(--font-display);
   font-size: var(--text-xl);
-  font-weight: 400;
-  letter-spacing: -0.025em;
+  font-weight: 500;
+  letter-spacing: 0;
   margin: 0 0 12px;
   color: var(--ink);
   line-height: 1.1;
@@ -1521,17 +1652,7 @@ button.primary-large:hover {
 
 .member-item.selected {
   background: var(--tint);
-  position: relative;
-}
-
-.member-item.selected::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
 }
 
 .member-item img {
@@ -1709,5 +1830,38 @@ button.primary-large:hover {
   .details > div {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .triage-layout {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .session-history {
+    position: static;
+  }
+
+  .session-history-list {
+    display: flex;
+    gap: 10px;
+    max-height: none;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    border-top: 0;
+  }
+
+  .session-history-row {
+    min-width: 220px;
+    margin: 0;
+    border: 1px solid var(--rule);
+    padding: 12px;
+  }
+
+  .modal-panel {
+    padding: 20px;
+  }
+
+  .modal-head {
+    flex-direction: column;
   }
 }

@@ -268,3 +268,32 @@ export function listTriageItems(db: Db, workspaceId?: string, sessionId?: string
     return item;
   });
 }
+
+export function countTriageItemsBySession(db: Db, workspaceId?: string, sessionIds: string[] = []): Map<string, number> {
+  if (sessionIds.length === 0) {
+    return new Map();
+  }
+
+  const args: string[] = [];
+  const where = [
+    `disposition IN ('auto_sent', 'abstained')`,
+    `session_id IN (${sessionIds.map(() => '?').join(', ')})`
+  ];
+  args.push(...sessionIds);
+
+  if (workspaceId) {
+    where.push(`workspace_id = ?`);
+    args.push(workspaceId);
+  }
+
+  const rows = db
+    .prepare(
+      `SELECT session_id, COUNT(*) AS count
+       FROM continuity_actions
+       WHERE ${where.join(' AND ')}
+       GROUP BY session_id`
+    )
+    .all(...args) as Array<{ session_id: string; count: number }>;
+
+  return new Map(rows.map((row) => [row.session_id, row.count]));
+}

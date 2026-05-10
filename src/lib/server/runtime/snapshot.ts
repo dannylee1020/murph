@@ -33,7 +33,7 @@ export async function getGatewaySnapshot() {
           };
         })
       : [],
-    sessions: summary.workspace ? store.listActiveSessions(summary.workspace.id) : [],
+    sessions: store.listActiveSessions(),
     traces: store.listRunSummaries(undefined, 10)
   };
 }

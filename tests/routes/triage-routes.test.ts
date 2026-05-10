@@ -119,7 +119,7 @@ describe('GET /api/gateway/triage', () => {
   });
 
   it('defaults to the latest completed session', async () => {
-    const { get, latest } = await setup();
+    const { get, latest, older } = await setup();
 
     const response = await get('/api/gateway/triage');
 
@@ -128,6 +128,8 @@ describe('GET /api/gateway/triage', () => {
     expect(response.body.items).toHaveLength(1);
     expect(response.body.items[0].contextSnapshot.summary).toBe('Latest summary');
     expect(response.body.sessions.map((session: any) => session.id)).toContain(latest.id);
+    expect(response.body.sessions.find((session: any) => session.id === latest.id).triageItemCount).toBe(1);
+    expect(response.body.sessions.find((session: any) => session.id === older.id).triageItemCount).toBe(1);
   });
 
   it('scopes triage items to an explicit session id', async () => {

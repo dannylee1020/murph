@@ -263,6 +263,7 @@ export const gatewayRoutes: Route[] = [
     const workspaceId = url.searchParams.get('workspaceId') ?? undefined;
     const requestedSessionId = url.searchParams.get('sessionId') ?? undefined;
     const sessions = store.listCompletedSessions(workspaceId, 20);
+    const triageCounts = store.countTriageItemsBySession(workspaceId, sessions.map((completedSession) => completedSession.id));
     const session = requestedSessionId
       ? store.getSessionById(requestedSessionId)
       : sessions[0];
@@ -274,7 +275,10 @@ export const gatewayRoutes: Route[] = [
 
     sendJson(res, {
       session: session ?? null,
-      sessions,
+      sessions: sessions.map((completedSession) => ({
+        ...completedSession,
+        triageItemCount: triageCounts.get(completedSession.id) ?? 0
+      })),
       items: session ? store.listTriageItems(workspaceId, session.id) : []
     });
   }),
