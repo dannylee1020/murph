@@ -66,6 +66,18 @@ function textFromRichText(value: unknown): string {
     .join('');
 }
 
+function textFromTableCells(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return '';
+  }
+
+  return value
+    .map((cell) => textFromRichText(cell))
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join(' | ');
+}
+
 function titleFromProperties(properties: Record<string, unknown> | undefined): string {
   if (!properties) {
     return 'Untitled Notion page';
@@ -120,6 +132,10 @@ function blockText(block: NotionBlock): string {
     }
 
     return text;
+  }
+
+  if (type === 'table_row' && 'cells' in payload) {
+    return textFromTableCells(payload.cells);
   }
 
   if (type === 'child_page' && 'title' in payload) {
@@ -246,9 +262,10 @@ export class NotionService {
     };
   }
 
-  private async readBlocks(blockId: string, maxBlocks: number, credential: string): Promise<NotionBlock[]> {
+  private async readBlocks(blockId: string, maxBlocks: number, credential: string, depth = 0): Promise<NotionBlock[]> {
     const blocks: NotionBlock[] = [];
     let cursor: string | undefined;
+    const maxDepth = 4;
 
     while (blocks.length < maxBlocks) {
       const params = new URLSearchParams({ page_size: String(Math.min(100, maxBlocks - blocks.length)) });
@@ -268,7 +285,18 @@ export class NotionService {
         throw new Error(payload.message ?? `Notion block read failed with ${response.status}`);
       }
 
-      blocks.push(...(payload.results ?? []));
+      for (const block of payload.results ?? []) {
+        if (blocks.length >= maxBlocks) {
+          break;
+        }
+
+        blocks.push(block);
+
+        if (block.has_children && depth < maxDepth && blocks.length < maxBlocks) {
+          const childBlocks = await this.readBlocks(block.id, maxBlocks - blocks.length, credential, depth + 1);
+          blocks.push(...childBlocks);
+        }
+      }
 
       if (!payload.has_more || !payload.next_cursor) {
         break;

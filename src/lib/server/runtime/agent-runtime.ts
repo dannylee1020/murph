@@ -10,6 +10,7 @@ import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { sessionContextToArtifact } from '#lib/server/runtime/session-context';
+import { buildRetrievalQuery } from '#lib/server/util/retrieval-query';
 import type {
   AgentToolResult,
   AutopilotSession,
@@ -82,12 +83,49 @@ function toolResultsToArtifacts(toolResults: AgentToolResult[]): ContextArtifact
   }));
 }
 
+function threadQuery(context: ContextAssembly): string {
+  const raw = context.thread.latestMessage ||
+    context.thread.recentMessages.map((message) => message.text).join(' ');
+  return buildRetrievalQuery(raw);
+}
+
+function deterministicRetrievalInput(
+  tool: ContextAssembly['availableTools'][number],
+  context: ContextAssembly
+): Record<string, unknown> | undefined {
+  const schema = tool.inputSchema ?? {};
+  const properties = schema.properties && typeof schema.properties === 'object'
+    ? schema.properties as Record<string, unknown>
+    : {};
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((value): value is string => typeof value === 'string')
+    : [];
+  const hasQuery = Object.prototype.hasOwnProperty.call(properties, 'query');
+
+  if (!hasQuery) {
+    return undefined;
+  }
+
+  if (required.some((name) => name !== 'query')) {
+    return undefined;
+  }
+
+  return {
+    query: threadQuery(context),
+    limit: 5
+  };
+}
+
 function objectInput(input: unknown): Record<string, unknown> {
   return input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
 }
 
 function requiresGrounding(context: ContextAssembly): boolean {
   return context.artifacts.length === 0 && context.skills.some((skill) => skill.groundingPolicy === 'required_when_no_artifacts');
+}
+
+function hasRequiredGroundingSkill(context: Pick<ContextAssembly, 'skills'>): boolean {
+  return context.skills.some((skill) => skill.groundingPolicy === 'required_when_no_artifacts');
 }
 
 function mergeArtifacts(base: ContextArtifact[], updates: ContextArtifact[]): ContextArtifact[] {
@@ -156,7 +194,10 @@ export class AgentRuntime {
     const { proposedAction, toolsUsed, toolResults, draft, runtimeEvents, postLoopEvidence } = await this.proposeAction(context, workspace);
     const enrichedContext: ContextAssembly = {
       ...context,
-      artifacts: mergeArtifacts(context.artifacts, postLoopEvidence.artifacts),
+      artifacts: mergeArtifacts(context.artifacts, [
+        ...toolResultsToArtifacts(toolResults),
+        ...postLoopEvidence.artifacts
+      ]),
       linkedArtifacts: mergeLinkedArtifacts(context.linkedArtifacts, postLoopEvidence.linkedArtifacts),
       summary: draft.summary,
       unresolvedQuestions: draft.unresolvedQuestions,
@@ -259,7 +300,8 @@ export class AgentRuntime {
       workspace,
       task,
       context: baseContext,
-      enabledContextSources: workspaceMemory.enabledContextSources
+      enabledContextSources: workspaceMemory.enabledContextSources,
+      maxOptionalSources: hasRequiredGroundingSkill(baseContext) ? Number.MAX_SAFE_INTEGER : undefined
     });
     const sessionContext = session.contextSnapshot ?? this.store.getSessionContext(session.id);
     const sessionArtifacts = sessionContext ? [sessionContextToArtifact(sessionContext)] : [];
@@ -296,19 +338,36 @@ export class AgentRuntime {
       artifacts: [],
       linkedArtifacts: []
     };
+    const deterministicRetrieval = await this.runDeterministicRetrieval(
+      context,
+      workspace,
+      toolCallingPlan.retrievalToolNames,
+      postLoopEvidence
+    );
+    const contextWithDeterministicRetrieval: ContextAssembly = {
+      ...context,
+      artifacts: mergeArtifacts(
+        context.artifacts,
+        [
+          ...toolResultsToArtifacts(deterministicRetrieval.toolResults),
+          ...postLoopEvidence.artifacts
+        ]
+      ),
+      linkedArtifacts: mergeLinkedArtifacts(context.linkedArtifacts, postLoopEvidence.linkedArtifacts)
+    };
 
     try {
       const result = await runGroundingLoop({
         context: {
-          workspaceId: context.workspaceId,
-          task: context.task,
-          targetUserId: context.targetUserId,
-          thread: context.thread,
-          memory: context.memory,
-          skills: context.skills,
+          workspaceId: contextWithDeterministicRetrieval.workspaceId,
+          task: contextWithDeterministicRetrieval.task,
+          targetUserId: contextWithDeterministicRetrieval.targetUserId,
+          thread: contextWithDeterministicRetrieval.thread,
+          memory: contextWithDeterministicRetrieval.memory,
+          skills: contextWithDeterministicRetrieval.skills,
           availableTools: toolCallingPlan.availableTools,
-          linkedArtifacts: context.linkedArtifacts,
-          artifacts: context.artifacts
+          linkedArtifacts: contextWithDeterministicRetrieval.linkedArtifacts,
+          artifacts: contextWithDeterministicRetrieval.artifacts
         },
         workspace,
         provider: provider.name,
@@ -332,7 +391,10 @@ export class AgentRuntime {
           postLoopEvidence.linkedArtifacts.push(url);
         }
       });
-      const draft = toolCallingPlan.groundingDirective.required && toolCallingPlan.retrievalToolNames.length > 0 && !result.retrievalAttempted
+      const retrievalAttempted = deterministicRetrieval.toolResults.some((toolResult) =>
+        toolCallingPlan.retrievalToolNames.includes(toolResult.name)
+      ) || result.retrievalAttempted;
+      const draft = toolCallingPlan.groundingDirective.required && toolCallingPlan.retrievalToolNames.length > 0 && !retrievalAttempted
         ? {
             continuityCase: result.draft.continuityCase,
             summary: result.draft.summary,
@@ -348,10 +410,13 @@ export class AgentRuntime {
 
       return {
         draft,
-        proposedAction: { ...draft.proposedAction, toolsUsed: result.toolsUsed },
-        toolsUsed: result.toolsUsed,
-        toolResults: result.toolResults,
-        runtimeEvents: result.runtimeEvents,
+        proposedAction: {
+          ...draft.proposedAction,
+          toolsUsed: mergeLinkedArtifacts(deterministicRetrieval.toolsUsed, result.toolsUsed)
+        },
+        toolsUsed: mergeLinkedArtifacts(deterministicRetrieval.toolsUsed, result.toolsUsed),
+        toolResults: [...deterministicRetrieval.toolResults, ...result.toolResults],
+        runtimeEvents: [...deterministicRetrieval.runtimeEvents, ...result.runtimeEvents],
         postLoopEvidence
       };
     } catch (error) {
@@ -384,11 +449,15 @@ export class AgentRuntime {
 
         return {
           draft,
-          proposedAction: { ...draft.proposedAction, toolsUsed },
-          toolsUsed,
-          toolResults,
+          proposedAction: {
+            ...draft.proposedAction,
+            toolsUsed: mergeLinkedArtifacts(deterministicRetrieval.toolsUsed, toolsUsed)
+          },
+          toolsUsed: mergeLinkedArtifacts(deterministicRetrieval.toolsUsed, toolsUsed),
+          toolResults: [...deterministicRetrieval.toolResults, ...toolResults],
           postLoopEvidence,
           runtimeEvents: [
+            ...deterministicRetrieval.runtimeEvents,
             ...runtimeEvents,
             {
               type: 'agent.model.completed',
@@ -417,10 +486,11 @@ export class AgentRuntime {
         return {
           draft,
           proposedAction: draft.proposedAction,
-          toolsUsed,
-          toolResults,
+          toolsUsed: mergeLinkedArtifacts(deterministicRetrieval.toolsUsed, toolsUsed),
+          toolResults: [...deterministicRetrieval.toolResults, ...toolResults],
           postLoopEvidence,
           runtimeEvents: [
+            ...deterministicRetrieval.runtimeEvents,
             ...runtimeEvents,
             {
               type: 'agent.model.completed',
@@ -434,6 +504,96 @@ export class AgentRuntime {
         };
       }
     }
+  }
+
+  private async runDeterministicRetrieval(
+    context: ContextAssembly,
+    workspace: Workspace,
+    retrievalToolNames: string[],
+    postLoopEvidence: PostLoopEvidence
+  ): Promise<{
+    toolsUsed: string[];
+    toolResults: AgentToolResult[];
+    runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>;
+  }> {
+    const runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }> = [];
+    const toolsUsed: string[] = [];
+    const toolResults: AgentToolResult[] = [];
+    const retrievalNames = new Set(retrievalToolNames);
+
+    for (const tool of context.availableTools) {
+      if (!retrievalNames.has(tool.name)) {
+        continue;
+      }
+
+      const input = deterministicRetrievalInput(tool, context);
+      if (!input) {
+        continue;
+      }
+
+      const id = `auto-retrieval:${tool.name}`;
+      runtimeEvents.push({
+        type: 'agent.tool.requested',
+        payload: {
+          id,
+          name: tool.name,
+          reason: 'Deterministic retrieval fanout',
+          input
+        }
+      });
+
+      try {
+        const output = await this.tools.execute(tool.name, input, {
+          workspace,
+          task: context.task,
+          workspaceMemory: context.memory.workspace
+        });
+        toolsUsed.push(tool.name);
+        const enrichedOutput = await this.enrichSearchResultForGrounding(
+          tool.name,
+          output,
+          context,
+          workspace,
+          toolsUsed,
+          runtimeEvents,
+          postLoopEvidence
+        );
+        toolResults.push({
+          id,
+          name: tool.name,
+          ok: true,
+          output: truncateToolOutput(enrichedOutput)
+        });
+        runtimeEvents.push({
+          type: 'agent.tool.completed',
+          payload: {
+            id,
+            name: tool.name,
+            ok: true,
+            outputSummary: outputSummary(enrichedOutput)
+          }
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Tool execution failed';
+        toolResults.push({
+          id,
+          name: tool.name,
+          ok: false,
+          error: message
+        });
+        runtimeEvents.push({
+          type: 'agent.tool.completed',
+          payload: {
+            id,
+            name: tool.name,
+            ok: false,
+            error: message
+          }
+        });
+      }
+    }
+
+    return { toolsUsed, toolResults, runtimeEvents };
   }
 
   private defaultToolInput(name: string, input: unknown, context: ContextAssembly): unknown {
@@ -494,7 +654,6 @@ export class AgentRuntime {
 
     if (
       name !== 'notion.search' ||
-      !requiresGrounding(context) ||
       !output ||
       typeof output !== 'object' ||
       !('results' in output) ||

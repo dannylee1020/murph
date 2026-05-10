@@ -134,9 +134,18 @@ type IntegrationStatusPayload = {
       masked?: string;
       account?: string;
       validatedAt?: string;
+      repositories?: string[];
+      needsRepoScope?: boolean;
     };
     errorMessage?: string;
   }>;
+};
+
+type GitHubRepositoriesPayload = {
+  ok: boolean;
+  error?: string;
+  repositories: Array<{ fullName: string; private: boolean; owner: string; name: string }>;
+  selectedRepositories: string[];
 };
 
 type QueuePayload = {
@@ -303,11 +312,13 @@ const navItems = [
 
 type SlackMembersPayload = {
   ok: boolean;
+  error?: string;
   members: Array<{ id: string; displayName: string; avatar?: string }>;
 };
 
 type SlackChannelsPayload = {
   ok: boolean;
+  error?: string;
   channels: Array<{ id: string; name?: string; displayName: string; isMember: boolean; isPrivate: boolean }>;
 };
 
@@ -365,6 +376,11 @@ async function getJson<T>(path: string): Promise<T> {
     throw new Error(`Request failed: ${path}`);
   }
   return (await response.json()) as T;
+}
+
+async function getSlackJson<T>(path: string): Promise<T> {
+  const response = await fetch(path);
+  return (await response.json().catch(() => ({ ok: false, error: `Request failed: ${path}` }))) as T;
 }
 
 async function postJson<T>(path: string, body?: unknown): Promise<T> {
@@ -716,6 +732,16 @@ function sessionErrorHtml(): string {
 }
 
 function sessionCreateErrorHtml(payload: SessionCreateResponse): string {
+  if (payload.error === 'slack_reconnect_required') {
+    return `
+      <div class="notice danger">
+        <strong>Reconnect Slack</strong>
+        <p>Murph cannot read the saved Slack token. Reinstall Slack before starting a session.</p>
+        <a class="button" href="/api/slack/install">Reconnect Slack</a>
+      </div>
+    `;
+  }
+
   if (payload.error !== 'channels_require_action') {
     return `<div class="notice danger">${escapeHtml(payload.error ?? 'Session could not be started.')}</div>`;
   }
@@ -785,6 +811,10 @@ function integrationCard(integration: IntegrationStatusPayload['integrations'][n
     if (integration.metadata.validatedAt) {
       detailRows.push(`<div><dt>Validated</dt><dd>${escapeHtml(formatRelative(integration.metadata.validatedAt))}</dd></div>`);
     }
+    if (integration.provider === 'github') {
+      const repos = integration.metadata.repositories ?? [];
+      detailRows.push(`<div><dt>Repositories</dt><dd>${repos.length > 0 ? escapeHtml(repos.join(', ')) : 'Choose repos before retrieval is enabled'}</dd></div>`);
+    }
   } else {
     const authLabel = integration.authType === 'oauth' ? 'OAuth' : 'API key';
     detailRows.push(`<div><dt>Auth</dt><dd>${escapeHtml(authLabel)}</dd></div>`);
@@ -810,6 +840,15 @@ function integrationCard(integration: IntegrationStatusPayload['integrations'][n
         ${primaryCta}
         ${integration.canDisconnect ? `<button type="button" class="ghost disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
       </div>
+      ${connected && integration.provider === 'github' ? `
+        <div class="github-repo-picker" data-workspace-id="${escapeHtml(workspaceId)}">
+          <p class="empty">${integration.metadata.needsRepoScope ? 'Choose repositories before Murph uses GitHub for retrieval.' : 'Repository scope controls what Murph can search.'}</p>
+          <div class="github-repo-list"><p class="empty">Loading repositories...</p></div>
+          <div class="actions">
+            <button type="button" class="secondary save-github-repos" disabled>Save repositories</button>
+          </div>
+        </div>
+      ` : ''}
     </article>
   `;
 }
@@ -903,14 +942,16 @@ async function renderSetup(): Promise<void> {
   }
 
   const step = setupWizardState.currentStep;
-  const totalSteps = 7;
+  const visibleStep = Math.max(1, step);
+  const totalSteps = 6;
 
   const dots = `
     ${Array.from({ length: totalSteps }, (_, i) => {
-      const cls = i < step ? 'wizard-dot completed' : i === step ? 'wizard-dot active' : 'wizard-dot';
+      const current = visibleStep - 1;
+      const cls = i < current ? 'wizard-dot completed' : i === current ? 'wizard-dot active' : 'wizard-dot';
       return `<span class="${cls}"></span>`;
     }).join('')}
-    <span style="margin-left: 4px;">${String(step + 1).padStart(2, '0')} / ${String(totalSteps).padStart(2, '0')}</span>
+    <span style="margin-left: 4px;">${String(visibleStep).padStart(2, '0')} / ${String(totalSteps).padStart(2, '0')}</span>
   `;
 
   let stepContent = '';
@@ -1070,7 +1111,7 @@ async function renderSetup(): Promise<void> {
   if (step === 4) {
     const container = app.querySelector<HTMLDivElement>('#member-list-container');
     try {
-      const membersPayload = await getJson<SlackMembersPayload>('/api/slack/members');
+      const membersPayload = await getSlackJson<SlackMembersPayload>('/api/slack/members');
       if (membersPayload.ok && membersPayload.members.length > 0) {
         container!.innerHTML = `
           <div class="member-list">
@@ -1092,6 +1133,11 @@ async function renderSetup(): Promise<void> {
             if (nextBtn) nextBtn.disabled = false;
           });
         });
+      } else if (membersPayload.error === 'slack_reconnect_required' || membersPayload.error === 'no_workspace') {
+        container!.innerHTML = `
+          <p class="empty">Reconnect Slack before choosing yourself.</p>
+          <a class="button" href="/api/slack/install">Connect Slack workspace</a>
+        `;
       } else {
         container!.innerHTML = `
           <form class="form" id="manual-name-form">
@@ -1126,7 +1172,7 @@ async function renderSetup(): Promise<void> {
     const container = app.querySelector<HTMLDivElement>('#channel-list-container');
     const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
     try {
-      const channelsPayload = await getJson<SlackChannelsPayload>('/api/slack/channels');
+      const channelsPayload = await getSlackJson<SlackChannelsPayload>('/api/slack/channels');
       if (channelsPayload.ok && channelsPayload.channels.length > 0) {
         container!.innerHTML = `
           <div class="member-list">
@@ -1167,6 +1213,12 @@ async function renderSetup(): Promise<void> {
           input.addEventListener('change', syncSelection);
         });
         syncSelection();
+      } else if (channelsPayload.error === 'slack_reconnect_required' || channelsPayload.error === 'no_workspace') {
+        container!.innerHTML = `
+          <p class="empty">Reconnect Slack before choosing channels.</p>
+          <a class="button" href="/api/slack/install">Connect Slack workspace</a>
+        `;
+        if (nextBtn) nextBtn.disabled = true;
       } else {
         container!.innerHTML = '<p class="empty">No Slack channels were available yet. You can keep going and watch all accessible channels.</p>';
         if (nextBtn) nextBtn.disabled = false;
@@ -1582,6 +1634,75 @@ async function renderSettings(): Promise<void> {
   `);
 
   const integrationsByProvider = new Map(integrationsPayload.integrations.map((integration) => [integration.provider, integration]));
+
+  app.querySelectorAll<HTMLDivElement>('.github-repo-picker').forEach(async (picker) => {
+    const workspaceId = picker.dataset.workspaceId ?? integrationsPayload.workspaceId;
+    const listEl = picker.querySelector<HTMLDivElement>('.github-repo-list');
+    const saveButton = picker.querySelector<HTMLButtonElement>('.save-github-repos');
+    if (!listEl || !saveButton) {
+      return;
+    }
+
+    try {
+      const payload = await getJson<GitHubRepositoriesPayload>(
+        `/api/integrations/github/repositories?workspaceId=${encodeURIComponent(workspaceId)}`
+      );
+      if (!payload.ok) {
+        listEl.innerHTML = `<p class="empty">${escapeHtml(payload.error ?? 'Could not load GitHub repositories.')}</p>`;
+        return;
+      }
+
+      const selected = new Set(payload.selectedRepositories);
+      listEl.innerHTML = payload.repositories.length > 0
+        ? `<div class="member-list">
+            ${payload.repositories.map((repo) => `
+              <label class="member-item channel-item ${selected.has(repo.fullName) ? 'selected' : ''}">
+                <input type="checkbox" name="githubRepository" value="${escapeHtml(repo.fullName)}" ${selected.has(repo.fullName) ? 'checked' : ''} />
+                <span class="member-avatar-placeholder">${escapeHtml(repo.owner.charAt(0).toUpperCase())}</span>
+                <span class="channel-copy">
+                  <strong>${escapeHtml(repo.fullName)}</strong>
+                  <small>${repo.private ? 'Private' : 'Public'}</small>
+                </span>
+              </label>
+            `).join('')}
+          </div>`
+        : '<p class="empty">No GitHub repositories were visible to this token.</p>';
+
+      const sync = () => {
+        saveButton.disabled = false;
+        listEl.querySelectorAll<HTMLLabelElement>('.channel-item').forEach((item) => {
+          const input = item.querySelector<HTMLInputElement>('input');
+          item.classList.toggle('selected', Boolean(input?.checked));
+        });
+      };
+      listEl.querySelectorAll<HTMLInputElement>('input[name="githubRepository"]').forEach((input) => {
+        input.addEventListener('change', sync);
+      });
+    } catch (error) {
+      listEl.innerHTML = `<p class="empty">${escapeHtml(error instanceof Error ? error.message : 'Could not load GitHub repositories.')}</p>`;
+    }
+  });
+
+  app.querySelectorAll<HTMLButtonElement>('.save-github-repos').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const picker = button.closest<HTMLDivElement>('.github-repo-picker');
+      if (!picker) {
+        return;
+      }
+      const workspaceId = picker.dataset.workspaceId ?? integrationsPayload.workspaceId;
+      const repositories = Array.from(picker.querySelectorAll<HTMLInputElement>('input[name="githubRepository"]:checked'))
+        .map((input) => input.value);
+      button.disabled = true;
+      try {
+        await putJson('/api/integrations/github/repositories', { workspaceId, repositories });
+        dashboardNotice = repositories.length > 0 ? 'GitHub repositories saved.' : 'GitHub retrieval disabled until repositories are selected.';
+        await renderSettings();
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Could not save GitHub repositories.');
+        button.disabled = false;
+      }
+    });
+  });
 
   app.querySelectorAll<HTMLButtonElement>('.connect-integration').forEach((button) => {
     button.addEventListener('click', async () => {

@@ -7,6 +7,7 @@ import { getStore } from '#lib/server/persistence/store';
 import { getSetupDoctor } from '#lib/server/setup/doctor';
 import { updateSetupEnv } from '#lib/server/setup/env-file';
 import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-client';
+import { getSlackService } from '#lib/server/channels/slack/service';
 import { readJson } from '../http.js';
 
 export const systemRoutes: Route[] = [
@@ -30,18 +31,21 @@ export const systemRoutes: Route[] = [
     await ensureRuntimeInitialized();
     const env = getRuntimeEnv();
     const summary = getStore().getWorkspaceSummary();
+    const workspaces = getStore().listWorkspaces();
+    const slackWorkspace = getSlackService().getUsableWorkspace();
+    const discordWorkspace = workspaces.find((workspace) => workspace.provider === 'discord' && workspace.botTokenEncrypted);
 
     sendJson(res, {
       ok: true,
       slack: {
-        installed: summary.workspace?.provider === 'slack',
+        installed: Boolean(slackWorkspace),
         oauthConfigured: Boolean(env.slackClientId && env.slackClientSecret),
         signingSecretConfigured: Boolean(env.slackSigningSecret),
         eventsMode: env.slackEventsMode,
         socketConfigured: Boolean(env.slackAppToken)
       },
       discord: {
-        installed: Boolean(summary.workspace && summary.workspace.provider === 'discord'),
+        installed: Boolean(discordWorkspace),
         oauthConfigured: Boolean(env.discordClientId && env.discordClientSecret && env.discordRedirectUri),
         botTokenConfigured: Boolean(env.discordBotToken)
       },

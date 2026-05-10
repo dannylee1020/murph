@@ -219,6 +219,31 @@ export class SlackService {
     return decryptString(workspace.botTokenEncrypted, this.env.encryptionKey);
   }
 
+  canReadBotToken(workspace: Workspace): boolean {
+    try {
+      this.getBotToken(workspace.id);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  getUsableWorkspace(): Workspace | undefined {
+    return this.store.listWorkspaces().find((workspace) => (
+      workspace.provider === 'slack' &&
+      Boolean(workspace.botTokenEncrypted) &&
+      this.canReadBotToken(workspace)
+    ));
+  }
+
+  hasUnreadableInstall(): boolean {
+    return this.store.listWorkspaces().some((workspace) => (
+      workspace.provider === 'slack' &&
+      Boolean(workspace.botTokenEncrypted) &&
+      !this.canReadBotToken(workspace)
+    ));
+  }
+
   async fetchThreadMessages(
     workspace: Workspace,
     thread: ThreadRef

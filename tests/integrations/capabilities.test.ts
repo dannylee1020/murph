@@ -93,6 +93,27 @@ describe('integration capability wiring', () => {
     );
   });
 
+  it('reconcileIntegrationCapabilitiesForWorkspace enables GitHub even before repositories are selected', async () => {
+    const { store, workspace } = await setup();
+    const { encryptString } = await import('#lib/server/util/crypto');
+    store.saveIntegrationCredential({
+      workspaceId: workspace.id,
+      provider: 'github',
+      credentialKind: 'api_key',
+      credentialEncrypted: encryptString('github-token', 'test-key'),
+      metadata: { account: 'octo-user', repositories: [] }
+    });
+    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
+      '#lib/server/integrations/capabilities'
+    );
+
+    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
+
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toContain('github.search');
+    expect(memory.enabledContextSources).toContain('github.thread_search');
+  });
+
   it('reconcileIntegrationCapabilitiesForWorkspace leaves memory untouched when no credential exists', async () => {
     const { store, workspace } = await setup();
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(

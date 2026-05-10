@@ -19,6 +19,10 @@ function publicAppUrl(req: Parameters<typeof toHeaders>[0], url: URL): string {
   return `${proto}://${host}`;
 }
 
+function getSlackWorkspace() {
+  return getSlackService().getUsableWorkspace();
+}
+
 export const slackRoutes: Route[] = [
   route('POST', '/api/slack/events', async ({ req, res }) => {
     await ensureRuntimeInitialized();
@@ -64,11 +68,14 @@ export const slackRoutes: Route[] = [
     redirect(res, '/setup?step=slack&success=1');
   }),
   route('GET', '/api/slack/members', async ({ res }) => {
-    const store = getStore();
-    const workspace = store.getFirstWorkspace();
+    const workspace = getSlackWorkspace();
 
     if (!workspace) {
-      sendJson(res, { ok: false, error: 'no_workspace', members: [] }, 400);
+      sendJson(res, {
+        ok: false,
+        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'no_workspace',
+        members: []
+      }, 400);
       return;
     }
 
@@ -80,11 +87,14 @@ export const slackRoutes: Route[] = [
     }
   }),
   route('GET', '/api/slack/channels', async ({ res }) => {
-    const store = getStore();
-    const workspace = store.getFirstWorkspace();
+    const workspace = getSlackWorkspace();
 
     if (!workspace) {
-      sendJson(res, { ok: false, error: 'no_workspace', channels: [] }, 400);
+      sendJson(res, {
+        ok: false,
+        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'no_workspace',
+        channels: []
+      }, 400);
       return;
     }
 

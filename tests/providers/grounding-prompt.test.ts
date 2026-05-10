@@ -118,6 +118,8 @@ describe('buildGroundingPrompt', () => {
     }));
 
     expect(prompt).toContain('Thread memory is conversation context, not source-of-truth evidence.');
+    expect(prompt).toContain('Current-run artifacts may include broad fanout results from connected read-only sources');
+    expect(prompt).toContain('If sources conflict, say which source says what instead of guessing.');
     expect(prompt).toContain('do not answer factual or current-state questions from thread memory alone');
   });
 

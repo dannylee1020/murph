@@ -1,6 +1,8 @@
 import { encryptString } from '#lib/server/util/crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
+import { getSlackService } from '#lib/server/channels/slack/service';
+import { getGitHubService } from '#lib/server/context-sources/github';
 import { getIntegration, listIntegrations, readEnvCredential } from '#lib/server/integrations/registry';
 import { loadIntegrationAdapters } from '#lib/server/integrations/adapter-loader';
 import { registerBuiltInIntegrationAdapters } from '#lib/server/integrations/register-builtins';
@@ -17,9 +19,29 @@ interface ConnectBody {
   credential?: string;
 }
 
+interface GitHubRepositoriesBody {
+  workspaceId?: string;
+  repositories?: unknown;
+}
+
+function normalizeRepositories(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value
+    .map((entry) => typeof entry === 'string' ? entry.trim() : '')
+    .filter((entry) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(entry)))];
+}
+
 function getTargetWorkspace(workspaceId?: string) {
   const store = getStore();
-  return workspaceId ? store.getWorkspaceById(workspaceId) : store.getFirstWorkspace();
+  if (workspaceId) {
+    return store.getWorkspaceById(workspaceId);
+  }
+
+  return getSlackService().getUsableWorkspace() ??
+    store.getFirstWorkspace();
 }
 
 async function validateCredential(provider: string, credential: string): Promise<Record<string, unknown>> {
@@ -76,6 +98,18 @@ function statusFor(provider: string, workspaceId: string) {
   const stored = getStore().getIntegrationCredential(workspaceId, provider);
   const envValue = readEnvCredential(provider);
   const source = stored?.status === 'connected' ? 'database' : envValue ? 'env' : undefined;
+  const metadata = source === 'database'
+    ? stored?.metadata ?? {}
+    : envValue
+      ? { masked: maskCredential(envValue) }
+      : {};
+  const githubRepositories = provider === 'github'
+    ? source === 'env'
+      ? getRuntimeEnv().githubRepositories
+      : normalizeRepositories(metadata.repositories).length > 0
+        ? normalizeRepositories(metadata.repositories)
+        : getRuntimeEnv().githubRepositories
+    : undefined;
 
   return {
     provider: definition.provider,
@@ -90,11 +124,9 @@ function statusFor(provider: string, workspaceId: string) {
     tools: definition.tools,
     contextSources: definition.contextSources,
     canDisconnect: source === 'database',
-    metadata: source === 'database'
-      ? stored?.metadata ?? {}
-      : envValue
-        ? { masked: maskCredential(envValue) }
-        : {},
+    metadata: provider === 'github'
+      ? { ...metadata, repositories: githubRepositories, needsRepoScope: source ? (githubRepositories ?? []).length === 0 : false }
+      : metadata,
     errorMessage: stored?.errorMessage
   };
 }
@@ -159,6 +191,64 @@ export const integrationRoutes: Route[] = [
     } catch (error) {
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
     }
+  }),
+  route('GET', '/api/integrations/github/repositories', async ({ res, url }) => {
+    await ensureIntegrationRegistryLoaded();
+    const workspace = getTargetWorkspace(url.searchParams.get('workspaceId') ?? undefined);
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'workspace_required', repositories: [], selectedRepositories: [] }, 400);
+      return;
+    }
+
+    try {
+      const result = await getGitHubService().listRepositories(workspace.id);
+      sendJson(res, {
+        ok: true,
+        repositories: result.repositories,
+        selectedRepositories: getGitHubService().repositories(workspace.id)
+      });
+    } catch (error) {
+      sendJson(res, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'repository_list_failed',
+        repositories: [],
+        selectedRepositories: getGitHubService().repositories(workspace.id)
+      }, 400);
+    }
+  }),
+  route('PUT', '/api/integrations/github/repositories', async ({ req, res }) => {
+    await ensureIntegrationRegistryLoaded();
+    const definition = getIntegration('github')!;
+    const body = await readJson<GitHubRepositoriesBody>(req);
+    const workspace = getTargetWorkspace(body.workspaceId);
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'workspace_required' }, 400);
+      return;
+    }
+
+    const stored = getStore().getIntegrationCredential(workspace.id, 'github');
+    if (!stored) {
+      sendJson(res, { ok: false, error: 'github_not_connected' }, 400);
+      return;
+    }
+
+    const repositories = normalizeRepositories(body.repositories);
+    getStore().saveIntegrationCredential({
+      workspaceId: workspace.id,
+      provider: 'github',
+      credentialKind: stored.credentialKind,
+      credentialEncrypted: stored.credentialEncrypted,
+      metadata: {
+        ...stored.metadata,
+        repositories
+      },
+      status: stored.status,
+      errorMessage: stored.errorMessage
+    });
+
+    enableIntegrationCapabilities(workspace.id, definition);
+
+    sendJson(res, { ok: true, integration: statusFor('github', workspace.id) });
   }),
   route('DELETE', '/api/integrations/:provider/disconnect', async ({ res, params, url }) => {
     await ensureIntegrationRegistryLoaded();

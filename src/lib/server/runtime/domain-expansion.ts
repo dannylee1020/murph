@@ -13,6 +13,10 @@ function intersects(left: string[] = [], right: string[] = []): boolean {
   return left.some((value) => right.includes(value));
 }
 
+function groundingRequired(skills: SkillManifest[]): boolean {
+  return skills.some((skill) => skill.groundingPolicy === 'required_when_no_artifacts');
+}
+
 /**
  * Selects context sources to pre-fetch for a run. Context sources are NOT tools the
  * LLM picks — they are background retrievals attached to the prompt. Optional
@@ -39,7 +43,7 @@ export function expandContextSources(input: {
     if (
       !explicitNames.has(source.name) &&
       isOptionalContextSourceEnabled(source, input.workspaceMemory) &&
-      intersects(source.knowledgeDomains ?? [], selectedDomains)
+      (groundingRequired(input.selectedSkills) || intersects(source.knowledgeDomains ?? [], selectedDomains))
     ) {
       optional.add(source.name);
     }

@@ -28,6 +28,8 @@ function describeGroundingDirective(directive?: GroundingDirective): string {
 function describeMemoryBoundary(): string {
   return [
     'Thread memory is conversation context, not source-of-truth evidence.',
+    'Current-run artifacts may include broad fanout results from connected read-only sources; compare all relevant artifacts before drafting.',
+    'If sources conflict, say which source says what instead of guessing.',
     'Use it to understand what the thread has been discussing, but do not answer factual or current-state questions from thread memory alone.',
     'For factual or current claims, rely on current-run source artifacts, successful current-run tool results, or explicit source documents retrieved in this run.'
   ].join(' ');

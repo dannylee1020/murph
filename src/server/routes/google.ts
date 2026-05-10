@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
+import { getSlackService } from '#lib/server/channels/slack/service';
 import { getIntegration } from '#lib/server/integrations/registry';
 import {
   isGoogleOAuthConfigured,
@@ -29,7 +30,12 @@ function publicAppUrl(req: IncomingMessage, url: URL): string {
 
 function getTargetWorkspace(workspaceId?: string) {
   const store = getStore();
-  return workspaceId ? store.getWorkspaceById(workspaceId) : store.getFirstWorkspace();
+  if (workspaceId) {
+    return store.getWorkspaceById(workspaceId);
+  }
+
+  return getSlackService().getUsableWorkspace() ??
+    store.getFirstWorkspace();
 }
 
 export const googleRoutes: Route[] = [

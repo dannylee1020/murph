@@ -25,6 +25,7 @@ export interface RuntimeEnv {
   notionVersion: string;
   notionMaxResults: number;
   githubPat?: string;
+  githubRepositories: string[];
   obsidianVaultPath?: string;
   granolaApiKey?: string;
   googleAccessToken?: string;
@@ -76,6 +77,7 @@ export function getRuntimeEnv(): RuntimeEnv {
     notionVersion: process.env.NOTION_VERSION ?? '2026-03-11',
     notionMaxResults: Number(process.env.NOTION_MAX_RESULTS ?? 3),
     githubPat: process.env.GITHUB_PAT,
+    githubRepositories: csvEnv(process.env.GITHUB_REPOSITORIES),
     obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH,
     granolaApiKey: process.env.GRANOLA_API_KEY,
     googleAccessToken: process.env.GOOGLE_ACCESS_TOKEN,

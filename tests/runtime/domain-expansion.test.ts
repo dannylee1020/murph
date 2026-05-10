@@ -64,18 +64,39 @@ describe('expandContextSources', () => {
     expect(expanded).toEqual({ explicit: [], optional: [] });
   });
 
-  it('does not prefetch enabled sources from unrelated domains', () => {
+  it('fans out to all enabled optional sources when grounding is required', () => {
     const expanded = expandContextSources({
-      selectedSkills: [skill({ knowledgeDomains: ['documentation'] })],
+      selectedSkills: [skill({ knowledgeDomains: ['documentation'], groundingPolicy: 'required_when_no_artifacts' })],
       allSources: [
+        source({ name: 'notion.thread_search', optional: true, knowledgeDomains: ['documentation'] }),
+        source({ name: 'gmail.thread_search', optional: true, knowledgeDomains: ['email'] }),
+        source({ name: 'github.thread_search', optional: true, knowledgeDomains: ['code'] })
+      ],
+      workspaceMemory: {
+        ...workspaceMemory,
+        enabledContextSources: ['notion.thread_search', 'gmail.thread_search', 'github.thread_search']
+      }
+    });
+
+    expect(expanded).toEqual({
+      explicit: [],
+      optional: ['notion.thread_search', 'gmail.thread_search', 'github.thread_search']
+    });
+  });
+
+  it('still scopes optional sources by domain when grounding is not required', () => {
+    const expanded = expandContextSources({
+      selectedSkills: [skill({ knowledgeDomains: ['documentation'], groundingPolicy: 'model_choice' })],
+      allSources: [
+        source({ name: 'notion.thread_search', optional: true, knowledgeDomains: ['documentation'] }),
         source({ name: 'gmail.thread_search', optional: true, knowledgeDomains: ['email'] })
       ],
       workspaceMemory: {
         ...workspaceMemory,
-        enabledContextSources: ['gmail.thread_search']
+        enabledContextSources: ['notion.thread_search', 'gmail.thread_search']
       }
     });
 
-    expect(expanded).toEqual({ explicit: [], optional: [] });
+    expect(expanded).toEqual({ explicit: [], optional: ['notion.thread_search'] });
   });
 });

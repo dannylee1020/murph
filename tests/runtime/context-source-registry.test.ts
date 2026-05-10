@@ -103,6 +103,33 @@ describe('ContextSourceRegistry.retrieve', () => {
     expect(artifacts.map((entry) => entry.id)).toEqual(['explicit.source', 'optional.a', 'optional.b']);
   });
 
+  it('allows callers to override the optional source cap', async () => {
+    process.env.MURPH_CONTEXT_SOURCE_MAX_OPTIONAL = '1';
+    const registry = await loadRegistry();
+
+    function artifact(id: string): ContextArtifact {
+      return { id, source: id, type: 'document', title: id, text: id };
+    }
+
+    for (const name of ['optional.a', 'optional.b', 'optional.c']) {
+      registry.register({
+        name,
+        description: '',
+        optional: true,
+        async retrieve() {
+          return [artifact(name)];
+        }
+      }, { optional: true, source: 'test' });
+    }
+
+    const artifacts = await registry.retrieve([], ['optional.a', 'optional.b', 'optional.c'], {
+      ...baseInput(),
+      maxOptionalSources: Number.MAX_SAFE_INTEGER
+    });
+
+    expect(artifacts.map((entry) => entry.id)).toEqual(['optional.a', 'optional.b', 'optional.c']);
+  });
+
   it('silently skips timed-out optional sources', async () => {
     process.env.MURPH_CONTEXT_SOURCE_TIMEOUT_MS = '1';
     const registry = await loadRegistry();

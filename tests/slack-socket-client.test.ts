@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const start = vi.fn();
 const on = vi.fn();
+const disconnect = vi.fn();
 const onWebSocketMessage = vi.fn();
+const stateMachine = { getCurrentState: vi.fn() };
 const socketConstructor = vi.fn(function SocketModeClientMock() {
-  return { on, start, onWebSocketMessage };
+  return { on, start, disconnect, onWebSocketMessage, stateMachine };
 });
 const handleSlackEventEnvelope = vi.fn();
 
@@ -22,8 +24,12 @@ describe('SlackSocketModeClient', () => {
     vi.resetModules();
     socketConstructor.mockClear();
     on.mockClear();
+    disconnect.mockReset();
+    disconnect.mockResolvedValue(undefined);
     onWebSocketMessage.mockReset();
     onWebSocketMessage.mockResolvedValue(undefined);
+    stateMachine.getCurrentState.mockReset();
+    stateMachine.getCurrentState.mockReturnValue('disconnected');
     start.mockReset();
     start.mockResolvedValue({});
     handleSlackEventEnvelope.mockReset();
@@ -60,17 +66,24 @@ describe('SlackSocketModeClient', () => {
     expect(start).toHaveBeenCalledOnce();
   });
 
-  it('does not crash when Slack disconnects while the socket is connecting', async () => {
+  it('restarts when Slack disconnects while the socket is connecting', async () => {
+    vi.useFakeTimers();
     process.env.SLACK_APP_TOKEN = 'xapp-test';
-    onWebSocketMessage.mockRejectedValueOnce(
-      new Error("Unhandled event 'server explicit disconnect' in state 'connecting'.")
-    );
+    stateMachine.getCurrentState.mockReturnValue('connecting');
     const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
 
     new SlackSocketModeClient().ensureStarted();
     const client = socketConstructor.mock.results[0].value;
 
-    await expect(client.onWebSocketMessage({ data: '{"type":"disconnect"}' })).resolves.toBeUndefined();
+    await expect(client.onWebSocketMessage({ data: '{"type":"disconnect","reason":"refresh_requested"}' })).resolves.toBeUndefined();
+    expect(onWebSocketMessage).not.toHaveBeenCalled();
+    expect(disconnect).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(socketConstructor).toHaveBeenCalledTimes(2);
+    expect(start).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it('acks and handles Slack Events API envelopes', async () => {

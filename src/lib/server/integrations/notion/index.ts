@@ -24,7 +24,17 @@ export function createNotionAdapter(): IntegrationAdapter {
         knowledgeDomains: ['documentation'],
         async retrieve(input) {
           const results = await notion.search(queryFromThread(input), 3, input.workspace.id);
-          return results.results.map((result) => notion.toArtifact(result));
+          if (results.results.length === 0) {
+            return [];
+          }
+
+          const [first, ...rest] = results.results;
+          const page = await notion.readPage(first.id, 40, input.workspace.id);
+
+          return [
+            notion.toArtifact(page),
+            ...rest.map((result) => notion.toArtifact(result))
+          ];
         }
       }
     ],
@@ -102,4 +112,3 @@ export function createNotionAdapter(): IntegrationAdapter {
     }
   };
 }
-

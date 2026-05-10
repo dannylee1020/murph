@@ -9,9 +9,22 @@ interface SlackSocketEventEnvelope {
   body?: Record<string, unknown>;
 }
 
+function socketMessageText(data: unknown): string | undefined {
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (Buffer.isBuffer(data)) {
+    return data.toString('utf8');
+  }
+
+  return undefined;
+}
+
 export class SlackSocketModeClient {
   private client: SocketModeClient | null = null;
   private started = false;
+  private restartTimer: NodeJS.Timeout | null = null;
 
   isConfigured(): boolean {
     const env = getRuntimeEnv();
@@ -40,6 +53,10 @@ export class SlackSocketModeClient {
       void this.handleEnvelope(envelope);
     });
     this.client.on('connected', () => {
+      if (this.restartTimer) {
+        clearTimeout(this.restartTimer);
+        this.restartTimer = null;
+      }
       console.info('[slack] socket mode connected');
     });
     this.client.on('disconnected', (error?: unknown) => {
@@ -71,17 +88,68 @@ export class SlackSocketModeClient {
     }
 
     socketClient.onWebSocketMessage = async (event) => {
+      if (this.isServerDisconnectWhileConnecting(client, event.data)) {
+        console.warn('[slack] socket mode disconnected while connecting; restarting');
+        this.restartAfterDisconnectRace(client);
+        return;
+      }
+
       try {
         await original.call(client, event);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (message.includes("Unhandled event 'server explicit disconnect' in state 'connecting'")) {
-          console.warn('[slack] socket mode ignored disconnect while connecting; waiting for reconnect');
+          console.warn('[slack] socket mode disconnected while connecting; restarting');
+          this.restartAfterDisconnectRace(client);
           return;
         }
         throw error;
       }
     };
+  }
+
+  private isServerDisconnectWhileConnecting(client: SocketModeClient, data: unknown): boolean {
+    const stateMachine = (client as unknown as {
+      stateMachine?: { getCurrentState?: () => unknown };
+    }).stateMachine;
+    const currentState = stateMachine?.getCurrentState?.();
+
+    if (currentState !== 'connecting') {
+      return false;
+    }
+
+    const text = socketMessageText(data);
+    if (!text) {
+      return false;
+    }
+
+    try {
+      const payload = JSON.parse(text) as { type?: unknown };
+      return payload.type === 'disconnect';
+    } catch {
+      return false;
+    }
+  }
+
+  private restartAfterDisconnectRace(client: SocketModeClient): void {
+    if (this.restartTimer) {
+      return;
+    }
+
+    this.started = false;
+    if (this.client === client) {
+      this.client = null;
+    }
+
+    try {
+      void client.disconnect().catch(() => {});
+    } catch {
+      // The Slack SDK can already be mid-transition when this race is hit.
+    }
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      this.ensureStarted();
+    }, 1000);
   }
 
   async handleEnvelope(envelope: SlackSocketEventEnvelope): Promise<void> {

@@ -21,6 +21,7 @@ let capturedThreadReadInput: unknown;
 let capturedSearchResult: unknown;
 let testSkills: SkillManifest[] = [];
 let enabledOptionalTools: string[] = [];
+let enabledContextSources: string[] = [];
 const runAgentLoopMock = vi.fn();
 
 const provider: ModelProvider = {
@@ -182,8 +183,10 @@ async function setupRuntime() {
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
 
   const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
+  const { getContextSourceRegistry } = await import('#lib/server/capabilities/context-source-registry');
   const { AgentRuntime } = await import('#lib/server/runtime/agent-runtime');
   const registry = getToolRegistry();
+  const contextSources = getContextSourceRegistry();
 
   registry.register({
     name: 'channel.fetch_thread',
@@ -220,7 +223,7 @@ async function setupRuntime() {
         channelMappings: [],
         escalationRules: [],
         enabledOptionalTools,
-        enabledContextSources: [],
+        enabledContextSources,
         enabledPlugins: []
       };
     }
@@ -247,6 +250,14 @@ async function setupRuntime() {
     sideEffectClass: 'read',
     knowledgeDomains: ['documentation'],
     retrievalEligible: true,
+    inputSchema: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: { type: 'string' },
+        limit: { type: 'number' }
+      }
+    },
     requiresWorkspaceEnablement: true,
     async execute(): Promise<unknown> {
       return {
@@ -271,6 +282,66 @@ async function setupRuntime() {
       };
     }
   });
+  registry.register({
+    name: 'github.search',
+    description: '',
+    sideEffectClass: 'read',
+    knowledgeDomains: ['code', 'documentation'],
+    retrievalEligible: true,
+    inputSchema: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: { type: 'string' },
+        limit: { type: 'number' }
+      }
+    },
+    requiresWorkspaceEnablement: true,
+    async execute(input: { query: string; limit?: number }): Promise<unknown> {
+      return {
+        results: [{
+          id: 'github:42',
+          repository: 'acme/app',
+          number: 42,
+          title: 'API requests are unbounded — need per-tenant rate limiting before Acme launch',
+          body: `query=${input.query}; Acme rate limiting issue is open.`,
+          kind: 'issue',
+          url: 'https://github.test/acme/app/issues/42'
+        }]
+      };
+    }
+  });
+
+  contextSources.register({
+    name: 'notion.thread_search',
+    description: '',
+    optional: true,
+    knowledgeDomains: ['documentation'],
+    async retrieve() {
+      return [{
+        id: 'notion:rate-limit',
+        source: 'notion',
+        type: 'document',
+        title: 'API Rate Limiting',
+        text: 'Enterprise | 3000 | 200'
+      }];
+    }
+  }, { optional: true, source: 'test' });
+  contextSources.register({
+    name: 'gmail.thread_search',
+    description: '',
+    optional: true,
+    knowledgeDomains: ['email'],
+    async retrieve() {
+      return [{
+        id: 'gmail:acme-thread',
+        source: 'gmail',
+        type: 'email',
+        title: 'Acme Corp API rate limiting',
+        text: 'Acme integration team expects ~800 req/s during peak sync windows.'
+      }];
+    }
+  }, { optional: true, source: 'test' });
 
   return new AgentRuntime();
 }
@@ -294,6 +365,16 @@ function documentationSkill(): SkillManifest {
     knowledgeDomains: ['documentation'],
     groundingPolicy: 'required_when_no_artifacts',
     priority: 120
+  };
+}
+
+function communicationSkill(): SkillManifest {
+  return {
+    ...channelSkill(),
+    name: 'communication-grounded-continuity',
+    knowledgeDomains: ['email', 'calendar', 'team'],
+    groundingPolicy: 'required_when_no_artifacts',
+    priority: 110
   };
 }
 
@@ -343,6 +424,7 @@ describe('AgentRuntime model failure events', () => {
     capturedThreadReadInput = undefined;
     capturedSearchResult = undefined;
     enabledOptionalTools = [];
+    enabledContextSources = [];
     testSkills = [channelSkill()];
     runAgentLoopMock.mockImplementation(async () => {
       throw new Error('Native tool call request failed');
@@ -467,6 +549,77 @@ describe('AgentRuntime model failure events', () => {
       ])
     );
     expect(result.context.linkedArtifacts).toContain('https://notion.test/page-1');
+  });
+
+  it('prefetches all enabled context sources when grounding is required', async () => {
+    testSkills = [documentationSkill(), communicationSkill(), channelSkill()];
+    enabledContextSources = ['notion.thread_search', 'gmail.thread_search'];
+    runAgentLoopMock.mockImplementation(async () => [finalAssistantMessage(fallbackDraft)]);
+
+    const runtime = await setupRuntime();
+    const result = await runtime.run(task(), session(), workspace());
+
+    expect(result.context.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'notion:rate-limit',
+          source: 'notion',
+          text: 'Enterprise | 3000 | 200'
+        }),
+        expect.objectContaining({
+          id: 'gmail:acme-thread',
+          source: 'gmail',
+          text: 'Acme integration team expects ~800 req/s during peak sync windows.'
+        })
+      ])
+    );
+  });
+
+  it('runs all enabled query retrieval tools before the model drafts', async () => {
+    testSkills = [documentationSkill(), channelSkill()];
+    enabledOptionalTools = ['notion.search', 'notion.read_page', 'github.search'];
+    runAgentLoopMock.mockImplementation(async () => [finalAssistantMessage(fallbackDraft)]);
+
+    const runtime = await setupRuntime();
+    const result = await runtime.run(task(), session(), workspace());
+
+    expect(result.runtimeEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'agent.tool.requested',
+          payload: expect.objectContaining({
+            name: 'notion.search',
+            reason: 'Deterministic retrieval fanout',
+            input: expect.objectContaining({
+              query: 'status'
+            })
+          })
+        }),
+        expect.objectContaining({
+          type: 'agent.tool.requested',
+          payload: expect.objectContaining({
+            name: 'github.search',
+            reason: 'Deterministic retrieval fanout',
+            input: expect.objectContaining({
+              query: 'status'
+            })
+          })
+        })
+      ])
+    );
+    expect(result.toolsUsed).toEqual(expect.arrayContaining(['notion.search', 'notion.read_page', 'github.search']));
+    expect(result.toolResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'notion.search', ok: true }),
+        expect.objectContaining({ name: 'github.search', ok: true })
+      ])
+    );
+    expect(result.context.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'notion', title: 'Checkout launch readiness' }),
+        expect.objectContaining({ source: 'github.search' })
+      ])
+    );
   });
 
   it('exposes every workspace-enabled tool to the agent regardless of the selected skill', async () => {

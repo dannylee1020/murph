@@ -20,8 +20,9 @@ import {
 } from '#lib/server/runtime/policy-compiler';
 import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
+import { getSlackService } from '#lib/server/channels/slack/service';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
-import type { ChannelEnsureMemberResult, SessionMode } from '#lib/types';
+import type { ChannelEnsureMemberResult, SessionMode, Workspace } from '#lib/types';
 
 const gateway = getGateway();
 
@@ -31,6 +32,24 @@ function channelLabel(channel: { id: string; name?: string }): string {
 
 function inviteAction(channel: { id: string; name?: string }): string {
   return `/invite @TZBot in ${channelLabel(channel)}`;
+}
+
+function resolveRequestWorkspace(workspaceId?: string): Workspace | undefined {
+  const store = getStore();
+  const slack = getSlackService();
+  const workspace = workspaceId
+    ? store.getWorkspaceById(workspaceId)
+    : slack.getUsableWorkspace() ?? store.getFirstWorkspace();
+
+  if (
+    workspace?.provider === 'slack' &&
+    workspace.botTokenEncrypted &&
+    !slack.canReadBotToken(workspace)
+  ) {
+    return undefined;
+  }
+
+  return workspace;
 }
 
 async function resolveProfileSelection(
@@ -166,11 +185,13 @@ export const gatewayRoutes: Route[] = [
       defaultPolicyProfileName?: unknown;
     }>(req);
     const store = getStore();
-    const workspace =
-      (body.workspaceId ? store.getWorkspaceById(body.workspaceId) : undefined) ?? store.getFirstWorkspace();
+    const workspace = resolveRequestWorkspace(body.workspaceId);
 
     if (!workspace) {
-      sendJson(res, { ok: false, error: 'workspace_not_installed' }, 400);
+      sendJson(res, {
+        ok: false,
+        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
+      }, 400);
       return;
     }
 
@@ -274,11 +295,13 @@ export const gatewayRoutes: Route[] = [
       workdayEndHour?: number;
     }>(req);
     const store = getStore();
-    const workspace =
-      (body.workspaceId ? store.getWorkspaceById(body.workspaceId) : undefined) ?? store.getFirstWorkspace();
+    const workspace = resolveRequestWorkspace(body.workspaceId);
 
     if (!workspace) {
-      sendJson(res, { ok: false, error: 'workspace_not_installed' }, 400);
+      sendJson(res, {
+        ok: false,
+        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
+      }, 400);
       return;
     }
 
@@ -460,11 +483,13 @@ export const gatewayRoutes: Route[] = [
       policyOverrideRaw?: string;
     }>(req);
     const store = getStore();
-    const workspace =
-      (body.workspaceId ? store.getWorkspaceById(body.workspaceId) : undefined) ?? store.getFirstWorkspace();
+    const workspace = resolveRequestWorkspace(body.workspaceId);
 
     if (!workspace) {
-      sendJson(res, { ok: false, error: 'workspace_not_installed' }, 400);
+      sendJson(res, {
+        ok: false,
+        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
+      }, 400);
       return;
     }
 

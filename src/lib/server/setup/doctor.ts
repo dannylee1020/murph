@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { getNotionStatus } from '#lib/server/context-sources/notion';
+import { getSlackService } from '#lib/server/channels/slack/service';
 
 export type SetupCheckStatus = 'ok' | 'warning' | 'action_required' | 'error';
 
@@ -28,7 +29,9 @@ export function getSetupDoctor(): SetupDoctorPayload {
   const env = getRuntimeEnv();
   const store = getStore();
   const summary = store.getWorkspaceSummary();
-  const workspace = summary.workspace;
+  const slack = getSlackService();
+  const slackWorkspace = slack.getUsableWorkspace();
+  const slackReconnectRequired = !slackWorkspace && slack.hasUnreadableInstall();
   const checks: SetupDoctorCheck[] = [];
 
   checks.push(
@@ -68,8 +71,10 @@ export function getSetupDoctor(): SetupDoctorPayload {
   );
 
   checks.push(
-    workspace?.provider === 'slack'
-      ? check('slack_installed', 'Slack workspace', 'ok', `${workspace.name} is connected.`)
+    slackWorkspace
+      ? check('slack_installed', 'Slack workspace', 'ok', `${slackWorkspace.name} is connected.`)
+      : slackReconnectRequired
+        ? check('slack_installed', 'Slack workspace', 'action_required', 'Reconnect Slack. The saved Slack token cannot be decrypted with the current encryption key.', 'Use the Connect Slack button again.')
       : check('slack_installed', 'Slack workspace', 'action_required', 'Connect a Slack workspace.', 'Use the Connect Slack button after Slack config is ready.')
   );
 

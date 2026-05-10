@@ -1,3 +1,4 @@
+import { buildRetrievalQueryVariants } from '#lib/server/util/retrieval-query';
 import type { ContextArtifact } from '#lib/types';
 
 interface GmailThreadListResponse {
@@ -40,6 +41,12 @@ export interface GmailThreadResult {
   text: string;
 }
 
+export interface GmailSearchDiagnostics {
+  rawQuery: string;
+  searchQueries: string[];
+  resultCounts: Record<string, number>;
+}
+
 function decodeBase64Url(value: string): string {
   return Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 }
@@ -64,6 +71,48 @@ function compact(value: string | undefined, limit = 6000): string {
   return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
+function hasGmailSearchOperator(query: string): boolean {
+  return /(?:^|\s)(?:after|before|from|to|subject|label|newer|older|has|is):[^\s]+/i.test(query);
+}
+
+function searchQueriesFor(query: string): string[] {
+  const trimmed = query.replace(/\s+/g, ' ').trim();
+  if (!trimmed) {
+    return [];
+  }
+  return hasGmailSearchOperator(trimmed) ? [trimmed] : buildRetrievalQueryVariants(trimmed, 5);
+}
+
+function scoreThread(thread: GmailThreadResult, query: string, order: number): number {
+  const haystack = `${thread.subject} ${thread.snippet} ${thread.text}`.toLowerCase();
+  const subject = thread.subject.toLowerCase();
+  const terms = query.match(/[\p{L}\p{N}][\p{L}\p{N}_-]{2,}/gu) ?? [];
+  let score = 0;
+
+  for (const term of terms) {
+    const key = term.toLowerCase();
+    if (!haystack.includes(key)) {
+      continue;
+    }
+    score += 5;
+    if (subject.includes(key)) {
+      score += 5;
+    }
+  }
+
+  for (let index = 0; index < terms.length - 1; index += 1) {
+    const phrase = `${terms[index]} ${terms[index + 1]}`.toLowerCase();
+    if (haystack.includes(phrase)) {
+      score += 10;
+    }
+    if (subject.includes(phrase)) {
+      score += 10;
+    }
+  }
+
+  return score - order / 1000;
+}
+
 export function toArtifact(thread: GmailThreadResult): ContextArtifact {
   return {
     id: `gmail:${thread.id}`,
@@ -80,14 +129,44 @@ export function toArtifact(thread: GmailThreadResult): ContextArtifact {
 }
 
 export class GmailService {
-  async search(accessToken: string, query: string, limit = 3): Promise<{ results: GmailThreadResult[] }> {
-    const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/threads');
-    url.searchParams.set('q', query);
-    url.searchParams.set('maxResults', String(Math.max(1, Math.min(limit, 10))));
-    const list = await this.fetchJson<GmailThreadListResponse>(accessToken, url.toString());
-    const threads = await Promise.all((list.threads ?? []).map((thread) => this.readThread(accessToken, thread.id)));
+  async search(accessToken: string, query: string, limit = 3): Promise<{ results: GmailThreadResult[]; diagnostics: GmailSearchDiagnostics }> {
+    const searchLimit = Math.max(1, Math.min(limit, 10));
+    const searchQueries = searchQueriesFor(query);
+    const resultCounts: Record<string, number> = {};
+    const threadIds: string[] = [];
+    const seen = new Set<string>();
 
-    return { results: threads };
+    for (const searchQuery of searchQueries) {
+      const url = new URL('https://gmail.googleapis.com/gmail/v1/users/me/threads');
+      url.searchParams.set('q', searchQuery);
+      url.searchParams.set('maxResults', String(searchLimit));
+      const list = await this.fetchJson<GmailThreadListResponse>(accessToken, url.toString());
+      const ids = (list.threads ?? []).map((thread) => thread.id).filter(Boolean);
+      resultCounts[searchQuery] = ids.length;
+      for (const id of ids) {
+        if (seen.has(id)) {
+          continue;
+        }
+        seen.add(id);
+        threadIds.push(id);
+      }
+    }
+
+    const threads = await Promise.all(threadIds.map((threadId) => this.readThread(accessToken, threadId)));
+    const ranked = threads
+      .map((thread, order) => ({ thread, score: scoreThread(thread, query, order) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, searchLimit)
+      .map(({ thread }) => thread);
+
+    return {
+      results: ranked,
+      diagnostics: {
+        rawQuery: query,
+        searchQueries,
+        resultCounts
+      }
+    };
   }
 
   async readThread(accessToken: string, threadId: string): Promise<GmailThreadResult> {

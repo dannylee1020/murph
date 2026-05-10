@@ -49,12 +49,13 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
   }));
 
   const { getStore } = await import('#lib/server/persistence/store');
+  const { encryptString } = await import('#lib/server/util/crypto');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: 'token',
+    botTokenEncrypted: encryptString('xoxb-test', 'test-key'),
     botUserId: 'UTZBOT'
   });
   const { gatewayRoutes } = await import('../../src/server/routes/gateway');
@@ -94,6 +95,29 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(response.body.autoJoined).toEqual([]);
     expect(response.body.sessionContext.summary).toBe('No connected source context was found for this session.');
     expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
+    expect(ensureMember).toHaveBeenCalledWith(expect.objectContaining({ id: workspace.id }), 'slack', 'C1');
+  });
+
+  it('uses a decryptable Slack workspace instead of a stale unreadable install', async () => {
+    const { post, store, workspace, ensureMember } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
+    ]);
+
+    store.saveInstall({
+      provider: 'slack',
+      externalWorkspaceId: 'T_STALE',
+      name: 'Stale Workspace',
+      botTokenEncrypted: 'old-token',
+      botUserId: 'USTALE'
+    });
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1'],
+      mode: 'manual_review'
+    });
+
+    expect(response.status).toBe(201);
     expect(ensureMember).toHaveBeenCalledWith(expect.objectContaining({ id: workspace.id }), 'slack', 'C1');
   });
 

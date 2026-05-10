@@ -105,12 +105,71 @@ describe('integration routes', () => {
         provider: 'github',
         status: 'connected',
         source: 'database',
-        canDisconnect: true
+        canDisconnect: true,
+        metadata: expect.objectContaining({
+          repositories: [],
+          needsRepoScope: true
+        })
       })
     );
     const stored = store.getIntegrationCredential(workspace.id, 'github');
     expect(stored?.credentialEncrypted).toBeTruthy();
     expect(stored?.credentialEncrypted).not.toBe('ghp_test_token');
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toContain('github.search');
+    expect(memory.enabledContextSources).toContain('github.thread_search');
+  });
+
+  it('saves GitHub repositories and enables GitHub retrieval capabilities', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ login: 'octo-user' })
+    }));
+    const { request, store, workspace } = await setup();
+    await request('POST', '/api/integrations/github/connect', {
+      workspaceId: workspace.id,
+      credential: 'ghp_test_token'
+    });
+
+    const response = await request('PUT', '/api/integrations/github/repositories', {
+      workspaceId: workspace.id,
+      repositories: ['octo/app']
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration.metadata).toEqual(
+      expect.objectContaining({
+        repositories: ['octo/app'],
+        needsRepoScope: false
+      })
+    );
+    const stored = store.getIntegrationCredential(workspace.id, 'github');
+    expect(stored?.metadata.repositories).toEqual(['octo/app']);
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toContain('github.search');
+    expect(memory.enabledContextSources).toContain('github.thread_search');
+  });
+
+  it('lists visible GitHub repositories for a connected token', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url.includes('/user/repos')
+        ? [{ full_name: 'octo/app', private: true, owner: { login: 'octo' }, name: 'app' }]
+        : { login: 'octo-user' }
+    })));
+    const { request, workspace } = await setup();
+    await request('POST', '/api/integrations/github/connect', {
+      workspaceId: workspace.id,
+      credential: 'ghp_test_token'
+    });
+
+    const response = await request('GET', `/api/integrations/github/repositories?workspaceId=${workspace.id}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.repositories).toEqual([
+      { fullName: 'octo/app', private: true, owner: 'octo', name: 'app' }
+    ]);
+    expect(response.body.selectedRepositories).toEqual([]);
   });
 
   it('disconnects stored credentials while keeping env fallback visible', async () => {

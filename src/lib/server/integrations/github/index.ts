@@ -1,4 +1,5 @@
 import { getGitHubService, toArtifact as githubToArtifact } from '#lib/server/context-sources/github';
+import { buildRetrievalQuery } from '#lib/server/util/retrieval-query';
 import type { IntegrationAdapter } from '../adapter.js';
 import { queryFromThread, section } from '../shared.js';
 
@@ -22,7 +23,8 @@ export function createGitHubAdapter(): IntegrationAdapter {
         optional: true,
         knowledgeDomains: ['code', 'documentation'],
         async retrieve(input) {
-          const results = await github.search(queryFromThread(input), 3, input.workspace.id);
+          const query = buildRetrievalQuery(queryFromThread(input));
+          const results = await github.search(query, 5, input.workspace.id);
           return results.results.map((result) => githubToArtifact(result));
         }
       }
@@ -108,4 +110,3 @@ export function createGitHubAdapter(): IntegrationAdapter {
     }
   };
 }
-

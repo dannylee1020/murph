@@ -40,11 +40,13 @@ export class ContextSourceRegistry {
       task: ContinuityTask;
       context: Omit<ContextAssembly, 'artifacts' | 'summary' | 'unresolvedQuestions' | 'continuityCase'>;
       enabledContextSources: string[];
+      maxOptionalSources?: number;
     }
   ): Promise<ContextArtifact[]> {
     const env = getRuntimeEnv();
     const requestedExplicit = [...new Set(explicitNames)];
-    const requestedOptional = [...new Set(optionalNames)].slice(0, Math.max(0, env.contextSourceMaxOptional));
+    const maxOptionalSources = input.maxOptionalSources ?? env.contextSourceMaxOptional;
+    const requestedOptional = [...new Set(optionalNames)].slice(0, Math.max(0, maxOptionalSources));
     const artifacts: ContextArtifact[] = [];
 
     for (const name of [...requestedExplicit, ...requestedOptional]) {
