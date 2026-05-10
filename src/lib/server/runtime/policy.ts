@@ -1,13 +1,72 @@
 import { DEFAULT_AUTO_SEND_ACTIONS } from '#lib/config';
 import type {
   AutopilotSession,
+  CompiledPolicy,
   ContextAssembly,
   ContinuityActionType,
+  PolicyControls,
   PolicyDecision,
   ProposedAction
 } from '#lib/types';
+import { builtinPolicyProfile } from '#lib/server/runtime/policy-compiler';
 
 const AUTO_SEND_ACTIONS = new Set<ContinuityActionType>(DEFAULT_AUTO_SEND_ACTIONS);
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function ruleMatches(
+  rule: NonNullable<CompiledPolicy['rules']>[number],
+  action: ProposedAction,
+  context: ContextAssembly
+): boolean {
+  const channelId = context.task.thread.channelId || context.thread.ref.channelId;
+  const match = rule.match;
+  const channelMatches = !match.channelIds?.length || match.channelIds.includes(channelId);
+  const intentMatches = !match.intents?.length || match.intents.includes(context.continuityCase);
+  const actionMatches = !match.actionTypes?.length || match.actionTypes.includes(action.type);
+  return channelMatches && intentMatches && actionMatches;
+}
+
+function ruleSpecificity(rule: NonNullable<CompiledPolicy['rules']>[number]): number {
+  return (
+    (rule.match.channelIds?.length ? 4 : 0) +
+    (rule.match.intents?.length ? 2 : 0) +
+    (rule.match.actionTypes?.length ? 1 : 0)
+  );
+}
+
+function applyControls(base: CompiledPolicy, controls: PolicyControls): CompiledPolicy {
+  return {
+    blockedTopics: unique([...base.blockedTopics, ...(controls.blockedTopics ?? [])]),
+    alwaysQueueTopics: unique([...base.alwaysQueueTopics, ...(controls.alwaysQueueTopics ?? [])]),
+    blockedActions: [...new Set([...base.blockedActions, ...(controls.blockedActions ?? [])])],
+    requireGroundingForFacts: controls.requireGroundingForFacts ?? base.requireGroundingForFacts,
+    preferAskWhenUncertain: controls.preferAskWhenUncertain ?? base.preferAskWhenUncertain,
+    allowAutoSend: controls.allowAutoSend ?? base.allowAutoSend,
+    notesForAgent: unique([...base.notesForAgent, ...(controls.notesForAgent ?? [])]),
+    rules: base.rules
+  };
+}
+
+function resolveRuntimePolicy(
+  policy: CompiledPolicy | undefined,
+  action: ProposedAction,
+  context: ContextAssembly
+): CompiledPolicy | undefined {
+  if (!policy) {
+    return undefined;
+  }
+
+  return [...(policy.rules ?? [])]
+    .filter((rule) => ruleMatches(rule, action, context))
+    .sort((left, right) => ruleSpecificity(left) - ruleSpecificity(right))
+    .reduce<CompiledPolicy>((effective, rule) => applyControls(effective, rule.controls), {
+      ...policy,
+      rules: policy.rules
+    });
+}
 
 export function evaluatePolicy(
   action: ProposedAction,
@@ -15,7 +74,11 @@ export function evaluatePolicy(
   session: AutopilotSession
 ): PolicyDecision {
   const latestMessage = context.thread.latestMessage.trim().toLowerCase();
-  const compiledPolicy = session.policy?.compiled ?? context.memory.user?.policy?.compiled;
+  const compiledPolicy = resolveRuntimePolicy(
+    session.policy?.compiled ?? builtinPolicyProfile(session.mode).compiled,
+    action,
+    context
+  );
   const forbiddenTopics = Array.from(
     new Set([...(context.memory.user?.forbiddenTopics ?? []), ...(compiledPolicy?.blockedTopics ?? [])])
   );

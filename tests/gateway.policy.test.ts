@@ -164,6 +164,21 @@ async function setup(
     title: 'Coverage',
     mode: overrides.sessionMode ?? 'manual_review',
     channelScope: ['C1'],
+    policy: {
+      raw: '',
+      compiled: {
+        blockedTopics: [],
+        alwaysQueueTopics: [],
+        blockedActions: [],
+        requireGroundingForFacts: false,
+        preferAskWhenUncertain: true,
+        allowAutoSend: overrides.sessionMode === 'auto_send_low_risk',
+        notesForAgent: []
+      },
+      compiledAt: new Date().toISOString(),
+      source: overrides.sessionMode === 'auto_send_low_risk' ? 'profile' : 'default',
+      version: 2
+    },
     endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
   });
   const runSpy = vi.spyOn(AgentRuntime.prototype, 'run').mockImplementation(async (input) => runResult(input, workspace.id, overrides));

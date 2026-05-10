@@ -58,4 +58,37 @@ describe('policy compiler', () => {
     expect(resolved.profile.name).toBe('test');
     expect(resolved.compiled.blockedTopics).toEqual(expect.arrayContaining(['legal', 'payroll']));
   });
+
+  it('normalizes scoped rules during resolution', () => {
+    const resolved = resolveEffectivePolicy({
+      mode: 'auto_send_low_risk',
+      scopedRules: [
+        {
+          id: 'launch-review',
+          name: 'Launch review',
+          match: {
+            channelIds: ['C-launch'],
+            intents: ['status_request'],
+            actionTypes: ['reply']
+          },
+          controls: {
+            allowAutoSend: false,
+            blockedTopics: ['Pricing']
+          }
+        },
+        {
+          id: 'empty-rule',
+          name: 'Empty rule',
+          controls: {}
+        }
+      ]
+    });
+
+    expect(resolved.compiled.rules).toHaveLength(1);
+    expect(resolved.compiled.rules?.[0]).toMatchObject({
+      id: 'launch-review',
+      match: { channelIds: ['C-launch'], intents: ['status_request'], actionTypes: ['reply'] },
+      controls: { allowAutoSend: false, blockedTopics: ['pricing'] }
+    });
+  });
 });

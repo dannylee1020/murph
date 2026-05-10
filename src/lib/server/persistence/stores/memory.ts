@@ -63,8 +63,7 @@ export function getOrCreateWorkspaceMemory(db: Db, workspaceId: string): Workspa
       enabledOptionalTools: [],
       enabledContextSources: [],
       enabledPlugins: [],
-      confirmedChannels: [],
-      defaultPolicyProfileName: undefined
+      confirmedChannels: []
     });
   }
 
@@ -75,8 +74,7 @@ export function getOrCreateWorkspaceMemory(db: Db, workspaceId: string): Workspa
     enabledOptionalTools: [],
     enabledContextSources: [],
     enabledPlugins: [],
-    confirmedChannels: [],
-    defaultPolicyProfileName: undefined
+    confirmedChannels: []
   };
 
   db.prepare(`INSERT INTO workspace_memory (workspace_id, data_json) VALUES (?, ?)`).run(

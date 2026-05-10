@@ -1,7 +1,19 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { POLICIES_ROOT } from '#lib/config';
+import { normalizeScopedPolicyRules } from '#lib/server/runtime/policy-compiler';
 import type { CompiledPolicy, PolicyProfile } from '#lib/types';
+
+const POLICY_PROFILE_ALIASES: Record<string, string> = {
+  'founder-coverage': 'leadership',
+  'product-coverage': 'product'
+};
+
+export function normalizePolicyProfileName(name?: string): string | undefined {
+  const normalized = name?.trim();
+  if (!normalized) return undefined;
+  return POLICY_PROFILE_ALIASES[normalized] ?? normalized;
+}
 
 function parseCsv(value?: string): string[] {
   return value ? value.split(',').map((item) => item.trim()).filter(Boolean) : [];
@@ -9,6 +21,15 @@ function parseCsv(value?: string): string[] {
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return value ? /^(yes|true)$/i.test(value.trim()) : fallback;
+}
+
+function parseJson(value: string | undefined): unknown {
+  if (!value) return undefined;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function parseCompiledPolicy(metadata: Record<string, string>, body: string): CompiledPolicy {
@@ -24,7 +45,8 @@ function parseCompiledPolicy(metadata: Record<string, string>, body: string): Co
     requireGroundingForFacts: parseBoolean(metadata.requireGroundingForFacts, true),
     preferAskWhenUncertain: parseBoolean(metadata.preferAskWhenUncertain, true),
     allowAutoSend: parseBoolean(metadata.allowAutoSend, false),
-    notesForAgent: [...parseCsv(metadata.notes).map((item) => item.toLowerCase()), ...bodyNotes]
+    notesForAgent: [...parseCsv(metadata.notes).map((item) => item.toLowerCase()), ...bodyNotes],
+    rules: normalizeScopedPolicyRules(parseJson(metadata.scopedRules))
   };
 }
 
@@ -49,8 +71,10 @@ async function parsePolicyFile(filePath: string): Promise<PolicyProfile | null> 
       return acc;
     }, {});
 
+  const name = normalizePolicyProfileName(metadata.name) ?? normalizePolicyProfileName(path.basename(filePath, '.md'))!;
+
   return {
-    name: metadata.name ?? path.basename(filePath, '.md'),
+    name,
     description: metadata.description ?? 'No description provided.',
     compiled: parseCompiledPolicy(metadata, rest.join('\n---\n').trim()),
     source: 'filesystem',
@@ -63,12 +87,19 @@ export async function loadPolicyProfiles(root = POLICIES_ROOT): Promise<PolicyPr
     const entries = await readdir(root);
     const profiles = await Promise.all(
       entries
-        .filter((entry) => entry.endsWith('.md'))
+        .filter((entry) => entry.endsWith('.md') && entry.toLowerCase() !== 'readme.md')
         .map(async (entry) => parsePolicyFile(path.join(root, entry)))
     );
-    return profiles
+    const uniqueProfiles = new Map<string, PolicyProfile>();
+    profiles
       .filter((profile): profile is PolicyProfile => profile !== null)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .forEach((profile) => {
+        const normalizedName = normalizePolicyProfileName(profile.name)!;
+        if (!uniqueProfiles.has(normalizedName)) {
+          uniqueProfiles.set(normalizedName, { ...profile, name: normalizedName });
+        }
+      });
+    return [...uniqueProfiles.values()].sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     return [];
   }

@@ -24,14 +24,7 @@ export async function getGatewaySnapshot() {
       pluginCount: listRegisteredPluginManifests().length
     },
     users: summary.workspace
-      ? store.listUsers(summary.workspace.id).map((user) => {
-          const memory = store.getOrCreateUserMemory(summary.workspace!.id, user.externalUserId);
-          return {
-            ...user,
-            policyConfigured: Boolean(memory.policy),
-            policy: memory.policy
-          };
-        })
+      ? store.listUsers(summary.workspace.id)
       : [],
     sessions: store.listActiveSessions(),
     traces: store.listRunSummaries(undefined, 10)

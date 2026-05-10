@@ -20,6 +20,7 @@
     "build:ui": "vite build --config ui/vite.config.ts",
     "start": "node dist/server/index.js",
     "preview": "npm run start",
+    "architecture:map": "node scripts/generate-architecture-map.mjs",
     "check": "npm run build:server && tsc -p tsconfig.ui.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

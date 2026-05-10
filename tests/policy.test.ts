@@ -52,6 +52,16 @@ function context(overrides: Partial<ContextAssembly> = {}): ContextAssembly {
 }
 
 function session(mode: AutopilotSession['mode']): AutopilotSession {
+  const compiledPolicy = {
+    blockedTopics: [],
+    alwaysQueueTopics: [],
+    blockedActions: [],
+    requireGroundingForFacts: false,
+    preferAskWhenUncertain: true,
+    allowAutoSend: mode === 'auto_send_low_risk',
+    notesForAgent: []
+  };
+
   return {
     id: 'session',
     workspaceId: 'workspace',
@@ -60,8 +70,28 @@ function session(mode: AutopilotSession['mode']): AutopilotSession {
     mode,
     status: 'active',
     channelScope: [],
+    policy: {
+      raw: '',
+      compiled: compiledPolicy,
+      compiledAt: new Date().toISOString(),
+      source: mode === 'auto_send_low_risk' ? 'profile' : 'default',
+      version: 2
+    },
     startedAt: new Date().toISOString(),
     endsAt: new Date(Date.now() + 60_000).toISOString()
+  };
+}
+
+function sessionWithPolicy(policy: NonNullable<AutopilotSession['policy']>['compiled']): AutopilotSession {
+  return {
+    ...session('auto_send_low_risk'),
+    policy: {
+      raw: '',
+      compiled: policy,
+      compiledAt: new Date().toISOString(),
+      source: 'operator_prompt',
+      version: 2
+    }
   };
 }
 
@@ -108,55 +138,95 @@ describe('evaluatePolicy', () => {
 
   it('applies compiled policy rules before auto-send', () => {
     const compiledPolicyContext = context({
-      memory: {
-        ...context().memory,
-        user: {
-          userId: 'U1',
-          preferences: [],
-          forbiddenTopics: [],
-          routingHints: [],
-          policy: {
-            raw: 'Allow auto-send: no',
-            compiled: {
-              blockedTopics: [],
-              alwaysQueueTopics: ['launch decisions'],
-              blockedActions: [],
-              requireGroundingForFacts: true,
-              preferAskWhenUncertain: true,
-              allowAutoSend: false,
-              notesForAgent: []
-            },
-            compiledAt: new Date().toISOString(),
-            source: 'operator_prompt',
-            version: 1
-          }
-        }
-      },
       thread: { ...context().thread, latestMessage: 'Need a launch decisions update' }
     });
+    const policySession = sessionWithPolicy({
+      blockedTopics: [],
+      alwaysQueueTopics: ['launch decisions'],
+      blockedActions: [],
+      requireGroundingForFacts: true,
+      preferAskWhenUncertain: true,
+      allowAutoSend: false,
+      notesForAgent: []
+    });
 
-    expect(evaluatePolicy(action(), compiledPolicyContext, session('auto_send_low_risk')).disposition).toBe('queued');
+    expect(evaluatePolicy(action(), compiledPolicyContext, policySession).disposition).toBe('queued');
     expect(
       evaluatePolicy(
         action({ confidence: 0.7 }),
         context({
-          memory: compiledPolicyContext.memory,
           thread: { ...context().thread, latestMessage: 'Simple continuity question' },
           artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Doc', text: 'Ready' }]
         }),
-        session('auto_send_low_risk')
+        policySession
       ).downgradedTo
     ).toBe('ask');
     expect(
       evaluatePolicy(
         action(),
         context({
-          memory: compiledPolicyContext.memory,
           thread: { ...context().thread, latestMessage: 'Simple continuity question' },
           artifacts: []
         }),
-        session('auto_send_low_risk')
+        policySession
       ).reason
     ).toMatch(/grounded facts/);
+  });
+
+  it('applies channel-scoped rules before auto-send', () => {
+    const decision = evaluatePolicy(
+      action(),
+      context({ artifacts: [{ id: 'doc', source: 'notion', type: 'document', title: 'Status', text: 'Ready' }] }),
+      sessionWithPolicy({
+        blockedTopics: [],
+        alwaysQueueTopics: [],
+        blockedActions: [],
+        requireGroundingForFacts: false,
+        preferAskWhenUncertain: false,
+        allowAutoSend: true,
+        notesForAgent: [],
+        rules: [
+          {
+            id: 'launch-channel-review',
+            name: 'Launch channel review',
+            match: { channelIds: ['C1'] },
+            controls: { allowAutoSend: false }
+          }
+        ]
+      })
+    );
+
+    expect(decision.disposition).toBe('queued');
+    expect(decision.reason).toMatch(/disables auto-send/);
+  });
+
+  it('lets more specific scoped booleans override broader policy booleans', () => {
+    const decision = evaluatePolicy(
+      action(),
+      context({
+        task: { ...context().task, thread: { channelId: 'C2', threadTs: '1' } },
+        thread: { ...context().thread, ref: { channelId: 'C2', threadTs: '1' } },
+        artifacts: [{ id: 'doc', source: 'notion', type: 'document', title: 'Status', text: 'Ready' }]
+      }),
+      sessionWithPolicy({
+        blockedTopics: [],
+        alwaysQueueTopics: [],
+        blockedActions: [],
+        requireGroundingForFacts: false,
+        preferAskWhenUncertain: false,
+        allowAutoSend: false,
+        notesForAgent: [],
+        rules: [
+          {
+            id: 'product-channel-auto',
+            name: 'Product channel auto-send',
+            match: { channelIds: ['C2'], intents: ['clarification'], actionTypes: ['reply'] },
+            controls: { allowAutoSend: true }
+          }
+        ]
+      })
+    );
+
+    expect(decision.disposition).toBe('auto_sent');
   });
 });

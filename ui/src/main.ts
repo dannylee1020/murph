@@ -1,5 +1,16 @@
 import './styles.css';
 
+type CompiledPolicyPayload = {
+  blockedTopics: string[];
+  alwaysQueueTopics: string[];
+  blockedActions: string[];
+  requireGroundingForFacts: boolean;
+  preferAskWhenUncertain: boolean;
+  allowAutoSend: boolean;
+  notesForAgent: string[];
+  rules?: unknown[];
+};
+
 type SummaryPayload = {
   summary: {
     workspace?: { id?: string; name: string };
@@ -29,24 +40,6 @@ type SummaryPayload = {
       workdayStartHour: number;
       workdayEndHour: number;
     };
-    policyConfigured?: boolean;
-    policy?: {
-      profileName?: string;
-      overrideRaw?: string;
-      raw: string;
-      compiled: {
-        blockedTopics: string[];
-        alwaysQueueTopics: string[];
-        blockedActions: string[];
-        requireGroundingForFacts: boolean;
-        preferAskWhenUncertain: boolean;
-        allowAutoSend: boolean;
-        notesForAgent: string[];
-      };
-      compiledAt: string;
-      source: string;
-      version: number;
-    } | null;
   }>;
   sessions: Array<{
     id: string;
@@ -79,7 +72,6 @@ type RuntimePayload = {
   enabledOptionalTools: string[];
   enabledContextSources: string[];
   enabledPlugins: string[];
-  defaultPolicyProfileName?: string;
 };
 
 type SetupCheckStatus = 'ok' | 'warning' | 'action_required' | 'error';
@@ -268,28 +260,22 @@ type SessionCreateResponse = {
   errors?: ChannelActionItem[];
 };
 
-type PolicyPreviewPayload = {
-  ok: boolean;
-  selectedProfileName: string;
-  compiled: {
-    blockedTopics: string[];
-    alwaysQueueTopics: string[];
-    blockedActions: string[];
-    requireGroundingForFacts: boolean;
-    preferAskWhenUncertain: boolean;
-    allowAutoSend: boolean;
-    notesForAgent: string[];
-  };
-  warnings: string[];
-};
-
 type PolicyProfilesPayload = {
   profiles: Array<{
     name: string;
     description: string;
-    compiled: PolicyPreviewPayload['compiled'];
+    compiled: CompiledPolicyPayload;
     source: string;
   }>;
+};
+
+type PolicyConfigPayload = {
+  ok: boolean;
+  profiles: PolicyProfilesPayload['profiles'];
+  policyProfileName?: string;
+  selectedProfileName: string;
+  selectedProfile: PolicyProfilesPayload['profiles'][number];
+  compiled: CompiledPolicyPayload;
 };
 
 const root = document.querySelector<HTMLDivElement>('#app');
@@ -657,6 +643,56 @@ function sessionModeLabel(mode: string): string {
   if (mode === 'dry_run') return 'Dry run';
   if (mode === 'auto_send_low_risk') return 'Low-risk auto-send';
   return titleCase(mode);
+}
+
+function policyProfileOptions(
+  profiles: PolicyProfilesPayload['profiles'],
+  selected: string | undefined,
+  fallbackLabel: string
+): string {
+  return [
+    `<option value="" ${selected ? '' : 'selected'}>${escapeHtml(fallbackLabel)}</option>`,
+    ...profiles.map((profile) => `
+      <option value="${escapeHtml(profile.name)}" ${profile.name === selected ? 'selected' : ''}>
+        ${escapeHtml(profile.name)}
+      </option>
+    `)
+  ].join('');
+}
+
+function policySummary(profileName: string, profileDescription: string | undefined, compiled: CompiledPolicyPayload): string {
+  const rows = [
+    ['Selected profile', profileName],
+    ['Auto-send', compiled.allowAutoSend ? 'Allowed when session mode allows it' : 'Disabled'],
+    ['Grounding', compiled.requireGroundingForFacts ? 'Required for factual replies' : 'Not required'],
+    ['Review topics', compiled.alwaysQueueTopics.join(', ') || 'None'],
+    ['Blocked topics', compiled.blockedTopics.join(', ') || 'None']
+  ];
+  return `
+    <dl class="details policy-summary">
+      ${rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}
+    </dl>
+    ${profileDescription ? `<p class="policy-note">${escapeHtml(profileDescription)}</p>` : ''}
+  `;
+}
+
+function policyProfileList(profiles: PolicyProfilesPayload['profiles']): string {
+  if (profiles.length === 0) {
+    return '<p class="empty">No policy profiles were found in <code>policies/</code>.</p>';
+  }
+
+  return `
+    <ul class="list policy-profile-list">
+      ${profiles.map((profile) => `
+        <li>
+          <div class="list-row policy-profile-row">
+            <strong>${escapeHtml(profile.name)}</strong>
+            <span>${escapeHtml(profile.description)}</span>
+          </div>
+        </li>
+      `).join('')}
+    </ul>
+  `;
 }
 
 function shell(content: string): void {
@@ -1514,10 +1550,11 @@ async function renderSettings(): Promise<void> {
     history.replaceState(null, '', '/settings');
   }
 
-  const [summary, setup, integrationsPayload] = await Promise.all([
+  const [summary, setup, integrationsPayload, policyConfig] = await Promise.all([
     getJson<SummaryPayload>('/api/gateway/summary'),
     getJson<SetupStatusPayload>('/api/setup/status'),
-    getJson<IntegrationStatusPayload>('/api/integrations/status')
+    getJson<IntegrationStatusPayload>('/api/integrations/status'),
+    getJson<PolicyConfigPayload>('/api/gateway/policy/config')
   ]);
 
   shell(`
@@ -1579,6 +1616,36 @@ async function renderSettings(): Promise<void> {
     </section>
 
     <section>
+      <div class="policy-assignment">
+        <article class="policy-editor-panel">
+          <h2>Policy</h2>
+          <p class="section-copy">Choose the policy Murph uses for new sessions. Edit profiles in YAML; CLI and agent-managed editing can come later.</p>
+          <form class="form compact-form" id="policy-form">
+            <label>
+              Policy profile
+              <select name="profileName">
+                ${policyProfileOptions(policyConfig.profiles, policyConfig.policyProfileName, 'Built-in mode default')}
+              </select>
+            </label>
+            <div class="actions">
+              <button type="submit">Save policy</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="policy-preview">
+          <h2>Effective policy</h2>
+          ${policySummary(policyConfig.selectedProfileName, policyConfig.selectedProfile.description, policyConfig.compiled)}
+        </article>
+
+        <article class="policy-preview policy-library">
+          <h2>Available profiles</h2>
+          ${policyProfileList(policyConfig.profiles)}
+        </article>
+      </div>
+    </section>
+
+    <section>
       <h2>Integrations</h2>
       <p class="section-copy">Connect optional sources Murph can use for more grounded replies.</p>
       <div class="grid two">
@@ -1590,6 +1657,16 @@ async function renderSettings(): Promise<void> {
   `);
 
   const integrationsByProvider = new Map(integrationsPayload.integrations.map((integration) => [integration.provider, integration]));
+
+  app.querySelector<HTMLFormElement>('#policy-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget as HTMLFormElement);
+    await putJson('/api/gateway/policy/config', {
+      profileName: String(formData.get('profileName') ?? '')
+    });
+    dashboardNotice = 'Policy saved.';
+    await renderSettings();
+  });
 
   async function loadGithubRepositories(): Promise<void> {
     const picker = app.querySelector<HTMLDivElement>('.github-repo-picker');

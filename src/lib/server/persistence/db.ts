@@ -170,6 +170,11 @@ function ensureSchema(db: Database.Database): void {
       model TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      data_json TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS user_memory (
       workspace_id TEXT NOT NULL,
       slack_user_id TEXT NOT NULL,

@@ -1,22 +1,25 @@
 import type {
   CompiledPolicy,
+  ContinuityCase,
   ContinuityActionType,
+  PolicyControls,
   PolicyProfile,
+  ScopedPolicyRule,
   SessionMode,
   UserPolicyProfile
 } from '#lib/types';
 
-type PolicyPatch = {
-  blockedTopics?: string[];
-  alwaysQueueTopics?: string[];
-  blockedActions?: ContinuityActionType[];
-  requireGroundingForFacts?: boolean;
-  preferAskWhenUncertain?: boolean;
-  allowAutoSend?: boolean;
-  notesForAgent?: string[];
-};
+type PolicyPatch = PolicyControls;
 
 const ACTIONS: ContinuityActionType[] = ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'];
+const INTENTS: ContinuityCase[] = [
+  'status_request',
+  'clarification',
+  'blocker',
+  'handoff',
+  'availability',
+  'unknown'
+];
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
@@ -69,7 +72,8 @@ function canonicalize(compiled: CompiledPolicy): CompiledPolicy {
     requireGroundingForFacts: compiled.requireGroundingForFacts,
     preferAskWhenUncertain: compiled.preferAskWhenUncertain,
     allowAutoSend: compiled.allowAutoSend,
-    notesForAgent: unique(compiled.notesForAgent)
+    notesForAgent: unique(compiled.notesForAgent),
+    rules: normalizeScopedPolicyRules(compiled.rules ?? [])
   };
 }
 
@@ -195,20 +199,113 @@ export function mergeCompiledPolicy(base: CompiledPolicy, patch: PolicyPatch): C
     requireGroundingForFacts: patch.requireGroundingForFacts ?? base.requireGroundingForFacts,
     preferAskWhenUncertain: patch.preferAskWhenUncertain ?? base.preferAskWhenUncertain,
     allowAutoSend: patch.allowAutoSend ?? base.allowAutoSend,
-    notesForAgent: [...base.notesForAgent, ...(patch.notesForAgent ?? [])]
+    notesForAgent: [...base.notesForAgent, ...(patch.notesForAgent ?? [])],
+    rules: base.rules
   });
+}
+
+function listFromUnknown(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+function booleanFromUnknown(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function normalizeControls(input: unknown): PolicyControls {
+  const record = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+  const blockedActions = listFromUnknown(record.blockedActions)
+    .filter((entry): entry is ContinuityActionType => ACTIONS.includes(entry as ContinuityActionType));
+
+  return {
+    blockedTopics: listFromUnknown(record.blockedTopics).map((entry) => entry.toLowerCase()),
+    alwaysQueueTopics: listFromUnknown(record.alwaysQueueTopics).map((entry) => entry.toLowerCase()),
+    blockedActions,
+    requireGroundingForFacts: booleanFromUnknown(record.requireGroundingForFacts),
+    preferAskWhenUncertain: booleanFromUnknown(record.preferAskWhenUncertain),
+    allowAutoSend: booleanFromUnknown(record.allowAutoSend),
+    notesForAgent: listFromUnknown(record.notesForAgent)
+  };
+}
+
+function controlsHaveValues(controls: PolicyControls): boolean {
+  return Boolean(
+    (controls.blockedTopics && controls.blockedTopics.length > 0) ||
+      (controls.alwaysQueueTopics && controls.alwaysQueueTopics.length > 0) ||
+      (controls.blockedActions && controls.blockedActions.length > 0) ||
+      controls.requireGroundingForFacts !== undefined ||
+      controls.preferAskWhenUncertain !== undefined ||
+      controls.allowAutoSend !== undefined ||
+      (controls.notesForAgent && controls.notesForAgent.length > 0)
+  );
+}
+
+export function normalizeScopedPolicyRules(input: unknown): ScopedPolicyRule[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return input
+    .map((item, index): ScopedPolicyRule | undefined => {
+      const record = item && typeof item === 'object' ? item as Record<string, unknown> : undefined;
+      if (!record) return undefined;
+
+      const matchRecord = record.match && typeof record.match === 'object'
+        ? record.match as Record<string, unknown>
+        : {};
+      const controls = normalizeControls(record.controls);
+      if (!controlsHaveValues(controls)) {
+        return undefined;
+      }
+
+      const intents = listFromUnknown(matchRecord.intents)
+        .filter((entry): entry is ContinuityCase => INTENTS.includes(entry as ContinuityCase));
+      const actionTypes = listFromUnknown(matchRecord.actionTypes)
+        .filter((entry): entry is ContinuityActionType => ACTIONS.includes(entry as ContinuityActionType));
+
+      return {
+        id: typeof record.id === 'string' && record.id.trim()
+          ? record.id.trim()
+          : `rule-${index + 1}`,
+        name: typeof record.name === 'string' && record.name.trim()
+          ? record.name.trim()
+          : `Rule ${index + 1}`,
+        match: {
+          channelIds: unique(listFromUnknown(matchRecord.channelIds)),
+          intents: [...new Set(intents)],
+          actionTypes: [...new Set(actionTypes)]
+        },
+        controls: {
+          blockedTopics: unique(controls.blockedTopics ?? []),
+          alwaysQueueTopics: unique(controls.alwaysQueueTopics ?? []),
+          blockedActions: [...new Set(controls.blockedActions ?? [])],
+          requireGroundingForFacts: controls.requireGroundingForFacts,
+          preferAskWhenUncertain: controls.preferAskWhenUncertain,
+          allowAutoSend: controls.allowAutoSend,
+          notesForAgent: unique(controls.notesForAgent ?? [])
+        }
+      };
+    })
+    .filter((rule): rule is ScopedPolicyRule => Boolean(rule));
 }
 
 export function resolveEffectivePolicy(input: {
   mode: SessionMode;
   baseProfile?: PolicyProfile;
   overrideRaw?: string;
+  scopedRules?: unknown;
 }): { profile: PolicyProfile; compiled: CompiledPolicy; warnings: string[] } {
   const profile = input.baseProfile ?? builtinPolicyProfile(input.mode);
   const { patch, warnings } = compilePolicyOverride(input.overrideRaw ?? '');
+  const scopedRules = normalizeScopedPolicyRules(input.scopedRules ?? profile.compiled.rules ?? []);
   return {
     profile,
-    compiled: mergeCompiledPolicy(profile.compiled, patch),
+    compiled: {
+      ...mergeCompiledPolicy(profile.compiled, patch),
+      rules: scopedRules
+    },
     warnings
   };
 }
@@ -217,6 +314,7 @@ export function buildUserPolicyProfile(input: {
   mode: SessionMode;
   profileName?: string;
   overrideRaw?: string;
+  scopedRules?: unknown;
   compiled: CompiledPolicy;
   source: UserPolicyProfile['source'];
 }): UserPolicyProfile {
@@ -224,7 +322,10 @@ export function buildUserPolicyProfile(input: {
     profileName: input.profileName,
     overrideRaw: input.overrideRaw?.trim() || undefined,
     raw: input.overrideRaw?.trim() || '',
-    compiled: canonicalize(input.compiled),
+    compiled: canonicalize({
+      ...input.compiled,
+      rules: normalizeScopedPolicyRules(input.scopedRules ?? input.compiled.rules ?? [])
+    }),
     compiledAt: new Date().toISOString(),
     source: input.source,
     version: 2

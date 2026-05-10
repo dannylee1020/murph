@@ -150,7 +150,6 @@ button:disabled {
 input,
 select {
   width: 100%;
-  height: 34px;
   padding: 0 0 6px 0;
   border: 0;
   border-bottom: 1px solid var(--rule-strong);
@@ -160,6 +159,11 @@ select {
   font: inherit;
   font-size: var(--text-sm);
   transition: border-color 120ms ease;
+}
+
+input,
+select {
+  height: 34px;
 }
 
 input:focus,
@@ -888,6 +892,66 @@ tr:last-child td {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 18px;
+}
+
+.policy-assignment {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 32px 40px;
+  align-items: start;
+}
+
+.policy-editor-panel,
+.policy-preview {
+  min-width: 0;
+  border-top: 1px solid var(--ink);
+  padding-top: 14px;
+}
+
+.policy-editor-panel h2,
+.policy-preview h2 {
+  margin: 0 0 18px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.compact-form {
+  gap: 16px;
+}
+
+.policy-summary {
+  gap: 10px;
+}
+
+.policy-note {
+  max-width: 64ch;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.policy-library {
+  grid-column: 1 / -1;
+}
+
+.policy-profile-list {
+  border-top: 1px solid var(--rule);
+}
+
+.policy-profile-row {
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr);
+  gap: 12px 24px;
+}
+
+.policy-profile-row > span {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: var(--text-sm);
+  letter-spacing: 0;
 }
 
 code {
@@ -1825,6 +1889,24 @@ button.primary-large:hover {
   .setup-banner {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .policy-assignment {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .policy-library {
+    grid-column: auto;
+  }
+
+  .policy-profile-row {
+    grid-template-columns: 1fr;
+  }
+
+  .policy-profile-row > span {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .details > div {

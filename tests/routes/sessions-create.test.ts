@@ -181,27 +181,25 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
   });
 
-  it('persists a compiled user policy from the start-session request', async () => {
+  it('uses the local policy setting for new session snapshots', async () => {
     const { post, store, workspace } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' }
     ]);
 
+    store.upsertAppSettings({ policyProfileName: 'leadership' });
+
     const response = await post({
       ownerUserId: 'UOWNER',
       channelScope: ['C1'],
-      mode: 'manual_review',
-      policyProfileName: 'founder-coverage',
-      policyOverrideRaw: 'Block topics: payroll'
+      mode: 'manual_review'
     });
 
     expect(response.status).toBe(201);
     const memory = store.getOrCreateUserMemory(workspace.id, 'UOWNER');
     const session = store.listActiveSessions(workspace.id)[0];
-    expect(memory.policy?.profileName).toBe('founder-coverage');
-    expect(memory.policy?.compiled.alwaysQueueTopics).toContain('launch decisions');
-    expect(memory.policy?.compiled.blockedTopics).toContain('payroll');
-    expect(memory.policy?.compiled.allowAutoSend).toBe(false);
-    expect(session.policyProfileName).toBe('founder-coverage');
-    expect(session.policy?.compiled.blockedTopics).toContain('payroll');
+    expect('policy' in memory).toBe(false);
+    expect(session.policyProfileName).toBe('leadership');
+    expect(session.policy?.compiled.alwaysQueueTopics).toContain('company commitments');
+    expect(session.policy?.compiled.allowAutoSend).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import type {
   AgentRunStatus,
   AgentRunSummary,
   AgentUser,
+  AppSettings,
   AuditRecord,
   AutopilotSession,
   ContinuityActionType,
@@ -26,6 +27,7 @@ import type {
   WorkspaceSummary
 } from '#lib/types';
 import * as action from './stores/action.js';
+import * as appSettings from './stores/app-settings.js';
 import * as audit from './stores/audit.js';
 import * as briefing from './stores/briefing.js';
 import * as integrationCredentials from './stores/integration-credentials.js';
@@ -41,6 +43,14 @@ import * as workspace from './stores/workspace.js';
 
 export class Store {
   private readonly db = getDb();
+
+  // App settings
+  getAppSettings(): AppSettings {
+    return appSettings.getAppSettings(this.db);
+  }
+  upsertAppSettings(settings: AppSettings): AppSettings {
+    return appSettings.upsertAppSettings(this.db, settings);
+  }
 
   // Workspace + slack events
   saveInstall(input: workspace.InstallInput): Workspace {

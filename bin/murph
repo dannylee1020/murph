@@ -32,6 +32,7 @@ Commands:
   restart              Restart Murph in the background.
   status               Show process and health status.
   doctor               Check local setup.
+  policy <command>     List, preview, and save policy configuration.
   logs [-f]            Show runtime logs.
   open                 Open Murph setup in a browser.
   build                Build Murph.
@@ -82,6 +83,16 @@ is_pid_running() {
 health_check() {
   have_command curl || return 1
   curl -fsS --max-time 2 "$MURPH_URL/api/health" >/dev/null 2>&1
+}
+
+pretty_json() {
+  node -e 'let raw = ""; process.stdin.on("data", c => raw += c); process.stdin.on("end", () => { try { console.log(JSON.stringify(JSON.parse(raw), null, 2)); } catch { process.stdout.write(raw); } });'
+}
+
+require_http_api() {
+  have_command curl || fail "curl is required for murph policy."
+  have_command node || fail "node is required for murph policy."
+  health_check || fail "Murph is not running at $MURPH_URL. Start it with: murph start --background"
 }
 
 wait_for_health() {
@@ -235,6 +246,122 @@ show_logs() {
   fi
 }
 
+policy_usage() {
+  cat <<'EOF'
+Usage: murph policy <command> [options]
+
+Commands:
+  profiles                                      List available policy profiles.
+  preview [--profile NAME] [--mode MODE] [--override-file FILE] [--rules-file FILE]
+  get                                           Show local policy config.
+  set --profile NAME                            Set the local policy profile.
+EOF
+}
+
+policy_profiles() {
+  [[ $# -eq 0 ]] || fail "profiles does not accept options."
+  require_http_api
+  curl -fsS "$MURPH_URL/api/gateway/policy-profiles" | pretty_json
+}
+
+policy_preview() {
+  local profile="" mode="manual_review" override_file="" rules_file=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile)
+        profile="${2:-}"
+        [[ -n "$profile" ]] || fail "--profile requires a value."
+        shift 2
+        ;;
+      --mode)
+        mode="${2:-}"
+        [[ -n "$mode" ]] || fail "--mode requires a value."
+        shift 2
+        ;;
+      --override-file)
+        override_file="${2:-}"
+        [[ -f "$override_file" ]] || fail "--override-file requires a readable file."
+        shift 2
+        ;;
+      --rules-file)
+        rules_file="${2:-}"
+        [[ -f "$rules_file" ]] || fail "--rules-file requires a readable file."
+        shift 2
+        ;;
+      *)
+        fail "Unknown preview option: $1"
+        ;;
+    esac
+  done
+
+  require_http_api
+  local body
+  body="$(PROFILE="$profile" MODE="$mode" OVERRIDE_FILE="$override_file" RULES_FILE="$rules_file" node <<'NODE'
+const fs = require('fs');
+const body = { sessionMode: process.env.MODE || 'manual_review' };
+if (process.env.PROFILE) body.profileName = process.env.PROFILE;
+if (process.env.OVERRIDE_FILE) body.overrideRaw = fs.readFileSync(process.env.OVERRIDE_FILE, 'utf8');
+if (process.env.RULES_FILE) body.scopedRules = JSON.parse(fs.readFileSync(process.env.RULES_FILE, 'utf8'));
+process.stdout.write(JSON.stringify(body));
+NODE
+)"
+  curl -fsS -H 'content-type: application/json' -d "$body" "$MURPH_URL/api/gateway/policy/preview" | pretty_json
+}
+
+policy_get() {
+  [[ $# -eq 0 ]] || fail "get does not accept options."
+  require_http_api
+  curl -fsS "$MURPH_URL/api/gateway/policy/config" | pretty_json
+}
+
+policy_set() {
+  local profile=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile)
+        profile="${2:-}"
+        [[ -n "$profile" ]] || fail "--profile requires a value."
+        shift 2
+        ;;
+      *)
+        fail "Unknown set option: $1"
+        ;;
+    esac
+  done
+  [[ -n "$profile" ]] || fail "set requires --profile NAME."
+
+  require_http_api
+  local body
+  body="$(PROFILE="$profile" node -e 'process.stdout.write(JSON.stringify({ profileName: process.env.PROFILE }))')"
+  curl -fsS -X PUT -H 'content-type: application/json' -d "$body" "$MURPH_URL/api/gateway/policy/config" | pretty_json
+}
+
+policy_command() {
+  local subcommand="${1:-help}"
+  shift || true
+  case "$subcommand" in
+    profiles)
+      policy_profiles "$@"
+      ;;
+    preview)
+      policy_preview "$@"
+      ;;
+    get)
+      policy_get "$@"
+      ;;
+    set)
+      policy_set "$@"
+      ;;
+    help|-h|--help)
+      policy_usage
+      ;;
+    *)
+      policy_usage >&2
+      exit 1
+      ;;
+  esac
+}
+
 open_app() {
   local url="$MURPH_URL/setup"
   if have_command open; then
@@ -344,6 +471,9 @@ case "$command" in
   doctor)
     [[ $# -eq 0 ]] || fail "doctor does not accept options."
     doctor
+    ;;
+  policy)
+    policy_command "$@"
     ;;
   logs)
     show_logs "$@"

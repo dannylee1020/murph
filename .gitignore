@@ -35,3 +35,5 @@ memory/
 *.impeccable.md
 .claudeignore
 *.todo
+*.html
+scripts/

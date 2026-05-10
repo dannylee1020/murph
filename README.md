@@ -39,9 +39,9 @@ Skills define how Murph handles different types of requests. Each skill declares
 
 You control how much autonomy Murph has through policy profiles:
 
-- **Auto-send low-risk** — send safe responses, queue everything else
-- **Manual review** — queue all drafts for your approval
-- Per-user overrides for confidence thresholds and allowed action types
+- **Default** — generic safe coverage for everyday use
+- **Engineering, product, sales, marketing, leadership** — role-specific queue and abstain rules
+- Shipped profiles keep auto-send off; custom profiles can opt into more autonomy later
 
 
 ## Installation

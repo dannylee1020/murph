@@ -128,7 +128,6 @@ export interface UserMemory {
     forbiddenTopics: string[];
     briefingStyle?: 'compact' | 'detailed';
     routingHints: string[];
-    policy?: UserPolicyProfile;
 }
 
 export interface PolicyProfile {
@@ -139,6 +138,27 @@ export interface PolicyProfile {
     filePath?: string;
 }
 
+export interface PolicyControls {
+    blockedTopics?: string[];
+    alwaysQueueTopics?: string[];
+    blockedActions?: ContinuityActionType[];
+    requireGroundingForFacts?: boolean;
+    preferAskWhenUncertain?: boolean;
+    allowAutoSend?: boolean;
+    notesForAgent?: string[];
+}
+
+export interface ScopedPolicyRule {
+    id: string;
+    name: string;
+    match: {
+        channelIds?: string[];
+        intents?: ContinuityCase[];
+        actionTypes?: ContinuityActionType[];
+    };
+    controls: PolicyControls;
+}
+
 export interface CompiledPolicy {
     blockedTopics: string[];
     alwaysQueueTopics: string[];
@@ -147,6 +167,7 @@ export interface CompiledPolicy {
     preferAskWhenUncertain: boolean;
     allowAutoSend: boolean;
     notesForAgent: string[];
+    rules?: ScopedPolicyRule[];
 }
 
 export interface UserPolicyProfile {
@@ -167,7 +188,10 @@ export interface WorkspaceMemory {
     enabledContextSources: string[];
     enabledPlugins: string[];
     confirmedChannels?: string[];
-    defaultPolicyProfileName?: string;
+}
+
+export interface AppSettings {
+    policyProfileName?: string;
 }
 
 export interface ThreadMemory {

@@ -11,7 +11,7 @@ import { getGateway } from '#lib/server/runtime/gateway';
 import { getGatewaySnapshot } from '#lib/server/runtime/snapshot';
 import { getNotionStatus } from '#lib/server/context-sources/notion';
 import { listPluginStatuses, listRegisteredPluginManifests } from '#lib/server/capabilities/plugins';
-import { loadPolicyProfiles } from '../../lib/server/policies/loader.js';
+import { loadPolicyProfiles, normalizePolicyProfileName } from '../../lib/server/policies/loader.js';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import {
   buildUserPolicyProfile,
@@ -54,15 +54,11 @@ function resolveRequestWorkspace(workspaceId?: string): Workspace | undefined {
 
 async function resolveProfileSelection(
   mode: SessionMode,
-  workspaceId?: string,
-  explicitProfileName?: string,
-  userProfileName?: string
+  explicitProfileName?: string
 ) {
   const profiles = await loadPolicyProfiles();
   const store = getStore();
-  const workspaceMemory = workspaceId ? store.getOrCreateWorkspaceMemory(workspaceId) : undefined;
-  const selectedName =
-    explicitProfileName || userProfileName || workspaceMemory?.defaultPolicyProfileName;
+  const selectedName = normalizePolicyProfileName(explicitProfileName || store.getAppSettings().policyProfileName);
   const selectedProfile = selectedName
     ? profiles.find((profile) => profile.name === selectedName)
     : undefined;
@@ -70,6 +66,22 @@ async function resolveProfileSelection(
   return {
     profiles,
     selectedProfile: selectedProfile ?? builtinPolicyProfile(mode)
+  };
+}
+
+async function policyConfigPayload(mode: SessionMode = 'manual_review') {
+  const store = getStore();
+  const settings = store.getAppSettings();
+  const { profiles, selectedProfile } = await resolveProfileSelection(mode);
+  const effective = resolveEffectivePolicy({ mode, baseProfile: selectedProfile });
+
+  return {
+    ok: true,
+    profiles,
+    policyProfileName: normalizePolicyProfileName(settings.policyProfileName),
+    selectedProfileName: selectedProfile.name,
+    selectedProfile,
+    compiled: effective.compiled
   };
 }
 
@@ -106,25 +118,41 @@ export const gatewayRoutes: Route[] = [
   route('GET', '/api/gateway/policy-profiles', async ({ res }) => {
     sendJson(res, { profiles: await loadPolicyProfiles() });
   }),
+  route('GET', '/api/gateway/policy/config', async ({ res }) => {
+    sendJson(res, await policyConfigPayload());
+  }),
+  route('PUT', '/api/gateway/policy/config', async ({ req, res }) => {
+    const body = await readJson<{ profileName?: unknown }>(req);
+    const profileName = typeof body.profileName === 'string'
+      ? normalizePolicyProfileName(body.profileName)
+      : undefined;
+    const profiles = await loadPolicyProfiles();
+
+    if (profileName && !profiles.some((profile) => profile.name === profileName)) {
+      sendJson(res, { ok: false, error: 'unknown_policy_profile' }, 400);
+      return;
+    }
+
+    getStore().upsertAppSettings({ policyProfileName: profileName });
+    sendJson(res, await policyConfigPayload());
+  }),
   route('POST', '/api/gateway/policy/preview', async ({ req, res }) => {
     const body = await readJson<{
-      workspaceId?: string;
       profileName?: string;
-      userProfileName?: string;
       overrideRaw?: string;
+      scopedRules?: unknown;
       sessionMode?: SessionMode;
     }>(req);
     const mode = body.sessionMode ?? 'manual_review';
     const { profiles, selectedProfile } = await resolveProfileSelection(
       mode,
-      body.workspaceId,
-      body.profileName,
-      body.userProfileName
+      body.profileName
     );
     const effective = resolveEffectivePolicy({
       mode,
       baseProfile: selectedProfile,
-      overrideRaw: body.overrideRaw
+      overrideRaw: body.overrideRaw,
+      scopedRules: body.scopedRules
     });
     sendJson(res, {
       ok: true,
@@ -172,8 +200,7 @@ export const gatewayRoutes: Route[] = [
       skills: await loadSkills(),
       enabledOptionalTools: workspaceMemory?.enabledOptionalTools ?? [],
       enabledContextSources: workspaceMemory?.enabledContextSources ?? [],
-      enabledPlugins: workspaceMemory?.enabledPlugins ?? [],
-      defaultPolicyProfileName: workspaceMemory?.defaultPolicyProfileName
+      enabledPlugins: workspaceMemory?.enabledPlugins ?? []
     });
   }),
   route('PUT', '/api/gateway/workspace-memory', async ({ req, res }) => {
@@ -182,7 +209,6 @@ export const gatewayRoutes: Route[] = [
       enabledOptionalTools?: unknown;
       enabledContextSources?: unknown;
       enabledPlugins?: unknown;
-      defaultPolicyProfileName?: unknown;
     }>(req);
     const store = getStore();
     const workspace = resolveRequestWorkspace(body.workspaceId);
@@ -206,11 +232,7 @@ export const gatewayRoutes: Route[] = [
         : existing.enabledContextSources,
       enabledPlugins: Array.isArray(body.enabledPlugins)
         ? body.enabledPlugins.filter((value): value is string => typeof value === 'string')
-        : existing.enabledPlugins,
-      defaultPolicyProfileName:
-        typeof body.defaultPolicyProfileName === 'string'
-          ? body.defaultPolicyProfileName.trim() || undefined
-          : existing.defaultPolicyProfileName
+        : existing.enabledPlugins
     };
 
     store.upsertWorkspaceMemory(next);
@@ -319,69 +341,6 @@ export const gatewayRoutes: Route[] = [
     });
     sendJson(res, { ok: true, user });
   }),
-  route('GET', '/api/gateway/users/:userId/policy', ({ res, params, url }) => {
-    const store = getStore();
-    const workspace =
-      (url.searchParams.get('workspaceId')
-        ? store.getWorkspaceById(url.searchParams.get('workspaceId')!)
-        : undefined) ?? store.getFirstWorkspace();
-
-    if (!workspace) {
-      sendJson(res, { ok: false, error: 'workspace_not_installed' }, 400);
-      return;
-    }
-
-    const memory = store.getOrCreateUserMemory(workspace.id, params.userId);
-    sendJson(res, { ok: true, policy: memory.policy ?? null });
-  }),
-  route('PUT', '/api/gateway/users/:userId/policy', async ({ req, res, params }) => {
-    const body = await readJson<{
-      workspaceId?: string;
-      profileName?: string;
-      overrideRaw?: string;
-      sessionMode?: SessionMode;
-    }>(req);
-    const store = getStore();
-    const workspace =
-      (body.workspaceId ? store.getWorkspaceById(body.workspaceId) : undefined) ?? store.getFirstWorkspace();
-
-    if (!workspace) {
-      sendJson(res, { ok: false, error: 'workspace_not_installed' }, 400);
-      return;
-    }
-
-    const existing = store.getOrCreateUserMemory(workspace.id, params.userId);
-    const mode = body.sessionMode ?? 'manual_review';
-    const { selectedProfile } = await resolveProfileSelection(
-      mode,
-      workspace.id,
-      body.profileName,
-      existing.policy?.profileName
-    );
-    const effective = resolveEffectivePolicy({
-      mode,
-      baseProfile: selectedProfile,
-      overrideRaw: body.overrideRaw ?? existing.policy?.overrideRaw
-    });
-    const profile = buildUserPolicyProfile({
-      mode,
-      profileName: selectedProfile.source === 'builtin' ? undefined : selectedProfile.name,
-      overrideRaw: body.overrideRaw ?? existing.policy?.overrideRaw,
-      compiled: effective.compiled,
-      source:
-        (body.overrideRaw ?? existing.policy?.overrideRaw)?.trim()
-          ? 'operator_prompt'
-          : selectedProfile.source === 'builtin'
-            ? 'default'
-            : 'profile'
-    });
-    store.upsertUserMemory(workspace.id, params.userId, {
-      ...existing,
-      forbiddenTopics: [],
-      policy: profile
-    });
-    sendJson(res, { ok: true, policy: profile });
-  }),
   route('GET', '/api/gateway/recurring-jobs', ({ res, url }) => {
     sendJson(res, {
       jobs: getStore().listRecurringJobs(url.searchParams.get('sessionId') ?? undefined)
@@ -483,8 +442,6 @@ export const gatewayRoutes: Route[] = [
       mode?: SessionMode;
       channelScope?: string[];
       durationHours?: number;
-      policyProfileName?: string;
-      policyOverrideRaw?: string;
     }>(req);
     const store = getStore();
     const workspace = resolveRequestWorkspace(body.workspaceId);
@@ -561,35 +518,19 @@ export const gatewayRoutes: Route[] = [
       externalUserId: ownerUserId,
       displayName: ownerUserId
     });
-    const existingMemory = store.getOrCreateUserMemory(workspace.id, ownerUserId);
     const mode = body.mode ?? 'manual_review';
     const { selectedProfile } = await resolveProfileSelection(
-      mode,
-      workspace.id,
-      body.policyProfileName,
-      existingMemory.policy?.profileName
+      mode
     );
     const effective = resolveEffectivePolicy({
       mode,
-      baseProfile: selectedProfile,
-      overrideRaw: body.policyOverrideRaw
+      baseProfile: selectedProfile
     });
     const policyProfile = buildUserPolicyProfile({
       mode,
       profileName: selectedProfile.source === 'builtin' ? undefined : selectedProfile.name,
-      overrideRaw: body.policyOverrideRaw,
       compiled: effective.compiled,
-      source:
-        body.policyOverrideRaw?.trim()
-          ? 'operator_prompt'
-          : selectedProfile.source === 'builtin'
-            ? 'default'
-            : 'profile'
-    });
-    store.upsertUserMemory(workspace.id, ownerUserId, {
-      ...existingMemory,
-      forbiddenTopics: [],
-      policy: policyProfile
+      source: selectedProfile.source === 'builtin' ? 'default' : 'profile'
     });
 
     let session = store.createSession({
