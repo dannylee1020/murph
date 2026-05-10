@@ -452,14 +452,13 @@ Installed:
   - SQLite data directory ready
 
 Agent-ready checklist:
-  - Add an OpenAI or Anthropic key if you skipped the terminal prompt.
-  - Create a Slack app with Socket Mode, then connect your workspace.
-  - Open $APP_URL_DEFAULT/setup for identity, channels, and schedule.
+  - Run murph setup to configure AI, Slack, identity, channels, schedule, and policy.
 
 Local app:
   $APP_URL_DEFAULT
 
 Day-to-day commands:
+  murph setup
   murph start
   murph status
   murph doctor
@@ -492,22 +491,21 @@ maybe_start() {
     return
   fi
 
-  printf '\nStart Murph now? [y/N] '
+  printf '\nRun CLI setup now? [y/N] '
   local answer
   read -r answer
   case "$answer" in
     y|Y|yes|YES)
-      printf 'Starting Murph. Open %s in your browser.\n' "$APP_URL_DEFAULT"
       if [[ -x bin/murph ]]; then
-        bin/murph start
+        bin/murph setup --quick
       elif command -v murph >/dev/null 2>&1; then
-        murph start
+        murph setup --quick
       else
-        npm start
+        printf 'CLI is not available yet. Run: murph setup\n'
       fi
       ;;
     *)
-      printf 'Start later with: murph start\n'
+      printf 'Set up later with: murph setup\n'
       ;;
   esac
 }

@@ -29,6 +29,7 @@ export function getSetupDoctor(): SetupDoctorPayload {
   const env = getRuntimeEnv();
   const store = getStore();
   const summary = store.getWorkspaceSummary();
+  const setupDefaults = store.getAppSettings().setupDefaults;
   const slack = getSlackService();
   const slackWorkspace = slack.getUsableWorkspace();
   const slackReconnectRequired = !slackWorkspace && slack.hasUnreadableInstall();
@@ -79,9 +80,17 @@ export function getSetupDoctor(): SetupDoctorPayload {
   );
 
   checks.push(
-    summary.userCount > 0
-      ? check('identity', 'User identity', 'ok', 'A Murph user is configured.')
+    summary.userCount > 0 && setupDefaults?.ownerUserId
+      ? check('identity', 'User identity', 'ok', `${setupDefaults.ownerDisplayName ?? setupDefaults.ownerUserId} is configured.`)
       : check('identity', 'User identity', 'action_required', 'Pick yourself from Slack so Murph knows who to watch for.')
+  );
+
+  checks.push(
+    setupDefaults?.channelScopeMode === 'all_accessible'
+      ? check('channels', 'Watched channels', 'ok', 'Murph will watch all accessible channels.')
+      : (setupDefaults?.selectedChannels?.length ?? 0) > 0
+        ? check('channels', 'Watched channels', 'ok', `${setupDefaults?.selectedChannels?.length ?? 0} watched channel(s) selected.`)
+        : check('channels', 'Watched channels', 'action_required', 'Choose Slack channels or explicitly allow all accessible channels.')
   );
 
   const notion = getNotionStatus();
@@ -103,7 +112,9 @@ export function getSetupDoctor(): SetupDoctorPayload {
             ? 'slack_oauth'
             : checks.find((entry) => entry.id === 'identity')?.status !== 'ok'
               ? 'identity'
-              : 'ready';
+              : checks.find((entry) => entry.id === 'channels')?.status !== 'ok'
+                ? 'channels'
+                : 'ready';
 
   return {
     ok: true,

@@ -190,8 +190,19 @@ export interface WorkspaceMemory {
     confirmedChannels?: string[];
 }
 
+export interface SetupDefaults {
+    ownerUserId?: string;
+    ownerDisplayName?: string;
+    channelScopeMode?: 'selected' | 'all_accessible';
+    selectedChannels?: Array<{ id: string; displayName: string }>;
+    timezone?: string;
+    workdayStartHour?: number;
+    workdayEndHour?: number;
+}
+
 export interface AppSettings {
     policyProfileName?: string;
+    setupDefaults?: SetupDefaults;
 }
 
 export interface ThreadMemory {

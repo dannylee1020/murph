@@ -9,6 +9,49 @@ import { updateSetupEnv } from '#lib/server/setup/env-file';
 import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-client';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { readJson } from '../http.js';
+import type { SetupDefaults, Workspace } from '#lib/types';
+
+function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
+  const channelScopeMode = value.channelScopeMode === 'all_accessible' ? 'all_accessible' : 'selected';
+  const selectedChannels = (value.selectedChannels ?? [])
+    .map((channel) => ({
+      id: channel.id?.trim(),
+      displayName: channel.displayName?.trim() || channel.id?.trim()
+    }))
+    .filter((channel): channel is { id: string; displayName: string } => Boolean(channel.id && channel.displayName));
+
+  return {
+    ownerUserId: value.ownerUserId?.trim() || undefined,
+    ownerDisplayName: value.ownerDisplayName?.trim() || undefined,
+    channelScopeMode,
+    selectedChannels,
+    timezone: value.timezone?.trim() || undefined,
+    workdayStartHour: Number.isFinite(value.workdayStartHour) ? value.workdayStartHour : undefined,
+    workdayEndHour: Number.isFinite(value.workdayEndHour) ? value.workdayEndHour : undefined
+  };
+}
+
+function getSetupWorkspace(workspaceId?: string): Workspace | undefined {
+  const store = getStore();
+  return workspaceId
+    ? store.getWorkspaceById(workspaceId)
+    : getSlackService().getUsableWorkspace() ?? store.getFirstWorkspace();
+}
+
+function setupDefaultsPayload(workspace?: Workspace) {
+  const settings = getStore().getAppSettings();
+  const defaults = settings.setupDefaults ?? {};
+  const user = workspace && defaults.ownerUserId
+    ? getStore().getUser(workspace.id, defaults.ownerUserId)
+    : undefined;
+
+  return {
+    ok: true,
+    workspaceId: workspace?.id,
+    defaults,
+    user
+  };
+}
 
 export const systemRoutes: Route[] = [
   route('GET', '/api/health', ({ res }) => {
@@ -31,6 +74,7 @@ export const systemRoutes: Route[] = [
     await ensureRuntimeInitialized();
     const env = getRuntimeEnv();
     const summary = getStore().getWorkspaceSummary();
+    const setupDefaults = getStore().getAppSettings().setupDefaults;
     const workspaces = getStore().listWorkspaces();
     const slackWorkspace = getSlackService().getUsableWorkspace();
     const discordWorkspace = workspaces.find((workspace) => workspace.provider === 'discord' && workspace.botTokenEncrypted);
@@ -54,8 +98,43 @@ export const systemRoutes: Route[] = [
         defaultProvider: env.defaultProvider
       },
       notion: getNotionStatus(),
-      userConfigured: summary.userCount > 0
+      userConfigured: summary.userCount > 0 && Boolean(setupDefaults?.ownerUserId),
+      channelsConfigured: setupDefaults?.channelScopeMode === 'all_accessible' ||
+        (setupDefaults?.selectedChannels?.length ?? 0) > 0
     });
+  }),
+  route('GET', '/api/setup/defaults', async ({ res, url }) => {
+    await ensureRuntimeInitialized();
+    sendJson(res, setupDefaultsPayload(getSetupWorkspace(url.searchParams.get('workspaceId') ?? undefined)));
+  }),
+  route('PUT', '/api/setup/defaults', async ({ req, res }) => {
+    await ensureRuntimeInitialized();
+    const body = await readJson<Partial<SetupDefaults> & { workspaceId?: string }>(req);
+    const workspace = getSetupWorkspace(body.workspaceId);
+
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'workspace_required' }, 400);
+      return;
+    }
+
+    const defaults = normalizeSetupDefaults({
+      ...(getStore().getAppSettings().setupDefaults ?? {}),
+      ...body
+    });
+
+    if (defaults.ownerUserId) {
+      getStore().upsertUser({
+        workspaceId: workspace.id,
+        externalUserId: defaults.ownerUserId,
+        displayName: defaults.ownerDisplayName ?? defaults.ownerUserId,
+        timezone: defaults.timezone,
+        workdayStartHour: defaults.workdayStartHour,
+        workdayEndHour: defaults.workdayEndHour
+      });
+    }
+
+    getStore().upsertAppSettings({ setupDefaults: defaults });
+    sendJson(res, setupDefaultsPayload(workspace));
   }),
   route('GET', '/api/setup/doctor', async ({ res }) => {
     await ensureRuntimeInitialized();

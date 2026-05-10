@@ -3,6 +3,9 @@ import path from 'node:path';
 import { resetRuntimeEnvCache } from '#lib/server/util/env';
 
 const SETUP_ENV_KEYS = new Set([
+  'MURPH_APP_URL',
+  'MURPH_SQLITE_PATH',
+  'MURPH_ENCRYPTION_KEY',
   'MURPH_DEFAULT_PROVIDER',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',

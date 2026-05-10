@@ -62,15 +62,15 @@ The installer will:
 6. Create the local SQLite data directory
 7. Prompt for an OpenAI or Anthropic API key
 8. Install the `murph` CLI into `~/.local/bin`
-9. Offer to start Murph
+9. Offer to run `murph setup --quick`
 
-Open:
+The CLI setup is the first-class setup path:
 
-```text
-http://localhost:5173/setup
+```bash
+murph setup
 ```
 
-If you skip startup, run:
+It configures AI, Slack, your identity, watched channels, schedule, and policy. When setup is complete, start Murph:
 
 ```bash
 murph start
@@ -88,24 +88,26 @@ Run a local setup check any time:
 murph doctor
 ```
 
-### Simple setup
+### Setup status
 
-Use this if you want minimal terminal interaction and browser-based setup.
+Run a setup check any time:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash -s -- --simple
+murph setup status
+murph setup status --json
+murph doctor
 ```
 
-This runs the same install flow, but skips API-key prompts. After startup, open `http://localhost:5173/setup` and finish setup in the browser.
+You can also run individual setup sections:
 
-The browser setup asks for:
-
-1. OpenAI or Anthropic API key
-2. Slack app credentials
-3. Slack workspace connection
-4. Your Slack identity
-5. Channels Murph should watch
-6. Your work schedule
+```bash
+murph setup ai
+murph setup slack
+murph setup identity
+murph setup channels
+murph setup schedule
+murph setup policy
+```
 
 Useful installer flags:
 
@@ -129,6 +131,7 @@ murph logs -f            # follow logs
 murph stop               # stop the background process
 murph restart            # restart in the background
 murph doctor             # check local setup
+murph setup              # configure Murph from the CLI
 murph open               # open the setup page
 murph update             # update the installed app
 ```
@@ -147,7 +150,7 @@ Slack uses Socket Mode by default.
 2. Use `docs/slack-socket-mode-manifest.yml` as the app manifest
 3. Enable Socket Mode
 4. Create an app-level token with `connections:write`
-5. Add `SLACK_APP_TOKEN`, `SLACK_CLIENT_ID`, and `SLACK_CLIENT_SECRET` in `.env` or browser setup
+5. Run `murph setup slack` and paste `SLACK_APP_TOKEN`, `SLACK_CLIENT_ID`, and `SLACK_CLIENT_SECRET`
 6. Confirm the OAuth callback URL is registered in Slack:
 
 ```text

@@ -104,6 +104,30 @@ type SetupStatusPayload = {
     version: string;
   };
   userConfigured: boolean;
+  channelsConfigured: boolean;
+};
+
+type SetupDefaultsPayload = {
+  ok: boolean;
+  workspaceId?: string;
+  defaults: {
+    ownerUserId?: string;
+    ownerDisplayName?: string;
+    channelScopeMode?: 'selected' | 'all_accessible';
+    selectedChannels?: Array<{ id: string; displayName: string }>;
+    timezone?: string;
+    workdayStartHour?: number;
+    workdayEndHour?: number;
+  };
+  user?: {
+    externalUserId: string;
+    displayName: string;
+    schedule?: {
+      timezone: string;
+      workdayStartHour: number;
+      workdayEndHour: number;
+    };
+  };
 };
 
 type IntegrationStatusPayload = {
@@ -312,6 +336,7 @@ type SetupWizardState = {
   currentStep: number;
   selectedUserId: string;
   selectedUserName: string;
+  channelScopeMode: 'selected' | 'all_accessible';
   selectedChannelIds: string[];
   selectedChannels: Array<{ id: string; displayName: string }>;
   timezone: string;
@@ -322,6 +347,7 @@ let setupWizardState: SetupWizardState = {
   currentStep: 0,
   selectedUserId: '',
   selectedUserName: '',
+  channelScopeMode: 'selected',
   selectedChannelIds: [],
   selectedChannels: [],
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles',
@@ -354,6 +380,29 @@ function getSelectedChannels(): Array<{ id: string; displayName: string }> {
 
 function setSelectedChannels(channels: Array<{ id: string; displayName: string }>): void {
   localStorage.setItem('murph_selected_channels', JSON.stringify(channels));
+}
+
+function applySetupDefaults(payload: SetupDefaultsPayload): void {
+  const defaults = payload.defaults ?? {};
+  if (defaults.ownerUserId) {
+    setupWizardState.selectedUserId = defaults.ownerUserId;
+    setupWizardState.selectedUserName = defaults.ownerDisplayName ?? defaults.ownerUserId;
+  }
+  setupWizardState.channelScopeMode = defaults.channelScopeMode ?? setupWizardState.channelScopeMode;
+  if (defaults.selectedChannels) {
+    setupWizardState.selectedChannels = defaults.selectedChannels;
+    setupWizardState.selectedChannelIds = defaults.selectedChannels.map((channel) => channel.id);
+  }
+  const schedule = payload.user?.schedule;
+  setupWizardState.timezone = defaults.timezone ?? schedule?.timezone ?? setupWizardState.timezone;
+  setupWizardState.workdayStartHour = defaults.workdayStartHour ?? schedule?.workdayStartHour ?? setupWizardState.workdayStartHour;
+}
+
+function effectiveSelectedChannels(defaults?: SetupDefaultsPayload['defaults']): Array<{ id: string; displayName: string }> {
+  if (defaults?.channelScopeMode === 'selected') {
+    return defaults.selectedChannels ?? [];
+  }
+  return getSelectedChannels();
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -998,7 +1047,7 @@ function setupCheckList(checks: SetupDoctorPayload['checks']): string {
   return `
     <div class="setup-check-list">
       ${checks
-        .filter((check) => ['ai_provider', 'slack_socket', 'slack_oauth_config', 'slack_installed', 'identity'].includes(check.id))
+        .filter((check) => ['ai_provider', 'slack_socket', 'slack_oauth_config', 'slack_installed', 'identity', 'channels'].includes(check.id))
         .map((check) => `
           <div class="setup-check ${escapeHtml(check.status)}">
             <strong>${escapeHtml(check.label)}</strong>
@@ -1023,10 +1072,12 @@ async function renderSetup(): Promise<void> {
     history.replaceState(null, '', '/setup');
   }
 
-  const [setup, doctor] = await Promise.all([
+  const [setup, doctor, defaults] = await Promise.all([
     getJson<SetupStatusPayload>('/api/setup/status'),
-    getJson<SetupDoctorPayload>('/api/setup/doctor')
+    getJson<SetupDoctorPayload>('/api/setup/doctor'),
+    getJson<SetupDefaultsPayload>('/api/setup/defaults')
   ]);
+  applySetupDefaults(defaults);
   if (setupWizardState.currentStep === 0 && doctor.nextStep !== 'core') {
     setupWizardState.currentStep = setupStepForNextStep(doctor.nextStep);
   }
@@ -1053,7 +1104,7 @@ async function renderSetup(): Promise<void> {
     stepContent = `
       <div class="wizard-step">
         <h1>Set up Murph</h1>
-        <p>The installer got the server running. Finish the product setup here: add an AI key, connect Slack, pick yourself, and set your schedule.</p>
+        <p>The installer got the server running. Finish setup here or use <code>murph setup</code> from your terminal.</p>
         ${setupCheckList(doctor.checks)}
         <div class="wizard-actions">
           <button type="button" id="wizard-next">Get started</button>
@@ -1268,6 +1319,22 @@ async function renderSetup(): Promise<void> {
       const channelsPayload = await getSlackJson<SlackChannelsPayload>('/api/slack/channels');
       if (channelsPayload.ok && channelsPayload.channels.length > 0) {
         container!.innerHTML = `
+          <label class="member-item channel-item ${setupWizardState.channelScopeMode === 'all_accessible' ? 'selected' : ''}">
+            <input type="radio" name="setupChannelMode" value="all_accessible" ${setupWizardState.channelScopeMode === 'all_accessible' ? 'checked' : ''} />
+            <span class="member-avatar-placeholder">*</span>
+            <span class="channel-copy">
+              <strong>All accessible channels</strong>
+              <small>Murph will watch every channel the Slack app can read</small>
+            </span>
+          </label>
+          <label class="member-item channel-item ${setupWizardState.channelScopeMode === 'selected' ? 'selected' : ''}">
+            <input type="radio" name="setupChannelMode" value="selected" ${setupWizardState.channelScopeMode !== 'all_accessible' ? 'checked' : ''} />
+            <span class="member-avatar-placeholder">#</span>
+            <span class="channel-copy">
+              <strong>Selected channels</strong>
+              <small>Choose the channels Murph should watch by default</small>
+            </span>
+          </label>
           <div class="member-list">
             ${channelsPayload.channels.map((channel) => {
               const selected = setupWizardState.selectedChannelIds.includes(channel.id);
@@ -1287,21 +1354,31 @@ async function renderSetup(): Promise<void> {
         `;
 
         const syncSelection = () => {
+          const mode = container!.querySelector<HTMLInputElement>('input[name="setupChannelMode"]:checked')?.value === 'all_accessible'
+            ? 'all_accessible'
+            : 'selected';
           const selectedChannels = channelsPayload.channels
             .filter((channel) => {
               const input = container!.querySelector<HTMLInputElement>(`input[value="${CSS.escape(channel.id)}"]`);
               return Boolean(input?.checked);
             })
             .map((channel) => ({ id: channel.id, displayName: channel.displayName }));
+          setupWizardState.channelScopeMode = mode;
           setupWizardState.selectedChannels = selectedChannels;
           setupWizardState.selectedChannelIds = selectedChannels.map((channel) => channel.id);
-          if (nextBtn) nextBtn.disabled = selectedChannels.length === 0;
+          if (nextBtn) nextBtn.disabled = mode === 'selected' && selectedChannels.length === 0;
+          container!.querySelectorAll<HTMLInputElement>('input[name="setupChannelScope"]').forEach((input) => {
+            input.disabled = mode === 'all_accessible';
+          });
           container!.querySelectorAll<HTMLLabelElement>('.channel-item').forEach((item) => {
             const input = item.querySelector<HTMLInputElement>('input');
             item.classList.toggle('selected', Boolean(input?.checked));
           });
         };
 
+        container!.querySelectorAll<HTMLInputElement>('input[name="setupChannelMode"]').forEach((input) => {
+          input.addEventListener('change', syncSelection);
+        });
         container!.querySelectorAll<HTMLInputElement>('input[name="setupChannelScope"]').forEach((input) => {
           input.addEventListener('change', syncSelection);
         });
@@ -1314,10 +1391,12 @@ async function renderSetup(): Promise<void> {
         if (nextBtn) nextBtn.disabled = true;
       } else {
         container!.innerHTML = '<p class="empty">No Slack channels were available yet. You can keep going and watch all accessible channels.</p>';
+        setupWizardState.channelScopeMode = 'all_accessible';
         if (nextBtn) nextBtn.disabled = false;
       }
     } catch {
       container!.innerHTML = '<p class="empty">Murph could not load Slack channels right now. You can keep going and watch all accessible channels.</p>';
+      setupWizardState.channelScopeMode = 'all_accessible';
       if (nextBtn) nextBtn.disabled = false;
     }
   }
@@ -1350,9 +1429,24 @@ async function renderSetup(): Promise<void> {
       });
     }
 
-    if (step === 4 && !setupWizardState.selectedUserId) return;
-    if (step === 5 && setupWizardState.selectedChannelIds.length === 0) {
-      setupWizardState.selectedChannels = [];
+    if (step === 4) {
+      if (!setupWizardState.selectedUserId) return;
+      await putJson('/api/setup/defaults', {
+        ownerUserId: setupWizardState.selectedUserId,
+        ownerDisplayName: setupWizardState.selectedUserName,
+        timezone: setupWizardState.timezone,
+        workdayStartHour: setupWizardState.workdayStartHour,
+        workdayEndHour: setupWizardState.workdayStartHour + 8
+      });
+    }
+    if (step === 5 && setupWizardState.channelScopeMode === 'selected' && setupWizardState.selectedChannelIds.length === 0) {
+      return;
+    }
+    if (step === 5) {
+      await putJson('/api/setup/defaults', {
+        channelScopeMode: setupWizardState.channelScopeMode,
+        selectedChannels: setupWizardState.channelScopeMode === 'selected' ? setupWizardState.selectedChannels : []
+      });
     }
 
     if (step === 6) {
@@ -1364,8 +1458,11 @@ async function renderSetup(): Promise<void> {
         setupWizardState.workdayStartHour = Number(timeVal.split(':')[0]);
       }
 
-      await putJson(`/api/gateway/users/${encodeURIComponent(setupWizardState.selectedUserId)}/schedule`, {
-        displayName: setupWizardState.selectedUserName,
+      await putJson('/api/setup/defaults', {
+        ownerUserId: setupWizardState.selectedUserId,
+        ownerDisplayName: setupWizardState.selectedUserName,
+        channelScopeMode: setupWizardState.channelScopeMode,
+        selectedChannels: setupWizardState.channelScopeMode === 'selected' ? setupWizardState.selectedChannels : [],
         timezone: setupWizardState.timezone,
         workdayStartHour: setupWizardState.workdayStartHour,
         workdayEndHour: setupWizardState.workdayStartHour + 8
@@ -1391,14 +1488,18 @@ async function renderSetup(): Promise<void> {
 async function renderDashboard(): Promise<void> {
   setTitle('Murph');
   loading('Home');
-  const [data, setupStatus] = await Promise.all([
+  const [data, setupStatus, setupDefaults] = await Promise.all([
     getJson<SummaryPayload>('/api/gateway/summary'),
-    getJson<SetupStatusPayload>('/api/setup/status')
+    getJson<SetupStatusPayload>('/api/setup/status'),
+    getJson<SetupDefaultsPayload>('/api/setup/defaults')
   ]);
 
-  const currentUser = data.users.find((u) => u.externalUserId === getCurrentUserId());
-  const selectedChannels = getSelectedChannels();
-  const selectedChannelIds = selectedChannels.map((channel) => channel.id);
+  const currentUserId = setupDefaults.defaults.ownerUserId ?? getCurrentUserId();
+  const currentUser = data.users.find((u) => u.externalUserId === currentUserId);
+  const selectedChannels = effectiveSelectedChannels(setupDefaults.defaults);
+  const selectedChannelIds = setupDefaults.defaults.channelScopeMode === 'all_accessible'
+    ? []
+    : selectedChannels.map((channel) => channel.id);
   const selectedChannelNames = new Map(selectedChannels.map((channel) => [channel.id, channel.displayName]));
   const userTz = currentUser?.schedule?.timezone ?? setupWizardState.timezone;
   const userStartHour = currentUser?.schedule?.workdayStartHour ?? setupWizardState.workdayStartHour;
@@ -1428,7 +1529,7 @@ async function renderDashboard(): Promise<void> {
           <dl class="go-to-sleep-summary">
             <div class="summary-cell">
               <dt>Watching</dt>
-              <dd>${selectedChannels.length > 0 ? selectedChannels.map((channel) => escapeHtml(channel.displayName)).join(', ') : 'All accessible channels'}</dd>
+              <dd>${setupDefaults.defaults.channelScopeMode === 'all_accessible' ? 'All accessible channels' : selectedChannels.map((channel) => escapeHtml(channel.displayName)).join(', ')}</dd>
             </div>
             <div class="summary-cell">
               <dt>Until</dt>
@@ -1504,7 +1605,7 @@ async function renderDashboard(): Promise<void> {
 
     try {
       const response = await postJson<SessionCreateResponse>('/api/gateway/sessions', {
-        ownerUserId: getCurrentUserId(),
+        ownerUserId: currentUserId,
         title: 'Watching overnight',
         mode,
         channelScope: selectedChannelIds,
@@ -2266,7 +2367,7 @@ async function render(): Promise<void> {
     }
 
     const setupStatus = await getJson<SetupStatusPayload>('/api/setup/status');
-    if (!setupStatus.slack.installed || !setupStatus.userConfigured) {
+    if (!setupStatus.slack.installed || !setupStatus.userConfigured || !setupStatus.channelsConfigured) {
       history.replaceState(null, '', '/setup');
       await renderSetup();
       return;

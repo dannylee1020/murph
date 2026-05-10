@@ -4,6 +4,34 @@ import { parseJsonObject } from './_shared.js';
 
 const SETTINGS_KEY = 'local';
 
+function normalizeSettings(settings: AppSettings): AppSettings {
+  const setupDefaults = settings.setupDefaults
+    ? {
+        ownerUserId: settings.setupDefaults.ownerUserId?.trim() || undefined,
+        ownerDisplayName: settings.setupDefaults.ownerDisplayName?.trim() || undefined,
+        channelScopeMode: settings.setupDefaults.channelScopeMode === 'all_accessible' ? 'all_accessible' as const : 'selected' as const,
+        selectedChannels: (settings.setupDefaults.selectedChannels ?? [])
+          .map((channel) => ({
+            id: channel.id?.trim(),
+            displayName: channel.displayName?.trim() || channel.id?.trim()
+          }))
+          .filter((channel): channel is { id: string; displayName: string } => Boolean(channel.id && channel.displayName)),
+        timezone: settings.setupDefaults.timezone?.trim() || undefined,
+        workdayStartHour: Number.isFinite(settings.setupDefaults.workdayStartHour)
+          ? settings.setupDefaults.workdayStartHour
+          : undefined,
+        workdayEndHour: Number.isFinite(settings.setupDefaults.workdayEndHour)
+          ? settings.setupDefaults.workdayEndHour
+          : undefined
+      }
+    : undefined;
+
+  return {
+    policyProfileName: settings.policyProfileName?.trim() || undefined,
+    setupDefaults
+  };
+}
+
 export function getAppSettings(db: Db): AppSettings {
   const row = db
     .prepare(`SELECT data_json FROM app_settings WHERE key = ?`)
@@ -22,13 +50,20 @@ export function getAppSettings(db: Db): AppSettings {
     };
   }
 
-  return parseJsonObject<AppSettings>(row.data_json, {});
+  return normalizeSettings(parseJsonObject<AppSettings>(row.data_json, {}));
 }
 
 export function upsertAppSettings(db: Db, settings: AppSettings): AppSettings {
-  const next: AppSettings = {
-    policyProfileName: settings.policyProfileName?.trim() || undefined
-  };
+  const current = getAppSettings(db);
+  const next = normalizeSettings({
+    ...current,
+    ...(Object.prototype.hasOwnProperty.call(settings, 'policyProfileName')
+      ? { policyProfileName: settings.policyProfileName }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(settings, 'setupDefaults')
+      ? { setupDefaults: settings.setupDefaults }
+      : {})
+  });
 
   db.prepare(
     `INSERT INTO app_settings (key, data_json)

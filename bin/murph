@@ -32,6 +32,7 @@ Commands:
   restart              Restart Murph in the background.
   status               Show process and health status.
   doctor               Check local setup.
+  setup [section]      Run the first-class CLI setup workflow.
   policy <command>     List, preview, and save policy configuration.
   logs [-f]            Show runtime logs.
   open                 Open Murph setup in a browser.
@@ -223,6 +224,13 @@ doctor() {
   require_app
   cd "$MURPH_APP_DIR"
   ./install.sh --doctor
+}
+
+setup_command() {
+  require_app
+  have_command node || fail "node is required for murph setup."
+  cd "$MURPH_APP_DIR"
+  node bin/setup-cli.mjs "$@"
 }
 
 show_logs() {
@@ -471,6 +479,9 @@ case "$command" in
   doctor)
     [[ $# -eq 0 ]] || fail "doctor does not accept options."
     doctor
+    ;;
+  setup)
+    setup_command "$@"
     ;;
   policy)
     policy_command "$@"
