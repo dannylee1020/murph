@@ -33,6 +33,7 @@ Commands:
   status               Show process and health status.
   doctor               Check local setup.
   setup [section]      Run the first-class CLI setup workflow.
+  agent [prompt]       Chat with Murph's setup and plugin agent.
   policy <command>     List, preview, and save policy configuration.
   logs [-f]            Show runtime logs.
   open                 Open Murph setup in a browser.
@@ -231,6 +232,45 @@ setup_command() {
   have_command node || fail "node is required for murph setup."
   cd "$MURPH_APP_DIR"
   node bin/setup-cli.mjs "$@"
+}
+
+agent_command() {
+  require_app
+  have_command node || fail "node is required for murph agent."
+
+  local ensure_server=true
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        ensure_server=false
+        args+=("$1")
+        ;;
+      --no-server)
+        ensure_server=false
+        ;;
+      *)
+        args+=("$1")
+        ;;
+    esac
+    shift
+  done
+
+  if [[ "$ensure_server" == true ]]; then
+    if health_check; then
+      printf 'Murph server is running at %s\n' "$MURPH_URL"
+    else
+      printf 'Starting Murph server for agent tools.\n'
+      start_background
+    fi
+  fi
+
+  cd "$MURPH_APP_DIR"
+  if [[ "${#args[@]}" -eq 0 ]]; then
+    node bin/agent-cli.mjs
+  else
+    node bin/agent-cli.mjs "${args[@]}"
+  fi
 }
 
 show_logs() {
@@ -482,6 +522,9 @@ case "$command" in
     ;;
   setup)
     setup_command "$@"
+    ;;
+  agent)
+    agent_command "$@"
     ;;
   policy)
     policy_command "$@"

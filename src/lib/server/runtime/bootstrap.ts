@@ -4,6 +4,7 @@ import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-clie
 import { loadRuntimePlugins } from '#lib/server/capabilities/plugins';
 import { loadIntegrationAdapters } from '#lib/server/integrations/adapter-loader';
 import { registerBuiltInIntegrationAdapters } from '#lib/server/integrations/register-builtins';
+import { loadScopedPlugins } from '#lib/server/plugins/loader';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#lib/server/integrations/capabilities';
 import { getStore } from '#lib/server/persistence/store';
 
@@ -30,6 +31,7 @@ export async function ensureRuntimeInitialized(): Promise<void> {
       registerBuiltInTools();
       registerBuiltInIntegrationAdapters();
       await loadIntegrationAdapters();
+      await loadScopedPlugins();
       getDiscordGatewayClient().ensureStarted();
       getSlackSocketModeClient().ensureStarted();
       await loadRuntimePlugins();

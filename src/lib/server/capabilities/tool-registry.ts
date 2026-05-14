@@ -44,6 +44,10 @@ export class ToolRegistry {
     return this.tools.has(name);
   }
 
+  unregister(name: string): void {
+    this.tools.delete(name);
+  }
+
   async execute<TInput, TOutput>(
     name: string,
     input: TInput,

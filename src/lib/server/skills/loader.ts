@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { SKILLS_ROOT } from '#lib/config';
 import { listRegisteredPluginSkills } from '#lib/server/capabilities/plugins';
+import { listScopedPluginSkills } from '#lib/server/plugins/skill-registry';
 import type { SkillManifest } from '#lib/types';
 
 export async function loadSkills(root = SKILLS_ROOT): Promise<SkillManifest[]> {
@@ -18,10 +19,13 @@ export async function loadSkills(root = SKILLS_ROOT): Promise<SkillManifest[]> {
     for (const skill of listRegisteredPluginSkills()) {
       merged.set(skill.name, skill);
     }
+    for (const skill of listScopedPluginSkills()) {
+      merged.set(skill.name, skill);
+    }
 
     return [...merged.values()].sort((a, b) => b.priority - a.priority);
   } catch {
-    return listRegisteredPluginSkills().sort((a, b) => b.priority - a.priority);
+    return [...listRegisteredPluginSkills(), ...listScopedPluginSkills()].sort((a, b) => b.priority - a.priority);
   }
 }
 
@@ -92,7 +96,7 @@ function parseGroundingPolicy(value: string | undefined): SkillManifest['groundi
   return value === 'prefer_search' || value === 'required_when_no_artifacts' ? value : 'model_choice';
 }
 
-async function parseSkillFile(filePath: string): Promise<SkillManifest | null> {
+export async function parseSkillFile(filePath: string): Promise<SkillManifest | null> {
   const content = await readFile(filePath, 'utf8');
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 

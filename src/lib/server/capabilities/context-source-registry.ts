@@ -32,6 +32,10 @@ export class ContextSourceRegistry {
     return this.sources.has(name);
   }
 
+  unregister(name: string): void {
+    this.sources.delete(name);
+  }
+
   async retrieve(
     explicitNames: string[],
     optionalNames: string[],

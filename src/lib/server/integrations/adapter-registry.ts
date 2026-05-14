@@ -3,7 +3,7 @@ import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { registerEnvCredential } from './env-credentials.js';
 import type { IntegrationAdapter } from './adapter.js';
 
-type AdapterSource = 'builtin' | 'user';
+type AdapterSource = 'builtin' | 'user' | 'plugin';
 type AdapterStatus = 'loaded' | 'failed' | 'skipped';
 
 interface RegisteredAdapter {
@@ -59,7 +59,11 @@ export function registerAdapter(
     }
   }
 
-  const registrySource = opts.source === 'builtin' ? 'core' : 'adapter';
+  const registrySource = opts.source === 'builtin'
+    ? 'core'
+    : opts.source === 'plugin'
+      ? 'plugin'
+      : 'adapter';
   for (const source of adapter.contextSources ?? []) {
     contextSourceRegistry.register(source, {
       optional: source.optional,
@@ -117,4 +121,29 @@ export function listAdapters(): IntegrationAdapter[] {
 
 export function listAdapterStatuses(): IntegrationAdapterStatus[] {
   return [...statuses.values()];
+}
+
+export function unregisterAdaptersBySource(source: AdapterSource): void {
+  const toolRegistry = getToolRegistry();
+  const contextSourceRegistry = getContextSourceRegistry();
+
+  for (const [id, registered] of adapters.entries()) {
+    if (registered.source !== source) {
+      continue;
+    }
+
+    for (const tool of registered.adapter.tools ?? []) {
+      toolRegistry.unregister(tool.name);
+    }
+    for (const contextSource of registered.adapter.contextSources ?? []) {
+      contextSourceRegistry.unregister(contextSource.name);
+    }
+    adapters.delete(id);
+  }
+
+  for (const [key, status] of statuses.entries()) {
+    if (status.source === source) {
+      statuses.delete(key);
+    }
+  }
 }
