@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress';
 export default defineConfig({
   title: 'Murph',
   description: 'Self-hosted async autopilot for team continuity.',
+  appearance: true,
   cleanUrls: true,
   lastUpdated: true,
   head: [
@@ -11,7 +12,7 @@ export default defineConfig({
       'link',
       {
         rel: 'stylesheet',
-        href: 'https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700&display=swap'
+        href: 'https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&display=swap'
       }
     ]
   ],
@@ -48,13 +49,9 @@ export default defineConfig({
         }
       ]
     },
-    socialLinks: [{ icon: 'github', link: 'https://github.com/dannylee1020/murph' }],
     footer: {
       message: 'Self-hosted async autopilot for team continuity.',
       copyright: `Copyright © ${new Date().getFullYear()} Murph`
-    },
-    search: {
-      provider: 'local'
     },
     outline: {
       label: 'On this page',
