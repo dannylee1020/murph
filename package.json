@@ -21,6 +21,9 @@
     "start": "node dist/server/index.js",
     "preview": "npm run start",
     "architecture:map": "node scripts/generate-architecture-map.mjs",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:start": "vitepress preview docs",
     "check": "npm run build:server && tsc -p tsconfig.ui.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -30,6 +33,7 @@
     "tslib": "2.6.2",
     "typescript": "5.4.5",
     "vite": "5.2.8",
+    "vitepress": "1.6.4",
     "vitest": "^4.1.4"
   },
   "dependencies": {
@@ -42,6 +46,7 @@
     "better-sqlite3": "^11.7.0",
     "openai": "^5.10.2",
     "typebox": "^1.1.33",
+    "vue": "^3.5.25",
     "ws": "^8.20.0"
   }
 }

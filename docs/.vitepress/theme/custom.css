@@ -1,0 +1,442 @@
+:root {
+  color-scheme: light;
+  --murph-paper: oklch(96.7% 0.013 82);
+  --murph-panel: oklch(98.1% 0.01 82);
+  --murph-muted: oklch(92.6% 0.019 82);
+  --murph-ink: oklch(21% 0.018 75);
+  --murph-soft-ink: oklch(45% 0.024 75);
+  --murph-rule: oklch(82% 0.021 78 / 68%);
+  --murph-rust: oklch(47% 0.12 35);
+  --murph-rust-soft: oklch(89% 0.046 48);
+  --space-2xs: 0.25rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 4rem;
+  --space-2xl: 6rem;
+
+  --vp-c-bg: var(--murph-paper);
+  --vp-c-bg-alt: var(--murph-panel);
+  --vp-c-bg-soft: var(--murph-muted);
+  --vp-c-text-1: var(--murph-ink);
+  --vp-c-text-2: var(--murph-soft-ink);
+  --vp-c-text-3: oklch(55% 0.02 75);
+  --vp-c-divider: var(--murph-rule);
+  --vp-c-border: var(--murph-rule);
+  --vp-c-brand-1: var(--murph-rust);
+  --vp-c-brand-2: oklch(42% 0.12 35);
+  --vp-c-brand-3: var(--murph-rust);
+  --vp-c-brand-soft: color-mix(in oklch, var(--murph-rust) 10%, transparent);
+  --vp-font-family-base: 'Switzer', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --vp-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  --vp-nav-height: 68px;
+  --vp-layout-max-width: 1240px;
+  --vp-sidebar-width: 276px;
+  --vp-code-font-size: 0.9em;
+  --vp-code-bg: color-mix(in oklch, var(--murph-muted) 82%, transparent);
+  --vp-code-block-bg: var(--murph-panel);
+  --vp-custom-block-info-bg: var(--murph-panel);
+  --vp-custom-block-info-border: var(--murph-rule);
+}
+
+.dark {
+  color-scheme: light;
+}
+
+html {
+  background: var(--murph-paper);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: var(--murph-paper);
+}
+
+::selection {
+  background: var(--murph-rust-soft);
+  color: var(--murph-ink);
+}
+
+.VPNavBar {
+  border-bottom: 1px solid var(--murph-rule);
+}
+
+.VPNavBar .title {
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.VPNavBar .VPImage.logo {
+  height: 18px;
+  width: 18px;
+}
+
+.VPNavBarMenuLink {
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 560;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.VPNavBarMenuLink:hover,
+.VPNavBarMenuLink.active {
+  background: color-mix(in oklch, var(--murph-rust) 8%, transparent);
+  color: var(--murph-ink);
+}
+
+.VPSidebar {
+  border-right: 1px solid var(--murph-rule);
+}
+
+.VPSidebarItem .text {
+  letter-spacing: 0;
+}
+
+.VPSidebarItem.is-active > .item .link > .text {
+  color: var(--murph-ink);
+}
+
+.VPSidebarItem.is-active > .item .link {
+  border-left: 1px solid var(--murph-rust);
+}
+
+.VPDoc .content-container {
+  max-width: 74ch;
+}
+
+.vp-doc {
+  color: var(--murph-soft-ink);
+  line-height: 1.72;
+}
+
+.vp-doc h1 {
+  color: var(--murph-ink);
+  font-size: clamp(2.4rem, 5vw, 4.6rem);
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 0.98;
+  max-width: 11ch;
+}
+
+.vp-doc h2 {
+  border-top: 1px solid var(--murph-rule);
+  color: var(--murph-ink);
+  font-size: 1.62rem;
+  letter-spacing: 0;
+  margin-top: var(--space-xl);
+  padding-top: var(--space-md);
+}
+
+.vp-doc h3 {
+  color: var(--murph-ink);
+  letter-spacing: 0;
+}
+
+.vp-doc p,
+.vp-doc li {
+  font-size: 1rem;
+}
+
+.vp-doc a {
+  font-weight: 560;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.vp-doc div[class*='language-'],
+.vp-doc pre {
+  border: 1px solid var(--murph-rule);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.vp-doc :not(pre) > code {
+  border: 1px solid color-mix(in oklch, var(--murph-rule) 70%, transparent);
+  border-radius: 6px;
+  color: var(--murph-ink);
+  font-variant-ligatures: none;
+  padding: 0.12rem 0.28rem;
+}
+
+.custom-block {
+  border: 1px solid var(--murph-rule);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.murph-home {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 0 var(--space-md) var(--space-2xl);
+}
+
+.murph-hero {
+  align-items: end;
+  border-bottom: 1px solid var(--murph-rule);
+  display: grid;
+  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: calc(100vh - var(--vp-nav-height));
+  padding: clamp(5rem, 9vw, 8rem) 0 var(--space-xl);
+}
+
+.murph-hero-copy {
+  max-width: 760px;
+}
+
+.murph-eyebrow {
+  color: var(--murph-rust);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  margin: 0 0 var(--space-sm);
+  text-transform: uppercase;
+}
+
+.murph-hero h1 {
+  color: var(--murph-ink);
+  font-size: clamp(3.1rem, 7.4vw, 6.7rem);
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 0.95;
+  margin: 0;
+  max-width: 10.8ch;
+}
+
+.murph-lede {
+  color: var(--murph-soft-ink);
+  font-size: clamp(1rem, 1.7vw, 1.22rem);
+  line-height: 1.65;
+  margin: var(--space-md) 0 0;
+  max-width: 42rem;
+}
+
+.murph-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-lg);
+}
+
+.murph-primary,
+.murph-secondary {
+  align-items: center;
+  border-radius: 8px;
+  display: inline-flex;
+  font-weight: 600;
+  min-height: 2.8rem;
+  padding: 0.78rem 1rem;
+  text-decoration: none;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.murph-primary:hover,
+.murph-secondary:hover {
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.murph-primary {
+  background: var(--murph-rust);
+  color: var(--murph-paper);
+}
+
+.murph-primary:hover {
+  color: var(--murph-paper);
+}
+
+.murph-secondary {
+  border: 1px solid var(--murph-rule);
+  color: var(--murph-ink);
+}
+
+.murph-secondary:hover {
+  border-color: color-mix(in oklch, var(--murph-rust) 34%, var(--murph-rule));
+  color: var(--murph-ink);
+}
+
+.murph-run-panel {
+  background: var(--murph-panel);
+  border: 1px solid var(--murph-rule);
+  border-radius: 8px;
+  box-shadow: 0 24px 80px oklch(40% 0.03 58 / 9%);
+  padding: var(--space-md);
+}
+
+.murph-panel-header {
+  align-items: center;
+  border-bottom: 1px solid var(--murph-rule);
+  color: var(--murph-soft-ink);
+  display: flex;
+  font-size: 0.75rem;
+  font-weight: 650;
+  justify-content: space-between;
+  letter-spacing: 0.08em;
+  padding-bottom: var(--space-sm);
+  text-transform: uppercase;
+}
+
+.murph-run-panel ul {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: var(--space-xs) 0 0;
+  padding: 0;
+}
+
+.murph-run-panel li {
+  border-bottom: 1px solid color-mix(in oklch, var(--murph-rule) 58%, transparent);
+  color: var(--murph-ink);
+  font-size: 0.94rem;
+  line-height: 1.45;
+  padding: 0.9rem 0;
+}
+
+.murph-run-panel li:last-child {
+  border-bottom: 0;
+}
+
+.murph-workflow {
+  border-bottom: 1px solid var(--murph-rule);
+  display: grid;
+  gap: var(--space-xl);
+  grid-template-columns: 300px minmax(0, 1fr);
+  padding: var(--space-2xl) 0;
+}
+
+.murph-section-intro h2,
+.murph-docs-band h2 {
+  color: var(--murph-ink);
+  font-size: clamp(2rem, 3.4vw, 3.35rem);
+  font-weight: 620;
+  letter-spacing: 0;
+  line-height: 1.02;
+  margin: 0;
+}
+
+.murph-workflow-grid {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.murph-workflow-grid article {
+  border-right: 1px solid var(--murph-rule);
+  min-height: 14rem;
+  padding: 0 var(--space-md);
+}
+
+.murph-workflow-grid article:first-child {
+  padding-left: 0;
+}
+
+.murph-workflow-grid article:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.murph-workflow-grid span {
+  color: var(--murph-rust);
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 650;
+  margin-bottom: var(--space-sm);
+}
+
+.murph-workflow-grid h3 {
+  color: var(--murph-ink);
+  font-size: 1.16rem;
+  font-weight: 650;
+  margin: 0 0 var(--space-sm);
+}
+
+.murph-workflow-grid p {
+  color: var(--murph-soft-ink);
+  line-height: 1.62;
+  margin: 0;
+}
+
+.murph-docs-band {
+  align-items: start;
+  display: grid;
+  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  padding: var(--space-2xl) 0 var(--space-xl);
+}
+
+.murph-doc-links {
+  border-top: 1px solid var(--murph-rule);
+  display: grid;
+}
+
+.murph-doc-links a {
+  align-items: center;
+  border-bottom: 1px solid var(--murph-rule);
+  color: var(--murph-ink);
+  display: flex;
+  font-weight: 600;
+  justify-content: space-between;
+  padding: 1rem 0;
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+.murph-doc-links a::after {
+  color: var(--murph-rust);
+  content: "->";
+  font-weight: 500;
+}
+
+.murph-doc-links a:hover {
+  color: var(--murph-rust);
+}
+
+@media (max-width: 960px) {
+  .murph-hero,
+  .murph-workflow,
+  .murph-docs-band {
+    grid-template-columns: 1fr;
+  }
+
+  .murph-hero {
+    min-height: auto;
+  }
+
+  .murph-run-panel {
+    max-width: 420px;
+  }
+
+  .murph-workflow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .murph-workflow-grid article,
+  .murph-workflow-grid article:first-child,
+  .murph-workflow-grid article:last-child {
+    border-bottom: 1px solid var(--murph-rule);
+    border-right: 0;
+    min-height: auto;
+    padding: var(--space-md) 0;
+  }
+
+  .murph-workflow-grid article:last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .murph-home {
+    padding-inline: var(--space-md);
+  }
+
+  .murph-hero h1 {
+    font-size: clamp(2.7rem, 17vw, 4.6rem);
+  }
+
+  .murph-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

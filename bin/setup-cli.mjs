@@ -337,7 +337,7 @@ async function setupSlack() {
     if (options.nonInteractive && !configured) {
       fail('Missing Slack app settings. Set SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET.');
     }
-    info('Use docs/slack-socket-mode-manifest.yml and this redirect URL:');
+    info('Use docs/public/slack-socket-mode-manifest.yml and this redirect URL:');
     console.log(`   ${paint('bold', `${murphUrl}/api/slack/oauth/callback`)}`);
     const values = {
       SLACK_EVENTS_MODE: 'socket',

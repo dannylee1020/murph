@@ -57,7 +57,7 @@ Check your local install any time:
 murph doctor
 ```
 
-Detailed setup, integration, and extension docs are coming soon.
+Detailed setup, integration, and extension docs live in `docs/`.
 
 ## What you can connect
 
