@@ -16,7 +16,7 @@ Murph runs on your machine. Start the server, connect your channels, and use the
 Run the installer from any terminal:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash
+curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
 The installer downloads Murph, installs dependencies, builds the app, creates local defaults, and installs the `murph` CLI.

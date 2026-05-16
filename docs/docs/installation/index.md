@@ -17,10 +17,18 @@ Murph is installed as a local app plus a `murph` CLI.
 ## Install from the internet
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash
+curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
 By default, Murph installs into `~/.murph/app` and places the CLI at `~/.local/bin/murph`.
+
+If you want to inspect the installer first:
+
+```bash
+curl -fsSL https://murph-agent.com/install.sh -o install.sh
+bash -n install.sh
+bash install.sh
+```
 
 ## Install from a checkout
 

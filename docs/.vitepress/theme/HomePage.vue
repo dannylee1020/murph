@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue';
 
 const theme = ref<'light' | 'dark'>('light');
-const installCommand = 'curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash';
+const installCommand = 'curl -fsSL https://murph-agent.com/install.sh | bash';
 
 function syncThemeFromDocument() {
   if (typeof document === 'undefined') return;
@@ -81,7 +81,7 @@ onMounted(syncThemeFromDocument);
             <button type="button" @click="copyCommand(installCommand)">
               <span class="murph-command-copy">
                 <span class="murph-command-label">Install</span>
-                <code><span>curl</span> -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash</code>
+                <code><span>curl</span> -fsSL https://murph-agent.com/install.sh | bash</code>
               </span>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="9" y="9" width="10" height="10" rx="1.5" />

@@ -57,7 +57,7 @@ require_app() {
     cat >&2 <<EOF
 Murph is not installed at $MURPH_APP_DIR.
 Install with:
-  curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash
+  curl -fsSL https://murph-agent.com/install.sh | bash
 EOF
     exit 1
   fi

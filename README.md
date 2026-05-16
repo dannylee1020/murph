@@ -23,7 +23,7 @@ Murph is built for people who want async continuity without handing over control
 Install Murph:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dannylee1020/murph/master/install.sh | bash
+curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
 Run setup:
