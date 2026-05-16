@@ -1,35 +1,22 @@
 # Murph
 
-Murph is a self-hosted async autopilot for handling messaging channels while you are offline.
+Murph is a local-first coverage agent for the hours you are away.
 
-Start a session before you log off. Murph watches the channels you choose, pulls context from your connected tools, and handles incoming requests according to your policy. Safe work can move forward automatically; everything else is queued for review.
+Start a session before you log off. Murph watches the channels you choose, pulls context from your connected tools, drafts grounded replies, applies your policy, and leaves a review trail for every decision.
 
-## What it is
-
-Murph is built for operators who want continuity without giving up control.
-
-It sits between your team chat and your work context: threads, docs, email, meetings, calendar, GitHub, and local notes. When something comes in, Murph gathers the relevant context, drafts a grounded response, applies your policy, and records the decision so you can audit what happened later.
-
-## Why it helps
-
-- **Stay offline without blocking the team** - routine questions can be answered while you are away.
-- **Keep autonomy explicit** - policy profiles decide what can be sent, queued, or skipped.
-- **Review with context** - morning triage shows what Murph handled and what evidence it used.
-- **Connect your actual workflow** - Slack, Discord, docs, email, meetings, calendar, GitHub, and local files can all contribute context.
-- **Run it yourself** - Murph stores state locally with SQLite and encrypted credentials.
-
-## How it works
-
-1. You start a Murph session and choose the channels to watch.
-2. Murph builds a session context snapshot from your handoff notes and connected sources.
-3. A message arrives in a watched channel.
-4. Murph retrieves only the context relevant to that request.
-5. The model drafts a response and Murph applies your policy.
-6. The result is sent, queued for review, or skipped with an audit trail.
+| What you need | What Murph does |
+| --- | --- |
+| Stay offline without losing momentum | Watches selected Slack or Discord channels while you are away |
+| Keep control explicit | Sends safe work, queues risky work, and skips anything it should not answer |
+| Use your real context | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
+| Review what happened | Shows what was sent, queued, skipped, and why |
+| Run it yourself | Stores runtime state locally with SQLite and encrypted credentials |
 
 ```text
-channel event -> context -> skill -> grounded draft -> policy -> send | queue | skip
+selected channel -> context -> grounded draft -> policy -> send | queue | skip
 ```
+
+Murph is built for people who want async continuity without handing over control: indie developers, founders, operators, and distributed teams.
 
 ## Getting started
 
@@ -57,7 +44,18 @@ Check your local install any time:
 murph doctor
 ```
 
-Detailed setup, integration, and extension docs live in `docs/`.
+## Documentation
+
+| Topic | Start here |
+| --- | --- |
+| Quickstart | [docs.murph-agent.com/docs/quickstart](https://docs.murph-agent.com/docs/quickstart) |
+| Installation | [docs.murph-agent.com/docs/installation](https://docs.murph-agent.com/docs/installation) |
+| Configuration | [docs.murph-agent.com/docs/configuration](https://docs.murph-agent.com/docs/configuration) |
+| CLI & Agent | [docs.murph-agent.com/docs/cli-agent](https://docs.murph-agent.com/docs/cli-agent) |
+| Channels | [docs.murph-agent.com/docs/channels](https://docs.murph-agent.com/docs/channels) |
+| Integrations | [docs.murph-agent.com/docs/integrations](https://docs.murph-agent.com/docs/integrations) |
+| Core Concepts | [docs.murph-agent.com/docs/core-concepts](https://docs.murph-agent.com/docs/core-concepts) |
+| Contributing | [docs.murph-agent.com/docs/contributing](https://docs.murph-agent.com/docs/contributing) |
 
 ## What you can connect
 
