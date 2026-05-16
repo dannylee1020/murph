@@ -76,7 +76,7 @@ Learn more in [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent).
 | Channels | Slack, Discord |
 | LLM providers | OpenAI, Anthropic |
 | Context sources | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian |
-| Runtime tools | Web search, file read, shell execution |
+| Runtime tools | Brave-backed web search by default, simple web fetch, file read, shell execution |
 | Storage | Local SQLite with encrypted credentials |
 
 ## Contributing
@@ -88,6 +88,8 @@ Murph is organized around a few extension points:
 - **Skills** for request-specific behavior.
 - **Policies** for autonomy and review rules.
 - **Providers** for model backends.
+
+The listed providers and tools are defaults, not a closed set. New search providers, fetch backends, and local integrations should fit these extension points before changing Murph core.
 
 For local development:
 

@@ -1,8 +1,8 @@
 import { Readable } from 'node:stream';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 function jsonRequest(method: string, body?: unknown): any {
   const req = Readable.from(body === undefined ? [] : [JSON.stringify(body)]) as any;
@@ -29,7 +29,9 @@ function jsonResponse(): any & { result: () => { status: number; body: any } } {
 
 async function setup() {
   vi.resetModules();
-  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-')), 'murph.sqlite');
+  const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
+  process.env.MURPH_APP_DIR = workspaceDir;
+  process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   process.env.OPENAI_API_KEY = 'sk-test';
   process.env.SLACK_EVENTS_MODE = 'socket';
@@ -69,8 +71,26 @@ async function setup() {
 }
 
 describe('setup defaults routes', () => {
+  const originalCwd = process.cwd();
+  const originalAppDir = process.env.MURPH_APP_DIR;
+
   beforeEach(() => {
     vi.restoreAllMocks();
+    process.chdir(originalCwd);
+    if (originalAppDir === undefined) {
+      delete process.env.MURPH_APP_DIR;
+    } else {
+      process.env.MURPH_APP_DIR = originalAppDir;
+    }
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    if (originalAppDir === undefined) {
+      delete process.env.MURPH_APP_DIR;
+    } else {
+      process.env.MURPH_APP_DIR = originalAppDir;
+    }
   });
 
   it('saves owner, selected channels, and schedule as shared setup defaults', async () => {
@@ -98,7 +118,9 @@ describe('setup defaults routes', () => {
       workdayStartHour: 8,
       workdayEndHour: 16
     });
-    expect(store.getAppSettings().setupDefaults?.selectedChannels).toEqual([{ id: 'C1', displayName: '#product' }]);
+    expect(store.getAppSettings().setupDefaults).toBeUndefined();
+    expect(readFileSync(join(process.env.MURPH_APP_DIR!, 'murph.config.yaml'), 'utf8')).toContain('ownerUserId: U1');
+    expect(readFileSync(join(process.env.MURPH_APP_DIR!, 'murph.config.yaml'), 'utf8')).toContain('displayName: "#product"');
   });
 
   it('marks setup ready only after identity and channels are configured', async () => {

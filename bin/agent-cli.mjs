@@ -1,26 +1,15 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
-import {
-  AuthStorage,
-  DefaultResourceLoader,
-  ModelRegistry,
-  SessionManager,
-  createAgentSession,
-  defineTool
-} from '@mariozechner/pi-coding-agent';
-import { getModel } from '@mariozechner/pi-ai';
+import { main as runPiMain, defineTool } from '@mariozechner/pi-coding-agent';
 import { Type } from 'typebox';
+import { parse } from 'yaml';
 
 const appDir = path.resolve(process.env.MURPH_APP_DIR || process.cwd());
 const murphHome = process.env.MURPH_HOME || path.join(homedir(), '.murph');
 const agentDir = process.env.MURPH_AGENT_DIR || path.join(murphHome, 'pi-agent');
 const murphUrl = process.env.MURPH_URL || `http://localhost:${process.env.MURPH_PORT || '5173'}`;
-const rl = readline.createInterface({ input, output });
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const color = {
   reset: useColor ? '\x1b[0m' : '',
@@ -51,6 +40,17 @@ const CUSTOM_TOOL_NAMES = [
   'murph_policy_set'
 ];
 
+const DEFAULT_TOOL_NAMES = [
+  'read',
+  'bash',
+  'edit',
+  'write',
+  'grep',
+  'find',
+  'ls',
+  ...CUSTOM_TOOL_NAMES
+];
+
 const MUTATING_TOOLS = new Set([
   'edit',
   'write',
@@ -59,6 +59,24 @@ const MUTATING_TOOLS = new Set([
   'murph_plugin_install',
   'murph_plugin_reload',
   'murph_policy_set'
+]);
+
+const PI_FLAGS_WITH_VALUE = new Set([
+  '--api-key',
+  '--append-system-prompt',
+  '--extension',
+  '-e',
+  '--fork',
+  '--mode',
+  '--models',
+  '--prompt-template',
+  '--session',
+  '--session-dir',
+  '--skill',
+  '--system-prompt',
+  '--theme',
+  '--tools',
+  '-t'
 ]);
 
 function paint(style, text) {
@@ -88,13 +106,6 @@ function padRight(text, width) {
   return `${text}${' '.repeat(Math.max(0, width - visibleLength(text)))}`;
 }
 
-function rule(label = '') {
-  const width = terminalWidth();
-  if (!label) return paint('dim', '-'.repeat(width));
-  const text = ` ${label} `;
-  return paint('dim', `${text}${'-'.repeat(Math.max(0, width - visibleLength(text)))}`);
-}
-
 function line(label, value) {
   return `${paint('dim', `${label}:`)} ${value}`;
 }
@@ -114,15 +125,9 @@ function printBox(title, rows, tone = 'cyan') {
   console.log(paint('dim', `+${border}+`));
 }
 
-function compactPath(value) {
-  const home = homedir();
-  const text = String(value);
-  return text.startsWith(home) ? `~${text.slice(home.length)}` : text;
-}
-
 function commandList(rows) {
   const width = terminalWidth();
-  const commandWidth = Math.min(24, Math.max(16, ...rows.map((row) => row[0].length + 2)));
+  const commandWidth = Math.min(28, Math.max(16, ...rows.map((row) => row[0].length + 2)));
   return rows.map(([command, description]) => {
     const left = padRight(paint('cyan', command), commandWidth);
     return `${left}${truncate(description, width - commandWidth - 2)}`;
@@ -136,11 +141,13 @@ function usage() {
     ...commandList([
       ['--provider NAME', 'Model provider. Defaults to MURPH_AGENT_PROVIDER or setup defaults.'],
       ['--model NAME', 'Model id. Defaults to MURPH_AGENT_MODEL or the provider default.'],
+      ['--thinking LEVEL', 'Thinking level. Defaults to low, or medium with --source-edits.'],
+      ['--print, -p', 'Run one-shot text mode instead of the fullscreen chat TUI.'],
       ['--no-session', 'Use an in-memory session for this run.'],
       ['--no-server', 'Do not auto-start Murph\'s local HTTP server.'],
       ['--continue', 'Continue the most recent Murph agent session.'],
       ['--source-edits', 'Allow direct Murph source edits for this run.'],
-      ['--verbose-tools', 'Show every tool request and execution event.'],
+      ['--verbose-tools', 'Start with expanded tool output.'],
       ['--help', 'Show this help.']
     ])
   ]);
@@ -152,8 +159,8 @@ function loadEnv() {
     return;
   }
 
-  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const trimmed = line.trim();
+  for (const rawLine of readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = rawLine.trim();
     if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) {
       continue;
     }
@@ -166,9 +173,27 @@ function loadEnv() {
   }
 }
 
+function loadConfig() {
+  const configPath = path.join(appDir, 'murph.config.yaml');
+  if (!existsSync(configPath)) return {};
+  const parsed = parse(readFileSync(configPath, 'utf8')) ?? {};
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+}
+
+function configString(parts) {
+  let cursor = loadConfig();
+  for (const part of parts) {
+    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) return undefined;
+    cursor = cursor[part];
+  }
+  return typeof cursor === 'string' && cursor.trim() ? cursor.trim() : undefined;
+}
+
 function parseArgs(argv) {
   const options = {};
   const prompt = [];
+  const passthrough = [];
+
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') {
@@ -177,25 +202,45 @@ function parseArgs(argv) {
       options.provider = argv[++i];
     } else if (arg === '--model') {
       options.model = argv[++i];
+    } else if (arg === '--thinking') {
+      options.thinking = argv[++i];
     } else if (arg === '--no-session') {
       options.noSession = true;
     } else if (arg === '--no-server') {
       options.noServer = true;
-    } else if (arg === '--continue') {
+    } else if (arg === '--continue' || arg === '-c') {
       options.continueSession = true;
     } else if (arg === '--source-edits') {
       options.sourceEdits = true;
     } else if (arg === '--verbose-tools') {
       options.verboseTools = true;
+    } else if (arg === '--print' || arg === '-p') {
+      options.print = true;
+    } else if (arg === '--version' || arg === '-v') {
+      options.version = true;
+    } else if (arg === '--list-models') {
+      passthrough.push(arg);
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith('-') && !next.startsWith('@')) {
+        passthrough.push(argv[++i]);
+      }
+    } else if (arg.startsWith('--') || arg.startsWith('-')) {
+      passthrough.push(arg);
+      if (PI_FLAGS_WITH_VALUE.has(arg) && argv[i + 1] !== undefined) {
+        passthrough.push(argv[++i]);
+      }
     } else {
       prompt.push(arg);
     }
   }
-  return { options, prompt: prompt.join(' ').trim() };
+
+  return { options, prompt: prompt.join(' ').trim(), passthrough };
 }
 
 function defaultProvider() {
   if (process.env.MURPH_AGENT_PROVIDER) return process.env.MURPH_AGENT_PROVIDER;
+  const configured = configString(['ai', 'agent', 'provider']);
+  if (configured) return configured;
   if (process.env.OPENAI_API_KEY) return 'openai';
   if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
   return 'openai';
@@ -203,6 +248,8 @@ function defaultProvider() {
 
 function defaultModel(provider) {
   if (process.env.MURPH_AGENT_MODEL) return process.env.MURPH_AGENT_MODEL;
+  const configured = configString(['ai', 'agent', 'model']);
+  if (configured) return configured;
   return provider === 'anthropic' ? 'claude-sonnet-4-6' : 'gpt-5.4-mini';
 }
 
@@ -318,15 +365,25 @@ function textResult(details, terminate = false) {
   };
 }
 
-async function confirmTool(toolName, args) {
-  console.log('');
-  printBox('approval required', [
-    line('tool', paint('yellow', toolName)),
-    '',
-    ...JSON.stringify(args, null, 2).split('\n').map((row) => paint('dim', row))
-  ], 'yellow');
-  const answer = await rl.question(`${paint('yellow', 'apply change?')} ${paint('dim', '[y/N]')} `);
-  return answer.trim().toLowerCase() === 'y' || answer.trim().toLowerCase() === 'yes';
+async function confirmTool(toolName, args, ctx) {
+  if (!ctx.hasUI) {
+    return false;
+  }
+  return ctx.ui.confirm(
+    `Allow ${toolName}?`,
+    JSON.stringify(args, null, 2)
+  );
+}
+
+async function promptCredential(provider, ctx) {
+  if (!ctx.hasUI) {
+    throw new Error('credential_required');
+  }
+  const credential = await ctx.ui.input(
+    `Credential for ${provider}`,
+    'Stored locally by Murph; not included in the model transcript.'
+  );
+  return String(credential || '').trim();
 }
 
 function safePluginId(raw) {
@@ -440,30 +497,6 @@ function validatePluginRoot(pluginRoot) {
   return { ok: true, root, id: manifest.id, capabilities };
 }
 
-function runSetupSection(section) {
-  const result = spawnSync(process.execPath, [path.join(appDir, 'bin/setup-cli.mjs'), section || 'all'], {
-    cwd: appDir,
-    stdio: 'pipe',
-    encoding: 'utf8',
-    env: process.env
-  });
-  return {
-    exitCode: result.status ?? 1,
-    stdout: result.stdout.trim(),
-    stderr: result.stderr.trim()
-  };
-}
-
-async function promptCredential(provider) {
-  console.log('');
-  printBox('credential required', [
-    line('provider', paint('yellow', provider)),
-    'The credential is sent directly to Murph and is not included in the model transcript.'
-  ], 'yellow');
-  const credential = await rl.question(`${paint('yellow', 'credential')} ${paint('dim', '>')} `);
-  return credential.trim();
-}
-
 function createMurphTools() {
   return [
     defineTool({
@@ -507,8 +540,8 @@ function createMurphTools() {
         provider: Type.String({ description: 'Provider id, such as github, notion, or granola.' })
       }),
       executionMode: 'sequential',
-      execute: async (_toolCallId, params) => {
-        const credential = await promptCredential(params.provider);
+      execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+        const credential = await promptCredential(params.provider, ctx);
         if (!credential) {
           throw new Error('credential_required');
         }
@@ -554,7 +587,7 @@ function createMurphTools() {
     defineTool({
       name: 'murph_plugin_install',
       label: 'Install Murph plugin',
-      description: 'Validate a scoped plugin package and reload plugins in the running server.',
+      description: 'Validate a scoped Murph plugin package and reload plugins in the running server.',
       promptSnippet: 'murph_plugin_install: validate and reload scoped plugins.',
       parameters: Type.Object({
         root: Type.String({ description: 'Absolute plugin root, or a plugin id under ~/.murph/plugins.' })
@@ -626,9 +659,168 @@ function createMurphTools() {
   ];
 }
 
-function createGuardExtension(state) {
+function murphSystemPrompt(sourceEdits) {
+  return [
+    'You are Murph Agent, a user-facing Pi coding agent embedded in the Murph CLI.',
+    'Your job is to help the local operator set up Murph, debug Murph, build scoped integrations, create skills/adapters, and adjust policy configuration.',
+    'Murph async Slack/Discord runtime is separate. Do not present yourself as the async runtime brain.',
+    'Prefer Murph custom tools for setup, integration status, plugin reload, and policy changes before editing files by hand.',
+    'For new capabilities, prefer scoped plugin packages under ~/.murph/plugins/<id> with plugin.json, skills/*.md, and adapters/*.mjs.',
+    'Installed runtime plugin adapters must remain read-only in v1. Do not add external-write adapter tools to scoped plugins.',
+    sourceEdits
+      ? 'This run explicitly allows Murph source edits. Keep changes focused and validate them.'
+      : 'Default write scope is Plugin+Config. Do not modify Murph source files unless the operator restarts with --source-edits or explicitly asks for source edits.',
+    'Never ask the user to paste credentials into chat. Use credential tools that prompt locally.'
+  ].join('\n');
+}
+
+function formatDuration(ms) {
+  if (ms === undefined || ms === null) return 'n/a';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s`;
+}
+
+function formatStatusValue(value) {
+  if (value.status === 'fulfilled') {
+    const payload = value.value;
+    if (payload?.ok === false) return `error: ${payload.error || 'not ok'}`;
+    if (payload?.status) return String(payload.status);
+    return 'ok';
+  }
+  return `error: ${value.reason instanceof Error ? value.reason.message : String(value.reason)}`;
+}
+
+async function readMurphStatusSummary() {
+  const [health, setup, integrations, plugins, policy] = await Promise.allSettled([
+    requestJson('GET', '/api/health'),
+    requestJson('GET', '/api/setup/status'),
+    requestJson('GET', '/api/integrations/status'),
+    requestJson('GET', '/api/plugins/status'),
+    requestJson('GET', '/api/gateway/policy/config')
+  ]);
+  return [
+    `health: ${formatStatusValue(health)}`,
+    `setup: ${formatStatusValue(setup)}`,
+    `integrations: ${formatStatusValue(integrations)}`,
+    `plugins: ${formatStatusValue(plugins)}`,
+    `policy: ${formatStatusValue(policy)}`
+  ];
+}
+
+function createMurphExtension(initialState) {
+  const state = {
+    sourceEdits: Boolean(initialState.sourceEdits),
+    lastLatency: undefined,
+    current: undefined
+  };
+
+  function setStatus(ctx, text, tone = 'dim') {
+    if (!ctx.hasUI) return;
+    const theme = ctx.ui.theme;
+    const prefix = tone === 'accent' ? theme.fg('accent', 'murph') : theme.fg('dim', 'murph');
+    ctx.ui.setStatus('murph', `${prefix} ${theme.fg(tone, text)}`);
+  }
+
+  function finishLatency() {
+    const current = state.current;
+    if (!current) return;
+    const totalMs = Date.now() - current.startedAt;
+    state.lastLatency = {
+      providerMs: current.providerMs,
+      firstTokenMs: current.firstTokenAt ? current.firstTokenAt - current.startedAt : undefined,
+      toolMs: current.toolMs,
+      toolCount: current.toolCount,
+      totalMs
+    };
+    state.current = undefined;
+  }
+
   return (pi) => {
-    pi.on('tool_call', async (event) => {
+    for (const tool of createMurphTools()) {
+      pi.registerTool(tool);
+    }
+
+    pi.on('session_start', async (_event, ctx) => {
+      ctx.ui.setTheme('murph-agent');
+      ctx.ui.setWorkingVisible(true);
+      ctx.ui.setWorkingIndicator({ frames: ['-', '\\', '|', '/'], intervalMs: 90 });
+      ctx.ui.setWorkingMessage('working through the request');
+      ctx.ui.setTitle(`murph agent - ${path.basename(appDir)}`);
+      ctx.ui.setStatus(
+        'murph-scope',
+        state.sourceEdits
+          ? ctx.ui.theme.fg('warning', 'source edits')
+          : ctx.ui.theme.fg('success', 'plugin+config')
+      );
+      setStatus(ctx, 'idle');
+    });
+
+    pi.on('before_agent_start', async (_event, ctx) => {
+      state.current = {
+        startedAt: Date.now(),
+        providerStartedAt: undefined,
+        providerMs: undefined,
+        firstTokenAt: undefined,
+        toolMs: 0,
+        toolCount: 0,
+        activeTools: new Map()
+      };
+      ctx.ui.setWorkingMessage('checking context and deciding next step');
+      setStatus(ctx, 'thinking', 'accent');
+    });
+
+    pi.on('before_provider_request', async (_event, ctx) => {
+      if (state.current && state.current.providerStartedAt === undefined) {
+        state.current.providerStartedAt = Date.now();
+      }
+      ctx.ui.setWorkingMessage('waiting on model');
+      setStatus(ctx, 'calling model', 'accent');
+    });
+
+    pi.on('after_provider_response', async (_event, ctx) => {
+      if (state.current?.providerStartedAt && state.current.providerMs === undefined) {
+        state.current.providerMs = Date.now() - state.current.providerStartedAt;
+      }
+      ctx.ui.setWorkingMessage('streaming response');
+      setStatus(ctx, 'streaming', 'accent');
+    });
+
+    pi.on('message_update', async (event, ctx) => {
+      if (event.assistantMessageEvent?.type !== 'text_delta') return;
+      if (state.current && state.current.firstTokenAt === undefined) {
+        state.current.firstTokenAt = Date.now();
+      }
+      setStatus(ctx, 'streaming', 'accent');
+    });
+
+    pi.on('tool_execution_start', async (event, ctx) => {
+      if (state.current) {
+        state.current.toolCount += 1;
+        state.current.activeTools.set(event.toolCallId, Date.now());
+      }
+      ctx.ui.setWorkingMessage(`running ${event.toolName}`);
+      setStatus(ctx, `running ${event.toolName}`, 'accent');
+    });
+
+    pi.on('tool_execution_end', async (event, ctx) => {
+      const startedAt = state.current?.activeTools.get(event.toolCallId);
+      if (state.current && startedAt) {
+        state.current.toolMs += Date.now() - startedAt;
+        state.current.activeTools.delete(event.toolCallId);
+      }
+      if (event.isError) {
+        setStatus(ctx, `${event.toolName} failed`, 'error');
+      }
+    });
+
+    pi.on('agent_end', async (_event, ctx) => {
+      finishLatency();
+      const suffix = state.lastLatency ? `last turn ${formatDuration(state.lastLatency.totalMs)}` : 'idle';
+      ctx.ui.setWorkingMessage();
+      setStatus(ctx, suffix);
+    });
+
+    pi.on('tool_call', async (event, ctx) => {
       if (event.toolName === 'write' || event.toolName === 'edit') {
         const target = resolvePathForTool(event.input.path);
         if (!state.sourceEdits && !isAllowedPluginOrConfigPath(target)) {
@@ -651,7 +843,7 @@ function createGuardExtension(state) {
           };
         }
         if (state.sourceEdits && bashNeedsApproval(command)) {
-          const approved = await confirmTool(event.toolName, event.input);
+          const approved = await confirmTool(event.toolName, event.input, ctx);
           return approved ? undefined : { block: true, reason: 'User declined tool execution.' };
         }
         return undefined;
@@ -661,128 +853,72 @@ function createGuardExtension(state) {
         return undefined;
       }
 
-      const approved = await confirmTool(event.toolName, event.input);
+      const approved = await confirmTool(event.toolName, event.input, ctx);
       return approved ? undefined : { block: true, reason: 'User declined tool execution.' };
+    });
+
+    pi.registerCommand('murph-status', {
+      description: 'Show Murph server, setup, integration, plugin, and policy status.',
+      handler: async (_args, ctx) => {
+        try {
+          ctx.ui.notify((await readMurphStatusSummary()).join('\n'), 'info');
+        } catch (error) {
+          ctx.ui.notify(error instanceof Error ? error.message : String(error), 'error');
+        }
+      }
+    });
+
+    pi.registerCommand('latency', {
+      description: 'Show the last Murph Agent turn latency breakdown.',
+      handler: async (_args, ctx) => {
+        if (!state.lastLatency) {
+          ctx.ui.notify('No completed turn yet.', 'info');
+          return;
+        }
+        ctx.ui.notify([
+          `model wait: ${formatDuration(state.lastLatency.providerMs)}`,
+          `first token: ${formatDuration(state.lastLatency.firstTokenMs)}`,
+          `tools: ${state.lastLatency.toolCount} calls / ${formatDuration(state.lastLatency.toolMs)}`,
+          `total: ${formatDuration(state.lastLatency.totalMs)}`
+        ].join('\n'), 'info');
+      }
+    });
+
+    pi.registerCommand('source-edits', {
+      description: 'Toggle direct Murph source edits for this session: /source-edits on|off.',
+      handler: async (args, ctx) => {
+        const value = args.trim().toLowerCase();
+        if (value !== 'on' && value !== 'off') {
+          ctx.ui.notify('Usage: /source-edits on|off', 'warning');
+          return;
+        }
+        state.sourceEdits = value === 'on';
+        ctx.ui.setStatus(
+          'murph-scope',
+          state.sourceEdits
+            ? ctx.ui.theme.fg('warning', 'source edits')
+            : ctx.ui.theme.fg('success', 'plugin+config')
+        );
+        ctx.ui.notify(state.sourceEdits ? 'Source edits enabled.' : 'Plugin+Config write scope restored.', 'info');
+      }
+    });
+
+    pi.registerCommand('tool-log', {
+      description: 'Alias for expanded tool cards: /tool-log on|off.',
+      handler: async (args, ctx) => {
+        const value = args.trim().toLowerCase();
+        if (value !== 'on' && value !== 'off') {
+          ctx.ui.notify('Usage: /tool-log on|off', 'warning');
+          return;
+        }
+        ctx.ui.setToolsExpanded(value === 'on');
+        ctx.ui.notify(value === 'on' ? 'Tool details expanded.' : 'Tool details collapsed.', 'info');
+      }
     });
   };
 }
 
-function murphSystemPrompt(sourceEdits) {
-  return [
-    'You are Murph Agent, a user-facing Pi coding agent embedded in the Murph CLI.',
-    'Your job is to help the local operator set up Murph, debug Murph, build scoped integrations, create skills/adapters, and adjust policy configuration.',
-    'Murph async Slack/Discord runtime is separate. Do not present yourself as the async runtime brain.',
-    'Prefer Murph custom tools for setup, integration status, plugin reload, and policy changes before editing files by hand.',
-    'For new capabilities, prefer scoped plugin packages under ~/.murph/plugins/<id> with plugin.json, skills/*.md, and adapters/*.mjs.',
-    'Installed runtime plugin adapters must remain read-only in v1. Do not add external-write adapter tools to scoped plugins.',
-    sourceEdits
-      ? 'This run explicitly allows Murph source edits. Keep changes focused and validate them.'
-      : 'Default write scope is Plugin+Config. Do not modify Murph source files unless the operator restarts with --source-edits or explicitly asks for source edits.',
-    'Never ask the user to paste credentials into chat. Use credential tools that prompt locally.'
-  ].join('\n');
-}
-
-function assistantText(message) {
-  if (!message || message.role !== 'assistant') {
-    return '';
-  }
-  return message.content
-    .filter((item) => item.type === 'text')
-    .map((item) => item.text)
-    .join('');
-}
-
-function toolCallNames(message) {
-  if (!message || message.role !== 'assistant') {
-    return [];
-  }
-  return message.content
-    .filter((item) => item.type === 'toolCall')
-    .map((item) => item.name);
-}
-
-function toolErrorText(result) {
-  const value = result?.details ?? result;
-  if (!value) return 'unknown error';
-  if (typeof value === 'string') return value;
-  if (value.error) return String(value.error);
-  if (value.message) return String(value.message);
-  const contentText = value.content
-    ?.filter((item) => item?.type === 'text' && item.text)
-    ?.map((item) => item.text)
-    ?.join(' ');
-  if (contentText) return contentText;
-  const json = JSON.stringify(value);
-  return json && json !== '{}' ? json : 'unknown error';
-}
-
-function formatToolName(name) {
-  if (name.startsWith('murph_')) return paint('magenta', name);
-  return paint('blue', name);
-}
-
-function printStartup({ provider, modelId, sessionFile, sourceEdits, modelFallbackMessage }) {
-  const rows = [
-    `${line('model', paint('bold', `${provider}/${modelId}`))}    ${line('cwd', compactPath(appDir))}`,
-    `${line('session', sessionFile ? compactPath(sessionFile) : 'in-memory')}    ${line('server', murphUrl)}`,
-    `${line('write scope', sourceEdits ? paint('yellow', 'source edits enabled') : paint('green', 'plugin+config'))}    ${line('commands', '/help /tools /status /quit')}`
-  ];
-  printBox('Murph Agent', rows, 'cyan');
-  if (modelFallbackMessage) {
-    console.log(`${paint('yellow', 'notice')} ${modelFallbackMessage}`);
-  }
-}
-
-function printAgentHelp() {
-  printBox('commands', commandList([
-    ['/status', 'Read plugin/runtime status from the local Murph server.'],
-    ['/tools', 'Show active Pi and Murph tools.'],
-    ['/tool-log on', 'Show every tool request and execution event.'],
-    ['/tool-log off', 'Hide routine tool activity.'],
-    ['/source-edits on', 'Allow direct Murph source edits for this session.'],
-    ['/source-edits off', 'Return to plugin+config write scope.'],
-    ['/help', 'Show this command reference.'],
-    ['/quit', 'Exit the agent.']
-  ]));
-}
-
-function printTools(toolNames) {
-  const groups = [
-    ['Core tools', toolNames.filter((name) => !name.startsWith('murph_'))],
-    ['Murph tools', toolNames.filter((name) => name.startsWith('murph_'))]
-  ];
-  const rows = [];
-  for (const [title, names] of groups) {
-    if (rows.length) rows.push('');
-    rows.push(paint('bold', title));
-    for (const name of names) {
-      rows.push(`  ${formatToolName(name)}`);
-    }
-  }
-  printBox('active tools', rows);
-}
-
-function printJsonPanel(title, value) {
-  printBox(title, JSON.stringify(value, null, 2).split('\n').map((row) => paint('dim', row)));
-}
-
-function printError(title, error) {
-  const message = error instanceof Error ? error.message : String(error);
-  printBox(title, [message], 'red');
-}
-
-async function createSessionManager(options) {
-  if (options.noSession) {
-    return SessionManager.inMemory(appDir);
-  }
-  const dir = sessionDirForCwd(appDir);
-  return options.continueSession
-    ? SessionManager.continueRecent(appDir, dir)
-    : SessionManager.create(appDir, dir);
-}
-
-async function runAgent(initialPrompt, options) {
-  loadEnv();
+function buildPiArgs(prompt, options, passthrough) {
   const provider = options.provider || defaultProvider();
   const modelId = options.model || defaultModel(provider);
   const apiKey = apiKeyFor(provider);
@@ -790,200 +926,61 @@ async function runAgent(initialPrompt, options) {
     throw new Error(`Missing API key for ${provider}. Run murph setup ai to choose model defaults or set the provider API key in .env.`);
   }
 
-  mkdirSync(agentDir, { recursive: true });
-  const authStorage = AuthStorage.create(path.join(agentDir, 'auth.json'));
-  authStorage.setRuntimeApiKey(provider, apiKey);
-  const modelRegistry = ModelRegistry.create(authStorage, path.join(agentDir, 'models.json'));
-  const model = getModel(provider, modelId);
-  const settingsManager = undefined;
-  const guardState = { sourceEdits: Boolean(options.sourceEdits) };
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: appDir,
-    agentDir,
-    appendSystemPrompt: [murphSystemPrompt(guardState.sourceEdits)],
-    extensionFactories: [createGuardExtension(guardState)],
-    agentsFilesOverride: (base) => ({
-      agentsFiles: [
-        ...base.agentsFiles,
-        {
-          path: '<murph-agent-contract>',
-          content: murphSystemPrompt(guardState.sourceEdits)
-        }
-      ]
-    })
-  });
-  await resourceLoader.reload();
+  const piArgs = [
+    '--provider', provider,
+    '--model', modelId,
+    '--api-key', apiKey,
+    '--append-system-prompt', murphSystemPrompt(Boolean(options.sourceEdits)),
+    '--theme', path.join(appDir, 'themes/murph-agent.json'),
+    '--tools', DEFAULT_TOOL_NAMES.join(','),
+    '--thinking', options.thinking || (options.sourceEdits ? 'medium' : 'low'),
+    ...passthrough
+  ];
 
-  const sessionManager = await createSessionManager(options);
-  const { session, modelFallbackMessage } = await createAgentSession({
-    cwd: appDir,
-    agentDir,
-    authStorage,
-    modelRegistry,
-    model,
-    thinkingLevel: 'medium',
-    resourceLoader,
-    sessionManager,
-    settingsManager,
-    customTools: createMurphTools(),
-    tools: ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls', ...CUSTOM_TOOL_NAMES]
-  });
-
-  let assistantLineOpen = false;
-  let assistantPrintedText = false;
-  let verboseTools = Boolean(options.verboseTools || process.env.MURPH_AGENT_VERBOSE_TOOLS);
-  let turnToolFailures = [];
-  const printedErrors = new Set();
-
-  function printModelError(message) {
-    const key = `${message.timestamp}:${message.errorMessage}`;
-    if (printedErrors.has(key)) {
-      return;
-    }
-    printedErrors.add(key);
-    if (assistantLineOpen) {
-      process.stdout.write('\n');
-      assistantLineOpen = false;
-    }
-    console.log(`${paint('red', 'model error')} ${message.errorMessage}`);
+  if (!options.noSession) {
+    piArgs.push('--session-dir', sessionDirForCwd(appDir));
+  } else {
+    piArgs.push('--no-session');
+  }
+  if (options.continueSession) {
+    piArgs.push('--continue');
+  }
+  if (options.verboseTools || process.env.MURPH_AGENT_VERBOSE_TOOLS) {
+    piArgs.push('--verbose');
+  }
+  if (options.print) {
+    piArgs.push('--print');
+  }
+  if (prompt) {
+    piArgs.push(prompt);
   }
 
-  function flushToolFailures() {
-    if (turnToolFailures.length === 0) {
-      return;
-    }
-    const summary = turnToolFailures
-      .map((failure) => `${failure.name}: ${failure.error}`)
-      .join(' | ');
-    console.log(`${paint('red', 'tool issue')} ${truncate(summary, terminalWidth() - 12)}`);
-    turnToolFailures = [];
-  }
+  return piArgs;
+}
 
-  session.subscribe((event) => {
-    if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
-      if (!assistantLineOpen) {
-        flushToolFailures();
-        process.stdout.write(`\n${paint('cyan', 'murph')} ${paint('dim', '<')} `);
-        assistantLineOpen = true;
-      }
-      assistantPrintedText = true;
-      process.stdout.write(event.assistantMessageEvent.delta);
-    }
-    if (event.type === 'tool_execution_start') {
-      if (verboseTools) {
-        if (assistantLineOpen) {
-          process.stdout.write('\n');
-          assistantLineOpen = false;
-        }
-        console.log(`${paint('dim', 'tool')} ${formatToolName(event.toolName)} ${paint('dim', 'running')}`);
-      }
-    }
-    if (event.type === 'tool_execution_end' && event.isError) {
-      const error = toolErrorText(event.result);
-      turnToolFailures.push({ name: event.toolName, error });
-      if (verboseTools) {
-        console.log(`${paint('red', 'tool error')} ${event.toolName}: ${error}`);
-      }
-    }
-    if (event.type === 'message_end') {
-      const text = assistantText(event.message);
-      const calls = toolCallNames(event.message);
-      if (event.message.role === 'assistant' && event.message.errorMessage) {
-        printModelError(event.message);
-        return;
-      }
-      if (assistantLineOpen) {
-        process.stdout.write('\n');
-        assistantLineOpen = false;
-        return;
-      }
-      flushToolFailures();
-      if (text.trim() && !assistantPrintedText) {
-        console.log(`\n${paint('cyan', 'murph')} ${paint('dim', '<')} ${text.trim()}\n`);
-      } else if (calls.length > 0 && verboseTools) {
-        console.log(`${paint('dim', 'requested')} ${calls.map(formatToolName).join(paint('dim', ', '))}`);
-      }
-    }
-    if (event.type === 'agent_end') {
-      for (const message of event.messages ?? []) {
-        if (message.role === 'assistant' && message.errorMessage) {
-          printModelError(message);
-        }
-      }
-    }
-    if (event.type === 'turn_start') {
-      assistantPrintedText = false;
-      turnToolFailures = [];
-    }
-  });
-
-  printStartup({
-    provider,
-    modelId,
-    sessionFile: session.sessionFile,
-    sourceEdits: guardState.sourceEdits,
-    modelFallbackMessage
-  });
-
-  if (initialPrompt) {
-    await session.prompt(initialPrompt);
+async function runAgent(prompt, options, passthrough) {
+  if (options.version) {
+    await runPiMain(['--version']);
     return;
   }
 
-  while (true) {
-    const prompt = await rl.question(`\n${paint('cyan', 'murph')} ${paint('dim', '>')} `);
-    const trimmed = prompt.trim();
-    if (!trimmed) continue;
-    if (trimmed === '/quit' || trimmed === '/exit') break;
-    if (trimmed === '/help') {
-      printAgentHelp();
-      continue;
-    }
-    if (trimmed === '/status') {
-      try {
-        printJsonPanel('plugin status', await requestJson('GET', '/api/plugins/status'));
-      } catch (error) {
-        printError('server unavailable', error);
-      }
-      continue;
-    }
-    if (trimmed === '/tools') {
-      printTools(session.getActiveToolNames());
-      continue;
-    }
-    if (trimmed === '/tool-log on') {
-      verboseTools = true;
-      console.log(`${paint('blue', 'tool log')} verbose tool activity enabled`);
-      continue;
-    }
-    if (trimmed === '/tool-log off') {
-      verboseTools = false;
-      console.log(`${paint('blue', 'tool log')} routine tool activity hidden`);
-      continue;
-    }
-    if (trimmed === '/source-edits on') {
-      guardState.sourceEdits = true;
-      console.log(`${paint('yellow', 'write scope')} source edits enabled for this session`);
-      continue;
-    }
-    if (trimmed === '/source-edits off') {
-      guardState.sourceEdits = false;
-      console.log(`${paint('green', 'write scope')} plugin+config restored`);
-      continue;
-    }
-    await session.prompt(trimmed);
-  }
+  loadEnv();
+  mkdirSync(agentDir, { recursive: true });
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+
+  const piArgs = buildPiArgs(prompt, options, passthrough);
+  await runPiMain(piArgs, {
+    extensionFactories: [createMurphExtension({ sourceEdits: options.sourceEdits })]
+  });
 }
 
-const { options, prompt } = parseArgs(process.argv.slice(2));
+const { options, prompt, passthrough } = parseArgs(process.argv.slice(2));
 if (options.help) {
   usage();
   process.exit(0);
 }
 
-runAgent(prompt, options).catch((error) => {
-  printError('agent failed', error);
+runAgent(prompt, options, passthrough).catch((error) => {
+  printBox('agent failed', [error instanceof Error ? error.message : String(error)], 'red');
   process.exitCode = 1;
-}).finally(() => {
-  rl.close();
 });

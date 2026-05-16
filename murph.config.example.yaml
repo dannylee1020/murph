@@ -1,0 +1,49 @@
+app:
+  url: http://localhost:5173
+  sqlitePath: data/murph.sqlite
+  heartbeatIntervalMs: 900000
+  runEventRetentionDays: 30
+  contextSourceTimeoutMs: 3000
+  contextSourceMaxOptional: 3
+
+ai:
+  defaultProvider: openai
+  agent:
+    provider: openai
+    model: gpt-5.5
+
+channels:
+  slack:
+    eventsMode: socket
+    clientId: ""
+  discord:
+    clientId: ""
+    redirectUri: ""
+
+setup:
+  ownerUserId: ""
+  ownerDisplayName: ""
+  channelScopeMode: selected
+  selectedChannels: []
+  timezone: ""
+  workdayStartHour: 9
+  workdayEndHour: 17
+
+integrations:
+  notion:
+    version: 2026-03-11
+    maxResults: 3
+  github:
+    repositories: []
+  google:
+    calendarId: primary
+  obsidian:
+    vaultPath: ""
+  webSearch:
+    backend: brave
+  localTools:
+    fileReadAllowedRoots: []
+    shellAllowedCommandsJson: ""
+
+policy:
+  profile: ""

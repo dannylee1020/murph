@@ -5,10 +5,12 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { parse, stringify } from 'yaml';
 
 const appDir = process.env.MURPH_APP_DIR || process.cwd();
 const murphUrl = process.env.MURPH_URL || `http://localhost:${process.env.MURPH_PORT || '5173'}`;
 const envPath = path.join(appDir, '.env');
+const configPath = path.join(appDir, 'murph.config.yaml');
 const rl = readline.createInterface({ input, output });
 
 const args = process.argv.slice(2);
@@ -32,6 +34,18 @@ const DEFAULT_AGENT_MODEL = {
   openai: 'gpt-5.4-mini',
   anthropic: 'claude-sonnet-4-6'
 };
+const CONFIG_KEY_SETTERS = {
+  MURPH_APP_URL: (config, value) => setPath(config, ['app', 'url'], value),
+  MURPH_SQLITE_PATH: (config, value) => setPath(config, ['app', 'sqlitePath'], value),
+  MURPH_DEFAULT_PROVIDER: (config, value) => setPath(config, ['ai', 'defaultProvider'], normalizeProvider(value)),
+  MURPH_AGENT_PROVIDER: (config, value) => setPath(config, ['ai', 'agent', 'provider'], normalizeProvider(value)),
+  MURPH_AGENT_MODEL: (config, value) => setPath(config, ['ai', 'agent', 'model'], value),
+  SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
+  SLACK_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'clientId'], value),
+  DISCORD_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'clientId'], value),
+  DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value)
+};
+const CONFIG_KEYS = new Set(Object.keys(CONFIG_KEY_SETTERS));
 
 function paint(style, text) {
   return `${color[style] || ''}${text}${color.reset}`;
@@ -181,10 +195,60 @@ function readEnvFile() {
   return existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
 }
 
+function readConfigFile() {
+  if (!existsSync(configPath)) return {};
+  const parsed = parse(readFileSync(configPath, 'utf8')) ?? {};
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    fail('murph.config.yaml must contain a YAML object.');
+  }
+  return parsed;
+}
+
+function writeConfigFile(config) {
+  writeFileSync(configPath, stringify(config, { lineWidth: 100 }), { mode: 0o600 });
+}
+
+function objectAt(target, key) {
+  if (target[key] && typeof target[key] === 'object' && !Array.isArray(target[key])) return target[key];
+  target[key] = {};
+  return target[key];
+}
+
+function setPath(target, parts, value) {
+  let cursor = target;
+  for (const part of parts.slice(0, -1)) {
+    cursor = objectAt(cursor, part);
+  }
+  cursor[parts[parts.length - 1]] = value;
+}
+
+function getPath(target, parts) {
+  let cursor = target;
+  for (const part of parts) {
+    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) return '';
+    cursor = cursor[part];
+  }
+  return typeof cursor === 'string' || typeof cursor === 'number' ? String(cursor) : '';
+}
+
+function readConfigValue(key) {
+  const config = readConfigFile();
+  if (key === 'MURPH_APP_URL') return getPath(config, ['app', 'url']);
+  if (key === 'MURPH_SQLITE_PATH') return getPath(config, ['app', 'sqlitePath']);
+  if (key === 'MURPH_DEFAULT_PROVIDER') return getPath(config, ['ai', 'defaultProvider']);
+  if (key === 'MURPH_AGENT_PROVIDER') return getPath(config, ['ai', 'agent', 'provider']);
+  if (key === 'MURPH_AGENT_MODEL') return getPath(config, ['ai', 'agent', 'model']);
+  if (key === 'SLACK_EVENTS_MODE') return getPath(config, ['channels', 'slack', 'eventsMode']);
+  if (key === 'SLACK_CLIENT_ID') return getPath(config, ['channels', 'slack', 'clientId']);
+  if (key === 'DISCORD_CLIENT_ID') return getPath(config, ['channels', 'discord', 'clientId']);
+  if (key === 'DISCORD_REDIRECT_URI') return getPath(config, ['channels', 'discord', 'redirectUri']);
+  return '';
+}
+
 function readEnvValue(key) {
   const match = readEnvFile().match(new RegExp(`^\\s*(?:export\\s+)?${key}=([^\\n]*)`, 'm'));
-  if (!match) return process.env[key] || '';
-  return match[1].trim().replace(/^['"]|['"]$/g, '');
+  if (match) return match[1].trim().replace(/^['"]|['"]$/g, '');
+  return process.env[key] || readConfigValue(key);
 }
 
 function serializeEnvValue(value) {
@@ -192,11 +256,21 @@ function serializeEnvValue(value) {
 }
 
 function writeEnvValues(values) {
+  const envValues = {};
+  const configValues = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (CONFIG_KEYS.has(key)) {
+      configValues[key] = value;
+    } else {
+      envValues[key] = value;
+    }
+  }
+
   const existing = readEnvFile();
   const lines = existing ? existing.split(/\r?\n/) : [];
   const updated = [];
 
-  for (const [key, rawValue] of Object.entries(values)) {
+  for (const [key, rawValue] of Object.entries(envValues)) {
     const value = String(rawValue || '').trim();
     if (!value) continue;
     const line = `${key}=${serializeEnvValue(value)}`;
@@ -214,6 +288,19 @@ function writeEnvValues(values) {
   if (updated.length > 0) {
     writeFileSync(envPath, `${lines.join('\n').replace(/\n+$/, '')}\n`, { mode: 0o600 });
   }
+
+  const config = readConfigFile();
+  for (const [key, rawValue] of Object.entries(configValues)) {
+    const value = String(rawValue || '').trim();
+    if (!value) continue;
+    CONFIG_KEY_SETTERS[key](config, value);
+    process.env[key] = value;
+    updated.push(key);
+  }
+  if (Object.keys(configValues).length > 0) {
+    writeConfigFile(config);
+  }
+
   return updated;
 }
 
@@ -359,9 +446,9 @@ async function setupCore() {
   if (!readEnvValue('SLACK_EVENTS_MODE')) values.SLACK_EVENTS_MODE = 'socket';
   const updated = writeEnvValues(values);
   if (updated.length > 0) {
-    success(`Updated .env: ${updated.join(', ')}`);
+    success(`Updated configuration: ${updated.join(', ')}`);
   } else {
-    success('Core .env values are present.');
+    success('Core configuration values are present.');
   }
 }
 
@@ -594,6 +681,7 @@ async function setupPolicy() {
 async function setupStatus() {
   const envStatus = {
     envFile: existsSync(envPath),
+    configFile: existsSync(configPath),
     encryptionKey: Boolean(readEnvValue('MURPH_ENCRYPTION_KEY')),
     aiProvider: Boolean(readEnvValue('OPENAI_API_KEY') || readEnvValue('ANTHROPIC_API_KEY')),
     agentProvider: currentAgentProvider(currentDefaultProvider()),
@@ -615,7 +703,7 @@ async function setupStatus() {
   }
 
   sectionTitle('Setup status');
-  statusLine('.env', envStatus.envFile ? 'ok' : 'missing', envStatus.envFile ? 'present' : 'missing');
+  statusLine('Config file', envStatus.configFile || envStatus.envFile ? 'ok' : 'missing', envStatus.configFile ? 'murph.config.yaml present' : envStatus.envFile ? '.env present' : 'missing');
   statusLine('Encryption key', envStatus.encryptionKey ? 'ok' : 'missing', envStatus.encryptionKey ? 'configured' : 'missing');
   statusLine('AI provider', envStatus.aiProvider ? 'ok' : 'missing', envStatus.aiProvider ? 'configured' : 'missing');
   statusLine('Murph Agent model', envStatus.agentModel ? 'ok' : 'missing', `${envStatus.agentProvider}/${envStatus.agentModel}`);

@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const originalCwd = process.cwd();
 const envKeys = [
+  'MURPH_APP_DIR',
   'MURPH_APP_URL',
   'MURPH_SQLITE_PATH',
   'MURPH_ENCRYPTION_KEY',
   'MURPH_DEFAULT_PROVIDER',
+  'MURPH_AGENT_PROVIDER',
+  'MURPH_AGENT_MODEL',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
   'SLACK_EVENTS_MODE',
@@ -53,11 +56,13 @@ describe('setup env file writer', () => {
       SLACK_APP_TOKEN: 'xapp-test'
     });
 
-    expect(result.updated).toEqual(['MURPH_DEFAULT_PROVIDER', 'MURPH_ENCRYPTION_KEY', 'OPENAI_API_KEY', 'SLACK_EVENTS_MODE', 'SLACK_APP_TOKEN']);
+    expect(result.updated).toEqual(['MURPH_ENCRYPTION_KEY', 'OPENAI_API_KEY', 'SLACK_APP_TOKEN', 'MURPH_DEFAULT_PROVIDER', 'SLACK_EVENTS_MODE']);
     expect(readFileSync('.env', 'utf8')).toContain('CUSTOM_VALUE=keep');
     expect(readFileSync('.env', 'utf8')).toContain('MURPH_ENCRYPTION_KEY=secret');
     expect(readFileSync('.env', 'utf8')).toContain('OPENAI_API_KEY=sk-new');
     expect(readFileSync('.env', 'utf8')).toContain('SLACK_APP_TOKEN=xapp-test');
+    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('defaultProvider: openai');
+    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('eventsMode: socket');
     expect(process.env.OPENAI_API_KEY).toBe('sk-new');
   });
 

@@ -1,21 +1,25 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { SETUP_CONFIG_KEYS, updateMurphConfigValues } from '#lib/server/setup/config-file';
 import { resetRuntimeEnvCache } from '#lib/server/util/env';
 
-const SETUP_ENV_KEYS = new Set([
-  'MURPH_APP_URL',
-  'MURPH_SQLITE_PATH',
+const SETUP_SECRET_KEYS = new Set([
   'MURPH_ENCRYPTION_KEY',
-  'MURPH_DEFAULT_PROVIDER',
-  'MURPH_AGENT_PROVIDER',
-  'MURPH_AGENT_MODEL',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',
-  'SLACK_EVENTS_MODE',
   'SLACK_APP_TOKEN',
-  'SLACK_CLIENT_ID',
   'SLACK_CLIENT_SECRET',
-  'SLACK_SIGNING_SECRET'
+  'SLACK_SIGNING_SECRET',
+  'DISCORD_BOT_TOKEN',
+  'DISCORD_CLIENT_SECRET',
+  'GOOGLE_ACCESS_TOKEN',
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GITHUB_PAT',
+  'NOTION_API_KEY',
+  'GRANOLA_API_KEY',
+  'TAVILY_API_KEY',
+  'BRAVE_SEARCH_API_KEY'
 ]);
 
 function envPath(): string {
@@ -30,15 +34,25 @@ function serializeValue(value: string): string {
 }
 
 export function updateSetupEnv(values: Record<string, string | undefined>): { updated: string[] } {
+  const secretValues: Record<string, string | undefined> = {};
+  const configValues: Record<string, string | undefined> = {};
+
+  for (const [key, value] of Object.entries(values)) {
+    if (SETUP_SECRET_KEYS.has(key)) {
+      secretValues[key] = value;
+    } else if (SETUP_CONFIG_KEYS.has(key)) {
+      configValues[key] = value;
+    } else {
+      throw new Error(`Unsupported setup key: ${key}`);
+    }
+  }
+
   const target = envPath();
   const existing = existsSync(target) ? readFileSync(target, 'utf8') : '';
   const lines = existing ? existing.split(/\r?\n/) : [];
   const updated: string[] = [];
 
-  for (const [key, rawValue] of Object.entries(values)) {
-    if (!SETUP_ENV_KEYS.has(key)) {
-      throw new Error(`Unsupported setup key: ${key}`);
-    }
+  for (const [key, rawValue] of Object.entries(secretValues)) {
     const value = rawValue?.trim();
     if (!value) {
       continue;
@@ -60,8 +74,16 @@ export function updateSetupEnv(values: Record<string, string | undefined>): { up
 
   if (updated.length > 0) {
     writeFileSync(target, `${lines.join('\n').replace(/\n+$/, '')}\n`, { mode: 0o600 });
-    resetRuntimeEnvCache();
   }
+
+  const configUpdated = updateMurphConfigValues(configValues).updated;
+  for (const key of configUpdated) {
+    const value = configValues[key]?.trim();
+    if (value) process.env[key] = value;
+  }
+
+  resetRuntimeEnvCache();
+  updated.push(...configUpdated);
 
   return { updated };
 }

@@ -3,6 +3,7 @@ import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { getNotionStatus } from '#lib/server/context-sources/notion';
 import { getSlackService } from '#lib/server/channels/slack/service';
+import { MURPH_CONFIG_FILE, murphConfigExists, readMurphConfig } from '#lib/server/setup/config-file';
 
 export type SetupCheckStatus = 'ok' | 'warning' | 'action_required' | 'error';
 
@@ -29,16 +30,20 @@ export function getSetupDoctor(): SetupDoctorPayload {
   const env = getRuntimeEnv();
   const store = getStore();
   const summary = store.getWorkspaceSummary();
-  const setupDefaults = store.getAppSettings().setupDefaults;
+  const setupDefaults = {
+    ...(store.getAppSettings().setupDefaults ?? {}),
+    ...(readMurphConfig().setup ?? {})
+  };
   const slack = getSlackService();
   const slackWorkspace = slack.getUsableWorkspace();
   const slackReconnectRequired = !slackWorkspace && slack.hasUnreadableInstall();
   const checks: SetupDoctorCheck[] = [];
 
+  const hasConfigSource = murphConfigExists() || existsSync('.env') || Boolean(env.encryptionKey || env.openaiApiKey || env.anthropicApiKey);
   checks.push(
-    existsSync('.env')
-      ? check('env_file', 'Configuration file', 'ok', '.env exists.')
-      : check('env_file', 'Configuration file', 'action_required', '.env is missing.', 'Run ./install.sh or create .env from .env.example.')
+    hasConfigSource
+      ? check('env_file', 'Configuration source', 'ok', murphConfigExists() ? `${MURPH_CONFIG_FILE} exists.` : existsSync('.env') ? '.env exists.' : 'process env is configured.')
+      : check('env_file', 'Configuration source', 'action_required', `${MURPH_CONFIG_FILE} is missing.`, 'Run ./install.sh or murph setup core.')
   );
 
   checks.push(

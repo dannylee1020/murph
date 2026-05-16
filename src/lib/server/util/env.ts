@@ -1,5 +1,6 @@
 import { DEFAULT_AGENT_MODEL, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_PATH } from '#lib/config';
 import type { ProviderName } from '#lib/types';
+import { readMurphConfig } from '#lib/server/setup/config-file';
 import { loadDotEnv } from './dotenv.js';
 
 loadDotEnv();
@@ -53,16 +54,38 @@ function csvEnv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function envOrConfigString(envKey: string, configValue: string | undefined, fallback = ''): string {
+  return process.env[envKey] ?? configValue ?? fallback;
+}
+
+function envOrConfigNumber(envKey: string, configValue: number | undefined, fallback: number): number {
+  const raw = process.env[envKey];
+  if (raw !== undefined) return Number(raw);
+  return configValue ?? fallback;
+}
+
+function envOrConfigCsv(envKey: string, configValue: string[] | undefined): string[] {
+  if (process.env[envKey] !== undefined) return csvEnv(process.env[envKey]);
+  return configValue ?? [];
+}
+
 export function getRuntimeEnv(): RuntimeEnv {
   if (cachedEnv) {
     return cachedEnv;
   }
 
-  const defaultProvider: ProviderName = process.env.MURPH_DEFAULT_PROVIDER === 'anthropic' ? 'anthropic' : 'openai';
+  const config = readMurphConfig();
+  const defaultProvider: ProviderName = process.env.MURPH_DEFAULT_PROVIDER === 'anthropic'
+    ? 'anthropic'
+    : process.env.MURPH_DEFAULT_PROVIDER === 'openai'
+      ? 'openai'
+      : config.ai?.defaultProvider ?? 'openai';
   const agentProvider: ProviderName = process.env.MURPH_AGENT_PROVIDER === 'anthropic'
     ? 'anthropic'
     : process.env.MURPH_AGENT_PROVIDER === 'openai'
       ? 'openai'
+      : config.ai?.agent?.provider
+        ? config.ai.agent.provider
       : process.env.OPENAI_API_KEY
         ? 'openai'
         : process.env.ANTHROPIC_API_KEY
@@ -70,43 +93,51 @@ export function getRuntimeEnv(): RuntimeEnv {
           : defaultProvider;
 
   cachedEnv = {
-    appUrl: process.env.MURPH_APP_URL ?? 'http://localhost:5173',
-    sqlitePath: process.env.MURPH_SQLITE_PATH ?? DEFAULT_SQLITE_PATH,
+    appUrl: envOrConfigString('MURPH_APP_URL', config.app?.url, 'http://localhost:5173'),
+    sqlitePath: envOrConfigString('MURPH_SQLITE_PATH', config.app?.sqlitePath, DEFAULT_SQLITE_PATH),
     encryptionKey: process.env.MURPH_ENCRYPTION_KEY ?? '',
-    slackClientId: process.env.SLACK_CLIENT_ID,
+    slackClientId: process.env.SLACK_CLIENT_ID ?? config.channels?.slack?.clientId,
     slackClientSecret: process.env.SLACK_CLIENT_SECRET,
     slackSigningSecret: process.env.SLACK_SIGNING_SECRET,
     slackAppToken: process.env.SLACK_APP_TOKEN,
-    slackEventsMode: process.env.SLACK_EVENTS_MODE === 'http' ? 'http' : 'socket',
+    slackEventsMode: process.env.SLACK_EVENTS_MODE === 'http'
+      ? 'http'
+      : process.env.SLACK_EVENTS_MODE === 'socket'
+        ? 'socket'
+        : config.channels?.slack?.eventsMode ?? 'socket',
     discordBotToken: process.env.DISCORD_BOT_TOKEN,
-    discordClientId: process.env.DISCORD_CLIENT_ID,
+    discordClientId: process.env.DISCORD_CLIENT_ID ?? config.channels?.discord?.clientId,
     discordClientSecret: process.env.DISCORD_CLIENT_SECRET,
-    discordRedirectUri: process.env.DISCORD_REDIRECT_URI,
-    heartbeatIntervalMs: Number(process.env.MURPH_HEARTBEAT_INTERVAL_MS ?? DEFAULT_HEARTBEAT_INTERVAL_MS),
+    discordRedirectUri: process.env.DISCORD_REDIRECT_URI ?? config.channels?.discord?.redirectUri,
+    heartbeatIntervalMs: envOrConfigNumber('MURPH_HEARTBEAT_INTERVAL_MS', config.app?.heartbeatIntervalMs, DEFAULT_HEARTBEAT_INTERVAL_MS),
     openaiApiKey: process.env.OPENAI_API_KEY,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     defaultProvider,
     agentProvider,
-    agentModel: process.env.MURPH_AGENT_MODEL || DEFAULT_AGENT_MODEL[agentProvider],
+    agentModel: process.env.MURPH_AGENT_MODEL || config.ai?.agent?.model || DEFAULT_AGENT_MODEL[agentProvider],
     notionApiKey: process.env.NOTION_API_KEY,
-    notionVersion: process.env.NOTION_VERSION ?? '2026-03-11',
-    notionMaxResults: Number(process.env.NOTION_MAX_RESULTS ?? 3),
+    notionVersion: envOrConfigString('NOTION_VERSION', config.integrations?.notion?.version, '2026-03-11'),
+    notionMaxResults: envOrConfigNumber('NOTION_MAX_RESULTS', config.integrations?.notion?.maxResults, 3),
     githubPat: process.env.GITHUB_PAT,
-    githubRepositories: csvEnv(process.env.GITHUB_REPOSITORIES),
-    obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH,
+    githubRepositories: envOrConfigCsv('GITHUB_REPOSITORIES', config.integrations?.github?.repositories),
+    obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH ?? config.integrations?.obsidian?.vaultPath,
     granolaApiKey: process.env.GRANOLA_API_KEY,
     googleAccessToken: process.env.GOOGLE_ACCESS_TOKEN,
     googleClientId: process.env.GOOGLE_CLIENT_ID,
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    googleCalendarId: process.env.GOOGLE_CALENDAR_ID ?? 'primary',
-    webSearchBackend: process.env.MURPH_WEB_SEARCH_BACKEND === 'brave' ? 'brave' : 'tavily',
+    googleCalendarId: envOrConfigString('GOOGLE_CALENDAR_ID', config.integrations?.google?.calendarId, 'primary'),
+    webSearchBackend: process.env.MURPH_WEB_SEARCH_BACKEND === 'brave'
+      ? 'brave'
+      : process.env.MURPH_WEB_SEARCH_BACKEND === 'tavily'
+        ? 'tavily'
+        : config.integrations?.webSearch?.backend ?? 'brave',
     tavilyApiKey: process.env.TAVILY_API_KEY,
     braveSearchApiKey: process.env.BRAVE_SEARCH_API_KEY,
-    fileReadAllowedRoots: csvEnv(process.env.MURPH_FILE_READ_ALLOWED_ROOTS),
-    shellAllowedCommandsJson: process.env.MURPH_SHELL_ALLOWED_COMMANDS_JSON ?? '',
-    contextSourceTimeoutMs: Number(process.env.MURPH_CONTEXT_SOURCE_TIMEOUT_MS ?? 3000),
-    contextSourceMaxOptional: Number(process.env.MURPH_CONTEXT_SOURCE_MAX_OPTIONAL ?? 3),
-    runEventRetentionDays: Number(process.env.MURPH_RUN_EVENT_RETENTION_DAYS ?? 30)
+    fileReadAllowedRoots: envOrConfigCsv('MURPH_FILE_READ_ALLOWED_ROOTS', config.integrations?.localTools?.fileReadAllowedRoots),
+    shellAllowedCommandsJson: envOrConfigString('MURPH_SHELL_ALLOWED_COMMANDS_JSON', config.integrations?.localTools?.shellAllowedCommandsJson),
+    contextSourceTimeoutMs: envOrConfigNumber('MURPH_CONTEXT_SOURCE_TIMEOUT_MS', config.app?.contextSourceTimeoutMs, 3000),
+    contextSourceMaxOptional: envOrConfigNumber('MURPH_CONTEXT_SOURCE_MAX_OPTIONAL', config.app?.contextSourceMaxOptional, 3),
+    runEventRetentionDays: envOrConfigNumber('MURPH_RUN_EVENT_RETENTION_DAYS', config.app?.runEventRetentionDays, 30)
   };
 
   return cachedEnv;

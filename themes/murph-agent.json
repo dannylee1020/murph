@@ -1,0 +1,82 @@
+{
+  "$schema": "https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
+  "name": "murph-agent",
+  "vars": {
+    "graphite": "#181713",
+    "graphiteSoft": "#24221d",
+    "graphitePanel": "#2d2a23",
+    "graphiteLine": "#5a5142",
+    "offWhite": "#eee7da",
+    "muted": "#a89f90",
+    "dim": "#766d60",
+    "amber": "#d69c3f",
+    "amberSoft": "#6a4a1f",
+    "green": "#8fae75",
+    "red": "#c66f5f",
+    "blue": "#8aa0b8"
+  },
+  "colors": {
+    "accent": "amber",
+    "border": "graphiteLine",
+    "borderAccent": "amber",
+    "borderMuted": "graphitePanel",
+    "success": "green",
+    "error": "red",
+    "warning": "amber",
+    "muted": "muted",
+    "dim": "dim",
+    "text": "offWhite",
+    "thinkingText": "muted",
+
+    "selectedBg": "graphitePanel",
+    "userMessageBg": "graphiteSoft",
+    "userMessageText": "offWhite",
+    "customMessageBg": "graphiteSoft",
+    "customMessageText": "offWhite",
+    "customMessageLabel": "amber",
+    "toolPendingBg": "graphiteSoft",
+    "toolSuccessBg": "#253020",
+    "toolErrorBg": "#39231f",
+    "toolTitle": "offWhite",
+    "toolOutput": "muted",
+
+    "mdHeading": "amber",
+    "mdLink": "blue",
+    "mdLinkUrl": "dim",
+    "mdCode": "amber",
+    "mdCodeBlock": "offWhite",
+    "mdCodeBlockBorder": "graphiteLine",
+    "mdQuote": "muted",
+    "mdQuoteBorder": "graphiteLine",
+    "mdHr": "graphiteLine",
+    "mdListBullet": "amber",
+
+    "toolDiffAdded": "green",
+    "toolDiffRemoved": "red",
+    "toolDiffContext": "muted",
+
+    "syntaxComment": "#7d7668",
+    "syntaxKeyword": "#d69c3f",
+    "syntaxFunction": "#e1c07a",
+    "syntaxVariable": "#d8d0c0",
+    "syntaxString": "#a8b37a",
+    "syntaxNumber": "#cfa66a",
+    "syntaxType": "#b8a06c",
+    "syntaxOperator": "#d8d0c0",
+    "syntaxPunctuation": "#a89f90",
+
+    "thinkingOff": "dim",
+    "thinkingMinimal": "#8a8172",
+    "thinkingLow": "#a58c5c",
+    "thinkingMedium": "amber",
+    "thinkingHigh": "#dfa85a",
+    "thinkingXhigh": "#e6bd78",
+
+    "bashMode": "green"
+  },
+  "export": {
+    "pageBg": "graphite",
+    "cardBg": "graphiteSoft",
+    "infoBg": "graphitePanel"
+  }
+}

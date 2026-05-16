@@ -19,6 +19,7 @@ data/
 .env
 .env.*
 !.env.example
+murph.config.yaml
 
 # Logs
 *.log

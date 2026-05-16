@@ -7,6 +7,13 @@ import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import { getStore } from '#lib/server/persistence/store';
 import { getSetupDoctor } from '#lib/server/setup/doctor';
 import { updateSetupEnv } from '#lib/server/setup/env-file';
+import {
+  MURPH_CONFIG_FILE,
+  SETUP_CONFIG_KEYS,
+  murphConfigExists,
+  readMurphConfig,
+  updateMurphSetupDefaults
+} from '#lib/server/setup/config-file';
 import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-client';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { readJson } from '../http.js';
@@ -40,8 +47,7 @@ function getSetupWorkspace(workspaceId?: string): Workspace | undefined {
 }
 
 function setupDefaultsPayload(workspace?: Workspace) {
-  const settings = getStore().getAppSettings();
-  const defaults = settings.setupDefaults ?? {};
+  const defaults = effectiveSetupDefaults();
   const user = workspace && defaults.ownerUserId
     ? getStore().getUser(workspace.id, defaults.ownerUserId)
     : undefined;
@@ -52,6 +58,17 @@ function setupDefaultsPayload(workspace?: Workspace) {
     defaults,
     user
   };
+}
+
+function effectiveSetupDefaults(): SetupDefaults {
+  return normalizeSetupDefaults({
+    ...(getStore().getAppSettings().setupDefaults ?? {}),
+    ...(readMurphConfig().setup ?? {})
+  });
+}
+
+function envOverrides(): string[] {
+  return [...SETUP_CONFIG_KEYS].filter((key) => process.env[key] !== undefined).sort();
 }
 
 export const systemRoutes: Route[] = [
@@ -75,7 +92,7 @@ export const systemRoutes: Route[] = [
     await ensureRuntimeInitialized();
     const env = getRuntimeEnv();
     const summary = getStore().getWorkspaceSummary();
-    const setupDefaults = getStore().getAppSettings().setupDefaults;
+    const setupDefaults = effectiveSetupDefaults();
     const workspaces = getStore().listWorkspaces();
     const slackWorkspace = getSlackService().getUsableWorkspace();
     const discordWorkspace = workspaces.find((workspace) => workspace.provider === 'discord' && workspace.botTokenEncrypted);
@@ -101,6 +118,11 @@ export const systemRoutes: Route[] = [
         agentModel: env.agentModel,
         defaultAgentModels: DEFAULT_AGENT_MODEL
       },
+      config: {
+        file: MURPH_CONFIG_FILE,
+        configured: murphConfigExists(),
+        envOverrides: envOverrides()
+      },
       notion: getNotionStatus(),
       userConfigured: summary.userCount > 0 && Boolean(setupDefaults?.ownerUserId),
       channelsConfigured: setupDefaults?.channelScopeMode === 'all_accessible' ||
@@ -122,7 +144,7 @@ export const systemRoutes: Route[] = [
     }
 
     const defaults = normalizeSetupDefaults({
-      ...(getStore().getAppSettings().setupDefaults ?? {}),
+      ...effectiveSetupDefaults(),
       ...body
     });
 
@@ -137,7 +159,7 @@ export const systemRoutes: Route[] = [
       });
     }
 
-    getStore().upsertAppSettings({ setupDefaults: defaults });
+    updateMurphSetupDefaults(defaults);
     sendJson(res, setupDefaultsPayload(workspace));
   }),
   route('GET', '/api/setup/doctor', async ({ res }) => {

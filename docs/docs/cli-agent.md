@@ -77,3 +77,15 @@ Inside the TUI:
 ```
 
 Tool logs are quiet by default. Turn them on when you need detailed debugging.
+
+## Extending defaults
+
+Murph Agent can update configuration and create scoped plugins when you want behavior beyond the built-in defaults. For example, you can ask it to switch web search from Brave to Tavily, add local integration configuration, or draft a scoped plugin under `~/.murph/plugins/<id>`.
+
+Defaults are not hard limits. If you need another provider, ask Murph Agent to add or configure it. Provider additions that fit the plugin/config boundary should stay there; changes to core runtime tools or built-in backend code require source-edit authority.
+
+Changing Murph core code or adding a new built-in backend still requires an explicit source-edit run:
+
+```bash
+murph agent --source-edits
+```

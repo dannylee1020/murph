@@ -5,7 +5,7 @@ description: Configure providers, policy, storage, and runtime defaults.
 
 # Configuration
 
-Murph stores local configuration in `.env` and runtime state in SQLite.
+Murph stores non-secret local settings in `murph.config.yaml`, secrets and deployment overrides in `.env`, and runtime state in SQLite.
 
 ## Setup wizard
 
@@ -44,6 +44,29 @@ MURPH_SQLITE_PATH=data/murph.sqlite
 ```
 
 Credentials are encrypted locally with `MURPH_ENCRYPTION_KEY`.
+
+## Web search
+
+Murph ships with Brave Search as the default public web discovery provider:
+
+```yaml
+integrations:
+  webSearch:
+    backend: brave
+```
+
+Set `BRAVE_SEARCH_API_KEY` in `.env`.
+
+Tavily is also supported out of the box:
+
+```text
+MURPH_WEB_SEARCH_BACKEND=tavily
+TAVILY_API_KEY=...
+```
+
+These are defaults, not a closed provider model. Additional search providers can be added behind the same `web.search` contract when you need a different index, privacy posture, hosted provider, or self-hosted service.
+
+`web.search` discovers candidate pages. `web.fetch` reads an explicit URL with a simple HTTP fetch and text extraction; it is intentionally not a browser crawler by default. More advanced fetch/extraction providers can be added later without changing the basic tool contract.
 
 ## Policy
 

@@ -22,6 +22,7 @@ import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
+import { readMurphConfig, updateMurphPolicyProfile } from '#lib/server/setup/config-file';
 import type { ChannelEnsureMemberResult, SessionMode, Workspace } from '#lib/types';
 
 const gateway = getGateway();
@@ -58,7 +59,9 @@ async function resolveProfileSelection(
 ) {
   const profiles = await loadPolicyProfiles();
   const store = getStore();
-  const selectedName = normalizePolicyProfileName(explicitProfileName || store.getAppSettings().policyProfileName);
+  const selectedName = normalizePolicyProfileName(
+    explicitProfileName || readMurphConfig().policy?.profile || store.getAppSettings().policyProfileName
+  );
   const selectedProfile = selectedName
     ? profiles.find((profile) => profile.name === selectedName)
     : undefined;
@@ -72,13 +75,14 @@ async function resolveProfileSelection(
 async function policyConfigPayload(mode: SessionMode = 'manual_review') {
   const store = getStore();
   const settings = store.getAppSettings();
+  const configProfileName = readMurphConfig().policy?.profile;
   const { profiles, selectedProfile } = await resolveProfileSelection(mode);
   const effective = resolveEffectivePolicy({ mode, baseProfile: selectedProfile });
 
   return {
     ok: true,
     profiles,
-    policyProfileName: normalizePolicyProfileName(settings.policyProfileName),
+    policyProfileName: normalizePolicyProfileName(configProfileName || settings.policyProfileName),
     selectedProfileName: selectedProfile.name,
     selectedProfile,
     compiled: effective.compiled
@@ -133,7 +137,7 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    getStore().upsertAppSettings({ policyProfileName: profileName });
+    updateMurphPolicyProfile(profileName);
     sendJson(res, await policyConfigPayload());
   }),
   route('POST', '/api/gateway/policy/preview', async ({ req, res }) => {

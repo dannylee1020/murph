@@ -1,8 +1,8 @@
 import { Readable } from 'node:stream';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 function jsonRequest(method: string, body?: unknown): any {
   const req = body === undefined ? Readable.from([]) as any : Readable.from([JSON.stringify(body)]) as any;
@@ -29,7 +29,9 @@ function jsonResponse(): any & { result: () => { status: number; body: any } } {
 
 async function setup() {
   vi.resetModules();
-  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-policy-config-route-')), 'murph.sqlite');
+  const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-policy-config-route-'));
+  process.env.MURPH_APP_DIR = workspaceDir;
+  process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   vi.doMock('#lib/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
@@ -63,8 +65,26 @@ async function setup() {
 }
 
 describe('policy configuration routes', () => {
+  const originalCwd = process.cwd();
+  const originalAppDir = process.env.MURPH_APP_DIR;
+
   beforeEach(() => {
     vi.restoreAllMocks();
+    process.chdir(originalCwd);
+    if (originalAppDir === undefined) {
+      delete process.env.MURPH_APP_DIR;
+    } else {
+      process.env.MURPH_APP_DIR = originalAppDir;
+    }
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    if (originalAppDir === undefined) {
+      delete process.env.MURPH_APP_DIR;
+    } else {
+      process.env.MURPH_APP_DIR = originalAppDir;
+    }
   });
 
   it('returns local policy config with profiles and compiled fallback', async () => {
@@ -96,7 +116,8 @@ describe('policy configuration routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.policyProfileName).toBe('product');
     expect(response.body.selectedProfileName).toBe('product');
-    expect(store.getAppSettings().policyProfileName).toBe('product');
+    expect(store.getAppSettings().policyProfileName).toBeUndefined();
+    expect(readFileSync(join(process.env.MURPH_APP_DIR!, 'murph.config.yaml'), 'utf8')).toContain('profile: product');
   });
 
   it('normalizes legacy policy profile selections', async () => {
@@ -109,7 +130,8 @@ describe('policy configuration routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.policyProfileName).toBe('leadership');
     expect(response.body.selectedProfileName).toBe('leadership');
-    expect(store.getAppSettings().policyProfileName).toBe('leadership');
+    expect(store.getAppSettings().policyProfileName).toBeUndefined();
+    expect(readFileSync(join(process.env.MURPH_APP_DIR!, 'murph.config.yaml'), 'utf8')).toContain('profile: leadership');
   });
 
   it('rejects unknown local policy profile selection', async () => {
