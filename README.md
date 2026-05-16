@@ -6,11 +6,11 @@ Start a session before you log off. Murph watches the channels you choose, pulls
 
 | What you need | What Murph does |
 | --- | --- |
-| Stay offline without losing momentum | Watches selected Slack or Discord channels while you are away |
-| Keep control explicit | Sends safe work, queues risky work, and skips anything it should not answer |
-| Use your real context | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
-| Review what happened | Shows what was sent, queued, skipped, and why |
-| Run it yourself | Stores runtime state locally with SQLite and encrypted credentials |
+| **Stay offline without losing momentum** | Watches selected Slack or Discord channels while you are away |
+| **Keep control explicit** | Sends safe work, queues risky work, and skips anything it should not answer |
+| **Use your real context** | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
+| **Review what happened** | Shows what was sent, queued, skipped, and why |
+| **Run it yourself** | Stores runtime state locally with SQLite and encrypted credentials |
 
 ```text
 selected channel -> context -> grounded draft -> policy -> send | queue | skip
@@ -46,16 +46,28 @@ murph doctor
 
 ## Documentation
 
-| Topic | Start here |
+| Topic | What's covered |
 | --- | --- |
-| Quickstart | [docs.murph-agent.com/docs/quickstart](https://docs.murph-agent.com/docs/quickstart) |
-| Installation | [docs.murph-agent.com/docs/installation](https://docs.murph-agent.com/docs/installation) |
-| Configuration | [docs.murph-agent.com/docs/configuration](https://docs.murph-agent.com/docs/configuration) |
-| CLI & Agent | [docs.murph-agent.com/docs/cli-agent](https://docs.murph-agent.com/docs/cli-agent) |
-| Channels | [docs.murph-agent.com/docs/channels](https://docs.murph-agent.com/docs/channels) |
-| Integrations | [docs.murph-agent.com/docs/integrations](https://docs.murph-agent.com/docs/integrations) |
-| Core Concepts | [docs.murph-agent.com/docs/core-concepts](https://docs.murph-agent.com/docs/core-concepts) |
-| Contributing | [docs.murph-agent.com/docs/contributing](https://docs.murph-agent.com/docs/contributing) |
+| [Quickstart](https://docs.murph-agent.com/docs/quickstart) | Install Murph, run setup, start the local server, and check health. |
+| [Installation](https://docs.murph-agent.com/docs/installation) | Installer behavior, local setup, and manual install paths. |
+| [Configuration](https://docs.murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and local runtime settings. |
+| [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent) | `murph` commands and the local agent for setup, debugging, and plugins. |
+| [Channels](https://docs.murph-agent.com/docs/channels) | Connect Slack or Discord and choose the channels Murph should watch. |
+| [Integrations](https://docs.murph-agent.com/docs/integrations) | Connect context sources like docs, GitHub, Gmail, Calendar, and meetings. |
+| [Core Concepts](https://docs.murph-agent.com/docs/core-concepts) | Sessions, context, skills, policy, triage, and audit trails. |
+| [Contributing](https://docs.murph-agent.com/docs/contributing) | Local development, project structure, and contribution workflow. |
+
+## Murph Agent
+
+Murph includes a local coding agent for setup, debugging, policy changes, and scoped integration work.
+
+```bash
+murph agent
+```
+
+Use it to connect services, inspect setup issues, and create plugins without editing Murph core. By default, it can write plugin and configuration files; source edits require an explicit `--source-edits` flag.
+
+Learn more in [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent).
 
 ## What you can connect
 
