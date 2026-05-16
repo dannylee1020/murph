@@ -5,7 +5,7 @@ description: Get Murph installed, configured, and running.
 
 # Quickstart
 
-Murph is a self-hosted async autopilot for handling messaging channels while you are offline.
+Murph is a local-first handoff agent for handling messaging channels while you are offline.
 
 ::: info Local first
 Murph runs on your machine. Start the server, connect your channels, and use the doctor command whenever setup feels off.

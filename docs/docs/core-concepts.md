@@ -5,11 +5,11 @@ description: Understand sessions, context, skills, policy, and triage.
 
 # Core Concepts
 
-Murph is built around bounded offline coverage, not an always-on chatbot.
+Murph is built around bounded offline handoffs, not an always-on chatbot.
 
 ## Sessions
 
-A session is a period of coverage. You start a session before going offline, choose the channels to watch, and let Murph handle matching incoming work.
+A session is a bounded handoff window. You start a session before going offline, choose the channels to watch, and let Murph handle matching incoming work.
 
 ## Session context
 

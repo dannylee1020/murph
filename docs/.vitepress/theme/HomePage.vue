@@ -73,7 +73,7 @@ onMounted(syncThemeFromDocument);
         <div class="murph-hero-inner">
           <h1 id="hero-heading">Stay offline without losing momentum.</h1>
           <p class="murph-lede">
-            Murph is a local-first coverage agent that watches selected channels,
+            Murph is a local-first handoff agent that watches selected channels,
             uses your context, and leaves every decision ready for review.
           </p>
 

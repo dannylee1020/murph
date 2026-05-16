@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress';
 
 export default defineConfig({
   title: 'Murph',
-  description: 'Self-hosted async autopilot for team continuity.',
+  description: 'Local-first handoff agent for async work.',
   appearance: true,
   cleanUrls: true,
   lastUpdated: true,
@@ -50,7 +50,7 @@ export default defineConfig({
       ]
     },
     footer: {
-      message: 'Self-hosted async autopilot for team continuity.',
+      message: 'Local-first handoff agent for async work.',
       copyright: `Copyright © ${new Date().getFullYear()} Murph`
     },
     outline: {

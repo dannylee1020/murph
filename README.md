@@ -1,6 +1,6 @@
 # Murph
 
-Murph is a local-first coverage agent for the hours you are away.
+Murph is a local-first handoff agent for the hours you are away.
 
 Start a session before you log off. Murph watches the channels you choose, pulls context from your connected tools, drafts grounded replies, applies your policy, and leaves a review trail for every decision.
 

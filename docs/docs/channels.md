@@ -42,4 +42,4 @@ Discord support uses the same channel-adapter model as Slack. Configure it throu
 
 ## Watched channels
 
-Murph only watches the channels you select for a session. Use setup to choose defaults, then start a session when you want coverage.
+Murph only watches the channels you select for a session. Use setup to choose defaults, then start a session when you want an offline handoff.
