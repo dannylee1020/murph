@@ -98,7 +98,13 @@ type SetupStatusPayload = {
     socketConfigured: boolean;
   };
   discord: { installed: boolean; oauthConfigured: boolean; botTokenConfigured: boolean };
-  provider: { configured: boolean; defaultProvider: string };
+  provider: {
+    configured: boolean;
+    defaultProvider: string;
+    agentProvider?: string;
+    agentModel?: string;
+    defaultAgentModels?: Record<string, string>;
+  };
   notion: {
     configured: boolean;
     version: string;
@@ -311,6 +317,10 @@ if (!root) {
 const app = root;
 let dashboardNotice = '';
 let dashboardError = '';
+const DEFAULT_AGENT_MODELS: Record<string, string> = {
+  openai: 'gpt-5.4-mini',
+  anthropic: 'claude-sonnet-4-6'
+};
 
 const navItems = [
   { href: '/', label: 'Home' },
@@ -380,6 +390,39 @@ function getSelectedChannels(): Array<{ id: string; displayName: string }> {
 
 function setSelectedChannels(channels: Array<{ id: string; displayName: string }>): void {
   localStorage.setItem('murph_selected_channels', JSON.stringify(channels));
+}
+
+function agentProvider(setup: SetupStatusPayload): string {
+  return setup.provider.agentProvider ?? setup.provider.defaultProvider ?? 'openai';
+}
+
+function agentModel(setup: SetupStatusPayload): string {
+  const provider = agentProvider(setup);
+  const defaults = setup.provider.defaultAgentModels ?? DEFAULT_AGENT_MODELS;
+  return setup.provider.agentModel ?? defaults[provider] ?? DEFAULT_AGENT_MODELS.openai;
+}
+
+function agentModelFields(setup: SetupStatusPayload): string {
+  const selectedProvider = agentProvider(setup);
+  const selectedModel = agentModel(setup);
+  const defaults = setup.provider.defaultAgentModels ?? DEFAULT_AGENT_MODELS;
+  return `
+    <label>
+      <span>Murph Agent provider</span>
+      <select name="agentProvider">
+        <option value="openai" ${selectedProvider === 'openai' ? 'selected' : ''}>OpenAI</option>
+        <option value="anthropic" ${selectedProvider === 'anthropic' ? 'selected' : ''}>Anthropic</option>
+      </select>
+    </label>
+    <label>
+      <span>Murph Agent model</span>
+      <input name="agentModel" list="agent-model-presets" value="${escapeHtml(selectedModel)}" autocomplete="off" required />
+      <datalist id="agent-model-presets">
+        <option value="${escapeHtml(defaults.openai ?? DEFAULT_AGENT_MODELS.openai)}">OpenAI recommended</option>
+        <option value="${escapeHtml(defaults.anthropic ?? DEFAULT_AGENT_MODELS.anthropic)}">Anthropic recommended</option>
+      </datalist>
+    </label>
+  `;
 }
 
 function applySetupDefaults(payload: SetupDefaultsPayload): void {
@@ -1115,12 +1158,15 @@ async function renderSetup(): Promise<void> {
     stepContent = `
       <div class="wizard-step">
         <h1>Add an AI provider</h1>
-        <p>Murph needs OpenAI or Anthropic before it can draft replies.</p>
+        <p>Murph needs OpenAI or Anthropic before it can draft replies. Choose the model used by <code>murph agent</code> here too.</p>
         ${setup.provider.configured
           ? `<div class="setup-success">${escapeHtml(setup.provider.defaultProvider)} is configured</div>
+             <form class="form" id="ai-provider-form">
+               ${agentModelFields(setup)}
+             </form>
              <div class="wizard-actions">
                <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
-               <button type="button" id="wizard-next">Continue</button>
+               <button type="button" id="wizard-next">Save and continue</button>
              </div>`
           : `<form class="form" id="ai-provider-form">
                <label>
@@ -1134,6 +1180,7 @@ async function renderSetup(): Promise<void> {
                  <span>API key</span>
                  <input type="password" name="apiKey" autocomplete="off" required />
                </label>
+               ${agentModelFields(setup)}
              </form>
              <div class="wizard-actions">
                <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
@@ -1402,15 +1449,24 @@ async function renderSetup(): Promise<void> {
   }
 
   app.querySelector<HTMLButtonElement>('#wizard-next')?.addEventListener('click', async () => {
-    if (step === 1 && !setup.provider.configured) {
+    if (step === 1) {
       const form = app.querySelector<HTMLFormElement>('#ai-provider-form');
       const formData = form ? new FormData(form) : new FormData();
       const provider = String(formData.get('provider') ?? 'openai');
       const apiKey = String(formData.get('apiKey') ?? '').trim();
-      if (!apiKey) return;
+      const selectedAgentProvider = String(formData.get('agentProvider') ?? agentProvider(setup));
+      const selectedAgentModel = String(formData.get('agentModel') ?? agentModel(setup)).trim();
+      if (!selectedAgentModel) return;
+      if (!setup.provider.configured && !apiKey) return;
       await postJson('/api/setup/env', {
-        MURPH_DEFAULT_PROVIDER: provider,
-        ...(provider === 'anthropic' ? { ANTHROPIC_API_KEY: apiKey } : { OPENAI_API_KEY: apiKey })
+        ...(!setup.provider.configured
+          ? {
+              MURPH_DEFAULT_PROVIDER: provider,
+              ...(provider === 'anthropic' ? { ANTHROPIC_API_KEY: apiKey } : { OPENAI_API_KEY: apiKey })
+            }
+          : {}),
+        MURPH_AGENT_PROVIDER: selectedAgentProvider,
+        MURPH_AGENT_MODEL: selectedAgentModel
       });
     }
 
@@ -1712,6 +1768,7 @@ async function renderSettings(): Promise<void> {
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.provider.configured ? 'Connected' : 'Missing API key'}</dd></div>
           <div><dt>Default</dt><dd>${escapeHtml(setup.provider.defaultProvider)}</dd></div>
+          <div><dt>Murph Agent</dt><dd>${escapeHtml(`${agentProvider(setup)} / ${agentModel(setup)}`)}</dd></div>
         </dl>
       </article>
     </section>

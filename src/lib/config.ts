@@ -20,4 +20,8 @@ export const DEFAULT_PROVIDER_MODEL: Record<'openai' | 'anthropic', string> = {
   openai: 'gpt-5.4-mini',
   anthropic: 'claude-sonnet-4-6'
 };
+export const DEFAULT_AGENT_MODEL: Record<'openai' | 'anthropic', string> = {
+  openai: 'gpt-5.4-mini',
+  anthropic: 'claude-sonnet-4-6'
+};
 export const DEFAULT_AUTO_SEND_ACTIONS = ['reply', 'ask', 'redirect', 'defer'] as const;

@@ -1,4 +1,4 @@
-import { DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_PATH } from '#lib/config';
+import { DEFAULT_AGENT_MODEL, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_PATH } from '#lib/config';
 import type { ProviderName } from '#lib/types';
 import { loadDotEnv } from './dotenv.js';
 
@@ -21,6 +21,8 @@ export interface RuntimeEnv {
   openaiApiKey?: string;
   anthropicApiKey?: string;
   defaultProvider: ProviderName;
+  agentProvider: ProviderName;
+  agentModel: string;
   notionApiKey?: string;
   notionVersion: string;
   notionMaxResults: number;
@@ -56,6 +58,17 @@ export function getRuntimeEnv(): RuntimeEnv {
     return cachedEnv;
   }
 
+  const defaultProvider: ProviderName = process.env.MURPH_DEFAULT_PROVIDER === 'anthropic' ? 'anthropic' : 'openai';
+  const agentProvider: ProviderName = process.env.MURPH_AGENT_PROVIDER === 'anthropic'
+    ? 'anthropic'
+    : process.env.MURPH_AGENT_PROVIDER === 'openai'
+      ? 'openai'
+      : process.env.OPENAI_API_KEY
+        ? 'openai'
+        : process.env.ANTHROPIC_API_KEY
+          ? 'anthropic'
+          : defaultProvider;
+
   cachedEnv = {
     appUrl: process.env.MURPH_APP_URL ?? 'http://localhost:5173',
     sqlitePath: process.env.MURPH_SQLITE_PATH ?? DEFAULT_SQLITE_PATH,
@@ -72,7 +85,9 @@ export function getRuntimeEnv(): RuntimeEnv {
     heartbeatIntervalMs: Number(process.env.MURPH_HEARTBEAT_INTERVAL_MS ?? DEFAULT_HEARTBEAT_INTERVAL_MS),
     openaiApiKey: process.env.OPENAI_API_KEY,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-    defaultProvider: process.env.MURPH_DEFAULT_PROVIDER === 'anthropic' ? 'anthropic' : 'openai',
+    defaultProvider,
+    agentProvider,
+    agentModel: process.env.MURPH_AGENT_MODEL || DEFAULT_AGENT_MODEL[agentProvider],
     notionApiKey: process.env.NOTION_API_KEY,
     notionVersion: process.env.NOTION_VERSION ?? '2026-03-11',
     notionMaxResults: Number(process.env.NOTION_MAX_RESULTS ?? 3),

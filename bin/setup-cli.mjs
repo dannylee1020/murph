@@ -28,6 +28,10 @@ const color = {
   cyan: useColor ? '\x1b[36m' : '',
   red: useColor ? '\x1b[31m' : ''
 };
+const DEFAULT_AGENT_MODEL = {
+  openai: 'gpt-5.4-mini',
+  anthropic: 'claude-sonnet-4-6'
+};
 
 function paint(style, text) {
   return `${color[style] || ''}${text}${color.reset}`;
@@ -223,6 +227,65 @@ function mask(value) {
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
+function normalizeProvider(value, fallback = 'openai') {
+  return value === 'anthropic' ? 'anthropic' : fallback === 'anthropic' ? 'anthropic' : 'openai';
+}
+
+function currentDefaultProvider() {
+  return readEnvValue('MURPH_DEFAULT_PROVIDER') ||
+    (readEnvValue('OPENAI_API_KEY') ? 'openai' : readEnvValue('ANTHROPIC_API_KEY') ? 'anthropic' : 'openai');
+}
+
+function currentAgentProvider(fallbackProvider = 'openai') {
+  return normalizeProvider(readEnvValue('MURPH_AGENT_PROVIDER'), fallbackProvider);
+}
+
+function currentAgentModel(provider) {
+  return readEnvValue('MURPH_AGENT_MODEL') || DEFAULT_AGENT_MODEL[provider];
+}
+
+async function saveAgentModelDefaults(providerFallback) {
+  const provider = currentAgentProvider(providerFallback);
+  const model = currentAgentModel(provider);
+  const values = {};
+  if (!readEnvValue('MURPH_AGENT_PROVIDER')) values.MURPH_AGENT_PROVIDER = provider;
+  if (!readEnvValue('MURPH_AGENT_MODEL')) values.MURPH_AGENT_MODEL = model;
+  if (Object.keys(values).length === 0) {
+    success(`Murph Agent model is configured (${provider}/${model}).`);
+    return;
+  }
+  writeEnvValues(values);
+  await postSetupEnv(values);
+  success(`Saved Murph Agent model: ${provider}/${model}.`);
+}
+
+async function promptAgentModel(providerFallback) {
+  sectionTitle('Murph Agent model');
+  const existingProvider = currentAgentProvider(providerFallback);
+  const providerInput = await askChoice(
+    'Agent provider: [1] OpenAI  [2] Anthropic',
+    ['1', '2', 'openai', 'anthropic'],
+    existingProvider === 'anthropic' ? '2' : '1'
+  );
+  const provider = providerInput === '2' || providerInput.toLowerCase() === 'anthropic' ? 'anthropic' : 'openai';
+  const recommended = DEFAULT_AGENT_MODEL[provider];
+  const existingModel = currentAgentModel(provider);
+  const defaultChoice = existingModel === recommended ? '1' : '2';
+  const modelChoice = await askChoice(
+    `Agent model: [1] Recommended (${recommended})  [2] Custom`,
+    ['1', '2', 'recommended', 'custom'],
+    defaultChoice
+  );
+  const useCustom = modelChoice === '2' || modelChoice.toLowerCase() === 'custom';
+  const model = useCustom
+    ? await askRequired('Custom agent model id', existingModel === recommended ? '' : existingModel)
+    : recommended;
+  const values = { MURPH_AGENT_PROVIDER: provider, MURPH_AGENT_MODEL: model };
+  writeEnvValues(values);
+  await postSetupEnv(values);
+  success(`Saved Murph Agent model: ${provider}/${model}.`);
+}
+
 async function request(pathname, options = {}) {
   const response = await fetch(`${murphUrl}${pathname}`, {
     ...options,
@@ -304,14 +367,19 @@ async function setupCore() {
 
 async function setupAi() {
   sectionTitle('AI provider');
-  const currentProvider = readEnvValue('MURPH_DEFAULT_PROVIDER') || 'openai';
+  const currentProvider = currentDefaultProvider();
   const hasKey = Boolean(readEnvValue('OPENAI_API_KEY') || readEnvValue('ANTHROPIC_API_KEY'));
   if (options.quick && hasKey) {
     success(`AI provider is configured (${currentProvider}).`);
+    await saveAgentModelDefaults(currentProvider);
     return;
   }
   if (options.nonInteractive && !hasKey) {
     fail('Missing AI provider key. Set OPENAI_API_KEY or ANTHROPIC_API_KEY, or run murph setup ai.');
+  }
+  if (options.nonInteractive) {
+    await saveAgentModelDefaults(currentProvider);
+    return;
   }
 
   const providerInput = await askChoice('Provider: [1] OpenAI  [2] Anthropic', ['1', '2', 'openai', 'anthropic'], currentProvider === 'anthropic' ? '2' : '1');
@@ -328,6 +396,7 @@ async function setupAi() {
   writeEnvValues(values);
   await postSetupEnv(values);
   success(`Saved ${provider} key (${mask(key)}).`);
+  await promptAgentModel(provider);
 }
 
 async function setupSlack() {
@@ -527,6 +596,8 @@ async function setupStatus() {
     envFile: existsSync(envPath),
     encryptionKey: Boolean(readEnvValue('MURPH_ENCRYPTION_KEY')),
     aiProvider: Boolean(readEnvValue('OPENAI_API_KEY') || readEnvValue('ANTHROPIC_API_KEY')),
+    agentProvider: currentAgentProvider(currentDefaultProvider()),
+    agentModel: currentAgentModel(currentAgentProvider(currentDefaultProvider())),
     slackConfig: Boolean(readEnvValue('SLACK_APP_TOKEN') && readEnvValue('SLACK_CLIENT_ID') && readEnvValue('SLACK_CLIENT_SECRET'))
   };
   let server = null;
@@ -547,6 +618,7 @@ async function setupStatus() {
   statusLine('.env', envStatus.envFile ? 'ok' : 'missing', envStatus.envFile ? 'present' : 'missing');
   statusLine('Encryption key', envStatus.encryptionKey ? 'ok' : 'missing', envStatus.encryptionKey ? 'configured' : 'missing');
   statusLine('AI provider', envStatus.aiProvider ? 'ok' : 'missing', envStatus.aiProvider ? 'configured' : 'missing');
+  statusLine('Murph Agent model', envStatus.agentModel ? 'ok' : 'missing', `${envStatus.agentProvider}/${envStatus.agentModel}`);
   statusLine('Slack app config', envStatus.slackConfig ? 'ok' : 'missing', envStatus.slackConfig ? 'configured' : 'missing');
   if (server) {
     for (const check of server.doctor.checks) {

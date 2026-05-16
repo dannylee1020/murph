@@ -134,7 +134,7 @@ function usage() {
     'Usage: murph agent [prompt] [options]',
     '',
     ...commandList([
-      ['--provider NAME', 'Model provider. Defaults to OpenAI when OPENAI_API_KEY exists, then Anthropic.'],
+      ['--provider NAME', 'Model provider. Defaults to MURPH_AGENT_PROVIDER or setup defaults.'],
       ['--model NAME', 'Model id. Defaults to MURPH_AGENT_MODEL or the provider default.'],
       ['--no-session', 'Use an in-memory session for this run.'],
       ['--no-server', 'Do not auto-start Murph\'s local HTTP server.'],
@@ -787,7 +787,7 @@ async function runAgent(initialPrompt, options) {
   const modelId = options.model || defaultModel(provider);
   const apiKey = apiKeyFor(provider);
   if (!apiKey) {
-    throw new Error(`Missing API key for ${provider}. Run murph setup ai or set MURPH_AGENT_PROVIDER/MURPH_AGENT_MODEL.`);
+    throw new Error(`Missing API key for ${provider}. Run murph setup ai to choose model defaults or set the provider API key in .env.`);
   }
 
   mkdirSync(agentDir, { recursive: true });

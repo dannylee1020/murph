@@ -26,7 +26,14 @@ OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 ```
 
-`murph agent` uses the same provider keys unless `MURPH_AGENT_PROVIDER` or `MURPH_AGENT_MODEL` is set.
+`murph agent` uses the same provider keys, but its provider and model can be set independently:
+
+```text
+MURPH_AGENT_PROVIDER=openai
+MURPH_AGENT_MODEL=gpt-5.4-mini
+```
+
+Use `murph setup ai` or the browser setup flow to change these defaults. Command flags such as `murph agent --provider anthropic --model claude-sonnet-4-6` still override them for one run.
 
 ## Storage
 

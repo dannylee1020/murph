@@ -1,5 +1,6 @@
 import { sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
+import { DEFAULT_AGENT_MODEL } from '#lib/config';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getNotionStatus } from '#lib/server/context-sources/notion';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
@@ -95,7 +96,10 @@ export const systemRoutes: Route[] = [
       },
       provider: {
         configured: Boolean(env.openaiApiKey || env.anthropicApiKey),
-        defaultProvider: env.defaultProvider
+        defaultProvider: env.defaultProvider,
+        agentProvider: env.agentProvider,
+        agentModel: env.agentModel,
+        defaultAgentModels: DEFAULT_AGENT_MODEL
       },
       notion: getNotionStatus(),
       userConfigured: summary.userCount > 0 && Boolean(setupDefaults?.ownerUserId),
