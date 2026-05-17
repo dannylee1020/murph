@@ -1,4 +1,3 @@
-import { DEFAULT_PROVIDER_MODEL } from '#lib/config';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import { handleSlackEventEnvelope, verifySlackHttpSignature } from '#lib/server/channels/slack/events';
@@ -62,7 +61,7 @@ export const slackRoutes: Route[] = [
     getStore().upsertProviderSettings({
       workspaceId: workspace.id,
       provider: env.defaultProvider,
-      model: DEFAULT_PROVIDER_MODEL[env.defaultProvider]
+      model: env.defaultModel
     });
 
     redirect(res, '/setup?step=slack&success=1');

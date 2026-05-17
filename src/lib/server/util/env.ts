@@ -1,4 +1,4 @@
-import { DEFAULT_AGENT_MODEL, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_PATH } from '#lib/config';
+import { DEFAULT_PROVIDER_MODEL, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_PATH } from '#lib/config';
 import type { ProviderName } from '#lib/types';
 import { readMurphConfig } from '#lib/server/setup/config-file';
 import { loadDotEnv } from './dotenv.js';
@@ -22,6 +22,7 @@ export interface RuntimeEnv {
   openaiApiKey?: string;
   anthropicApiKey?: string;
   defaultProvider: ProviderName;
+  defaultModel: string;
   agentProvider: ProviderName;
   agentModel: string;
   notionApiKey?: string;
@@ -80,6 +81,7 @@ export function getRuntimeEnv(): RuntimeEnv {
     : process.env.MURPH_DEFAULT_PROVIDER === 'openai'
       ? 'openai'
       : config.ai?.defaultProvider ?? 'openai';
+  const defaultModel = envOrConfigString('MURPH_DEFAULT_MODEL', config.ai?.defaultModel, DEFAULT_PROVIDER_MODEL[defaultProvider]);
   const agentProvider: ProviderName = process.env.MURPH_AGENT_PROVIDER === 'anthropic'
     ? 'anthropic'
     : process.env.MURPH_AGENT_PROVIDER === 'openai'
@@ -113,8 +115,11 @@ export function getRuntimeEnv(): RuntimeEnv {
     openaiApiKey: process.env.OPENAI_API_KEY,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     defaultProvider,
+    defaultModel,
     agentProvider,
-    agentModel: process.env.MURPH_AGENT_MODEL || config.ai?.agent?.model || DEFAULT_AGENT_MODEL[agentProvider],
+    agentModel: process.env.MURPH_AGENT_MODEL ||
+      config.ai?.agent?.model ||
+      (agentProvider === defaultProvider ? defaultModel : DEFAULT_PROVIDER_MODEL[agentProvider]),
     notionApiKey: process.env.NOTION_API_KEY,
     notionVersion: envOrConfigString('NOTION_VERSION', config.integrations?.notion?.version, '2026-03-11'),
     notionMaxResults: envOrConfigNumber('NOTION_MAX_RESULTS', config.integrations?.notion?.maxResults, 3),

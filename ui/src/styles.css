@@ -1,30 +1,31 @@
 :root {
   color-scheme: light;
 
-  /* Ink / paper. Warm, quiet, and intentionally low-chroma. */
-  --ink: oklch(20% 0.018 78);
-  --ink-soft: oklch(36% 0.016 78);
-  --muted: oklch(54% 0.014 78);
-  --faint: oklch(74% 0.01 78);
-  --rule: oklch(88% 0.009 78);
-  --rule-strong: oklch(72% 0.012 78);
-  --paper: oklch(98.2% 0.012 82);
-  --surface: oklch(97% 0.012 82);
-  --tint: oklch(94% 0.014 82);
+  /* Shared with the docs landing system: warm paper, graphite ink, amber action. */
+  --ink: oklch(19% 0.009 82);
+  --ink-soft: oklch(38% 0.012 78);
+  --muted: oklch(54% 0.011 78);
+  --faint: oklch(70% 0.01 78);
+  --rule: oklch(33% 0.007 84 / 24%);
+  --rule-strong: oklch(29% 0.007 84 / 48%);
+  --paper: oklch(93.2% 0.018 76);
+  --surface: oklch(98% 0.007 82);
+  --tint: oklch(95.2% 0.011 82);
 
-  /* Accent — a single deep mark, used like punctuation. */
-  --accent: oklch(42% 0.14 25);
-  --accent-soft: oklch(94% 0.018 25);
-  --accent-ink: oklch(98% 0.005 25);
+  /* Accent — amber/copper, used rarely as action punctuation. */
+  --accent: oklch(73% 0.155 70);
+  --accent-hover: oklch(78% 0.155 74);
+  --accent-soft: oklch(73% 0.155 70 / 13%);
+  --accent-ink: oklch(17% 0.012 70);
 
   /* Status hues, kept muted. */
   --ok: oklch(58% 0.11 150);
   --warn: oklch(70% 0.13 75);
-  --danger: var(--accent);
+  --danger: oklch(58% 0.16 28);
 
-  /* Type — Switzer first, with system fallbacks when it is not installed. */
+  /* Type — same Geist family as the docs site. */
   --font-sans:
-    "Switzer", ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", system-ui,
+    "Geist", ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", system-ui,
     sans-serif;
   --font-display: var(--font-sans);
   --font-mono:
@@ -103,8 +104,8 @@ button,
 
 button:hover,
 .button:hover {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
   color: var(--accent-ink);
 }
 
@@ -201,7 +202,7 @@ input[type="time"] {
   height: 100dvh;
   padding: 32px 28px;
   border-right: 1px solid var(--rule);
-  background: transparent;
+  background: var(--surface);
   display: flex;
   flex-direction: column;
 }
@@ -209,18 +210,34 @@ input[type="time"] {
 /* ---------- Brand ---------- */
 
 .brand {
-  display: block;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 2px 12px;
+  align-items: center;
   margin-bottom: 48px;
   color: var(--ink);
   text-decoration: none;
   line-height: 1;
 }
 
+.brand-mark {
+  grid-row: 1 / span 2;
+  display: inline-grid;
+  width: 32px;
+  height: 26px;
+  place-items: center;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+}
+
 .brand-wordmark {
   display: block;
   font-family: var(--font-display);
-  font-size: 1.75rem;
-  font-weight: 600;
+  font-size: 1.35rem;
+  font-weight: 900;
   letter-spacing: 0;
   font-style: normal;
 }
@@ -664,8 +681,7 @@ p {
 }
 
 .status-dot.ok {
-  background: oklch(70% 0.2 150);
-  box-shadow: 0 0 0 2px oklch(70% 0.2 150 / 0.18);
+  background: var(--ok);
 }
 
 .status-dot.warn {
@@ -1581,12 +1597,20 @@ button.primary-large:hover {
 }
 
 .wizard-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-display);
   font-size: 1.5rem;
   font-style: normal;
-  font-weight: 600;
+  font-weight: 900;
   letter-spacing: 0;
   color: var(--ink);
+}
+
+.wizard-brand img {
+  width: 32px;
+  height: 26px;
 }
 
 .wizard-progress-dots {

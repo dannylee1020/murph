@@ -8,6 +8,7 @@ const envKeys = [
   'MURPH_APP_DIR',
   'MURPH_APP_URL',
   'MURPH_DEFAULT_PROVIDER',
+  'MURPH_DEFAULT_MODEL',
   'MURPH_AGENT_PROVIDER',
   'MURPH_AGENT_MODEL',
   'SLACK_EVENTS_MODE',
@@ -45,9 +46,10 @@ describe('murph config file', () => {
       '  url: https://murph.example',
       'ai:',
       '  defaultProvider: anthropic',
+      '  defaultModel: claude-opus-4-7',
       '  agent:',
       '    provider: anthropic',
-      '    model: claude-sonnet-4-6',
+      '    model: claude-opus-4-7',
       'channels:',
       '  slack:',
       '    eventsMode: http',
@@ -64,10 +66,28 @@ describe('murph config file', () => {
 
     expect(env.appUrl).toBe('https://murph.example');
     expect(env.defaultProvider).toBe('anthropic');
+    expect(env.defaultModel).toBe('claude-opus-4-7');
     expect(env.agentProvider).toBe('anthropic');
-    expect(env.agentModel).toBe('claude-sonnet-4-6');
+    expect(env.agentModel).toBe('claude-opus-4-7');
     expect(env.slackEventsMode).toBe('http');
     expect(env.githubRepositories).toEqual(['acme/app', 'acme/api']);
+  });
+
+  it('lets Murph Agent inherit runtime provider and model by default', async () => {
+    writeFileSync('murph.config.yaml', [
+      'ai:',
+      '  defaultProvider: anthropic',
+      '  defaultModel: claude-opus-4-7',
+      ''
+    ].join('\n'));
+
+    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
+    const env = getRuntimeEnv();
+
+    expect(env.defaultProvider).toBe('anthropic');
+    expect(env.defaultModel).toBe('claude-opus-4-7');
+    expect(env.agentProvider).toBe('anthropic');
+    expect(env.agentModel).toBe('claude-opus-4-7');
   });
 
   it('defaults web search to Brave', async () => {
@@ -102,21 +122,22 @@ describe('murph config file', () => {
       '  url: https://murph.example',
       'ai:',
       '  defaultProvider: anthropic',
+      '  defaultModel: claude-opus-4-7',
       '  agent:',
       '    provider: anthropic',
-      '    model: claude-sonnet-4-6',
+      '    model: claude-opus-4-7',
       ''
     ].join('\n'));
     process.env.MURPH_APP_URL = 'https://override.example';
     process.env.MURPH_AGENT_PROVIDER = 'openai';
-    process.env.MURPH_AGENT_MODEL = 'gpt-5.4-mini';
+    process.env.MURPH_AGENT_MODEL = 'gpt-5.5';
 
     const { getRuntimeEnv } = await import('../src/lib/server/util/env');
     const env = getRuntimeEnv();
 
     expect(env.appUrl).toBe('https://override.example');
     expect(env.agentProvider).toBe('openai');
-    expect(env.agentModel).toBe('gpt-5.4-mini');
+    expect(env.agentModel).toBe('gpt-5.5');
   });
 
   it('updates non-secret setup keys without dropping unrelated YAML', async () => {
@@ -125,16 +146,43 @@ describe('murph config file', () => {
 
     const result = updateMurphConfigValues({
       MURPH_APP_URL: 'https://murph.example',
-      MURPH_AGENT_MODEL: 'gpt-5.4-mini',
+      MURPH_DEFAULT_MODEL: 'gpt-5.5',
+      MURPH_AGENT_MODEL: 'claude-opus-4-7',
       GITHUB_REPOSITORIES: 'acme/app,acme/api'
     });
 
     const raw = readFileSync('murph.config.yaml', 'utf8');
-    expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES']);
+    expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES']);
     expect(raw).toContain('keep: true');
     expect(raw).toContain('url: https://murph.example');
-    expect(raw).toContain('model: gpt-5.4-mini');
+    expect(raw).toContain('defaultModel: gpt-5.5');
+    expect(raw).toContain('model: claude-opus-4-7');
     expect(raw).toContain('- acme/app');
     expect(raw).toContain('- acme/api');
+  });
+
+  it('clears explicit Murph Agent overrides so the agent can inherit runtime', async () => {
+    writeFileSync('murph.config.yaml', [
+      'ai:',
+      '  defaultProvider: openai',
+      '  defaultModel: gpt-5.5',
+      '  agent:',
+      '    provider: anthropic',
+      '    model: claude-opus-4-7',
+      ''
+    ].join('\n'));
+    const { updateMurphConfigValues } = await import('../src/lib/server/setup/config-file');
+
+    const result = updateMurphConfigValues({
+      MURPH_AGENT_PROVIDER: '',
+      MURPH_AGENT_MODEL: ''
+    });
+
+    const raw = readFileSync('murph.config.yaml', 'utf8');
+    expect(result.updated).toEqual(['MURPH_AGENT_PROVIDER', 'MURPH_AGENT_MODEL']);
+    expect(raw).toContain('defaultProvider: openai');
+    expect(raw).toContain('defaultModel: gpt-5.5');
+    expect(raw).not.toContain('provider: anthropic');
+    expect(raw).not.toContain('model: claude-opus-4-7');
   });
 });

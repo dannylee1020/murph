@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "dist/server/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "imports": {
     "#lib/*": {
       "types": "./src/lib/*.ts",

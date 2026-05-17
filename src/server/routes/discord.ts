@@ -1,4 +1,3 @@
-import { DEFAULT_PROVIDER_MODEL } from '#lib/config';
 import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
@@ -24,7 +23,7 @@ export const discordRoutes: Route[] = [
     getStore().upsertProviderSettings({
       workspaceId: workspace.id,
       provider: env.defaultProvider,
-      model: DEFAULT_PROVIDER_MODEL[env.defaultProvider]
+      model: env.defaultModel
     });
 
     redirect(res, '/settings?installed=discord');

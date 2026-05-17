@@ -9,7 +9,7 @@ Murph is installed as a local app plus a `murph` CLI.
 
 ## Requirements
 
-- Node.js 18 or newer
+- Node.js 20 or newer. Node 20 is the CI target and recommended baseline.
 - npm
 - A terminal with `curl`, `tar`, and `mktemp`
 - An OpenAI or Anthropic API key

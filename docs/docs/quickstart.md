@@ -5,11 +5,7 @@ description: Get Murph installed, configured, and running.
 
 # Quickstart
 
-Murph is a local-first handoff agent for handling messaging channels while you are offline.
-
-::: info Local first
-Murph runs on your machine. Start the server, connect your channels, and use the doctor command whenever setup feels off.
-:::
+Murph is a local-first handoff agent for handling messaging channels while you are offline. It is extensible and flexible by design. Your choice of channels, data sources, running on your machine.
 
 ## 1. Install
 

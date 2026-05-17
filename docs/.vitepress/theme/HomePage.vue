@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 
 const theme = ref<'light' | 'dark'>('light');
+const copiedCommand = ref<string | null>(null);
 const installCommand = 'curl -fsSL https://murph-agent.com/install.sh | bash';
+let copiedResetTimer: ReturnType<typeof setTimeout> | undefined;
 
 function syncThemeFromDocument() {
   if (typeof document === 'undefined') return;
@@ -19,11 +21,22 @@ function toggleTheme() {
 }
 
 async function copyCommand(command: string) {
-  if (typeof navigator === 'undefined') return;
-  await navigator.clipboard?.writeText(command);
+  if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+
+  await navigator.clipboard.writeText(command);
+  copiedCommand.value = command;
+
+  if (copiedResetTimer) window.clearTimeout(copiedResetTimer);
+  copiedResetTimer = window.setTimeout(() => {
+    copiedCommand.value = null;
+  }, 900);
 }
 
 onMounted(syncThemeFromDocument);
+
+onBeforeUnmount(() => {
+  if (copiedResetTimer) window.clearTimeout(copiedResetTimer);
+});
 </script>
 
 <template>
@@ -32,10 +45,7 @@ onMounted(syncThemeFromDocument);
       <nav class="murph-home-nav" aria-label="Murph home navigation">
         <a class="murph-brand" href="/">
           <span class="murph-mark" aria-hidden="true">
-            <svg viewBox="0 0 40 32">
-              <path d="M5 26V6l7.5 8L20 6v20l-7.5-8L5 26Z" />
-              <path d="M20 26V6l7.5 8L35 6v20l-7.5-8L20 26Z" />
-            </svg>
+            <img src="/img/murph-logo.svg" alt="" />
           </span>
           <span>Murph</span>
         </a>
@@ -78,22 +88,38 @@ onMounted(syncThemeFromDocument);
           </p>
 
           <div class="murph-install" aria-label="Install Murph">
-            <button type="button" @click="copyCommand(installCommand)">
+            <button
+              type="button"
+              :class="{ 'is-copied': copiedCommand === installCommand }"
+              :aria-label="copiedCommand === installCommand ? 'Copied install command' : 'Copy install command'"
+              @click="copyCommand(installCommand)"
+            >
               <span class="murph-command-copy">
                 <span class="murph-command-label">Install</span>
                 <code><span>curl</span> -fsSL https://murph-agent.com/install.sh | bash</code>
               </span>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
+              <svg v-if="copiedCommand === installCommand" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m5 12.5 4.2 4.2L19 7" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="9" y="9" width="10" height="10" rx="1.5" />
                 <path d="M6 15H5.5A1.5 1.5 0 0 1 4 13.5v-9A1.5 1.5 0 0 1 5.5 3h9A1.5 1.5 0 0 1 16 4.5V5" />
               </svg>
             </button>
-            <button type="button" @click="copyCommand('murph agent')">
+            <button
+              type="button"
+              :class="{ 'is-copied': copiedCommand === 'murph agent' }"
+              :aria-label="copiedCommand === 'murph agent' ? 'Copied start command' : 'Copy start command'"
+              @click="copyCommand('murph agent')"
+            >
               <span class="murph-command-copy">
                 <span class="murph-command-label">Start</span>
                 <code><span>murph</span> agent</code>
               </span>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
+              <svg v-if="copiedCommand === 'murph agent'" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m5 12.5 4.2 4.2L19 7" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="9" y="9" width="10" height="10" rx="1.5" />
                 <path d="M6 15H5.5A1.5 1.5 0 0 1 4 13.5v-9A1.5 1.5 0 0 1 5.5 3h9A1.5 1.5 0 0 1 16 4.5V5" />
               </svg>

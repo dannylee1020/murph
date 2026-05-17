@@ -145,7 +145,8 @@ run_logged() {
 
 node_install_help() {
   cat <<'EOF'
-Murph needs Node.js 18 or newer.
+Murph needs Node.js 20 or newer.
+Node 20 is the CI target and recommended baseline.
 
 Install Node with your normal toolchain, then rerun ./install.sh.
 
@@ -175,9 +176,9 @@ check_node() {
   major="${version#v}"
   major="${major%%.*}"
 
-  if ! [[ "$major" =~ ^[0-9]+$ ]] || [[ "$major" -lt 18 ]]; then
+  if ! [[ "$major" =~ ^[0-9]+$ ]] || [[ "$major" -lt 20 ]]; then
     node_install_help
-    fail "Node.js 18 or newer is required. Found $version."
+    fail "Node.js 20 or newer is required. Found $version."
   fi
 
   if ! have_command npm; then

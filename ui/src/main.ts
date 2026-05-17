@@ -101,8 +101,10 @@ type SetupStatusPayload = {
   provider: {
     configured: boolean;
     defaultProvider: string;
+    defaultModel?: string;
     agentProvider?: string;
     agentModel?: string;
+    agentInheritsRuntime?: boolean;
     defaultAgentModels?: Record<string, string>;
   };
   notion: {
@@ -318,8 +320,8 @@ const app = root;
 let dashboardNotice = '';
 let dashboardError = '';
 const DEFAULT_AGENT_MODELS: Record<string, string> = {
-  openai: 'gpt-5.4-mini',
-  anthropic: 'claude-sonnet-4-6'
+  openai: 'gpt-5.5',
+  anthropic: 'claude-opus-4-7'
 };
 
 const navItems = [
@@ -402,11 +404,25 @@ function agentModel(setup: SetupStatusPayload): string {
   return setup.provider.agentModel ?? defaults[provider] ?? DEFAULT_AGENT_MODELS.openai;
 }
 
+function runtimeModel(setup: SetupStatusPayload): string {
+  const provider = setup.provider.defaultProvider ?? 'openai';
+  const defaults = setup.provider.defaultAgentModels ?? DEFAULT_AGENT_MODELS;
+  return setup.provider.defaultModel ?? defaults[provider] ?? DEFAULT_AGENT_MODELS.openai;
+}
+
 function agentModelFields(setup: SetupStatusPayload): string {
   const selectedProvider = agentProvider(setup);
   const selectedModel = agentModel(setup);
   const defaults = setup.provider.defaultAgentModels ?? DEFAULT_AGENT_MODELS;
+  const inherits = setup.provider.agentInheritsRuntime !== false;
   return `
+    <label>
+      <span>Murph Agent default</span>
+      <select name="agentModelMode">
+        <option value="inherit" ${inherits ? 'selected' : ''}>Inherit runtime model (${escapeHtml(`${setup.provider.defaultProvider} / ${runtimeModel(setup)}`)})</option>
+        <option value="custom" ${inherits ? '' : 'selected'}>Use a separate agent model</option>
+      </select>
+    </label>
     <label>
       <span>Murph Agent provider</span>
       <select name="agentProvider">
@@ -415,7 +431,7 @@ function agentModelFields(setup: SetupStatusPayload): string {
       </select>
     </label>
     <label>
-      <span>Murph Agent model</span>
+      <span>Separate Murph Agent model</span>
       <input name="agentModel" list="agent-model-presets" value="${escapeHtml(selectedModel)}" autocomplete="off" required />
       <datalist id="agent-model-presets">
         <option value="${escapeHtml(defaults.openai ?? DEFAULT_AGENT_MODELS.openai)}">OpenAI recommended</option>
@@ -793,8 +809,9 @@ function shell(content: string): void {
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="/" data-link>
+          <span class="brand-mark" aria-hidden="true"><img src="/img/murph-logo.svg" alt="" /></span>
           <span class="brand-wordmark">Murph</span>
-          <span class="brand-tag">Overnight autopilot</span>
+          <span class="brand-tag">Local-first handoff</span>
         </a>
         <nav>
           ${navItems
@@ -1291,7 +1308,7 @@ async function renderSetup(): Promise<void> {
     <div class="wizard-container">
       <div class="wizard-panel">
         <div class="wizard-header">
-          <span class="wizard-brand">Murph</span>
+          <span class="wizard-brand"><img src="/img/murph-logo.svg" alt="" aria-hidden="true" />Murph</span>
           ${step > 0 ? `<div class="wizard-progress-dots">${dots}</div>` : ''}
         </div>
         ${stepContent}
@@ -1454,9 +1471,10 @@ async function renderSetup(): Promise<void> {
       const formData = form ? new FormData(form) : new FormData();
       const provider = String(formData.get('provider') ?? 'openai');
       const apiKey = String(formData.get('apiKey') ?? '').trim();
+      const agentModelMode = String(formData.get('agentModelMode') ?? 'inherit');
       const selectedAgentProvider = String(formData.get('agentProvider') ?? agentProvider(setup));
       const selectedAgentModel = String(formData.get('agentModel') ?? agentModel(setup)).trim();
-      if (!selectedAgentModel) return;
+      if (agentModelMode === 'custom' && !selectedAgentModel) return;
       if (!setup.provider.configured && !apiKey) return;
       await postJson('/api/setup/env', {
         ...(!setup.provider.configured
@@ -1465,8 +1483,15 @@ async function renderSetup(): Promise<void> {
               ...(provider === 'anthropic' ? { ANTHROPIC_API_KEY: apiKey } : { OPENAI_API_KEY: apiKey })
             }
           : {}),
-        MURPH_AGENT_PROVIDER: selectedAgentProvider,
-        MURPH_AGENT_MODEL: selectedAgentModel
+        ...(agentModelMode === 'custom'
+          ? {
+              MURPH_AGENT_PROVIDER: selectedAgentProvider,
+              MURPH_AGENT_MODEL: selectedAgentModel
+            }
+          : {
+              MURPH_AGENT_PROVIDER: '',
+              MURPH_AGENT_MODEL: ''
+            })
       });
     }
 

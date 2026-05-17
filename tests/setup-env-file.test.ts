@@ -10,6 +10,7 @@ const envKeys = [
   'MURPH_SQLITE_PATH',
   'MURPH_ENCRYPTION_KEY',
   'MURPH_DEFAULT_PROVIDER',
+  'MURPH_DEFAULT_MODEL',
   'MURPH_AGENT_PROVIDER',
   'MURPH_AGENT_MODEL',
   'OPENAI_API_KEY',
@@ -50,20 +51,58 @@ describe('setup env file writer', () => {
 
     const result = updateSetupEnv({
       MURPH_DEFAULT_PROVIDER: 'openai',
+      MURPH_DEFAULT_MODEL: 'gpt-5.5',
+      MURPH_AGENT_PROVIDER: 'anthropic',
+      MURPH_AGENT_MODEL: 'claude-opus-4-7',
       MURPH_ENCRYPTION_KEY: 'secret',
       OPENAI_API_KEY: 'sk-new',
       SLACK_EVENTS_MODE: 'socket',
       SLACK_APP_TOKEN: 'xapp-test'
     });
 
-    expect(result.updated).toEqual(['MURPH_ENCRYPTION_KEY', 'OPENAI_API_KEY', 'SLACK_APP_TOKEN', 'MURPH_DEFAULT_PROVIDER', 'SLACK_EVENTS_MODE']);
+    expect(result.updated).toEqual([
+      'MURPH_ENCRYPTION_KEY',
+      'OPENAI_API_KEY',
+      'SLACK_APP_TOKEN',
+      'MURPH_DEFAULT_PROVIDER',
+      'MURPH_DEFAULT_MODEL',
+      'MURPH_AGENT_PROVIDER',
+      'MURPH_AGENT_MODEL',
+      'SLACK_EVENTS_MODE'
+    ]);
     expect(readFileSync('.env', 'utf8')).toContain('CUSTOM_VALUE=keep');
     expect(readFileSync('.env', 'utf8')).toContain('MURPH_ENCRYPTION_KEY=secret');
     expect(readFileSync('.env', 'utf8')).toContain('OPENAI_API_KEY=sk-new');
     expect(readFileSync('.env', 'utf8')).toContain('SLACK_APP_TOKEN=xapp-test');
     expect(readFileSync('murph.config.yaml', 'utf8')).toContain('defaultProvider: openai');
+    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('defaultModel: gpt-5.5');
+    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('provider: anthropic');
+    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('model: claude-opus-4-7');
     expect(readFileSync('murph.config.yaml', 'utf8')).toContain('eventsMode: socket');
     expect(process.env.OPENAI_API_KEY).toBe('sk-new');
+  });
+
+  it('clears agent overrides through setup env updates', async () => {
+    writeFileSync('murph.config.yaml', [
+      'ai:',
+      '  defaultProvider: openai',
+      '  defaultModel: gpt-5.5',
+      '  agent:',
+      '    provider: anthropic',
+      '    model: claude-opus-4-7',
+      ''
+    ].join('\n'));
+    const { updateSetupEnv } = await import('../src/lib/server/setup/env-file');
+
+    const result = updateSetupEnv({
+      MURPH_AGENT_PROVIDER: '',
+      MURPH_AGENT_MODEL: ''
+    });
+
+    const raw = readFileSync('murph.config.yaml', 'utf8');
+    expect(result.updated).toEqual(['MURPH_AGENT_PROVIDER', 'MURPH_AGENT_MODEL']);
+    expect(raw).not.toContain('provider: anthropic');
+    expect(raw).not.toContain('model: claude-opus-4-7');
   });
 
   it('rejects unsupported keys', async () => {

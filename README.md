@@ -6,15 +6,12 @@ Start a session before you log off. Murph watches the channels you choose, pulls
 
 | What you need | What Murph does |
 | --- | --- |
-| **Stay offline without losing momentum** | Watches selected Slack or Discord channels while you are away |
+| **Stay offline without losing momentum** | Watches selected messenger channels while you are away |
 | **Keep control explicit** | Sends safe work, queues risky work, and skips anything it should not answer |
 | **Use your real context** | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
 | **Review what happened** | Shows what was sent, queued, skipped, and why |
 | **Run it yourself** | Stores runtime state locally with SQLite and encrypted credentials |
 
-```text
-selected channel -> context -> grounded draft -> policy -> send | queue | skip
-```
 
 Murph is built for people who want async continuity without handing over control: indie developers, founders, operators, and distributed teams.
 
@@ -52,7 +49,7 @@ murph doctor
 | [Installation](https://docs.murph-agent.com/docs/installation) | Installer behavior, local setup, and manual install paths. |
 | [Configuration](https://docs.murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and local runtime settings. |
 | [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent) | `murph` commands and the local agent for setup, debugging, and plugins. |
-| [Channels](https://docs.murph-agent.com/docs/channels) | Connect Slack or Discord and choose the channels Murph should watch. |
+| [Channels](https://docs.murph-agent.com/docs/channels) | Connect the messenger you use and choose the channels Murph should watch. |
 | [Integrations](https://docs.murph-agent.com/docs/integrations) | Connect context sources like docs, GitHub, Gmail, Calendar, and meetings. |
 | [Core Concepts](https://docs.murph-agent.com/docs/core-concepts) | Sessions, context, skills, policy, triage, and audit trails. |
 | [Contributing](https://docs.murph-agent.com/docs/contributing) | Local development, project structure, and contribution workflow. |

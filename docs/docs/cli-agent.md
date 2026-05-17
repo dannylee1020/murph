@@ -41,10 +41,10 @@ murph agent
 
 Normal runs automatically start the local Murph server so agent tools can call setup, plugin, integration, and policy APIs.
 
-Choose persistent model defaults with `murph setup ai` or the browser setup flow. Per-run flags still override those defaults:
+Choose persistent model defaults with `murph setup ai` or the browser setup flow. By default, `murph agent` inherits the runtime provider/model. Per-run flags still override those defaults:
 
 ```bash
-murph agent --provider openai --model gpt-5.4-mini
+murph agent --provider openai --model gpt-5.5
 ```
 
 Use `--no-server` for offline or smoke-test sessions:

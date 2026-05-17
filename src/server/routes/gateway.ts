@@ -181,6 +181,7 @@ export const gatewayRoutes: Route[] = [
       plugins: listRegisteredPluginManifests(),
       provider: {
         defaultProvider: env.defaultProvider,
+        defaultModel: env.defaultModel,
         defaultModels: DEFAULT_PROVIDER_MODEL,
         configured: Boolean(env.openaiApiKey || env.anthropicApiKey)
       },

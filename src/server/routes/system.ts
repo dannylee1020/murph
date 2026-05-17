@@ -96,6 +96,11 @@ export const systemRoutes: Route[] = [
     const workspaces = getStore().listWorkspaces();
     const slackWorkspace = getSlackService().getUsableWorkspace();
     const discordWorkspace = workspaces.find((workspace) => workspace.provider === 'discord' && workspace.botTokenEncrypted);
+    const config = readMurphConfig();
+    const agentInheritsRuntime = process.env.MURPH_AGENT_PROVIDER === undefined &&
+      process.env.MURPH_AGENT_MODEL === undefined &&
+      !config.ai?.agent?.provider &&
+      !config.ai?.agent?.model;
 
     sendJson(res, {
       ok: true,
@@ -114,8 +119,10 @@ export const systemRoutes: Route[] = [
       provider: {
         configured: Boolean(env.openaiApiKey || env.anthropicApiKey),
         defaultProvider: env.defaultProvider,
+        defaultModel: env.defaultModel,
         agentProvider: env.agentProvider,
         agentModel: env.agentModel,
+        agentInheritsRuntime,
         defaultAgentModels: DEFAULT_AGENT_MODEL
       },
       config: {

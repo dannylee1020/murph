@@ -16,6 +16,7 @@ export interface MurphConfig {
   };
   ai?: {
     defaultProvider?: ProviderName;
+    defaultModel?: string;
     agent?: {
       provider?: ProviderName;
       model?: string;
@@ -67,6 +68,7 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   MURPH_CONTEXT_SOURCE_TIMEOUT_MS: (config, value) => setPath(config, ['app', 'contextSourceTimeoutMs'], numberFromString(value)),
   MURPH_CONTEXT_SOURCE_MAX_OPTIONAL: (config, value) => setPath(config, ['app', 'contextSourceMaxOptional'], numberFromString(value)),
   MURPH_DEFAULT_PROVIDER: (config, value) => setPath(config, ['ai', 'defaultProvider'], providerFromString(value)),
+  MURPH_DEFAULT_MODEL: (config, value) => setPath(config, ['ai', 'defaultModel'], value),
   MURPH_AGENT_PROVIDER: (config, value) => setPath(config, ['ai', 'agent', 'provider'], providerFromString(value)),
   MURPH_AGENT_MODEL: (config, value) => setPath(config, ['ai', 'agent', 'model'], value),
   SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
@@ -84,6 +86,11 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
 };
 
 export const SETUP_CONFIG_KEYS = new Set(Object.keys(CONFIG_KEY_SETTERS));
+
+const CONFIG_KEY_CLEARERS: Record<string, (config: Record<string, unknown>) => void> = {
+  MURPH_AGENT_PROVIDER: (config) => deletePath(config, ['ai', 'agent', 'provider']),
+  MURPH_AGENT_MODEL: (config) => deletePath(config, ['ai', 'agent', 'model'])
+};
 
 function configPath(cwd = process.cwd()): string {
   return path.resolve(process.env.MURPH_APP_DIR || cwd, MURPH_CONFIG_FILE);
@@ -107,6 +114,17 @@ function setPath(target: Record<string, unknown>, parts: string[], value: unknow
     cursor = objectAt(cursor, part);
   }
   cursor[parts[parts.length - 1]] = value;
+}
+
+function deletePath(target: Record<string, unknown>, parts: string[]): void {
+  let cursor: Record<string, unknown> | undefined = target;
+  for (const part of parts.slice(0, -1)) {
+    if (!cursor) return;
+    const next: unknown = cursor[part];
+    if (!isRecord(next)) return;
+    cursor = next;
+  }
+  delete cursor[parts[parts.length - 1]];
 }
 
 function readRawConfig(cwd = process.cwd()): Record<string, unknown> {
@@ -213,6 +231,7 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
     },
     ai: {
       defaultProvider: providerValue(ai.defaultProvider),
+      defaultModel: stringValue(ai.defaultModel),
       agent: {
         provider: providerValue(agent.provider),
         model: stringValue(agent.model)
@@ -266,7 +285,13 @@ export function updateMurphConfigValues(values: Record<string, string | undefine
       throw new Error(`Unsupported config key: ${key}`);
     }
     const value = rawValue?.trim();
-    if (!value) continue;
+    if (!value) {
+      const clearer = CONFIG_KEY_CLEARERS[key];
+      if (!clearer) continue;
+      clearer(raw);
+      updated.push(key);
+      continue;
+    }
     setter(raw, value);
     updated.push(key);
   }

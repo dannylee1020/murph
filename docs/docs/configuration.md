@@ -26,14 +26,21 @@ OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=...
 ```
 
-`murph agent` uses the same provider keys, but its provider and model can be set independently:
+Runtime replies and `murph agent` share the same provider/model by default:
 
 ```text
-MURPH_AGENT_PROVIDER=openai
-MURPH_AGENT_MODEL=gpt-5.4-mini
+MURPH_DEFAULT_PROVIDER=openai
+MURPH_DEFAULT_MODEL=gpt-5.5
 ```
 
-Use `murph setup ai` or the browser setup flow to change these defaults. Command flags such as `murph agent --provider anthropic --model claude-sonnet-4-6` still override them for one run.
+Use `murph setup ai` or the browser setup flow to change defaults. If you want the local setup/coding agent to use a different model from runtime replies, set an optional agent override:
+
+```text
+MURPH_AGENT_PROVIDER=anthropic
+MURPH_AGENT_MODEL=claude-opus-4-7
+```
+
+Command flags such as `murph agent --provider openai --model gpt-5.5` still override them for one run.
 
 ## Storage
 

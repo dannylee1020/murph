@@ -30,14 +30,16 @@ const color = {
   cyan: useColor ? '\x1b[36m' : '',
   red: useColor ? '\x1b[31m' : ''
 };
-const DEFAULT_AGENT_MODEL = {
-  openai: 'gpt-5.4-mini',
-  anthropic: 'claude-sonnet-4-6'
+const DEFAULT_PROVIDER_MODEL = {
+  openai: 'gpt-5.5',
+  anthropic: 'claude-opus-4-7'
 };
+const DEFAULT_AGENT_MODEL = DEFAULT_PROVIDER_MODEL;
 const CONFIG_KEY_SETTERS = {
   MURPH_APP_URL: (config, value) => setPath(config, ['app', 'url'], value),
   MURPH_SQLITE_PATH: (config, value) => setPath(config, ['app', 'sqlitePath'], value),
   MURPH_DEFAULT_PROVIDER: (config, value) => setPath(config, ['ai', 'defaultProvider'], normalizeProvider(value)),
+  MURPH_DEFAULT_MODEL: (config, value) => setPath(config, ['ai', 'defaultModel'], value),
   MURPH_AGENT_PROVIDER: (config, value) => setPath(config, ['ai', 'agent', 'provider'], normalizeProvider(value)),
   MURPH_AGENT_MODEL: (config, value) => setPath(config, ['ai', 'agent', 'model'], value),
   SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
@@ -46,6 +48,10 @@ const CONFIG_KEY_SETTERS = {
   DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value)
 };
 const CONFIG_KEYS = new Set(Object.keys(CONFIG_KEY_SETTERS));
+const CONFIG_KEY_CLEARERS = {
+  MURPH_AGENT_PROVIDER: (config) => deletePath(config, ['ai', 'agent', 'provider']),
+  MURPH_AGENT_MODEL: (config) => deletePath(config, ['ai', 'agent', 'model'])
+};
 
 function paint(style, text) {
   return `${color[style] || ''}${text}${color.reset}`;
@@ -222,6 +228,16 @@ function setPath(target, parts, value) {
   cursor[parts[parts.length - 1]] = value;
 }
 
+function deletePath(target, parts) {
+  let cursor = target;
+  for (const part of parts.slice(0, -1)) {
+    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) return;
+    cursor = cursor[part];
+  }
+  if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) return;
+  delete cursor[parts[parts.length - 1]];
+}
+
 function getPath(target, parts) {
   let cursor = target;
   for (const part of parts) {
@@ -236,6 +252,7 @@ function readConfigValue(key) {
   if (key === 'MURPH_APP_URL') return getPath(config, ['app', 'url']);
   if (key === 'MURPH_SQLITE_PATH') return getPath(config, ['app', 'sqlitePath']);
   if (key === 'MURPH_DEFAULT_PROVIDER') return getPath(config, ['ai', 'defaultProvider']);
+  if (key === 'MURPH_DEFAULT_MODEL') return getPath(config, ['ai', 'defaultModel']);
   if (key === 'MURPH_AGENT_PROVIDER') return getPath(config, ['ai', 'agent', 'provider']);
   if (key === 'MURPH_AGENT_MODEL') return getPath(config, ['ai', 'agent', 'model']);
   if (key === 'SLACK_EVENTS_MODE') return getPath(config, ['channels', 'slack', 'eventsMode']);
@@ -292,7 +309,13 @@ function writeEnvValues(values) {
   const config = readConfigFile();
   for (const [key, rawValue] of Object.entries(configValues)) {
     const value = String(rawValue || '').trim();
-    if (!value) continue;
+    if (!value) {
+      const clearer = CONFIG_KEY_CLEARERS[key];
+      if (!clearer) continue;
+      clearer(config);
+      updated.push(key);
+      continue;
+    }
     CONFIG_KEY_SETTERS[key](config, value);
     process.env[key] = value;
     updated.push(key);
@@ -323,31 +346,50 @@ function currentDefaultProvider() {
     (readEnvValue('OPENAI_API_KEY') ? 'openai' : readEnvValue('ANTHROPIC_API_KEY') ? 'anthropic' : 'openai');
 }
 
-function currentAgentProvider(fallbackProvider = 'openai') {
-  return normalizeProvider(readEnvValue('MURPH_AGENT_PROVIDER'), fallbackProvider);
+function currentDefaultModel(provider = currentDefaultProvider()) {
+  return readEnvValue('MURPH_DEFAULT_MODEL') || DEFAULT_PROVIDER_MODEL[provider];
 }
 
-function currentAgentModel(provider) {
-  return readEnvValue('MURPH_AGENT_MODEL') || DEFAULT_AGENT_MODEL[provider];
+function currentAgentProvider(fallbackProvider = 'openai') {
+  const configured = readEnvValue('MURPH_AGENT_PROVIDER');
+  return configured ? normalizeProvider(configured, fallbackProvider) : fallbackProvider;
+}
+
+function currentAgentModel(provider, runtimeProvider = currentDefaultProvider()) {
+  return readEnvValue('MURPH_AGENT_MODEL') ||
+    (provider === runtimeProvider ? currentDefaultModel(runtimeProvider) : DEFAULT_AGENT_MODEL[provider]);
+}
+
+function hasAgentOverride() {
+  return Boolean(readEnvValue('MURPH_AGENT_PROVIDER') || readEnvValue('MURPH_AGENT_MODEL'));
 }
 
 async function saveAgentModelDefaults(providerFallback) {
   const provider = currentAgentProvider(providerFallback);
-  const model = currentAgentModel(provider);
-  const values = {};
-  if (!readEnvValue('MURPH_AGENT_PROVIDER')) values.MURPH_AGENT_PROVIDER = provider;
-  if (!readEnvValue('MURPH_AGENT_MODEL')) values.MURPH_AGENT_MODEL = model;
-  if (Object.keys(values).length === 0) {
+  const model = currentAgentModel(provider, providerFallback);
+  if (hasAgentOverride()) {
     success(`Murph Agent model is configured (${provider}/${model}).`);
     return;
   }
-  writeEnvValues(values);
-  await postSetupEnv(values);
-  success(`Saved Murph Agent model: ${provider}/${model}.`);
+  success(`Murph Agent inherits runtime model (${provider}/${model}).`);
 }
 
 async function promptAgentModel(providerFallback) {
   sectionTitle('Murph Agent model');
+  const runtimeModel = currentDefaultModel(providerFallback);
+  const overrideChoice = await askChoice(
+    `Murph Agent model: [1] Inherit runtime (${providerFallback}/${runtimeModel})  [2] Custom`,
+    ['1', '2', 'inherit', 'custom'],
+    hasAgentOverride() ? '2' : '1'
+  );
+  if (overrideChoice === '1' || overrideChoice.toLowerCase() === 'inherit') {
+    const values = { MURPH_AGENT_PROVIDER: '', MURPH_AGENT_MODEL: '' };
+    writeEnvValues(values);
+    await postSetupEnv(values);
+    success(`Murph Agent will inherit runtime model: ${providerFallback}/${runtimeModel}.`);
+    return;
+  }
+
   const existingProvider = currentAgentProvider(providerFallback);
   const providerInput = await askChoice(
     'Agent provider: [1] OpenAI  [2] Anthropic',
@@ -356,17 +398,18 @@ async function promptAgentModel(providerFallback) {
   );
   const provider = providerInput === '2' || providerInput.toLowerCase() === 'anthropic' ? 'anthropic' : 'openai';
   const recommended = DEFAULT_AGENT_MODEL[provider];
-  const existingModel = currentAgentModel(provider);
+  const existingModel = currentAgentModel(provider, providerFallback);
   const defaultChoice = existingModel === recommended ? '1' : '2';
-  const modelChoice = await askChoice(
-    `Agent model: [1] Recommended (${recommended})  [2] Custom`,
-    ['1', '2', 'recommended', 'custom'],
+  const modelChoice = await ask(
+    `Agent model: [1] Recommended (${recommended})  [2] Custom, or type a model id`,
     defaultChoice
   );
   const useCustom = modelChoice === '2' || modelChoice.toLowerCase() === 'custom';
-  const model = useCustom
-    ? await askRequired('Custom agent model id', existingModel === recommended ? '' : existingModel)
-    : recommended;
+  const model = modelChoice === '1' || modelChoice.toLowerCase() === 'recommended'
+    ? recommended
+    : useCustom
+      ? await askRequired('Custom agent model id', existingModel === recommended ? '' : existingModel)
+      : modelChoice.trim();
   const values = { MURPH_AGENT_PROVIDER: provider, MURPH_AGENT_MODEL: model };
   writeEnvValues(values);
   await postSetupEnv(values);
@@ -399,10 +442,29 @@ async function health() {
 
 async function postSetupEnv(values) {
   if (!(await health())) return;
-  await request('/api/setup/env', {
-    method: 'POST',
-    body: JSON.stringify(values)
-  });
+  try {
+    await request('/api/setup/env', {
+      method: 'POST',
+      body: JSON.stringify(values)
+    });
+  } catch (error) {
+    const hasConfigValues = Object.keys(values).some((key) => CONFIG_KEYS.has(key));
+    const isUnsupportedSetupKey = error instanceof Error && error.message.includes('Unsupported setup key');
+    if (!hasConfigValues || !isUnsupportedSetupKey) {
+      throw error;
+    }
+
+    const envValues = Object.fromEntries(
+      Object.entries(values).filter(([key, value]) => !CONFIG_KEYS.has(key) && String(value || '').trim())
+    );
+    if (Object.keys(envValues).length > 0) {
+      await request('/api/setup/env', {
+        method: 'POST',
+        body: JSON.stringify(envValues)
+      });
+    }
+    warn('Saved local config. Restart Murph if the running server does not show the new model settings yet.');
+  }
 }
 
 function runMurphCommand(args) {
@@ -684,8 +746,11 @@ async function setupStatus() {
     configFile: existsSync(configPath),
     encryptionKey: Boolean(readEnvValue('MURPH_ENCRYPTION_KEY')),
     aiProvider: Boolean(readEnvValue('OPENAI_API_KEY') || readEnvValue('ANTHROPIC_API_KEY')),
+    defaultProvider: currentDefaultProvider(),
+    defaultModel: currentDefaultModel(currentDefaultProvider()),
     agentProvider: currentAgentProvider(currentDefaultProvider()),
     agentModel: currentAgentModel(currentAgentProvider(currentDefaultProvider())),
+    agentInheritsRuntime: !hasAgentOverride(),
     slackConfig: Boolean(readEnvValue('SLACK_APP_TOKEN') && readEnvValue('SLACK_CLIENT_ID') && readEnvValue('SLACK_CLIENT_SECRET'))
   };
   let server = null;
@@ -705,8 +770,10 @@ async function setupStatus() {
   sectionTitle('Setup status');
   statusLine('Config file', envStatus.configFile || envStatus.envFile ? 'ok' : 'missing', envStatus.configFile ? 'murph.config.yaml present' : envStatus.envFile ? '.env present' : 'missing');
   statusLine('Encryption key', envStatus.encryptionKey ? 'ok' : 'missing', envStatus.encryptionKey ? 'configured' : 'missing');
-  statusLine('AI provider', envStatus.aiProvider ? 'ok' : 'missing', envStatus.aiProvider ? 'configured' : 'missing');
-  statusLine('Murph Agent model', envStatus.agentModel ? 'ok' : 'missing', `${envStatus.agentProvider}/${envStatus.agentModel}`);
+  statusLine('AI provider', envStatus.aiProvider ? 'ok' : 'missing', envStatus.aiProvider ? `${envStatus.defaultProvider}/${envStatus.defaultModel}` : 'missing');
+  statusLine('Murph Agent model', envStatus.agentModel ? 'ok' : 'missing', envStatus.agentInheritsRuntime
+    ? `inherits runtime (${envStatus.agentProvider}/${envStatus.agentModel})`
+    : `${envStatus.agentProvider}/${envStatus.agentModel}`);
   statusLine('Slack app config', envStatus.slackConfig ? 'ok' : 'missing', envStatus.slackConfig ? 'configured' : 'missing');
   if (server) {
     for (const check of server.doctor.checks) {

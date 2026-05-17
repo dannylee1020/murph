@@ -1,13 +1,31 @@
 import { defineConfig } from 'vitepress';
 
+const siteUrl = 'https://murph-agent.com';
+const siteDescription = 'Local-first AI handoff agent for Slack, Discord, and async work.';
+const socialPreviewUrl = `${siteUrl}/img/social-preview.png`;
+
 export default defineConfig({
   title: 'Murph',
-  description: 'Local-first handoff agent for async work.',
+  description: siteDescription,
   appearance: true,
   cleanUrls: true,
   lastUpdated: true,
+  sitemap: {
+    hostname: siteUrl
+  },
   head: [
     ['link', { rel: 'icon', href: '/img/favicon.svg' }],
+    ['meta', { name: 'robots', content: 'index,follow' }],
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:site_name', content: 'Murph' }],
+    ['meta', { property: 'og:title', content: 'Murph' }],
+    ['meta', { property: 'og:description', content: siteDescription }],
+    ['meta', { property: 'og:url', content: siteUrl }],
+    ['meta', { property: 'og:image', content: socialPreviewUrl }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['meta', { name: 'twitter:title', content: 'Murph' }],
+    ['meta', { name: 'twitter:description', content: siteDescription }],
+    ['meta', { name: 'twitter:image', content: socialPreviewUrl }],
     [
       'link',
       {
@@ -17,7 +35,7 @@ export default defineConfig({
     ]
   ],
   themeConfig: {
-    logo: '/img/favicon.svg',
+    logo: '/img/murph-logo.svg',
     siteTitle: 'Murph',
     nav: [
       { text: 'Docs', link: '/docs/quickstart' },
@@ -45,6 +63,15 @@ export default defineConfig({
             { text: 'Channels', link: '/docs/channels' },
             { text: 'Integrations', link: '/docs/integrations' },
             { text: 'Contributing', link: '/docs/contributing' }
+          ]
+        },
+        {
+          text: 'Guides',
+          items: [
+            { text: 'Slack Agent', link: '/docs/slack-agent' },
+            { text: 'Discord Agent', link: '/docs/discord-agent' },
+            { text: 'Local-first AI Agent', link: '/docs/local-first-ai-agent' },
+            { text: 'Web Search', link: '/docs/web-search' }
           ]
         }
       ]
