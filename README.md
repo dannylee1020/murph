@@ -92,7 +92,6 @@ For local development:
 
 ```bash
 npm install
-npm run dev:server
 npm run dev
 npm test
 ```

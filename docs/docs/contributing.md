@@ -18,7 +18,6 @@ npm install
 Run the server and UI:
 
 ```bash
-npm run dev:server
 npm run dev
 ```
 

@@ -332,6 +332,80 @@ const navItems = [
   { href: '/admin', label: 'Admin' }
 ];
 
+type ThemePreference = 'auto' | 'light' | 'dark';
+
+const THEME_STORAGE_KEY = 'murph_theme_preference';
+const themePreferences: ThemePreference[] = ['auto', 'light', 'dark'];
+const darkSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+function getThemePreference(): ThemePreference {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    return themePreferences.includes(stored as ThemePreference) ? stored as ThemePreference : 'auto';
+  } catch {
+    return 'auto';
+  }
+}
+
+function resolveTheme(preference: ThemePreference): 'light' | 'dark' {
+  if (preference === 'auto') {
+    return darkSchemeQuery.matches ? 'dark' : 'light';
+  }
+  return preference;
+}
+
+function applyThemePreference(preference: ThemePreference): void {
+  document.documentElement.dataset.theme = resolveTheme(preference);
+}
+
+function setThemePreference(preference: ThemePreference): void {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, preference);
+  } catch {
+    // Theme persistence is best-effort; applying the theme still works for this page.
+  }
+  applyThemePreference(preference);
+}
+
+function themeControlHtml(selected: ThemePreference): string {
+  return `
+    <div class="theme-control" role="group" aria-label="Theme">
+      ${themePreferences
+        .map(
+          (preference) => `
+            <button
+              type="button"
+              class="theme-option ${preference === selected ? 'active' : ''}"
+              data-theme-preference="${preference}"
+              aria-pressed="${preference === selected ? 'true' : 'false'}"
+            >
+              ${preference === 'auto' ? 'Auto' : preference === 'light' ? 'Light' : 'Dark'}
+            </button>
+          `
+        )
+        .join('')}
+    </div>
+  `;
+}
+
+applyThemePreference(getThemePreference());
+darkSchemeQuery.addEventListener('change', () => {
+  if (getThemePreference() === 'auto') {
+    applyThemePreference('auto');
+  }
+});
+
+function activeNavHref(pathname: string): string {
+  if (pathname === '/settings') return '/admin';
+  if (pathname === '/runs' || pathname === '/audit') return '/activity';
+  return pathname;
+}
+
+function routeSlug(pathname: string): string {
+  if (pathname === '/') return 'home';
+  return pathname.replace(/^\//, '').replace(/[^a-z0-9-]/gi, '-') || 'home';
+}
+
 type SlackMembersPayload = {
   ok: boolean;
   error?: string;
@@ -805,8 +879,11 @@ function policyProfileList(profiles: PolicyProfilesPayload['profiles']): string 
 
 function shell(content: string): void {
   const pathname = window.location.pathname;
+  const activeHref = activeNavHref(pathname);
+  const slug = routeSlug(activeHref);
+  const themePreference = getThemePreference();
   app.innerHTML = `
-    <div class="app-shell">
+    <div class="app-shell route-${slug}">
       <aside class="sidebar">
         <a class="brand" href="/" data-link>
           <span class="brand-mark" aria-hidden="true"><img src="/img/murph-logo.svg" alt="" /></span>
@@ -817,16 +894,20 @@ function shell(content: string): void {
           ${navItems
             .map(
               (item) => `
-                <a href="${item.href}" data-link class="${pathname === item.href ? 'active' : ''}">
+                <a href="${item.href}" data-link class="${activeHref === item.href ? 'active' : ''}">
                   ${item.label}
                 </a>
               `
             )
             .join('')}
         </nav>
-        <div class="sidebar-foot">${escapeHtml(formatToday())}</div>
+        <div class="sidebar-foot">
+          ${themeControlHtml(themePreference)}
+          <span>Local console</span>
+          <strong>${escapeHtml(formatToday())}</strong>
+        </div>
       </aside>
-      <main class="content">${content}</main>
+      <main class="content" data-route="${slug}">${content}</main>
     </div>
   `;
 
@@ -834,6 +915,15 @@ function shell(content: string): void {
     link.addEventListener('click', (event) => {
       event.preventDefault();
       history.pushState(null, '', link.href);
+      void render();
+    });
+  });
+
+  app.querySelectorAll<HTMLButtonElement>('[data-theme-preference]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const preference = button.dataset.themePreference as ThemePreference | undefined;
+      if (!preference || !themePreferences.includes(preference)) return;
+      setThemePreference(preference);
       void render();
     });
   });
@@ -1593,16 +1683,19 @@ async function renderDashboard(): Promise<void> {
     : '';
 
   shell(`
-    <section class="page-head">
-      <p class="eyebrow">${escapeHtml(formatToday())} · ${escapeHtml(formatSessionStatus(data.summary.activeSessionCount))}</p>
-      <h1>Home</h1>
+    <section class="page-head console-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(formatToday())} · ${escapeHtml(formatSessionStatus(data.summary.activeSessionCount))}</p>
+        <h1>Home</h1>
+      </div>
+      <span class="console-state">${escapeHtml(setupStatus.provider.configured ? 'Ready' : 'Setup needed')}</span>
     </section>
 
     ${providerBanner}
     ${sessionFeedbackHtml()}
     ${sessionErrorHtml()}
 
-    <section>
+    <section class="launch-section">
       <article class="panel go-to-sleep-card">
         <h2>Go to sleep</h2>
         <p>Murph will watch your accessible channels and queue drafts for your review.</p>
@@ -1742,10 +1835,13 @@ async function renderSettings(): Promise<void> {
   shell(`
     ${settingsNotice}
     ${sessionFeedbackHtml()}
-    <section class="page-head">
-      <p class="eyebrow">Setup</p>
-      <h1>Admin</h1>
-      <p>Connect the services Murph needs to watch messages and draft useful replies.</p>
+    <section class="page-head console-head">
+      <div>
+        <p class="eyebrow">Setup</p>
+        <h1>Admin</h1>
+        <p>Connect the services Murph needs to watch messages and draft useful replies.</p>
+      </div>
+      <span class="console-state">${escapeHtml(setup.provider.configured && setup.slack.installed ? 'Operational' : 'Needs setup')}</span>
     </section>
 
     <dl class="kpis">
@@ -1755,7 +1851,7 @@ async function renderSettings(): Promise<void> {
       ${metric('Discord', setup.discord.installed ? 'Connected' : 'Not connected')}
     </dl>
 
-    <section class="grid three">
+    <section class="grid three service-grid">
       <article class="panel panel-status">
         <h2><span class="status-dot ${setup.slack.installed && setup.slack.oauthConfigured ? 'ok' : 'off'}" aria-hidden="true"></span>Slack</h2>
         <p>Let Murph watch Slack channels and prepare replies while you are away.</p>
@@ -1798,7 +1894,7 @@ async function renderSettings(): Promise<void> {
       </article>
     </section>
 
-    <section>
+    <section class="policy-section">
       <div class="policy-assignment">
         <article class="policy-editor-panel">
           <h2>Policy</h2>
@@ -1828,8 +1924,11 @@ async function renderSettings(): Promise<void> {
       </div>
     </section>
 
-    <section>
-      <h2>Integrations</h2>
+    <section class="integration-section">
+      <div class="section-head">
+        <h2>Integrations</h2>
+        <span class="section-meta">${integrationsPayload.integrations.length} sources</span>
+      </div>
       <p class="section-copy">Connect optional sources Murph can use for more grounded replies.</p>
       <div class="grid two">
         ${integrationsPayload.integrations.map((i) => integrationCard(i, integrationsPayload.workspaceId)).join('')}
@@ -1990,20 +2089,23 @@ async function renderReview(): Promise<void> {
   const queuePayload = await getJson<QueuePayload>('/api/gateway/queue');
 
   shell(`
-    <section class="page-head">
-      <p class="eyebrow">Manual review</p>
-      <h1>Review Queue</h1>
+    <section class="page-head console-head">
+      <div>
+        <p class="eyebrow">Manual review</p>
+        <h1>Review Queue</h1>
+      </div>
+      <span class="console-state">${queuePayload.queue.length} ${queuePayload.queue.length === 1 ? 'draft' : 'drafts'}</span>
     </section>
 
-    <section class="stack">
+    <section class="stack review-stack">
       ${
         queuePayload.queue.length === 0
           ? '<article class="panel"><p class="empty">Queued drafts appear here whenever Murph proposes a reply under manual review. Nothing waiting right now.</p></article>'
           : queuePayload.queue
               .map(
                 (item) => `
-                  <article class="panel">
-                    <h2>${escapeHtml(item.channelId)} / ${escapeHtml(item.threadTs)}</h2>
+                  <article class="panel draft-panel">
+                    <h2><span>${escapeHtml(item.channelId)}</span><code>${escapeHtml(item.threadTs)}</code></h2>
                     <p class="draft-text">${escapeHtml(item.message || 'No message drafted')}</p>
                     <dl class="details">
                       <div><dt>Session</dt><dd>${escapeHtml(item.sessionId ?? '—')}</dd></div>
@@ -2047,8 +2149,8 @@ function renderTriageItem(item: TriagePayload['items'][number]): string {
   const confidence = typeof item.confidence === 'number' ? `${Math.round(item.confidence * 100)}%` : '—';
 
   return `
-    <article class="panel">
-      <h2>${dispositionPill(item.disposition)} ${escapeHtml(item.channelId)} / ${escapeHtml(item.threadTs)}</h2>
+    <article class="panel triage-item">
+      <h2>${dispositionPill(item.disposition)} <span>${escapeHtml(item.channelId)}</span><code>${escapeHtml(item.threadTs)}</code></h2>
       <dl class="details">
         <div><dt>Recorded</dt><dd title="${escapeHtml(formatExactIso(item.createdAt))}">${escapeHtml(formatRelative(item.createdAt))}</dd></div>
         <div><dt>Action</dt><dd>${escapeHtml(titleCase(item.action))}</dd></div>
@@ -2096,14 +2198,17 @@ async function renderTriage(): Promise<void> {
   }
 
   shell(`
-    <section class="page-head">
-      <p class="eyebrow">Morning catchup</p>
-      <h1>Triage</h1>
-      <p>${escapeHtml(
-        payload.session
-          ? `${payload.session.title} (${sessionModeLabel(payload.session.mode)})`
-          : 'No completed sessions yet.'
-      )}</p>
+    <section class="page-head console-head">
+      <div>
+        <p class="eyebrow">Morning catchup</p>
+        <h1>Triage</h1>
+        <p>${escapeHtml(
+          payload.session
+            ? `${payload.session.title} (${sessionModeLabel(payload.session.mode)})`
+            : 'No completed sessions yet.'
+        )}</p>
+      </div>
+      <span class="console-state">${payload.items.length} ${payload.items.length === 1 ? 'action' : 'actions'}</span>
     </section>
 
     <section class="triage-layout">
@@ -2315,13 +2420,16 @@ async function renderActivity(): Promise<void> {
     : { events: [] };
 
   shell(`
-    <section class="page-head">
-      <p class="eyebrow">Activity log</p>
-      <h1>Activity</h1>
-      <p>Runs, decisions, and traces from Murph's operations.</p>
+    <section class="page-head console-head">
+      <div>
+        <p class="eyebrow">Activity log</p>
+        <h1>Activity</h1>
+        <p>Runs, decisions, and traces from Murph's operations.</p>
+      </div>
+      <span class="console-state">${runsPayload.runs.length} ${runsPayload.runs.length === 1 ? 'run' : 'runs'}</span>
     </section>
 
-    <section class="grid two">
+    <section class="grid two activity-grid">
       <article class="panel">
         <h2>Recent Runs</h2>
         ${
@@ -2352,7 +2460,7 @@ async function renderActivity(): Promise<void> {
       ${
         selectedRun
           ? `
-            <article class="panel">
+            <article class="panel event-panel">
               <h2>Events — ${escapeHtml(selectedRun.taskId)}</h2>
               ${
                 eventsPayload.events.length === 0
