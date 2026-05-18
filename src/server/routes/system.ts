@@ -109,7 +109,8 @@ export const systemRoutes: Route[] = [
         oauthConfigured: Boolean(env.slackClientId && env.slackClientSecret),
         signingSecretConfigured: Boolean(env.slackSigningSecret),
         eventsMode: env.slackEventsMode,
-        socketConfigured: Boolean(env.slackAppToken)
+        socketConfigured: Boolean(env.slackAppToken),
+        userSearchConfigured: Boolean(slackWorkspace && getSlackService().getUserSearchToken(slackWorkspace))
       },
       discord: {
         installed: Boolean(discordWorkspace),

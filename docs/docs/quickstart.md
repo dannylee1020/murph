@@ -15,7 +15,7 @@ Run the installer from any terminal:
 curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
-The installer downloads Murph, installs dependencies, builds the app, creates local defaults, and installs the `murph` CLI.
+The installer downloads Murph, installs minimal runtime pre-reqs, builds the app, installs setup helpers such as Slack CLI, creates local defaults, and installs the `murph` CLI.
 
 ## 2. Configure
 

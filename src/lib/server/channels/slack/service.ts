@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { decryptString, encryptString } from '#lib/server/util/crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
+import { hasSecret, readSecret, writeSecret } from '#lib/server/credentials/local-store';
 import type { ChannelMessage, ThreadRef, Workspace } from '#lib/types';
 
 interface OAuthExchangeResponse {
@@ -10,6 +11,10 @@ interface OAuthExchangeResponse {
   team?: { id: string; name: string };
   access_token?: string;
   bot_user_id?: string;
+  authed_user?: {
+    id?: string;
+    access_token?: string;
+  };
 }
 
 interface ConversationsRepliesResponse {
@@ -134,6 +139,7 @@ export class SlackService {
       client_id: this.env.slackClientId,
       scope:
         'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read,im:history,mpim:history,users:read',
+      user_scope: 'search:read.public,search:read.private,search:read.im,search:read.mpim',
       redirect_uri: redirectUri
     });
 
@@ -143,10 +149,6 @@ export class SlackService {
   async exchangeCode(code: string, appUrl = this.env.appUrl): Promise<Workspace> {
     if (!this.env.slackClientId || !this.env.slackClientSecret) {
       throw new Error('Slack OAuth is not configured');
-    }
-
-    if (!this.env.encryptionKey) {
-      throw new Error('MURPH_ENCRYPTION_KEY is required to store Slack bot tokens');
     }
 
     const response = await fetch('https://slack.com/api/oauth.v2.access', {
@@ -165,13 +167,36 @@ export class SlackService {
       throw new Error(payload.error ?? 'Slack OAuth exchange failed');
     }
 
-    return this.store.saveInstall({
+    const workspace = this.store.saveInstall({
       provider: 'slack',
       externalWorkspaceId: payload.team.id,
       name: payload.team.name ?? payload.team.id,
-      botTokenEncrypted: encryptString(payload.access_token, this.env.encryptionKey),
+      botTokenEncrypted: this.env.encryptionKey
+        ? encryptString(payload.access_token, this.env.encryptionKey)
+        : 'stored-in-local-credentials',
       botUserId: payload.bot_user_id
     });
+    writeSecret('slack', 'bot_token', payload.access_token, {
+      workspaceId: workspace.id,
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      metadata: {
+        teamName: workspace.name,
+        botUserId: payload.bot_user_id,
+        validatedAt: new Date().toISOString()
+      }
+    });
+    if (payload.authed_user?.access_token) {
+      writeSecret('slack', 'user_search_token', payload.authed_user.access_token, {
+        workspaceId: workspace.id,
+        externalWorkspaceId: workspace.externalWorkspaceId,
+        userId: payload.authed_user.id,
+        metadata: {
+          teamName: workspace.name,
+          validatedAt: new Date().toISOString()
+        }
+      });
+    }
+    return workspace;
   }
 
   verifySignature(headers: Headers, rawBody: string): boolean {
@@ -208,7 +233,17 @@ export class SlackService {
       this.store.getWorkspaceByTeamId(workspaceIdOrTeamId) ??
       this.store.getFirstWorkspace();
 
-    if (!workspace?.botTokenEncrypted) {
+    const token = workspace
+      ? readSecret('slack', 'bot_token', {
+          workspaceId: workspace.id,
+          externalWorkspaceId: workspace.externalWorkspaceId
+        }) ?? readSecret('slack', 'bot_token', { externalWorkspaceId: workspace.externalWorkspaceId })
+      : undefined;
+    if (token) {
+      return token;
+    }
+
+    if (!workspace?.botTokenEncrypted || workspace.botTokenEncrypted === 'stored-in-local-credentials') {
       throw new Error('No Slack install found');
     }
 
@@ -231,7 +266,7 @@ export class SlackService {
   getUsableWorkspace(): Workspace | undefined {
     return this.store.listWorkspaces().find((workspace) => (
       workspace.provider === 'slack' &&
-      Boolean(workspace.botTokenEncrypted) &&
+      (Boolean(workspace.botTokenEncrypted) || hasSecret('slack', 'bot_token', { workspaceId: workspace.id })) &&
       this.canReadBotToken(workspace)
     ));
   }
@@ -244,6 +279,13 @@ export class SlackService {
     ));
   }
 
+  getUserSearchToken(workspace: Workspace): string | undefined {
+    return readSecret('slack', 'user_search_token', {
+      workspaceId: workspace.id,
+      externalWorkspaceId: workspace.externalWorkspaceId
+    }) ?? readSecret('slack', 'user_search_token', { externalWorkspaceId: workspace.externalWorkspaceId });
+  }
+
   async fetchThreadMessages(
     workspace: Workspace,
     thread: ThreadRef
@@ -251,7 +293,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.replies', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        authorization: `Bearer ${this.getUserSearchToken(workspace) ?? this.getBotToken(workspace.externalWorkspaceId)}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({

@@ -24,7 +24,7 @@ The Slack app manifest is available at:
 /slack-socket-mode-manifest.yml
 ```
 
-During setup, Murph asks for Slack credentials and then guides you through workspace installation.
+During setup, Murph asks for Slack credentials, stores secrets in `~/.murph/.credentials`, and then guides you through workspace installation.
 
 ```bash
 murph setup slack
@@ -38,7 +38,7 @@ http://localhost:5173/api/slack/oauth/callback
 
 ## Discord
 
-Discord support uses the same channel-adapter model as Slack. Configure it through setup and keep credentials in local environment settings.
+Discord support uses the same channel-adapter model as Slack. Configure it through setup and keep credentials in `~/.murph/.credentials`.
 
 ## Watched channels
 

@@ -1,6 +1,7 @@
 import { DEFAULT_PROVIDER_MODEL, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_PATH } from '#lib/config';
 import type { ProviderName } from '#lib/types';
 import { readMurphConfig } from '#lib/server/setup/config-file';
+import { readSecret } from '#lib/server/credentials/local-store';
 import { loadDotEnv } from './dotenv.js';
 
 loadDotEnv();
@@ -59,6 +60,10 @@ function envOrConfigString(envKey: string, configValue: string | undefined, fall
   return process.env[envKey] ?? configValue ?? fallback;
 }
 
+function envOrSecret(envKey: string, provider: string, key: string): string | undefined {
+  return process.env[envKey] ?? readSecret(provider, key);
+}
+
 function envOrConfigNumber(envKey: string, configValue: number | undefined, fallback: number): number {
   const raw = process.env[envKey];
   if (raw !== undefined) return Number(raw);
@@ -88,9 +93,9 @@ export function getRuntimeEnv(): RuntimeEnv {
       ? 'openai'
       : config.ai?.agent?.provider
         ? config.ai.agent.provider
-      : process.env.OPENAI_API_KEY
+      : envOrSecret('OPENAI_API_KEY', 'openai', 'api_key')
         ? 'openai'
-        : process.env.ANTHROPIC_API_KEY
+        : envOrSecret('ANTHROPIC_API_KEY', 'anthropic', 'api_key')
           ? 'anthropic'
           : defaultProvider;
 
@@ -99,45 +104,45 @@ export function getRuntimeEnv(): RuntimeEnv {
     sqlitePath: envOrConfigString('MURPH_SQLITE_PATH', config.app?.sqlitePath, DEFAULT_SQLITE_PATH),
     encryptionKey: process.env.MURPH_ENCRYPTION_KEY ?? '',
     slackClientId: process.env.SLACK_CLIENT_ID ?? config.channels?.slack?.clientId,
-    slackClientSecret: process.env.SLACK_CLIENT_SECRET,
-    slackSigningSecret: process.env.SLACK_SIGNING_SECRET,
-    slackAppToken: process.env.SLACK_APP_TOKEN,
+    slackClientSecret: envOrSecret('SLACK_CLIENT_SECRET', 'slack', 'client_secret'),
+    slackSigningSecret: envOrSecret('SLACK_SIGNING_SECRET', 'slack', 'signing_secret'),
+    slackAppToken: envOrSecret('SLACK_APP_TOKEN', 'slack', 'app_token'),
     slackEventsMode: process.env.SLACK_EVENTS_MODE === 'http'
       ? 'http'
       : process.env.SLACK_EVENTS_MODE === 'socket'
         ? 'socket'
         : config.channels?.slack?.eventsMode ?? 'socket',
-    discordBotToken: process.env.DISCORD_BOT_TOKEN,
+    discordBotToken: envOrSecret('DISCORD_BOT_TOKEN', 'discord', 'bot_token'),
     discordClientId: process.env.DISCORD_CLIENT_ID ?? config.channels?.discord?.clientId,
-    discordClientSecret: process.env.DISCORD_CLIENT_SECRET,
+    discordClientSecret: envOrSecret('DISCORD_CLIENT_SECRET', 'discord', 'client_secret'),
     discordRedirectUri: process.env.DISCORD_REDIRECT_URI ?? config.channels?.discord?.redirectUri,
     heartbeatIntervalMs: envOrConfigNumber('MURPH_HEARTBEAT_INTERVAL_MS', config.app?.heartbeatIntervalMs, DEFAULT_HEARTBEAT_INTERVAL_MS),
-    openaiApiKey: process.env.OPENAI_API_KEY,
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    openaiApiKey: envOrSecret('OPENAI_API_KEY', 'openai', 'api_key'),
+    anthropicApiKey: envOrSecret('ANTHROPIC_API_KEY', 'anthropic', 'api_key'),
     defaultProvider,
     defaultModel,
     agentProvider,
     agentModel: process.env.MURPH_AGENT_MODEL ||
       config.ai?.agent?.model ||
       (agentProvider === defaultProvider ? defaultModel : DEFAULT_PROVIDER_MODEL[agentProvider]),
-    notionApiKey: process.env.NOTION_API_KEY,
+    notionApiKey: envOrSecret('NOTION_API_KEY', 'notion', 'api_key'),
     notionVersion: envOrConfigString('NOTION_VERSION', config.integrations?.notion?.version, '2026-03-11'),
     notionMaxResults: envOrConfigNumber('NOTION_MAX_RESULTS', config.integrations?.notion?.maxResults, 3),
-    githubPat: process.env.GITHUB_PAT,
+    githubPat: envOrSecret('GITHUB_PAT', 'github', 'api_key'),
     githubRepositories: envOrConfigCsv('GITHUB_REPOSITORIES', config.integrations?.github?.repositories),
     obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH ?? config.integrations?.obsidian?.vaultPath,
-    granolaApiKey: process.env.GRANOLA_API_KEY,
-    googleAccessToken: process.env.GOOGLE_ACCESS_TOKEN,
+    granolaApiKey: envOrSecret('GRANOLA_API_KEY', 'granola', 'api_key'),
+    googleAccessToken: envOrSecret('GOOGLE_ACCESS_TOKEN', 'google', 'access_token'),
     googleClientId: process.env.GOOGLE_CLIENT_ID,
-    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    googleClientSecret: envOrSecret('GOOGLE_CLIENT_SECRET', 'google', 'client_secret'),
     googleCalendarId: envOrConfigString('GOOGLE_CALENDAR_ID', config.integrations?.google?.calendarId, 'primary'),
     webSearchBackend: process.env.MURPH_WEB_SEARCH_BACKEND === 'brave'
       ? 'brave'
       : process.env.MURPH_WEB_SEARCH_BACKEND === 'tavily'
         ? 'tavily'
         : config.integrations?.webSearch?.backend ?? 'brave',
-    tavilyApiKey: process.env.TAVILY_API_KEY,
-    braveSearchApiKey: process.env.BRAVE_SEARCH_API_KEY,
+    tavilyApiKey: envOrSecret('TAVILY_API_KEY', 'tavily', 'api_key'),
+    braveSearchApiKey: envOrSecret('BRAVE_SEARCH_API_KEY', 'brave_search', 'api_key'),
     fileReadAllowedRoots: envOrConfigCsv('MURPH_FILE_READ_ALLOWED_ROOTS', config.integrations?.localTools?.fileReadAllowedRoots),
     shellAllowedCommandsJson: envOrConfigString('MURPH_SHELL_ALLOWED_COMMANDS_JSON', config.integrations?.localTools?.shellAllowedCommandsJson),
     contextSourceTimeoutMs: envOrConfigNumber('MURPH_CONTEXT_SOURCE_TIMEOUT_MS', config.app?.contextSourceTimeoutMs, 3000),

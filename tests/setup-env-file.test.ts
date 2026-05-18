@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const originalCwd = process.cwd();
 const envKeys = [
   'MURPH_APP_DIR',
+  'MURPH_CREDENTIALS_PATH',
   'MURPH_APP_URL',
   'MURPH_SQLITE_PATH',
-  'MURPH_ENCRYPTION_KEY',
   'MURPH_DEFAULT_PROVIDER',
   'MURPH_DEFAULT_MODEL',
   'MURPH_AGENT_PROVIDER',
@@ -32,6 +32,7 @@ describe('setup env file writer', () => {
     for (const key of envKeys) {
       delete process.env[key];
     }
+    process.env.MURPH_CREDENTIALS_PATH = path.join(workspace, '.credentials');
   });
 
   afterEach(() => {
@@ -54,14 +55,12 @@ describe('setup env file writer', () => {
       MURPH_DEFAULT_MODEL: 'gpt-5.5',
       MURPH_AGENT_PROVIDER: 'anthropic',
       MURPH_AGENT_MODEL: 'claude-opus-4-7',
-      MURPH_ENCRYPTION_KEY: 'secret',
       OPENAI_API_KEY: 'sk-new',
       SLACK_EVENTS_MODE: 'socket',
       SLACK_APP_TOKEN: 'xapp-test'
     });
 
     expect(result.updated).toEqual([
-      'MURPH_ENCRYPTION_KEY',
       'OPENAI_API_KEY',
       'SLACK_APP_TOKEN',
       'MURPH_DEFAULT_PROVIDER',
@@ -71,9 +70,13 @@ describe('setup env file writer', () => {
       'SLACK_EVENTS_MODE'
     ]);
     expect(readFileSync('.env', 'utf8')).toContain('CUSTOM_VALUE=keep');
-    expect(readFileSync('.env', 'utf8')).toContain('MURPH_ENCRYPTION_KEY=secret');
-    expect(readFileSync('.env', 'utf8')).toContain('OPENAI_API_KEY=sk-new');
-    expect(readFileSync('.env', 'utf8')).toContain('SLACK_APP_TOKEN=xapp-test');
+    expect(readFileSync('.env', 'utf8')).not.toContain('OPENAI_API_KEY=sk-new');
+    expect(readFileSync('.env', 'utf8')).not.toContain('SLACK_APP_TOKEN=xapp-test');
+    const credentials = JSON.parse(readFileSync(path.join(workspace, '.credentials'), 'utf8'));
+    expect(credentials.credentials).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: 'openai', key: 'api_key', value: 'sk-new' }),
+      expect.objectContaining({ provider: 'slack', key: 'app_token', value: 'xapp-test' })
+    ]));
     expect(readFileSync('murph.config.yaml', 'utf8')).toContain('defaultProvider: openai');
     expect(readFileSync('murph.config.yaml', 'utf8')).toContain('defaultModel: gpt-5.5');
     expect(readFileSync('murph.config.yaml', 'utf8')).toContain('provider: anthropic');

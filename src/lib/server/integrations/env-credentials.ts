@@ -1,5 +1,3 @@
-import { getRuntimeEnv } from '#lib/server/util/env';
-
 type EnvCredentialReader = () => string | undefined;
 
 interface EnvCredentialEntry {
@@ -8,10 +6,10 @@ interface EnvCredentialEntry {
 }
 
 const envCredentials = new Map<string, EnvCredentialEntry>([
-  ['github', { envKey: 'GITHUB_PAT', reader: () => getRuntimeEnv().githubPat }],
-  ['notion', { envKey: 'NOTION_API_KEY', reader: () => getRuntimeEnv().notionApiKey }],
-  ['granola', { envKey: 'GRANOLA_API_KEY', reader: () => getRuntimeEnv().granolaApiKey }],
-  ['google', { envKey: 'GOOGLE_ACCESS_TOKEN', reader: () => getRuntimeEnv().googleAccessToken }]
+  ['github', { envKey: 'GITHUB_PAT' }],
+  ['notion', { envKey: 'NOTION_API_KEY' }],
+  ['granola', { envKey: 'GRANOLA_API_KEY' }],
+  ['google', { envKey: 'GOOGLE_ACCESS_TOKEN' }]
 ]);
 
 export function registerEnvCredential(provider: string, envKey: string, reader?: EnvCredentialReader): void {

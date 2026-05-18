@@ -17,7 +17,7 @@ integrations:
     backend: brave
 ```
 
-Set the key in `.env`:
+Set the key through setup or as a local credential. `.env` also works as a development override:
 
 ```text
 BRAVE_SEARCH_API_KEY=...

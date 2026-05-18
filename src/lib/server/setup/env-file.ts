@@ -1,44 +1,30 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
 import { SETUP_CONFIG_KEYS, updateMurphConfigValues } from '#lib/server/setup/config-file';
+import { writeSecret } from '#lib/server/credentials/local-store';
 import { resetRuntimeEnvCache } from '#lib/server/util/env';
 
-const SETUP_SECRET_KEYS = new Set([
-  'MURPH_ENCRYPTION_KEY',
-  'OPENAI_API_KEY',
-  'ANTHROPIC_API_KEY',
-  'SLACK_APP_TOKEN',
-  'SLACK_CLIENT_SECRET',
-  'SLACK_SIGNING_SECRET',
-  'DISCORD_BOT_TOKEN',
-  'DISCORD_CLIENT_SECRET',
-  'GOOGLE_ACCESS_TOKEN',
-  'GOOGLE_CLIENT_ID',
-  'GOOGLE_CLIENT_SECRET',
-  'GITHUB_PAT',
-  'NOTION_API_KEY',
-  'GRANOLA_API_KEY',
-  'TAVILY_API_KEY',
-  'BRAVE_SEARCH_API_KEY'
-]);
-
-function envPath(): string {
-  return path.resolve(process.cwd(), '.env');
-}
-
-function serializeValue(value: string): string {
-  if (/[\s#"'\\]/.test(value)) {
-    return JSON.stringify(value);
-  }
-  return value;
-}
+const SETUP_SECRET_KEYS: Record<string, { provider: string; key: string }> = {
+  OPENAI_API_KEY: { provider: 'openai', key: 'api_key' },
+  ANTHROPIC_API_KEY: { provider: 'anthropic', key: 'api_key' },
+  SLACK_APP_TOKEN: { provider: 'slack', key: 'app_token' },
+  SLACK_CLIENT_SECRET: { provider: 'slack', key: 'client_secret' },
+  SLACK_SIGNING_SECRET: { provider: 'slack', key: 'signing_secret' },
+  DISCORD_BOT_TOKEN: { provider: 'discord', key: 'bot_token' },
+  DISCORD_CLIENT_SECRET: { provider: 'discord', key: 'client_secret' },
+  GOOGLE_ACCESS_TOKEN: { provider: 'google', key: 'access_token' },
+  GOOGLE_CLIENT_SECRET: { provider: 'google', key: 'client_secret' },
+  GITHUB_PAT: { provider: 'github', key: 'api_key' },
+  NOTION_API_KEY: { provider: 'notion', key: 'api_key' },
+  GRANOLA_API_KEY: { provider: 'granola', key: 'api_key' },
+  TAVILY_API_KEY: { provider: 'tavily', key: 'api_key' },
+  BRAVE_SEARCH_API_KEY: { provider: 'brave_search', key: 'api_key' }
+};
 
 export function updateSetupEnv(values: Record<string, string | undefined>): { updated: string[] } {
   const secretValues: Record<string, string | undefined> = {};
   const configValues: Record<string, string | undefined> = {};
 
   for (const [key, value] of Object.entries(values)) {
-    if (SETUP_SECRET_KEYS.has(key)) {
+    if (SETUP_SECRET_KEYS[key]) {
       secretValues[key] = value;
     } else if (SETUP_CONFIG_KEYS.has(key)) {
       configValues[key] = value;
@@ -47,9 +33,6 @@ export function updateSetupEnv(values: Record<string, string | undefined>): { up
     }
   }
 
-  const target = envPath();
-  const existing = existsSync(target) ? readFileSync(target, 'utf8') : '';
-  const lines = existing ? existing.split(/\r?\n/) : [];
   const updated: string[] = [];
 
   for (const [key, rawValue] of Object.entries(secretValues)) {
@@ -58,22 +41,10 @@ export function updateSetupEnv(values: Record<string, string | undefined>): { up
       continue;
     }
 
-    const nextLine = `${key}=${serializeValue(value)}`;
-    const index = lines.findIndex((line) => new RegExp(`^\\s*(?:export\\s+)?${key}=`).test(line));
-    if (index >= 0) {
-      lines[index] = nextLine;
-    } else {
-      if (lines.length > 0 && lines[lines.length - 1] !== '') {
-        lines.push('');
-      }
-      lines.push(nextLine);
-    }
+    const target = SETUP_SECRET_KEYS[key];
+    writeSecret(target.provider, target.key, value);
     process.env[key] = value;
     updated.push(key);
-  }
-
-  if (updated.length > 0) {
-    writeFileSync(target, `${lines.join('\n').replace(/\n+$/, '')}\n`, { mode: 0o600 });
   }
 
   const configUpdated = updateMurphConfigValues(configValues).updated;

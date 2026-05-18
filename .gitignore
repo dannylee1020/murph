@@ -38,5 +38,6 @@ memory/
 .claudeignore
 *.todo
 *.html
-scripts/
+scripts/*
+!scripts/install-deps.sh
 images/

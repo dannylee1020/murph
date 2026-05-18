@@ -5,14 +5,14 @@ description: Understand Murph's local-first approach to AI handoff automation.
 
 # Local-first AI Agent
 
-Murph is designed as a local-first AI agent. It runs on your machine, stores runtime state locally, and keeps credentials encrypted instead of making a hosted service the default control plane.
+Murph is designed as a local-first AI agent. It runs on your machine, stores runtime state locally, and keeps credentials in your local Murph home instead of making a hosted service the default control plane.
 
 ## What local-first means
 
 Murph keeps the core handoff workflow close to your environment:
 
 - local SQLite for runtime state
-- encrypted credentials
+- local credentials in `~/.murph/.credentials`
 - setup through the `murph` CLI or local browser UI
 - explicit provider keys for OpenAI or Anthropic
 - policy-controlled autonomy for sending, queuing, or skipping replies

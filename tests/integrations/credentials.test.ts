@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 async function setup(options: { githubPat?: string } = {}) {
   vi.resetModules();
-  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-credentials-')), 'murph.sqlite');
+  const root = mkdtempSync(join(tmpdir(), 'murph-credentials-'));
+  process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
+  process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   process.env.GITHUB_PAT = options.githubPat ?? '';
 
@@ -29,21 +31,37 @@ describe('integration credential resolution', () => {
     delete process.env.GITHUB_PAT;
   });
 
-  it('prefers stored credentials over env fallback', async () => {
-    const { store, workspace, encryptString } = await setup();
+  it('prefers process env credentials over local store fallback', async () => {
+    const { workspace } = await setup();
     process.env.GITHUB_PAT = 'env-token';
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('github', 'api_key', 'stored-token', { workspaceId: workspace.id });
+
+    const { resolveCredential } = await import('#lib/server/integrations/credentials');
+    expect(resolveCredential(workspace.id, 'github')).toEqual(
+      expect.objectContaining({
+        source: 'env',
+        value: 'env-token'
+      })
+    );
+  });
+
+  it('reads local store credentials before legacy database credentials', async () => {
+    const { store, workspace, encryptString } = await setup();
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('github', 'api_key', 'stored-token', { workspaceId: workspace.id, metadata: { masked: '****oken' } });
     store.saveIntegrationCredential({
       workspaceId: workspace.id,
       provider: 'github',
       credentialKind: 'api_key',
-      credentialEncrypted: encryptString('stored-token', 'test-key'),
-      metadata: { masked: '****oken' }
+      credentialEncrypted: encryptString('legacy-token', 'test-key'),
+      metadata: { masked: '****gacy' }
     });
 
     const { resolveCredential } = await import('#lib/server/integrations/credentials');
     expect(resolveCredential(workspace.id, 'github')).toEqual(
       expect.objectContaining({
-        source: 'database',
+        source: 'credentials',
         value: 'stored-token'
       })
     );

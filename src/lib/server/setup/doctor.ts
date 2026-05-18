@@ -4,6 +4,7 @@ import { getStore } from '#lib/server/persistence/store';
 import { getNotionStatus } from '#lib/server/context-sources/notion';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { MURPH_CONFIG_FILE, murphConfigExists, readMurphConfig } from '#lib/server/setup/config-file';
+import { credentialsPath, listSecrets } from '#lib/server/credentials/local-store';
 
 export type SetupCheckStatus = 'ok' | 'warning' | 'action_required' | 'error';
 
@@ -37,19 +38,20 @@ export function getSetupDoctor(): SetupDoctorPayload {
   const slack = getSlackService();
   const slackWorkspace = slack.getUsableWorkspace();
   const slackReconnectRequired = !slackWorkspace && slack.hasUnreadableInstall();
+  const hasCredentialsFile = existsSync(credentialsPath());
   const checks: SetupDoctorCheck[] = [];
 
-  const hasConfigSource = murphConfigExists() || existsSync('.env') || Boolean(env.encryptionKey || env.openaiApiKey || env.anthropicApiKey);
+  const hasConfigSource = murphConfigExists() || existsSync('.env') || hasCredentialsFile || Boolean(env.openaiApiKey || env.anthropicApiKey);
   checks.push(
     hasConfigSource
-      ? check('env_file', 'Configuration source', 'ok', murphConfigExists() ? `${MURPH_CONFIG_FILE} exists.` : existsSync('.env') ? '.env exists.' : 'process env is configured.')
+      ? check('env_file', 'Configuration source', 'ok', murphConfigExists() ? `${MURPH_CONFIG_FILE} exists.` : hasCredentialsFile ? `${credentialsPath()} exists.` : existsSync('.env') ? '.env exists.' : 'process env is configured.')
       : check('env_file', 'Configuration source', 'action_required', `${MURPH_CONFIG_FILE} is missing.`, 'Run ./install.sh or murph setup core.')
   );
 
   checks.push(
-    env.encryptionKey
-      ? check('encryption_key', 'Credential encryption', 'ok', 'Encryption key is configured.')
-      : check('encryption_key', 'Credential encryption', 'action_required', 'Murph needs an encryption key before storing credentials.', 'Run ./install.sh or set MURPH_ENCRYPTION_KEY.')
+    hasCredentialsFile || listSecrets().length > 0
+      ? check('credentials_file', 'Local credentials', 'ok', `Credentials are stored at ${credentialsPath()}.`)
+      : check('credentials_file', 'Local credentials', 'warning', 'No local credentials file exists yet.', 'Run murph setup to save credentials locally.')
   );
 
   checks.push(
@@ -80,8 +82,14 @@ export function getSetupDoctor(): SetupDoctorPayload {
     slackWorkspace
       ? check('slack_installed', 'Slack workspace', 'ok', `${slackWorkspace.name} is connected.`)
       : slackReconnectRequired
-        ? check('slack_installed', 'Slack workspace', 'action_required', 'Reconnect Slack. The saved Slack token cannot be decrypted with the current encryption key.', 'Use the Connect Slack button again.')
+        ? check('slack_installed', 'Slack workspace', 'action_required', 'Reconnect Slack. The saved Slack token is not available in local credentials.', 'Use the Connect Slack button again.')
       : check('slack_installed', 'Slack workspace', 'action_required', 'Connect a Slack workspace.', 'Use the Connect Slack button after Slack config is ready.')
+  );
+
+  checks.push(
+    slackWorkspace && slack.getUserSearchToken(slackWorkspace)
+      ? check('slack_user_search', 'Slack user search', 'ok', 'Slack search token is configured.')
+      : check('slack_user_search', 'Slack user search', 'warning', 'Slack cross-channel search is not connected yet.', 'Reconnect Slack with user search scopes.')
   );
 
   checks.push(
@@ -107,7 +115,7 @@ export function getSetupDoctor(): SetupDoctorPayload {
 
   const nextStep =
     checks.find((entry) => entry.id === 'env_file')?.status !== 'ok' ||
-    checks.find((entry) => entry.id === 'encryption_key')?.status !== 'ok'
+    checks.find((entry) => entry.id === 'credentials_file')?.status === 'action_required'
       ? 'core'
       : checks.find((entry) => entry.id === 'ai_provider')?.status !== 'ok'
         ? 'ai'

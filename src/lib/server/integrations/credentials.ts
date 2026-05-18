@@ -1,10 +1,11 @@
 import { decryptString } from '#lib/server/util/crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
+import { readSecretRecord } from '#lib/server/credentials/local-store';
 import { readEnvCredential } from './registry.js';
 
 export interface ResolvedCredential {
-  source: 'database' | 'env';
+  source: 'credentials' | 'database' | 'env';
   value: string;
   metadata?: Record<string, unknown>;
 }
@@ -22,6 +23,22 @@ export function resolveCredential(workspaceId: string | undefined, provider: str
   const workspace = workspaceId ? store.getWorkspaceById(workspaceId) : store.getFirstWorkspace();
   const envValue = readEnvCredential(provider);
 
+  if (envValue) {
+    return { source: 'env', value: envValue };
+  }
+
+  const localRecord = readSecretRecord(provider, 'api_key', { workspaceId: workspace?.id }) ??
+    readSecretRecord(provider, 'oauth_bundle', { workspaceId: workspace?.id }) ??
+    readSecretRecord(provider, 'api_key') ??
+    readSecretRecord(provider, 'oauth_bundle');
+  if (localRecord) {
+    return {
+      source: 'credentials',
+      value: localRecord.value,
+      metadata: localRecord.metadata
+    };
+  }
+
   if (workspace) {
     const stored = store.getIntegrationCredential(workspace.id, provider);
     if (stored?.status === 'connected') {
@@ -38,5 +55,5 @@ export function resolveCredential(workspaceId: string | undefined, provider: str
     }
   }
 
-  return envValue ? { source: 'env', value: envValue } : undefined;
+  return undefined;
 }

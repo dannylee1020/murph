@@ -7,6 +7,8 @@ LOG_FILE=".murph-install.log"
 DEFAULT_INSTALL_DIR="$HOME/.murph/app"
 SOURCE_ARCHIVE_URL="https://github.com/dannylee1020/murph/archive/refs/heads/master.tar.gz"
 BIN_DIR_DEFAULT="$HOME/.local/bin"
+MURPH_DEPS_BIN="${MURPH_DEPS_DIR:-$HOME/.murph/deps}/bin"
+export PATH="$MURPH_DEPS_BIN:$HOME/.local/bin:$PATH"
 
 force=false
 no_start=false
@@ -24,7 +26,7 @@ usage() {
 Usage: ./install.sh [--force] [--no-start] [--skip-build] [--simple] [--doctor]
 
 Options:
-  --force      Regenerate .env and rebuild even when files already exist.
+  --force      Regenerate local config and rebuild even when files already exist.
   --no-start   Do not ask to start the server after installation.
   --skip-build Skip npm run build.
   --simple     Skip terminal prompts and finish setup in the browser.
@@ -143,6 +145,14 @@ run_logged() {
   return "${PIPESTATUS[0]}"
 }
 
+install_dependency_phase() {
+  local phase="$1"
+  if [[ ! -f scripts/install-deps.sh ]]; then
+    fail "scripts/install-deps.sh is missing."
+  fi
+  run_logged bash scripts/install-deps.sh "$phase" || fail "dependency phase failed: $phase"
+}
+
 node_install_help() {
   cat <<'EOF'
 Murph needs Node.js 20 or newer.
@@ -189,20 +199,33 @@ check_node() {
   printf 'npm: %s\n' "$(npm --version)"
 }
 
-generate_secret() {
-  if have_command openssl; then
-    openssl rand -hex 32
-  else
-    node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-  fi
-}
-
 env_value() {
   local key="$1"
-  if [[ ! -f .env ]]; then
+  local value=""
+  if [[ -f .env ]]; then
+    value="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}=" .env | tail -n 1 | sed -E "s/^[[:space:]]*(export[[:space:]]+)?${key}=//; s/^['\"]//; s/['\"]$//" || true)"
+  fi
+  if [[ -n "$value" ]]; then
+    printf '%s\n' "$value"
     return
   fi
-  grep -E "^[[:space:]]*(export[[:space:]]+)?${key}=" .env | tail -n 1 | sed -E "s/^[[:space:]]*(export[[:space:]]+)?${key}=//; s/^['\"]//; s/['\"]$//"
+  [[ -f "$HOME/.murph/.credentials" ]] || return
+  KEY="$key" CREDENTIALS_PATH="$HOME/.murph/.credentials" node <<'NODE'
+const { readFileSync } = require('node:fs');
+const map = {
+  OPENAI_API_KEY: ['openai', 'api_key'],
+  ANTHROPIC_API_KEY: ['anthropic', 'api_key'],
+  SLACK_APP_TOKEN: ['slack', 'app_token'],
+  SLACK_CLIENT_SECRET: ['slack', 'client_secret']
+};
+const target = map[process.env.KEY];
+if (!target) process.exit(0);
+try {
+  const file = JSON.parse(readFileSync(process.env.CREDENTIALS_PATH, 'utf8'));
+  const entry = (file.credentials || []).find((item) => item.provider === target[0] && item.key === target[1] && !item.workspaceId && !item.userId);
+  if (entry?.value) process.stdout.write(entry.value);
+} catch {}
+NODE
 }
 
 doctor_check() {
@@ -223,17 +246,16 @@ run_doctor() {
     problems=$((problems + 1))
   fi
 
-  if [[ -n "$(env_value MURPH_ENCRYPTION_KEY)" ]]; then
-    doctor_check "Encryption key" "ok" "configured"
+  if [[ -f "$HOME/.murph/.credentials" ]]; then
+    doctor_check "Credentials file" "ok" "$HOME/.murph/.credentials"
   else
-    doctor_check "Encryption key" "missing" "set MURPH_ENCRYPTION_KEY"
-    problems=$((problems + 1))
+    doctor_check "Credentials file" "warning" "created by murph setup when secrets are saved"
   fi
 
   if [[ -n "$(env_value OPENAI_API_KEY)" || -n "$(env_value ANTHROPIC_API_KEY)" ]]; then
     doctor_check "AI provider" "ok" "configured"
   else
-    doctor_check "AI provider" "missing" "add OpenAI or Anthropic key in .env or browser setup"
+    doctor_check "AI provider" "missing" "add OpenAI or Anthropic key in setup"
     problems=$((problems + 1))
   fi
 
@@ -285,7 +307,7 @@ prompt_llm_key() {
   fi
 
   printf '\nMurph needs OpenAI or Anthropic to answer messages.\n'
-  printf 'You can paste a key now or leave this blank and edit .env later.\n'
+  printf 'You can paste a key now or leave this blank and run murph setup ai later.\n'
   printf 'Choose provider: [1] OpenAI  [2] Anthropic  [enter] Skip: '
   local choice
   read -r choice
@@ -311,18 +333,42 @@ prompt_llm_key() {
   printf '\n'
 }
 
+write_credentials_file() {
+  local provider="$1"
+  local key="$2"
+  [[ -n "$key" ]] || return
+  mkdir -p "$HOME/.murph"
+  PROVIDER="$provider" API_KEY="$key" CREDENTIALS_PATH="$HOME/.murph/.credentials" node <<'NODE'
+const { existsSync, readFileSync, writeFileSync, chmodSync } = require('node:fs');
+const path = process.env.CREDENTIALS_PATH;
+const provider = process.env.PROVIDER;
+const key = process.env.API_KEY;
+let file = { version: 1, credentials: [] };
+if (existsSync(path)) {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
+    if (Array.isArray(parsed.credentials)) file.credentials = parsed.credentials;
+  } catch {}
+}
+const now = new Date().toISOString();
+const existing = file.credentials.find((entry) => entry.provider === provider && entry.key === 'api_key');
+const next = { provider, key: 'api_key', value: key, createdAt: existing?.createdAt || now, updatedAt: now };
+if (existing) Object.assign(existing, next);
+else file.credentials.push(next);
+writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+chmodSync(path, 0o600);
+NODE
+}
+
 write_env_file() {
-  local encryption_key="$1"
-  local openai_key=""
-  local anthropic_key=""
   local provider="openai"
 
   if [[ "${LLM_PROVIDER:-}" == "openai" ]]; then
-    openai_key="${LLM_KEY:-}"
     provider="openai"
+    write_credentials_file "openai" "${LLM_KEY:-}"
   elif [[ "${LLM_PROVIDER:-}" == "anthropic" ]]; then
-    anthropic_key="${LLM_KEY:-}"
     provider="anthropic"
+    write_credentials_file "anthropic" "${LLM_KEY:-}"
   fi
 
   umask 077
@@ -330,24 +376,16 @@ write_env_file() {
 # Core
 MURPH_APP_URL=$APP_URL_DEFAULT
 MURPH_SQLITE_PATH=$SQLITE_PATH_DEFAULT
-MURPH_ENCRYPTION_KEY=$encryption_key
 
-# LLM provider. Add one key before expecting Murph to answer messages.
+# LLM provider. Secrets live in ~/.murph/.credentials.
 MURPH_DEFAULT_PROVIDER=$provider
-OPENAI_API_KEY=$openai_key
-ANTHROPIC_API_KEY=$anthropic_key
 
 # Slack channel setup
 SLACK_EVENTS_MODE=socket
-SLACK_APP_TOKEN=
 SLACK_CLIENT_ID=
-SLACK_CLIENT_SECRET=
-SLACK_SIGNING_SECRET=
 
 # Discord channel setup
-DISCORD_BOT_TOKEN=
 DISCORD_CLIENT_ID=
-DISCORD_CLIENT_SECRET=
 DISCORD_REDIRECT_URI=
 EOF
 }
@@ -372,8 +410,8 @@ configure_env() {
   if [[ "$simple" != true ]]; then
     prompt_llm_key
   fi
-  write_env_file "$(generate_secret)"
-  printf 'Wrote .env with a fresh MURPH_ENCRYPTION_KEY.\n'
+  write_env_file
+  printf 'Wrote .env. Secrets are stored in ~/.murph/.credentials when provided.\n'
 }
 
 install_dependencies() {
@@ -468,7 +506,7 @@ Day-to-day commands:
 Slack app setup:
   App dashboard: https://api.slack.com/apps
   Enable Socket Mode and create an app-level token with connections:write.
-  Add SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET in .env or browser setup.
+  Add Slack credentials through murph setup slack. Secrets are stored in ~/.murph/.credentials.
   OAuth callback for local installs: $APP_URL_DEFAULT/api/slack/oauth/callback
   No Slack Events URL is needed when SLACK_EVENTS_MODE=socket.
 
@@ -477,7 +515,7 @@ Discord app setup:
   DISCORD_REDIRECT_URI: <public-origin>/api/discord/oauth/callback
 
 Optional context sources such as Notion, GitHub, Google, Granola, Obsidian, and web search can be added later.
-Full configuration reference: .env.example
+Full configuration reference: murph.config.yaml, ~/.murph/.credentials, and .env.example for overrides
 Local health check: murph doctor
 Install log: $LOG_FILE
 EOF
@@ -511,6 +549,7 @@ maybe_start() {
   esac
 }
 
+install_dependency_phase pre-req
 check_node
 if [[ "$doctor" == true ]]; then
   run_doctor
@@ -519,5 +558,6 @@ configure_env
 install_dependencies
 build_app
 install_cli
+install_dependency_phase req
 print_next_steps
 maybe_start

@@ -1,4 +1,3 @@
-import { encryptString } from '#lib/server/util/crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
@@ -11,6 +10,7 @@ import {
   enableIntegrationCapabilities,
   disableIntegrationCapabilities
 } from '#lib/server/integrations/capabilities';
+import { deleteSecret, maskSecret, readSecretRecord, writeSecret } from '#lib/server/credentials/local-store';
 import { readJson, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 
@@ -97,10 +97,14 @@ function statusFor(provider: string, workspaceId: string) {
   const definition = getIntegration(provider)!;
   const stored = getStore().getIntegrationCredential(workspaceId, provider);
   const envValue = readEnvCredential(provider);
-  const source = stored?.status === 'connected' ? 'database' : envValue ? 'env' : undefined;
-  const metadata = source === 'database'
-    ? stored?.metadata ?? {}
-    : envValue
+  const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
+  const local = readSecretRecord(provider, key, { workspaceId }) ?? readSecretRecord(provider, key);
+  const source = envValue ? 'env' : local ? 'credentials' : stored?.status === 'connected' ? 'database' : undefined;
+  const metadata = source === 'credentials'
+    ? local?.metadata ?? {}
+    : source === 'database'
+      ? stored?.metadata ?? {}
+      : envValue
       ? { masked: maskCredential(envValue) }
       : {};
   const githubRepositories = provider === 'github'
@@ -123,7 +127,7 @@ function statusFor(provider: string, workspaceId: string) {
     installPath: definition.installPath,
     tools: definition.tools,
     contextSources: definition.contextSources,
-    canDisconnect: source === 'database',
+    canDisconnect: source === 'credentials' || source === 'database',
     metadata: provider === 'github'
       ? { ...metadata, repositories: githubRepositories, needsRepoScope: source ? (githubRepositories ?? []).length === 0 : false }
       : metadata,
@@ -167,24 +171,25 @@ export const integrationRoutes: Route[] = [
       return;
     }
 
-    const encryptionKey = getRuntimeEnv().encryptionKey;
-    if (!encryptionKey) {
-      sendJson(res, { ok: false, error: 'encryption_key_required' }, 400);
-      return;
-    }
-
     try {
       const validationMetadata = await validateCredential(definition.provider, credential);
+      const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
+      const metadata = {
+        ...validationMetadata,
+        masked: maskSecret(credential),
+        validatedAt: new Date().toISOString()
+      };
+      writeSecret(definition.provider, key, credential, {
+        workspaceId: workspace.id,
+        externalWorkspaceId: workspace.externalWorkspaceId,
+        metadata
+      });
       getStore().saveIntegrationCredential({
         workspaceId: workspace.id,
         provider: definition.provider,
         credentialKind: definition.credentialKind,
-        credentialEncrypted: encryptString(credential, encryptionKey),
-        metadata: {
-          ...validationMetadata,
-          masked: maskCredential(credential),
-          validatedAt: new Date().toISOString()
-        }
+        credentialEncrypted: 'stored-in-local-credentials',
+        metadata
       });
       enableIntegrationCapabilities(workspace.id, definition);
       sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
@@ -227,23 +232,34 @@ export const integrationRoutes: Route[] = [
     }
 
     const stored = getStore().getIntegrationCredential(workspace.id, 'github');
-    if (!stored) {
+    const local = readSecretRecord('github', 'api_key', { workspaceId: workspace.id });
+    if (!stored && !local) {
       sendJson(res, { ok: false, error: 'github_not_connected' }, 400);
       return;
     }
 
     const repositories = normalizeRepositories(body.repositories);
+    if (local) {
+      writeSecret('github', 'api_key', local.value, {
+        workspaceId: workspace.id,
+        externalWorkspaceId: workspace.externalWorkspaceId,
+        metadata: {
+          ...local.metadata,
+          repositories
+        }
+      });
+    }
     getStore().saveIntegrationCredential({
       workspaceId: workspace.id,
       provider: 'github',
-      credentialKind: stored.credentialKind,
-      credentialEncrypted: stored.credentialEncrypted,
+      credentialKind: stored?.credentialKind ?? 'api_key',
+      credentialEncrypted: stored?.credentialEncrypted ?? 'stored-in-local-credentials',
       metadata: {
-        ...stored.metadata,
+        ...(stored?.metadata ?? local?.metadata),
         repositories
       },
-      status: stored.status,
-      errorMessage: stored.errorMessage
+      status: stored?.status,
+      errorMessage: stored?.errorMessage
     });
 
     enableIntegrationCapabilities(workspace.id, definition);
@@ -264,6 +280,8 @@ export const integrationRoutes: Route[] = [
       return;
     }
 
+    const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
+    deleteSecret(definition.provider, key, { workspaceId: workspace.id });
     getStore().deleteIntegrationCredential(workspace.id, definition.provider);
     if (!readEnvCredential(definition.provider)) {
       disableIntegrationCapabilities(workspace.id, definition);

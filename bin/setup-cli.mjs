@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -9,6 +9,8 @@ import { parse, stringify } from 'yaml';
 
 const appDir = process.env.MURPH_APP_DIR || process.cwd();
 const murphUrl = process.env.MURPH_URL || `http://localhost:${process.env.MURPH_PORT || '5173'}`;
+const murphHome = process.env.MURPH_HOME || path.join(homedir(), '.murph');
+const credentialsPath = process.env.MURPH_CREDENTIALS_PATH || path.join(murphHome, '.credentials');
 const envPath = path.join(appDir, '.env');
 const configPath = path.join(appDir, 'murph.config.yaml');
 const rl = readline.createInterface({ input, output });
@@ -17,7 +19,10 @@ const args = process.argv.slice(2);
 const options = {
   quick: args.includes('--quick'),
   nonInteractive: args.includes('--non-interactive'),
-  json: args.includes('--json')
+  json: args.includes('--json'),
+  auto: args.includes('--auto'),
+  manual: args.includes('--manual'),
+  reconnectSearch: args.includes('--reconnect-search')
 };
 const section = args.find((arg) => !arg.startsWith('--')) || 'all';
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -52,6 +57,22 @@ const CONFIG_KEY_CLEARERS = {
   MURPH_AGENT_PROVIDER: (config) => deletePath(config, ['ai', 'agent', 'provider']),
   MURPH_AGENT_MODEL: (config) => deletePath(config, ['ai', 'agent', 'model'])
 };
+const SECRET_KEY_MAP = {
+  OPENAI_API_KEY: ['openai', 'api_key'],
+  ANTHROPIC_API_KEY: ['anthropic', 'api_key'],
+  SLACK_APP_TOKEN: ['slack', 'app_token'],
+  SLACK_CLIENT_SECRET: ['slack', 'client_secret'],
+  SLACK_SIGNING_SECRET: ['slack', 'signing_secret'],
+  DISCORD_BOT_TOKEN: ['discord', 'bot_token'],
+  DISCORD_CLIENT_SECRET: ['discord', 'client_secret'],
+  GOOGLE_ACCESS_TOKEN: ['google', 'access_token'],
+  GOOGLE_CLIENT_SECRET: ['google', 'client_secret'],
+  GITHUB_PAT: ['github', 'api_key'],
+  NOTION_API_KEY: ['notion', 'api_key'],
+  GRANOLA_API_KEY: ['granola', 'api_key'],
+  TAVILY_API_KEY: ['tavily', 'api_key'],
+  BRAVE_SEARCH_API_KEY: ['brave_search', 'api_key']
+};
 
 function paint(style, text) {
   return `${color[style] || ''}${text}${color.reset}`;
@@ -61,7 +82,7 @@ function usage() {
   console.log(`Usage: murph setup [section] [options]
 
 Sections:
-  core        Create core .env values and data directory.
+  core        Create core local config values and data directory.
   ai          Configure OpenAI or Anthropic.
   slack       Configure Slack app credentials and OAuth install.
   identity    Pick the Slack user Murph watches for.
@@ -72,6 +93,9 @@ Sections:
 
 Options:
   --quick            Skip sections that are already configured.
+  --auto             Prefer local automation when a provider CLI is available.
+  --manual           Skip provider CLI assistance and use manual credential entry.
+  --reconnect-search Re-run Slack OAuth to refresh user-search consent.
   --non-interactive  Do not prompt; report missing setup and exit nonzero.
   --json             JSON output for status.
 `);
@@ -98,6 +122,10 @@ function success(message) {
 
 function warn(message) {
   console.log(`${paint('yellow', '!!')} ${message}`);
+}
+
+function haveCommand(command) {
+  return spawnSync('sh', ['-lc', `command -v ${command}`], { stdio: 'ignore' }).status === 0;
 }
 
 async function ask(question, defaultValue = '') {
@@ -210,6 +238,52 @@ function readConfigFile() {
   return parsed;
 }
 
+function readCredentialsFile() {
+  if (!existsSync(credentialsPath)) return { version: 1, credentials: [] };
+  try {
+    const parsed = JSON.parse(readFileSync(credentialsPath, 'utf8'));
+    return {
+      version: 1,
+      credentials: Array.isArray(parsed?.credentials) ? parsed.credentials : []
+    };
+  } catch {
+    return { version: 1, credentials: [] };
+  }
+}
+
+function writeCredentialsFile(file) {
+  mkdirSync(path.dirname(credentialsPath), { recursive: true, mode: 0o700 });
+  writeFileSync(credentialsPath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+  chmodSync(credentialsPath, 0o600);
+}
+
+function readCredentialValue(provider, key) {
+  const file = readCredentialsFile();
+  return file.credentials.find((entry) => entry?.provider === provider && entry?.key === key && !entry.workspaceId && !entry.userId)?.value || '';
+}
+
+function writeCredentialValue(provider, key, value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return false;
+  const file = readCredentialsFile();
+  const now = new Date().toISOString();
+  const existing = file.credentials.find((entry) => entry?.provider === provider && entry?.key === key && !entry.workspaceId && !entry.userId);
+  const next = {
+    provider,
+    key,
+    value: trimmed,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+  if (existing) {
+    Object.assign(existing, next);
+  } else {
+    file.credentials.push(next);
+  }
+  writeCredentialsFile(file);
+  return true;
+}
+
 function writeConfigFile(config) {
   writeFileSync(configPath, stringify(config, { lineWidth: 100 }), { mode: 0o600 });
 }
@@ -263,47 +337,39 @@ function readConfigValue(key) {
 }
 
 function readEnvValue(key) {
+  const secretTarget = SECRET_KEY_MAP[key];
+  if (process.env[key]) return process.env[key];
+  if (secretTarget) {
+    const value = readCredentialValue(secretTarget[0], secretTarget[1]);
+    if (value) return value;
+  }
   const match = readEnvFile().match(new RegExp(`^\\s*(?:export\\s+)?${key}=([^\\n]*)`, 'm'));
   if (match) return match[1].trim().replace(/^['"]|['"]$/g, '');
-  return process.env[key] || readConfigValue(key);
-}
-
-function serializeEnvValue(value) {
-  return /[\s#"'\\]/.test(value) ? JSON.stringify(value) : value;
+  return readConfigValue(key);
 }
 
 function writeEnvValues(values) {
-  const envValues = {};
+  const secretValues = {};
   const configValues = {};
   for (const [key, value] of Object.entries(values)) {
     if (CONFIG_KEYS.has(key)) {
       configValues[key] = value;
+    } else if (SECRET_KEY_MAP[key]) {
+      secretValues[key] = value;
     } else {
-      envValues[key] = value;
+      configValues[key] = value;
     }
   }
 
-  const existing = readEnvFile();
-  const lines = existing ? existing.split(/\r?\n/) : [];
   const updated = [];
 
-  for (const [key, rawValue] of Object.entries(envValues)) {
+  for (const [key, rawValue] of Object.entries(secretValues)) {
     const value = String(rawValue || '').trim();
     if (!value) continue;
-    const line = `${key}=${serializeEnvValue(value)}`;
-    const index = lines.findIndex((entry) => new RegExp(`^\\s*(?:export\\s+)?${key}=`).test(entry));
-    if (index >= 0) {
-      lines[index] = line;
-    } else {
-      if (lines.length > 0 && lines[lines.length - 1] !== '') lines.push('');
-      lines.push(line);
-    }
+    const [provider, secretKey] = SECRET_KEY_MAP[key];
+    writeCredentialValue(provider, secretKey, value);
     process.env[key] = value;
     updated.push(key);
-  }
-
-  if (updated.length > 0) {
-    writeFileSync(envPath, `${lines.join('\n').replace(/\n+$/, '')}\n`, { mode: 0o600 });
   }
 
   const config = readConfigFile();
@@ -325,10 +391,6 @@ function writeEnvValues(values) {
   }
 
   return updated;
-}
-
-function generateSecret() {
-  return randomBytes(32).toString('hex');
 }
 
 function mask(value) {
@@ -504,7 +566,6 @@ async function setupCore() {
   const values = {};
   if (!readEnvValue('MURPH_APP_URL')) values.MURPH_APP_URL = murphUrl;
   if (!readEnvValue('MURPH_SQLITE_PATH')) values.MURPH_SQLITE_PATH = 'data/murph.sqlite';
-  if (!readEnvValue('MURPH_ENCRYPTION_KEY')) values.MURPH_ENCRYPTION_KEY = generateSecret();
   if (!readEnvValue('SLACK_EVENTS_MODE')) values.SLACK_EVENTS_MODE = 'socket';
   const updated = writeEnvValues(values);
   if (updated.length > 0) {
@@ -555,6 +616,11 @@ async function setupSlack() {
     if (options.nonInteractive && !configured) {
       fail('Missing Slack app settings. Set SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET.');
     }
+    if (!options.manual && haveCommand('slack')) {
+      info('Slack CLI detected. Use it to create or update the app from docs/public/slack-socket-mode-manifest.yml, then continue here with the app credentials.');
+    } else if (options.auto && !options.manual) {
+      warn('Slack CLI was not found. Falling back to manual Slack app setup.');
+    }
     info('Use docs/public/slack-socket-mode-manifest.yml and this redirect URL:');
     console.log(`   ${paint('bold', `${murphUrl}/api/slack/oauth/callback`)}`);
     const values = {
@@ -569,7 +635,7 @@ async function setupSlack() {
 
   await ensureServer();
   let status = await request('/api/setup/status');
-  if (status.slack?.installed) {
+  if (status.slack?.installed && !options.reconnectSearch) {
     success('Slack workspace is connected.');
     return;
   }
@@ -744,7 +810,7 @@ async function setupStatus() {
   const envStatus = {
     envFile: existsSync(envPath),
     configFile: existsSync(configPath),
-    encryptionKey: Boolean(readEnvValue('MURPH_ENCRYPTION_KEY')),
+    credentialsFile: existsSync(credentialsPath),
     aiProvider: Boolean(readEnvValue('OPENAI_API_KEY') || readEnvValue('ANTHROPIC_API_KEY')),
     defaultProvider: currentDefaultProvider(),
     defaultModel: currentDefaultModel(currentDefaultProvider()),
@@ -769,7 +835,7 @@ async function setupStatus() {
 
   sectionTitle('Setup status');
   statusLine('Config file', envStatus.configFile || envStatus.envFile ? 'ok' : 'missing', envStatus.configFile ? 'murph.config.yaml present' : envStatus.envFile ? '.env present' : 'missing');
-  statusLine('Encryption key', envStatus.encryptionKey ? 'ok' : 'missing', envStatus.encryptionKey ? 'configured' : 'missing');
+  statusLine('Credentials file', envStatus.credentialsFile ? 'ok' : 'warning', envStatus.credentialsFile ? credentialsPath : 'will be created when a secret is saved');
   statusLine('AI provider', envStatus.aiProvider ? 'ok' : 'missing', envStatus.aiProvider ? `${envStatus.defaultProvider}/${envStatus.defaultModel}` : 'missing');
   statusLine('Murph Agent model', envStatus.agentModel ? 'ok' : 'missing', envStatus.agentInheritsRuntime
     ? `inherits runtime (${envStatus.agentProvider}/${envStatus.agentModel})`

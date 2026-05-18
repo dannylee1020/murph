@@ -34,7 +34,9 @@ function jsonResponse(): any & { result: () => JsonResponse } {
 
 async function setup(options: { githubPat?: string } = {}) {
   vi.resetModules();
-  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-integrations-route-')), 'murph.sqlite');
+  const root = mkdtempSync(join(tmpdir(), 'murph-integrations-route-'));
+  process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
+  process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   if (options.githubPat) {
     process.env.GITHUB_PAT = options.githubPat;
@@ -87,7 +89,7 @@ describe('integration routes', () => {
     );
   });
 
-  it('validates, encrypts, stores, and reports a GitHub credential', async () => {
+  it('validates, stores, and reports a GitHub credential', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ login: 'octo-user' })
@@ -104,7 +106,7 @@ describe('integration routes', () => {
       expect.objectContaining({
         provider: 'github',
         status: 'connected',
-        source: 'database',
+        source: 'credentials',
         canDisconnect: true,
         metadata: expect.objectContaining({
           repositories: [],
@@ -113,8 +115,9 @@ describe('integration routes', () => {
       })
     );
     const stored = store.getIntegrationCredential(workspace.id, 'github');
-    expect(stored?.credentialEncrypted).toBeTruthy();
-    expect(stored?.credentialEncrypted).not.toBe('ghp_test_token');
+    expect(stored?.credentialEncrypted).toBe('stored-in-local-credentials');
+    const { readSecret } = await import('#lib/server/credentials/local-store');
+    expect(readSecret('github', 'api_key', { workspaceId: workspace.id })).toBe('ghp_test_token');
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toContain('github.search');
     expect(memory.enabledContextSources).toContain('github.thread_search');

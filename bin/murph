@@ -21,6 +21,8 @@ MURPH_LOG_FILE="${MURPH_LOG_FILE:-$MURPH_HOME/murph.log}"
 MURPH_PORT="${MURPH_PORT:-5173}"
 MURPH_URL="${MURPH_URL:-http://localhost:$MURPH_PORT}"
 SOURCE_ARCHIVE_URL="${MURPH_SOURCE_ARCHIVE:-https://github.com/dannylee1020/murph/archive/refs/heads/master.tar.gz}"
+MURPH_DEPS_BIN="${MURPH_DEPS_DIR:-$MURPH_HOME/deps}/bin"
+export PATH="$MURPH_DEPS_BIN:$HOME/.local/bin:$PATH"
 
 usage() {
   cat <<'EOF'
@@ -33,6 +35,7 @@ Commands:
   status               Show process and health status.
   doctor               Check local setup.
   setup [section]      Run the first-class CLI setup workflow.
+  credentials <cmd>    List, migrate, and inspect local credentials.
   agent [prompt]       Chat with Murph's setup and plugin agent.
   policy <command>     List, preview, and save policy configuration.
   logs [-f]            Show runtime logs.
@@ -232,6 +235,13 @@ setup_command() {
   have_command node || fail "node is required for murph setup."
   cd "$MURPH_APP_DIR"
   node bin/setup-cli.mjs "$@"
+}
+
+credentials_command() {
+  require_app
+  have_command node || fail "node is required for murph credentials."
+  cd "$MURPH_APP_DIR"
+  node bin/credentials-cli.mjs "$@"
 }
 
 agent_command() {
@@ -522,6 +532,9 @@ case "$command" in
     ;;
   setup)
     setup_command "$@"
+    ;;
+  credentials)
+    credentials_command "$@"
     ;;
   agent)
     agent_command "$@"
