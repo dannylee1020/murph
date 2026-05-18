@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
@@ -16,7 +16,30 @@ function columns(db: Database.Database, table: string): string[] {
   );
 }
 
+function migrationIds(db: Database.Database): string[] {
+  return (db.prepare(`SELECT id FROM schema_migrations ORDER BY id`).all() as Array<{ id: string }>)
+    .map((row) => row.id);
+}
+
 describe('sqlite schema cleanup', () => {
+  it('creates the current schema and records migrations for a fresh database', async () => {
+    vi.resetModules();
+    const sqlitePath = join(mkdtempSync(join(tmpdir(), 'murph-schema-fresh-')), 'murph.sqlite');
+    process.env.MURPH_SQLITE_PATH = sqlitePath;
+
+    const { getDb } = await import('#lib/server/persistence/db');
+    const db = getDb();
+
+    expect(tableExists(db, 'workspaces')).toBe(true);
+    expect(tableExists(db, 'integration_connections')).toBe(true);
+    expect(tableExists(db, 'schema_migrations')).toBe(true);
+    expect(migrationIds(db)).toEqual([
+      '001_create_current_schema',
+      '002_simplify_local_first_schema'
+    ]);
+    expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(false);
+  });
+
   it('migrates legacy secret and slack-keyed tables to the cleaned schema', async () => {
     vi.resetModules();
     const sqlitePath = join(mkdtempSync(join(tmpdir(), 'murph-schema-')), 'murph.sqlite');
@@ -150,6 +173,48 @@ describe('sqlite schema cleanup', () => {
     expect(tableExists(migrated, 'integration_credentials')).toBe(false);
     expect(tableExists(migrated, 'user_memory')).toBe(false);
     expect(tableExists(migrated, 'feedback_memory')).toBe(false);
+    expect(migrationIds(migrated)).toEqual([
+      '001_create_current_schema',
+      '002_simplify_local_first_schema'
+    ]);
+    expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(true);
     (migrated as unknown as { close?: () => void }).close?.();
+  });
+
+  it('does not re-run already recorded migrations', async () => {
+    vi.resetModules();
+    const sqlitePath = join(mkdtempSync(join(tmpdir(), 'murph-schema-idempotent-')), 'murph.sqlite');
+    process.env.MURPH_SQLITE_PATH = sqlitePath;
+
+    const { getDb } = await import('#lib/server/persistence/db');
+    const { runMigrations } = await import('#lib/server/persistence/migrator');
+    const db = getDb();
+    const firstRows = migrationIds(db);
+
+    runMigrations(db, sqlitePath);
+
+    expect(migrationIds(db)).toEqual(firstRows);
+    expect((db.prepare(`SELECT COUNT(*) AS count FROM schema_migrations`).get() as { count: number }).count).toBe(2);
+  });
+
+  it('rolls back failed migrations without recording them', async () => {
+    const sqlitePath = join(mkdtempSync(join(tmpdir(), 'murph-schema-failure-')), 'murph.sqlite');
+    const db = new Database(sqlitePath);
+    const { runMigrationList } = await import('#lib/server/persistence/migrator');
+
+    expect(() => runMigrationList(db, sqlitePath, [
+      {
+        id: '999_failure',
+        description: 'test rollback behavior',
+        up(database) {
+          database.exec(`CREATE TABLE rolled_back (id TEXT PRIMARY KEY);`);
+          throw new Error('intentional migration failure');
+        }
+      }
+    ])).toThrow('intentional migration failure');
+
+    expect(tableExists(db, 'rolled_back')).toBe(false);
+    expect(migrationIds(db)).toEqual([]);
+    (db as unknown as { close?: () => void }).close?.();
   });
 });
