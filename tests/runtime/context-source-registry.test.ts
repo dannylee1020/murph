@@ -67,7 +67,7 @@ describe('ContextSourceRegistry.retrieve', () => {
     delete process.env.MURPH_CONTEXT_SOURCE_TIMEOUT_MS;
   });
 
-  it('runs explicit sources first and caps optional sources', async () => {
+  it('returns explicit sources first and caps optional sources', async () => {
     process.env.MURPH_CONTEXT_SOURCE_MAX_OPTIONAL = '2';
     const registry = await loadRegistry();
     const seen: string[] = [];
@@ -99,8 +99,46 @@ describe('ContextSourceRegistry.retrieve', () => {
 
     const artifacts = await registry.retrieve(['explicit.source'], ['optional.a', 'optional.b', 'optional.c'], baseInput());
 
-    expect(seen).toEqual(['explicit.source', 'optional.a', 'optional.b']);
+    expect(seen).toHaveLength(3);
+    expect(seen).toEqual(expect.arrayContaining(['explicit.source', 'optional.a', 'optional.b']));
     expect(artifacts.map((entry) => entry.id)).toEqual(['explicit.source', 'optional.a', 'optional.b']);
+  });
+
+  it('runs sources concurrently while preserving requested artifact order', async () => {
+    const registry = await loadRegistry();
+    const completed: string[] = [];
+
+    function artifact(id: string): ContextArtifact {
+      return { id, source: id, type: 'document', title: id, text: id };
+    }
+
+    registry.register({
+      name: 'optional.slow',
+      description: '',
+      optional: true,
+      async retrieve() {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        completed.push('optional.slow');
+        return [artifact('optional.slow')];
+      }
+    }, { optional: true, source: 'test' });
+    registry.register({
+      name: 'optional.fast',
+      description: '',
+      optional: true,
+      async retrieve() {
+        completed.push('optional.fast');
+        return [artifact('optional.fast')];
+      }
+    }, { optional: true, source: 'test' });
+
+    const artifacts = await registry.retrieve([], ['optional.slow', 'optional.fast'], {
+      ...baseInput(),
+      enabledContextSources: ['optional.slow', 'optional.fast']
+    });
+
+    expect(completed).toEqual(['optional.fast', 'optional.slow']);
+    expect(artifacts.map((entry) => entry.id)).toEqual(['optional.slow', 'optional.fast']);
   });
 
   it('allows callers to override the optional source cap', async () => {

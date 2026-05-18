@@ -100,26 +100,6 @@ export interface ContextArtifact {
     metadata?: Record<string, unknown>;
 }
 
-export interface SessionContextSnapshot {
-    builtAt: string;
-    date: string;
-    handoffDoc?: {
-        source: string;
-        title: string;
-        url?: string;
-        text: string;
-    };
-    sections: Array<{
-        source: string;
-        title: string;
-        summary: string;
-        url?: string;
-        metadata?: Record<string, unknown>;
-    }>;
-    summary: string;
-    warnings?: string[];
-}
-
 export interface UserMemory {
     userId: string;
     preferences: string[];
@@ -269,7 +249,6 @@ export interface ContextAssembly {
     unresolvedQuestions: string[];
     continuityCase: ContinuityCase;
     linkedArtifacts: string[];
-    sessionContext?: SessionContextSnapshot;
 }
 
 export interface ContinuityTask {
@@ -599,7 +578,6 @@ export interface AutopilotSession {
     startedAt: string;
     endsAt: string;
     stoppedAt?: string;
-    contextSnapshot?: SessionContextSnapshot;
 }
 
 export interface MorningBriefing {

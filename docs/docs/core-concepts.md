@@ -11,10 +11,6 @@ Murph is built around bounded offline handoffs, not an always-on chatbot.
 
 A session is a bounded handoff window. You start a session before going offline, choose the channels to watch, and let Murph handle matching incoming work.
 
-## Session context
-
-At session start, Murph builds a context snapshot from handoff notes and connected sources. That snapshot gives later decisions a shared baseline without re-fetching broad context on every message.
-
 ## Skills
 
 Skills describe how Murph should handle different kinds of requests. They help Murph choose the right behavior and the right context sources.

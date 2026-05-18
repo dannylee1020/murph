@@ -1,7 +1,7 @@
 import { getGitHubService, toArtifact as githubToArtifact } from '#lib/server/context-sources/github';
 import { buildRetrievalQuery } from '#lib/server/util/retrieval-query';
 import type { IntegrationAdapter } from '../adapter.js';
-import { queryFromThread, section } from '../shared.js';
+import { queryFromThread } from '../shared.js';
 
 export function createGitHubAdapter(): IntegrationAdapter {
   const github = getGitHubService();
@@ -97,17 +97,6 @@ export function createGitHubAdapter(): IntegrationAdapter {
           return await github.readPullRequest(input.repository, input.number, context.workspace.id);
         }
       }
-    ],
-    sessionContext: {
-      async contribute(input) {
-        const results = await github.search(`updated:${input.date}`, 5, input.workspace.id);
-        return {
-          sections: results.results.map((item) => section('github', item.title, item.body ?? item.title, {
-            url: item.url,
-            metadata: { repository: item.repository, number: item.number, kind: item.kind }
-          }))
-        };
-      }
-    }
+    ]
   };
 }

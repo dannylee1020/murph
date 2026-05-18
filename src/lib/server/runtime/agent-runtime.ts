@@ -9,7 +9,6 @@ import { selectSkills } from '#lib/server/skills/selection';
 import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
-import { sessionContextToArtifact } from '#lib/server/runtime/session-context';
 import {
   buildNormalizedRetrievalRequest,
   deterministicRetrievalInputForTool
@@ -190,12 +189,11 @@ export class AgentRuntime {
     session: AutopilotSession,
     workspace: Workspace
   ): Promise<ContextAssembly> {
-    const recentMessages = await this.tools.execute<
+    const recentMessagesPromise = this.tools.execute<
       { channelId: string; threadTs: string },
       ChannelMessage[]
     >('channel.fetch_thread', task.thread, { workspace, task });
-    const latestMessage = recentMessages.at(-1)?.text ?? '';
-    const userMemory = await this.tools.execute<{ workspaceId: string; userId: string }, ContextAssembly['memory']['user']>(
+    const userMemoryPromise = this.tools.execute<{ workspaceId: string; userId: string }, ContextAssembly['memory']['user']>(
       'user.get_preferences',
       {
         workspaceId: workspace.id,
@@ -203,12 +201,12 @@ export class AgentRuntime {
       },
       { workspace, task }
     );
-    const workspaceMemory = await this.tools.execute<{ workspaceId: string }, ContextAssembly['memory']['workspace']>(
+    const workspaceMemoryPromise = this.tools.execute<{ workspaceId: string }, ContextAssembly['memory']['workspace']>(
       'memory.workspace.read',
       { workspaceId: workspace.id },
       { workspace, task }
     );
-    const threadMemory = await this.tools.execute<
+    const threadMemoryPromise = this.tools.execute<
       { workspaceId: string; channelId: string; threadTs: string },
       ContextAssembly['memory']['thread']
     >(
@@ -220,8 +218,22 @@ export class AgentRuntime {
       },
       { workspace, task }
     );
-    const allSkills = await loadSkills();
+    const allSkillsPromise = loadSkills();
     const allTools = this.tools.list();
+    const [
+      recentMessages,
+      userMemory,
+      workspaceMemory,
+      threadMemory,
+      allSkills
+    ] = await Promise.all([
+      recentMessagesPromise,
+      userMemoryPromise,
+      workspaceMemoryPromise,
+      threadMemoryPromise,
+      allSkillsPromise
+    ]);
+    const latestMessage = recentMessages.at(-1)?.text ?? '';
     const selectedSkills = selectSkills({
       skills: allSkills,
       channel: task.thread.provider ?? 'slack',
@@ -274,17 +286,13 @@ export class AgentRuntime {
       enabledContextSources: workspaceMemory.enabledContextSources,
       maxOptionalSources: hasRequiredGroundingSkill(baseContext) ? Number.MAX_SAFE_INTEGER : undefined
     });
-    const sessionContext = session.contextSnapshot ?? this.store.getSessionContext(session.id);
-    const sessionArtifacts = sessionContext ? [sessionContextToArtifact(sessionContext)] : [];
-
     return {
       ...baseContext,
-      artifacts: mergeArtifacts(sessionArtifacts, artifacts),
+      artifacts,
       availableTools,
       continuityCase: inferCaseFromText(latestMessage),
       summary: latestMessage,
-      unresolvedQuestions: latestMessage.includes('?') ? [latestMessage] : [],
-      sessionContext
+      unresolvedQuestions: latestMessage.includes('?') ? [latestMessage] : []
     };
   }
 
@@ -487,24 +495,19 @@ export class AgentRuntime {
     toolResults: AgentToolResult[];
     runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>;
   }> {
-    const runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }> = [];
-    const toolsUsed: string[] = [];
-    const toolResults: AgentToolResult[] = [];
     const retrievalNames = new Set(retrievalToolNames);
     const retrievalRequest = buildNormalizedRetrievalRequest(context);
-
-    for (const tool of context.availableTools) {
+    const retrievalTasks = context.availableTools.flatMap((tool) => {
       if (!retrievalNames.has(tool.name)) {
-        continue;
+        return [];
       }
-
       const input = deterministicRetrievalInputForTool(tool, retrievalRequest);
-      if (!input) {
-        continue;
-      }
+      return input ? [{ tool, input }] : [];
+    });
 
+    const results = await Promise.all(retrievalTasks.map(async ({ tool, input }) => {
       const id = `auto-retrieval:${tool.name}`;
-      runtimeEvents.push({
+      const localRuntimeEvents: Array<{ type: RuntimeEventType; payload: unknown }> = [{
         type: 'agent.tool.requested',
         payload: {
           id,
@@ -512,7 +515,12 @@ export class AgentRuntime {
           reason: 'Deterministic retrieval fanout',
           input
         }
-      });
+      }];
+      const localToolsUsed: string[] = [];
+      const localPostLoopEvidence: PostLoopEvidence = {
+        artifacts: [],
+        linkedArtifacts: []
+      };
 
       try {
         const output = await this.tools.execute(tool.name, input, {
@@ -520,23 +528,23 @@ export class AgentRuntime {
           task: context.task,
           workspaceMemory: context.memory.workspace
         });
-        toolsUsed.push(tool.name);
+        localToolsUsed.push(tool.name);
         const enrichedOutput = await this.enrichSearchResultForGrounding(
           tool.name,
           output,
           context,
           workspace,
-          toolsUsed,
-          runtimeEvents,
-          postLoopEvidence
+          localToolsUsed,
+          localRuntimeEvents,
+          localPostLoopEvidence
         );
-        toolResults.push({
+        const toolResult: AgentToolResult = {
           id,
           name: tool.name,
           ok: true,
           output: truncateToolOutput(enrichedOutput)
-        });
-        runtimeEvents.push({
+        };
+        localRuntimeEvents.push({
           type: 'agent.tool.completed',
           payload: {
             id,
@@ -545,15 +553,21 @@ export class AgentRuntime {
             outputSummary: outputSummary(enrichedOutput)
           }
         });
+        return {
+          toolsUsed: localToolsUsed,
+          toolResults: [toolResult],
+          runtimeEvents: localRuntimeEvents,
+          postLoopEvidence: localPostLoopEvidence
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Tool execution failed';
-        toolResults.push({
+        const toolResult: AgentToolResult = {
           id,
           name: tool.name,
           ok: false,
           error: message
-        });
-        runtimeEvents.push({
+        };
+        localRuntimeEvents.push({
           type: 'agent.tool.completed',
           payload: {
             id,
@@ -562,10 +576,28 @@ export class AgentRuntime {
             error: message
           }
         });
+        return {
+          toolsUsed: localToolsUsed,
+          toolResults: [toolResult],
+          runtimeEvents: localRuntimeEvents,
+          postLoopEvidence: localPostLoopEvidence
+        };
       }
+    }));
+
+    for (const result of results) {
+      postLoopEvidence.artifacts = mergeArtifacts(postLoopEvidence.artifacts, result.postLoopEvidence.artifacts);
+      postLoopEvidence.linkedArtifacts = mergeLinkedArtifacts(
+        postLoopEvidence.linkedArtifacts,
+        result.postLoopEvidence.linkedArtifacts
+      );
     }
 
-    return { toolsUsed, toolResults, runtimeEvents };
+    return {
+      toolsUsed: results.flatMap((result) => result.toolsUsed),
+      toolResults: results.flatMap((result) => result.toolResults),
+      runtimeEvents: results.flatMap((result) => result.runtimeEvents)
+    };
   }
 
   private defaultToolInput(name: string, input: unknown, context: ContextAssembly): unknown {

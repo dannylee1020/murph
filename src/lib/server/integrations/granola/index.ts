@@ -1,6 +1,6 @@
 import { getGranolaService, toArtifact as granolaToArtifact } from '#lib/server/context-sources/granola';
 import type { IntegrationAdapter } from '../adapter.js';
-import { queryFromThread, section } from '../shared.js';
+import { queryFromThread } from '../shared.js';
 
 export function createGranolaAdapter(): IntegrationAdapter {
   const granola = getGranolaService();
@@ -72,16 +72,6 @@ export function createGranolaAdapter(): IntegrationAdapter {
           return await granola.readMeeting(input.noteId, true);
         }
       }
-    ],
-    sessionContext: {
-      async contribute(input) {
-        const results = await granola.search(input.date, 5);
-        return {
-          sections: results.results.map((note) => section('granola', note.title, note.summary ?? note.title, {
-            metadata: { noteId: note.id, scheduledStartTime: note.scheduledStartTime }
-          }))
-        };
-      }
-    }
+    ]
   };
 }

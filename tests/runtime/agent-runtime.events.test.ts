@@ -19,6 +19,8 @@ const fallbackDraft: ProviderDraftResult = {
 let capturedUserPreferencesInput: unknown;
 let capturedThreadReadInput: unknown;
 let capturedSearchResult: unknown;
+let deterministicRetrievalLog: string[] = [];
+let delayNotionSearch = false;
 let testSkills: SkillManifest[] = [];
 let enabledOptionalTools: string[] = [];
 let enabledContextSources: string[] = [];
@@ -260,6 +262,11 @@ async function setupRuntime() {
     },
     requiresWorkspaceEnablement: true,
     async execute(): Promise<unknown> {
+      deterministicRetrievalLog.push('notion.search:start');
+      if (delayNotionSearch) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      deterministicRetrievalLog.push('notion.search:end');
       return {
         results: [{ id: 'page-1', title: 'Checkout launch readiness', url: 'https://notion.test/page-1' }],
         strategy: 'notion_api_search'
@@ -298,6 +305,8 @@ async function setupRuntime() {
     },
     requiresWorkspaceEnablement: true,
     async execute(input: { query: string; limit?: number }): Promise<unknown> {
+      deterministicRetrievalLog.push('github.search:start');
+      deterministicRetrievalLog.push('github.search:end');
       return {
         results: [{
           id: 'github:42',
@@ -422,6 +431,8 @@ describe('AgentRuntime model failure events', () => {
     capturedUserPreferencesInput = undefined;
     capturedThreadReadInput = undefined;
     capturedSearchResult = undefined;
+    deterministicRetrievalLog = [];
+    delayNotionSearch = false;
     enabledOptionalTools = [];
     enabledContextSources = [];
     testSkills = [channelSkill()];
@@ -619,6 +630,24 @@ describe('AgentRuntime model failure events', () => {
         expect.objectContaining({ source: 'github.search' })
       ])
     );
+  });
+
+  it('runs deterministic query retrieval tools concurrently with stable result order', async () => {
+    testSkills = [documentationSkill(), channelSkill()];
+    enabledOptionalTools = ['notion.search', 'github.search'];
+    delayNotionSearch = true;
+    runAgentLoopMock.mockImplementation(async () => [finalAssistantMessage(fallbackDraft)]);
+
+    const runtime = await setupRuntime();
+    const result = await runtime.run(task(), session(), workspace());
+
+    expect(deterministicRetrievalLog).toEqual([
+      'notion.search:start',
+      'github.search:start',
+      'github.search:end',
+      'notion.search:end'
+    ]);
+    expect(result.toolResults.map((entry) => entry.name)).toEqual(['notion.search', 'github.search']);
   });
 
   it('exposes every workspace-enabled tool to the agent regardless of the selected skill', async () => {

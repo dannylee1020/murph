@@ -1,26 +1,10 @@
 import { localDateTimeToUtc } from '#lib/server/util/cron';
-import type { ContextSource, SessionContextSnapshot } from '#lib/types';
-
-type Section = SessionContextSnapshot['sections'][number];
+import type { ContextSource } from '#lib/types';
 
 export function compact(value: unknown, limit = 1200): string {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
   const normalized = (text ?? '').replace(/\s+/g, ' ').trim();
   return normalized.length > limit ? `${normalized.slice(0, limit - 3)}...` : normalized;
-}
-
-export function section(
-  source: string,
-  title: string,
-  summary: unknown,
-  extra: Pick<Section, 'url' | 'metadata'> = {}
-): Section {
-  return {
-    source,
-    title,
-    summary: compact(summary),
-    ...extra
-  };
 }
 
 export function compactCalendarEvents(events: Array<{ title: string; start?: string; end?: string }>) {
@@ -77,4 +61,3 @@ export function queryFromThread(input: Parameters<ContextSource['retrieve']>[0])
   return input.context.thread.latestMessage ||
     input.context.thread.recentMessages.map((message) => message.text).join(' ');
 }
-

@@ -543,24 +543,9 @@ export const gatewayRoutes: Route[] = [
       policy: policyProfile,
       endsAt: new Date(Date.now() + Math.max(1, body.durationHours ?? 10) * 60 * 60 * 1000).toISOString()
     });
-    const sessionContext = await gateway.buildSessionContext(workspace, session, workspaceMemory);
-    session = store.setSessionContext(session.id, sessionContext) ?? session;
     emitControlPlaneEvent({ type: 'session.updated', session });
 
-    sendJson(res, { ok: true, session, autoJoined, sessionContext }, 201);
-  }),
-  route('GET', '/api/gateway/sessions/:id/context', ({ res, params }) => {
-    const session = getStore().getSessionById(params.id);
-    if (!session) {
-      sendJson(res, { ok: false, error: 'not_found' }, 404);
-      return;
-    }
-
-    sendJson(res, {
-      ok: true,
-      session,
-      context: getStore().getSessionContext(params.id) ?? null
-    });
+    sendJson(res, { ok: true, session, autoJoined }, 201);
   }),
   route('GET', '/api/gateway/sessions/:id', ({ res, params }) => {
     const session = getStore().getSessionById(params.id);

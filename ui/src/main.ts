@@ -48,12 +48,6 @@ type SummaryPayload = {
     mode: string;
     endsAt: string;
     channelScope: string[];
-    contextSnapshot?: {
-      builtAt: string;
-      summary: string;
-      warnings?: string[];
-      sections: Array<{ source: string }>;
-    };
   }>;
   traces: Array<{
     run: { id: string; sessionId?: string; status: string; taskId: string };
@@ -284,7 +278,6 @@ type ChannelActionItem = {
 type SessionCreateResponse = {
   ok: boolean;
   session?: { id: string };
-  sessionContext?: { summary: string; warnings?: string[] };
   autoJoined?: ChannelActionItem[];
   error?: string;
   requiresInvitation?: ChannelActionItem[];
@@ -1051,7 +1044,6 @@ function activeSessionRows(
             <span>${escapeHtml(plainLanguageModeLabel(session.mode))}</span>
             <span title="${escapeHtml(formatExactIso(session.endsAt))}">Until ${escapeHtml(formatDateTime(session.endsAt))}</span>
             <span>${escapeHtml(sessionScopeLabel(session, channelNames))}</span>
-            <span>${escapeHtml(session.contextSnapshot ? `Context ready: ${session.contextSnapshot.summary}` : 'Context pending')}</span>
             <button class="secondary stop-session" data-session-id="${escapeHtml(session.id)}">Stop</button>
           </div>
         </li>
@@ -1789,9 +1781,7 @@ async function renderDashboard(): Promise<void> {
         durationHours: calculateDurationHours(endHour, tz)
       });
       dashboardError = '';
-      dashboardNotice = response.sessionContext?.warnings?.length
-        ? `Murph is watching. Session context built with ${response.sessionContext.warnings.length} warning${response.sessionContext.warnings.length === 1 ? '' : 's'}.`
-        : `Murph is watching. ${response.sessionContext?.summary ?? 'Session context is ready.'}`;
+      dashboardNotice = 'Murph is watching.';
       await renderDashboard();
     } catch (error) {
       if (error instanceof ApiError) {

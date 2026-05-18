@@ -25,7 +25,6 @@ An integration can provide:
 
 - read-only tools
 - context sources for grounding
-- session-start context
 - credential status for setup
 
 Murph enables capabilities when an integration is connected, so the model can use relevant tools without a hidden second step.

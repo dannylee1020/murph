@@ -46,38 +46,16 @@ function releaseContext(): ContextAssembly {
     skills: [],
     availableTools: [],
     artifacts: [{
-      id: 'session:context',
-      source: 'session.context',
-      type: 'memory',
-      title: 'Session context',
+      id: 'notion:release-plan',
+      source: 'notion',
+      type: 'document',
+      title: '[TEST] Murph v0.9 Release Plan',
       text: '[TEST] Murph v0.9 Release Plan\nF2 dark mode PR #6 needs contrast check. F5 evidence trail is still todo. Linear issues MUR-5 through MUR-9 track the release.'
     }],
     linkedArtifacts: [],
     continuityCase: 'clarification',
     summary: '',
     unresolvedQuestions: [],
-    sessionContext: {
-      builtAt: new Date().toISOString(),
-      date: '2026-05-17',
-      handoffDoc: {
-        source: 'notion',
-        title: '[TEST] Murph v0.9 Release Plan',
-        text: 'Release scope covers F1 setup, F2 dark mode, F3 review triage, F4 model defaults, and F5 evidence trail.'
-      },
-      sections: [
-        {
-          source: 'github',
-          title: '[TEST] F2 dark mode PR #6',
-          summary: 'Build is failing and contrast check is still open.'
-        },
-        {
-          source: 'linear',
-          title: '[TEST] MUR-8 F5 Evidence trail',
-          summary: 'Still todo for v0.9.'
-        }
-      ],
-      summary: 'Built session context from release fixtures.'
-    }
   };
 }
 

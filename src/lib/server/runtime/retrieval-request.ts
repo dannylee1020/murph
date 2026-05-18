@@ -47,16 +47,6 @@ function collectText(context: ContextAssembly): { rawText: string; sourceTitles:
     sourceParts.push(artifact.title, artifact.text);
   }
 
-  if (context.sessionContext?.handoffDoc) {
-    addUnique(sourceTitles, context.sessionContext.handoffDoc.title);
-    sourceParts.push(context.sessionContext.handoffDoc.title, context.sessionContext.handoffDoc.text);
-  }
-
-  for (const section of context.sessionContext?.sections ?? []) {
-    addUnique(sourceTitles, section.title);
-    sourceParts.push(section.title, section.summary);
-  }
-
   const sourceText = sourceParts.filter(Boolean).join('\n');
   return {
     rawText: [threadText, sourceText].filter(Boolean).join('\n'),

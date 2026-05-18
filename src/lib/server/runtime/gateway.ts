@@ -9,7 +9,6 @@ import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { evaluatePolicy } from '#lib/server/runtime/policy';
-import { SessionContextBuilder } from '#lib/server/runtime/session-context';
 import { outputSummary } from '#lib/server/runtime/tool-output';
 import type {
   ActionContextSnapshot,
@@ -78,7 +77,6 @@ export class Gateway {
   private readonly memory = getMemoryService();
   private readonly store = getStore();
   private readonly tools = getToolRegistry();
-  private readonly sessionContextBuilder = new SessionContextBuilder();
   private heartbeatHandle: NodeJS.Timeout | null = null;
 
   ensureStarted(): void {
@@ -253,20 +251,6 @@ export class Gateway {
     }
 
     return lines.join('\n');
-  }
-
-  async buildSessionContext(
-    workspace: Workspace,
-    session: AutopilotSession,
-    workspaceMemory: WorkspaceMemory
-  ) {
-    const owner = this.store.getUser(workspace.id, session.ownerUserId);
-    return await this.sessionContextBuilder.build({
-      workspace,
-      session,
-      workspaceMemory,
-      timezone: owner?.schedule.timezone
-    });
   }
 
   private async buildActionContextSnapshot(input: {

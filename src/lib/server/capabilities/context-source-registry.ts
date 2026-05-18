@@ -51,33 +51,44 @@ export class ContextSourceRegistry {
     const requestedExplicit = [...new Set(explicitNames)];
     const maxOptionalSources = input.maxOptionalSources ?? env.contextSourceMaxOptional;
     const requestedOptional = [...new Set(optionalNames)].slice(0, Math.max(0, maxOptionalSources));
-    const artifacts: ContextArtifact[] = [];
+    const requestedNames = [...requestedExplicit, ...requestedOptional];
 
-    for (const name of [...requestedExplicit, ...requestedOptional]) {
+    const results = await Promise.all(requestedNames.map(async (name) => {
       const registered = this.sources.get(name);
 
       if (!registered) {
-        continue;
+        return [];
       }
 
       if (registered.optional && !input.enabledContextSources.includes(name)) {
-        continue;
+        return [];
       }
 
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         const result = await Promise.race([
           registered.definition.retrieve(input),
-          new Promise<ContextArtifact[]>((_, reject) =>
-            setTimeout(() => reject(new Error(`Context source timed out: ${name}`)), env.contextSourceTimeoutMs)
-          )
+          new Promise<ContextArtifact[]>((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error(`Context source timed out: ${name}`)),
+              env.contextSourceTimeoutMs
+            );
+          })
         ]);
-        artifacts.push(...result);
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+        return result;
       } catch {
-        continue;
+        return [];
+      } finally {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
       }
-    }
+    }));
 
-    return artifacts;
+    return results.flat();
   }
 
   list() {

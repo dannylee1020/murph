@@ -1,7 +1,6 @@
 import { getNotionService } from '#lib/server/context-sources/notion';
-import type { IntegrationAdapter, SessionContextContributorInput } from '../adapter.js';
-import { compact, queryFromThread, section } from '../shared.js';
-import type { SessionContextSnapshot } from '#lib/types';
+import type { IntegrationAdapter } from '../adapter.js';
+import { queryFromThread } from '../shared.js';
 
 export function createNotionAdapter(): IntegrationAdapter {
   const notion = getNotionService();
@@ -84,32 +83,6 @@ export function createNotionAdapter(): IntegrationAdapter {
           return await notion.readPage(input.pageId, input.maxBlocks, context.workspace.id);
         }
       }
-    ],
-    sessionContext: {
-      async contribute(input: SessionContextContributorInput) {
-        const sections: SessionContextSnapshot['sections'] = [];
-        const handoffSearch = await notion.search(`Murph Handoff ${input.date}`, 3, input.workspace.id);
-        const fallbackSearch = handoffSearch.results.length > 0
-          ? handoffSearch
-          : await notion.search('Murph Handoff', 3, input.workspace.id);
-        const handoffMatch = fallbackSearch.results.find((page) =>
-          page.title.toLowerCase().includes('handoff')
-        ) ?? fallbackSearch.results[0];
-
-        if (!handoffMatch) {
-          return {};
-        }
-
-        const page = await notion.readPage(handoffMatch.id, 80, input.workspace.id);
-        const handoffDoc = {
-          source: 'notion',
-          title: page.title,
-          url: page.url,
-          text: compact(page.text, 3000)
-        };
-        sections.push(section('notion', page.title, page.text, { url: page.url }));
-        return { handoffDoc, sections };
-      }
-    }
+    ]
   };
 }

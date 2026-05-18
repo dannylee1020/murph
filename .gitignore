@@ -33,7 +33,7 @@ pnpm-debug.log*
 .idea/
 .vscode/
 .claude/
-memory/
+/memory/
 *.impeccable.md
 .claudeignore
 *.todo

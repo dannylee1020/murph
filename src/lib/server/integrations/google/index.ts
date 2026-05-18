@@ -4,7 +4,7 @@ import { getStore } from '#lib/server/persistence/store';
 import { getValidGoogleAccessToken } from '../google-oauth.js';
 import { resolveCredential } from '../credentials.js';
 import type { IntegrationAdapter } from '../adapter.js';
-import { compactCalendarEvents, queryFromThread, section, workdayWindowForDate } from '../shared.js';
+import { compactCalendarEvents, queryFromThread, workdayWindowForDate } from '../shared.js';
 
 function googleConfigured(workspaceId?: string): boolean {
   try {
@@ -197,36 +197,6 @@ export function createGoogleAdapter(): IntegrationAdapter {
           });
         }
       }
-    ],
-    sessionContext: {
-      async contribute(input) {
-        const token = await getValidGoogleAccessToken(input.workspace.id);
-        const gmailResult = await gmail.search(
-          token,
-          `after:${input.date.replaceAll('-', '/')} before:${input.nextDate.replaceAll('-', '/')}`,
-          5
-        );
-        const calendarResult = await calendar.searchEvents(token, '', 20, {
-          timeMin: `${input.date}T00:00:00.000Z`,
-          timeMax: `${input.nextDate}T00:00:00.000Z`
-        });
-        return {
-          sections: [
-            ...gmailResult.results.map((thread) => section(
-              'gmail',
-              thread.subject,
-              thread.text || thread.snippet || thread.subject,
-              { metadata: { threadId: thread.id, latestDate: thread.latestDate } }
-            )),
-            ...calendarResult.events.map((event) => section(
-              'calendar',
-              event.title,
-              `${event.start ?? ''} - ${event.end ?? ''}`.trim(),
-              { metadata: { start: event.start, end: event.end } }
-            ))
-          ]
-        };
-      }
-    }
+    ]
   };
 }
