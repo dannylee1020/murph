@@ -20,7 +20,10 @@ murph restart
 murph doctor
 murph open
 murph update
+murph uninstall --dry-run
 ```
+
+Use `murph uninstall` when you want to remove Murph-owned local files and return to a clean first-install state. It removes `~/.murph`, the installed CLI link, local credentials, logs, managed deps, and SQLite data, but leaves unrelated system tools alone.
 
 ## Credential commands
 

@@ -57,6 +57,26 @@ murph update
 
 The updater preserves local state such as `~/.murph/.credentials`, `.env`, and `data/`.
 
+## Uninstall
+
+```bash
+murph uninstall
+```
+
+This reverses the default local install: it stops Murph, removes `~/.murph`, removes the `murph` CLI link from `~/.local/bin`, and clears Murph-owned local credentials, logs, managed deps, and SQLite data. Preview first with:
+
+```bash
+murph uninstall --dry-run
+```
+
+For non-interactive cleanup:
+
+```bash
+murph uninstall --yes --force
+```
+
+The command does not remove system Node, Homebrew or apt packages, or unrelated helper tools.
+
 ## Check your install
 
 ```bash

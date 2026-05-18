@@ -41,6 +41,13 @@ Check your local install any time:
 murph doctor
 ```
 
+Return to a clean local slate:
+
+```bash
+murph uninstall --dry-run
+murph uninstall
+```
+
 ## Documentation
 
 | Topic | What's covered |
