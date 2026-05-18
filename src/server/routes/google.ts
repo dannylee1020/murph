@@ -99,7 +99,7 @@ export const googleRoutes: Route[] = [
 
     await revokeGoogleToken(workspace.id);
     const store = getStore();
-    store.deleteIntegrationCredential(workspace.id, 'google');
+    store.deleteIntegrationConnection(workspace.id, 'google');
     const definition = getIntegration('google')!;
     disableIntegrationCapabilities(workspace.id, definition);
     sendJson(res, { ok: true });

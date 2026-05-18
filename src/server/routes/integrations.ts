@@ -95,7 +95,7 @@ async function ensureIntegrationRegistryLoaded(): Promise<void> {
 
 function statusFor(provider: string, workspaceId: string) {
   const definition = getIntegration(provider)!;
-  const stored = getStore().getIntegrationCredential(workspaceId, provider);
+  const stored = getStore().getIntegrationConnection(workspaceId, provider);
   const envValue = readEnvCredential(provider);
   const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
   const local = readSecretRecord(provider, key, { workspaceId }) ?? readSecretRecord(provider, key);
@@ -187,11 +187,10 @@ export const integrationRoutes: Route[] = [
         externalWorkspaceId: workspace.externalWorkspaceId,
         metadata
       });
-      getStore().saveIntegrationCredential({
+      getStore().saveIntegrationConnection({
         workspaceId: workspace.id,
         provider: definition.provider,
         credentialKind: definition.credentialKind,
-        credentialEncrypted: 'stored-in-local-credentials',
         metadata
       });
       enableIntegrationCapabilities(workspace.id, definition);
@@ -234,7 +233,7 @@ export const integrationRoutes: Route[] = [
       return;
     }
 
-    const stored = getStore().getIntegrationCredential(workspace.id, 'github');
+    const stored = getStore().getIntegrationConnection(workspace.id, 'github');
     const local = readSecretRecord('github', 'api_key', { workspaceId: workspace.id });
     if (!local && !readEnvCredential('github')) {
       sendJson(res, { ok: false, error: 'github_not_connected' }, 400);
@@ -252,11 +251,10 @@ export const integrationRoutes: Route[] = [
         }
       });
     }
-    getStore().saveIntegrationCredential({
+    getStore().saveIntegrationConnection({
       workspaceId: workspace.id,
       provider: 'github',
       credentialKind: stored?.credentialKind ?? 'api_key',
-      credentialEncrypted: 'stored-in-local-credentials',
       metadata: {
         ...(stored?.metadata ?? local?.metadata),
         repositories
@@ -285,7 +283,7 @@ export const integrationRoutes: Route[] = [
 
     const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
     deleteSecret(definition.provider, key, { workspaceId: workspace.id });
-    getStore().deleteIntegrationCredential(workspace.id, definition.provider);
+    getStore().deleteIntegrationConnection(workspace.id, definition.provider);
     if (!readEnvCredential(definition.provider)) {
       disableIntegrationCapabilities(workspace.id, definition);
     }

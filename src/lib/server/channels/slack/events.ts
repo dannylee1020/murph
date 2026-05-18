@@ -57,7 +57,7 @@ export async function handleSlackEventEnvelope(
   const store = getStore();
   const workspace =
     store.getWorkspaceByExternalId('slack', routedTask.workspaceId) ??
-    store.getWorkspaceByTeamId(routedTask.workspaceId);
+    store.getWorkspaceById(routedTask.workspaceId);
 
   if (!workspace) {
     console.info('[slack] ignored event', {

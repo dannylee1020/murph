@@ -64,7 +64,7 @@ export function normalizeSlackEvent(
     return { ignoredReason: 'missing_workspace' };
   }
 
-  const workspace = store.getWorkspaceByExternalId('slack', workspaceId) ?? store.getWorkspaceByTeamId(workspaceId) ?? store.getWorkspaceById(workspaceId);
+  const workspace = store.getWorkspaceByExternalId('slack', workspaceId) ?? store.getWorkspaceById(workspaceId);
 
   if (!workspace) {
     return { ignoredReason: 'workspace_not_installed' };

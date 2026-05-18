@@ -51,7 +51,6 @@ async function setup(options: { githubPat?: string } = {}) {
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: 'token',
     botUserId: 'UTZBOT'
   });
   const { integrationRoutes } = await import('../../src/server/routes/integrations');
@@ -114,8 +113,12 @@ describe('integration routes', () => {
         })
       })
     );
-    const stored = store.getIntegrationCredential(workspace.id, 'github');
-    expect(stored?.credentialEncrypted).toBe('stored-in-local-credentials');
+    const stored = store.getIntegrationConnection(workspace.id, 'github');
+    expect(stored).toEqual(expect.objectContaining({
+      provider: 'github',
+      credentialKind: 'api_key',
+      status: 'connected'
+    }));
     const { readSecret } = await import('#lib/server/credentials/local-store');
     expect(readSecret('github', 'api_key', { workspaceId: workspace.id })).toBe('ghp_test_token');
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
@@ -146,7 +149,7 @@ describe('integration routes', () => {
         needsRepoScope: false
       })
     );
-    const stored = store.getIntegrationCredential(workspace.id, 'github');
+    const stored = store.getIntegrationConnection(workspace.id, 'github');
     expect(stored?.metadata.repositories).toEqual(['octo/app']);
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toContain('github.search');

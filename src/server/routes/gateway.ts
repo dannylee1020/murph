@@ -42,11 +42,7 @@ function resolveRequestWorkspace(workspaceId?: string): Workspace | undefined {
     ? store.getWorkspaceById(workspaceId)
     : slack.getUsableWorkspace() ?? store.getFirstWorkspace();
 
-  if (
-    workspace?.provider === 'slack' &&
-    workspace.botTokenEncrypted &&
-    !slack.canReadBotToken(workspace)
-  ) {
+  if (workspace?.provider === 'slack' && !slack.canReadBotToken(workspace)) {
     return undefined;
   }
 
@@ -357,7 +353,6 @@ export const gatewayRoutes: Route[] = [
       sessionId?: string;
       channelId?: string;
       ownerUserId?: string;
-      ownerSlackUserId?: string;
       localTime?: string;
       timezone?: string;
     }>(req);
@@ -376,7 +371,7 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    const ownerUserId = body.ownerUserId ?? body.ownerSlackUserId;
+    const ownerUserId = body.ownerUserId;
     if (!body.channelId || !ownerUserId) {
       sendJson(res, { ok: false, error: 'channel_and_owner_required' }, 400);
       return;
@@ -442,7 +437,6 @@ export const gatewayRoutes: Route[] = [
     const body = await readJson<{
       workspaceId?: string;
       ownerUserId?: string;
-      ownerSlackUserId?: string;
       title?: string;
       mode?: SessionMode;
       channelScope?: string[];
@@ -459,7 +453,7 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    const ownerUserId = body.ownerUserId ?? body.ownerSlackUserId;
+    const ownerUserId = body.ownerUserId;
     if (!ownerUserId) {
       sendJson(res, { ok: false, error: 'owner_required' }, 400);
       return;

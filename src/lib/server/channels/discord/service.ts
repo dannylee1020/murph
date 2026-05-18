@@ -103,7 +103,6 @@ export class DiscordService {
       provider: 'discord',
       externalWorkspaceId: guild.id,
       name: guild.name ?? guild.id,
-      botTokenEncrypted: 'stored-in-local-credentials',
       botUserId: await this.fetchBotUserId()
     });
     if (!this.env.discordBotToken) {

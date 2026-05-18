@@ -170,7 +170,6 @@ export class SlackService {
       provider: 'slack',
       externalWorkspaceId: payload.team.id,
       name: payload.team.name ?? payload.team.id,
-      botTokenEncrypted: 'stored-in-local-credentials',
       botUserId: payload.bot_user_id
     });
     writeSecret('slack', 'bot_token', payload.access_token, {
@@ -227,7 +226,6 @@ export class SlackService {
     const workspace =
       this.store.getWorkspaceById(workspaceIdOrTeamId) ??
       this.store.getWorkspaceByExternalId('slack', workspaceIdOrTeamId) ??
-      this.store.getWorkspaceByTeamId(workspaceIdOrTeamId) ??
       this.store.getFirstWorkspace();
 
     const token = workspace
@@ -264,7 +262,6 @@ export class SlackService {
   hasUnreadableInstall(): boolean {
     return this.store.listWorkspaces().some((workspace) => (
       workspace.provider === 'slack' &&
-      Boolean(workspace.botTokenEncrypted) &&
       !this.canReadBotToken(workspace)
     ));
   }

@@ -24,7 +24,6 @@ async function setup(): Promise<DiscordAdapterTestContext> {
     provider: 'discord',
     externalWorkspaceId: 'G1',
     name: 'Discord Guild',
-    botTokenEncrypted: 'test-token',
     botUserId: 'BOT1'
   });
 

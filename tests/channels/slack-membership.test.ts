@@ -8,7 +8,6 @@ async function setup() {
   process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-membership-')), 'murph.sqlite');
   process.env.MURPH_CREDENTIALS_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-membership-creds-')), '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
-  const { encryptString } = await import('#lib/server/util/crypto');
   const { createSlackChannelAdapter } = await import('#lib/server/channels/slack/adapter');
   const { getStore } = await import('#lib/server/persistence/store');
   const store = getStore();
@@ -16,7 +15,6 @@ async function setup() {
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: encryptString('xoxb-test', 'test-key'),
     botUserId: 'UTZBOT'
   });
   const { writeSecret } = await import('#lib/server/credentials/local-store');

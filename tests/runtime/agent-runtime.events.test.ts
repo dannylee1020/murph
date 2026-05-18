@@ -410,7 +410,6 @@ function workspace(): Workspace {
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test',
-    botTokenEncrypted: 'token',
     botUserId: 'UTZBOT',
     installedAt: new Date().toISOString()
   };

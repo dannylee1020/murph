@@ -70,11 +70,11 @@ Learn more in [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent).
 
 | Category | Options |
 | --- | --- |
-| Channels | Slack, Discord |
+| Channels | Slack, Discord + any channel of your choice |
 | LLM providers | OpenAI, Anthropic |
-| Context sources | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian |
-| Runtime tools | Brave-backed web search by default, simple web fetch, file read, shell execution |
-| Storage | Local SQLite plus `~/.murph/.credentials` |
+| Context sources | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian + custom plugins |
+| Runtime tools | web search, web fetch, file read, shell + custom tools |
+| Storage | SQLite + local file system|
 
 ## Contributing
 

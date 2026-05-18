@@ -315,7 +315,7 @@ export class Gateway {
     await ensureRuntimeInitialized();
     const workspace =
       (task.thread.provider ? this.store.getWorkspaceByExternalId(task.thread.provider, task.workspaceId) : undefined) ??
-      this.store.getWorkspaceByTeamId(task.workspaceId) ??
+      this.store.getWorkspaceByExternalId('slack', task.workspaceId) ??
       this.store.getWorkspaceById(task.workspaceId) ??
       this.store.getFirstWorkspace();
 
@@ -706,7 +706,6 @@ export class Gateway {
 
     if (input.action === 'approve_send' || input.action === 'edit_send') {
       const isDigest = item.threadTs.startsWith('digest:');
-      const reviewToolsUsed = [isDigest ? 'channel.post_message' : 'channel.post_reply', 'queue.update'];
       if (isDigest) {
         await this.tools.execute<{ channelId: string; text: string }, { ok: true }>(
           'channel.post_message',
@@ -753,22 +752,6 @@ export class Gateway {
         throw new Error('Failed to update review item');
       }
 
-      if (workspaceMemory.enabledOptionalTools.includes('memory.user.write_feedback')) {
-        await this.tools.execute(
-          'memory.user.write_feedback',
-          {
-            workspaceId: workspace.id,
-            sessionId: item.sessionId,
-            threadTs: item.threadTs,
-            originalAction: item.action,
-            finalAction: item.action,
-            note: input.action === 'edit_send' ? 'Operator edited and sent queued action' : 'Operator approved queued action'
-          },
-          { workspace, session, workspaceMemory }
-        );
-        reviewToolsUsed.push('memory.user.write_feedback');
-      }
-
       emitControlPlaneEvent({ type: 'queue.updated', item: updated });
       if (item.sessionId) {
         emitControlPlaneEvent({ type: 'briefing.ready', sessionId: item.sessionId });
@@ -799,7 +782,6 @@ export class Gateway {
 
     const finalAction = input.action === 'mark_abstain' ? 'abstain' : item.action;
     const finalDisposition = input.action === 'mark_abstain' ? 'abstained' : 'failed';
-    const reviewToolsUsed = ['queue.update'];
     const updated = await this.tools.execute<
       {
         id: string;
@@ -823,22 +805,6 @@ export class Gateway {
 
     if (!updated) {
       throw new Error('Failed to update review item');
-    }
-
-    if (workspaceMemory.enabledOptionalTools.includes('memory.user.write_feedback')) {
-      await this.tools.execute(
-        'memory.user.write_feedback',
-        {
-          workspaceId: workspace.id,
-          sessionId: item.sessionId,
-          threadTs: item.threadTs,
-          originalAction: item.action,
-          finalAction,
-          note: nextReason
-        },
-        { workspace, session, workspaceMemory }
-      );
-      reviewToolsUsed.push('memory.user.write_feedback');
     }
 
     emitControlPlaneEvent({ type: 'queue.updated', item: updated });

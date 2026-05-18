@@ -35,8 +35,6 @@ describe('SlackService searchMessages', () => {
       throw new Error(`Unexpected fetch url: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
-
-    const { encryptString } = await import('#lib/server/util/crypto');
     const { getStore } = await import('#lib/server/persistence/store');
     const { getSlackService } = await import('#lib/server/channels/slack/service');
     const { writeSecret } = await import('#lib/server/credentials/local-store');
@@ -45,7 +43,6 @@ describe('SlackService searchMessages', () => {
       provider: 'slack',
       externalWorkspaceId: 'T1',
       name: 'Test Workspace',
-      botTokenEncrypted: encryptString('xoxb-test-token', 'test-key'),
       botUserId: 'UBOT'
     });
     writeSecret('slack', 'user_search_token', 'xoxp-search-token', {

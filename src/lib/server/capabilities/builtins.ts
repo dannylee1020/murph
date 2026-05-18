@@ -316,24 +316,6 @@ export function registerBuiltInTools(): void {
       }
     },
     {
-      name: 'memory.user.write_feedback',
-      description: 'Record feedback memory from operator actions.',
-      sideEffectClass: 'write',
-      optional: true,
-      sessionModes: ['manual_review', 'auto_send_low_risk'],
-      requiresWorkspaceEnablement: true,
-      async execute(input: {
-        workspaceId: string;
-        sessionId?: string;
-        threadTs: string;
-        originalAction: any;
-        finalAction: any;
-        note: string;
-      }) {
-        return memory.recordFeedback(input);
-      }
-    },
-    {
       name: 'reminder.schedule',
       description: 'Schedule a reminder for a thread.',
       sideEffectClass: 'write',

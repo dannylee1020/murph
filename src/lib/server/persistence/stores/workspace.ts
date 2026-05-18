@@ -5,9 +5,7 @@ import type { Db } from './_shared.js';
 export interface InstallInput {
   provider?: string;
   externalWorkspaceId?: string;
-  slackTeamId?: string;
   name: string;
-  botTokenEncrypted: string;
   botUserId?: string;
 }
 
@@ -20,11 +18,9 @@ export interface SlackEventInput {
 
 interface WorkspaceRow {
   id: string;
-  slack_team_id: string;
-  provider?: string;
+  provider: string;
   external_workspace_id?: string;
   name: string;
-  bot_token_encrypted?: string;
   bot_user_id?: string;
   installed_at?: string;
 }
@@ -32,10 +28,9 @@ interface WorkspaceRow {
 function mapWorkspace(row: WorkspaceRow): Workspace {
   return {
     id: row.id,
-    provider: row.provider ?? 'slack',
-    externalWorkspaceId: row.external_workspace_id ?? row.slack_team_id,
+    provider: row.provider,
+    externalWorkspaceId: row.external_workspace_id ?? row.id,
     name: row.name,
-    botTokenEncrypted: row.bot_token_encrypted,
     botUserId: row.bot_user_id,
     installedAt: row.installed_at
   };
@@ -43,7 +38,7 @@ function mapWorkspace(row: WorkspaceRow): Workspace {
 
 export function saveInstall(db: Db, input: InstallInput): Workspace {
   const provider = input.provider ?? 'slack';
-  const externalWorkspaceId = input.externalWorkspaceId ?? input.slackTeamId;
+  const externalWorkspaceId = input.externalWorkspaceId;
   if (!externalWorkspaceId) {
     throw new Error('externalWorkspaceId is required');
   }
@@ -53,13 +48,12 @@ export function saveInstall(db: Db, input: InstallInput): Workspace {
   if (existing) {
     db.prepare(
       `UPDATE workspaces
-       SET provider = ?, external_workspace_id = ?, name = ?, bot_token_encrypted = ?, bot_user_id = ?, installed_at = ?
+       SET provider = ?, external_workspace_id = ?, name = ?, bot_user_id = ?, installed_at = ?
        WHERE id = ?`
     ).run(
       provider,
       externalWorkspaceId,
       input.name,
-      input.botTokenEncrypted,
       input.botUserId ?? null,
       new Date().toISOString(),
       existing.id
@@ -69,30 +63,18 @@ export function saveInstall(db: Db, input: InstallInput): Workspace {
   }
 
   db.prepare(
-    `INSERT INTO workspaces (id, slack_team_id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id, installed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO workspaces (id, provider, external_workspace_id, name, bot_user_id, installed_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     id,
-    provider === 'slack' ? externalWorkspaceId : `legacy:${provider}:${externalWorkspaceId}`,
     provider,
     externalWorkspaceId,
     input.name,
-    input.botTokenEncrypted,
     input.botUserId ?? null,
     new Date().toISOString()
   );
 
   return getWorkspaceById(db, id)!;
-}
-
-export function getWorkspaceByTeamId(db: Db, slackTeamId: string): Workspace | undefined {
-  const row = db
-    .prepare(
-      `SELECT id, slack_team_id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id, installed_at
-       FROM workspaces WHERE slack_team_id = ?`
-    )
-    .get(slackTeamId) as WorkspaceRow | undefined;
-  return row ? mapWorkspace(row) : undefined;
 }
 
 export function getWorkspaceByExternalId(
@@ -102,7 +84,7 @@ export function getWorkspaceByExternalId(
 ): Workspace | undefined {
   const row = db
     .prepare(
-      `SELECT id, slack_team_id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id, installed_at
+      `SELECT id, provider, external_workspace_id, name, bot_user_id, installed_at
        FROM workspaces WHERE provider = ? AND external_workspace_id = ?`
     )
     .get(provider, externalWorkspaceId) as WorkspaceRow | undefined;
@@ -112,7 +94,7 @@ export function getWorkspaceByExternalId(
 export function getWorkspaceById(db: Db, id: string): Workspace | undefined {
   const row = db
     .prepare(
-      `SELECT id, slack_team_id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id, installed_at
+      `SELECT id, provider, external_workspace_id, name, bot_user_id, installed_at
        FROM workspaces WHERE id = ?`
     )
     .get(id) as WorkspaceRow | undefined;
@@ -122,7 +104,7 @@ export function getWorkspaceById(db: Db, id: string): Workspace | undefined {
 export function getFirstWorkspace(db: Db): Workspace | undefined {
   const row = db
     .prepare(
-      `SELECT id, slack_team_id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id, installed_at
+      `SELECT id, provider, external_workspace_id, name, bot_user_id, installed_at
        FROM workspaces ORDER BY installed_at DESC LIMIT 1`
     )
     .get() as WorkspaceRow | undefined;
@@ -132,7 +114,7 @@ export function getFirstWorkspace(db: Db): Workspace | undefined {
 export function listWorkspaces(db: Db): Workspace[] {
   const rows = db
     .prepare(
-      `SELECT id, slack_team_id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id, installed_at
+      `SELECT id, provider, external_workspace_id, name, bot_user_id, installed_at
        FROM workspaces ORDER BY installed_at ASC`
     )
     .all() as WorkspaceRow[];

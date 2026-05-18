@@ -5,8 +5,7 @@ import { parseJsonArray, parseJsonObject } from './_shared.js';
 
 export interface SessionInput {
   workspaceId: string;
-  ownerUserId?: string;
-  ownerSlackUserId?: string;
+  ownerUserId: string;
   title: string;
   mode: SessionMode;
   channelScope: string[];
@@ -19,8 +18,7 @@ export interface SessionInput {
 interface SessionRow {
   id: string;
   workspace_id: string;
-  owner_slack_user_id: string;
-  owner_user_id?: string;
+  owner_user_id: string;
   title: string;
   mode: SessionMode;
   status: SessionStatus;
@@ -45,7 +43,7 @@ function mapSession(row: SessionRow): AutopilotSession {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
-    ownerUserId: row.owner_user_id ?? row.owner_slack_user_id,
+    ownerUserId: row.owner_user_id,
     title: row.title,
     mode: row.mode,
     status: row.status,
@@ -79,7 +77,7 @@ function mapSession(row: SessionRow): AutopilotSession {
 }
 
 export function createSession(db: Db, input: SessionInput): AutopilotSession {
-  const ownerUserId = input.ownerUserId ?? input.ownerSlackUserId;
+  const ownerUserId = input.ownerUserId;
   if (!ownerUserId) {
     throw new Error('ownerUserId is required');
   }
@@ -100,13 +98,12 @@ export function createSession(db: Db, input: SessionInput): AutopilotSession {
 
   db.prepare(
     `INSERT INTO autopilot_sessions (
-      id, workspace_id, owner_slack_user_id, owner_user_id, title, mode, status, channel_scope_json,
+      id, workspace_id, owner_user_id, title, mode, status, channel_scope_json,
       policy_profile_name, policy_override_raw, policy_json, session_context_json, started_at, ends_at, stopped_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     session.id,
     session.workspaceId,
-    session.ownerUserId,
     session.ownerUserId,
     session.title,
     session.mode,
@@ -127,8 +124,7 @@ export function createSession(db: Db, input: SessionInput): AutopilotSession {
 export function getSessionById(db: Db, id: string): AutopilotSession | undefined {
   const row = db
     .prepare(
-      `SELECT id, workspace_id, owner_slack_user_id, title, mode, status, channel_scope_json,
-              owner_user_id,
+      `SELECT id, workspace_id, owner_user_id, title, mode, status, channel_scope_json,
               policy_profile_name, policy_override_raw, policy_json, session_context_json, started_at, ends_at, stopped_at
        FROM autopilot_sessions WHERE id = ?`
     )

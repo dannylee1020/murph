@@ -112,11 +112,10 @@ export async function exchangeGoogleCode(
     workspaceId,
     metadata
   });
-  store.saveIntegrationCredential({
+  store.saveIntegrationConnection({
     workspaceId,
     provider: 'google',
     credentialKind: 'oauth_bundle',
-    credentialEncrypted: 'stored-in-local-credentials',
     metadata
   });
 
@@ -155,7 +154,7 @@ async function refreshAccessToken(bundle: OAuthBundle): Promise<OAuthBundle> {
 
 export async function getValidGoogleAccessToken(workspaceId: string): Promise<string> {
   const store = getStore();
-  const stored = store.getIntegrationCredential(workspaceId, 'google');
+  const stored = store.getIntegrationConnection(workspaceId, 'google');
   const local = readSecretRecord('google', 'oauth_bundle', { workspaceId });
 
   if (local) {
@@ -172,11 +171,10 @@ export async function getValidGoogleAccessToken(workspaceId: string): Promise<st
         workspaceId,
         metadata: local.metadata
       });
-      store.saveIntegrationCredential({
+      store.saveIntegrationConnection({
         workspaceId,
         provider: 'google',
         credentialKind: 'oauth_bundle',
-        credentialEncrypted: 'stored-in-local-credentials',
         metadata: stored?.metadata ?? local.metadata
       });
       return refreshed.access_token;

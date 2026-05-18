@@ -16,7 +16,6 @@ async function setup(options: { notionApiKey?: string } = {}) {
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: 'token',
     botUserId: 'UTZBOT'
   });
 
@@ -100,11 +99,10 @@ describe('integration capability wiring', () => {
       workspaceId: workspace.id,
       metadata: { account: 'octo-user', repositories: [] }
     });
-    store.saveIntegrationCredential({
+    store.saveIntegrationConnection({
       workspaceId: workspace.id,
       provider: 'github',
       credentialKind: 'api_key',
-      credentialEncrypted: 'stored-in-local-credentials',
       metadata: { account: 'octo-user', repositories: [] }
     });
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(

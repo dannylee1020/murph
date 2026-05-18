@@ -12,17 +12,15 @@ async function setup(options: { githubPat?: string } = {}) {
   process.env.GITHUB_PAT = options.githubPat ?? '';
 
   const { getStore } = await import('#lib/server/persistence/store');
-  const { encryptString } = await import('#lib/server/util/crypto');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: 'token',
     botUserId: 'UTZBOT'
   });
 
-  return { store, workspace, encryptString };
+  return { store, workspace };
 }
 
 describe('integration credential resolution', () => {
@@ -46,16 +44,15 @@ describe('integration credential resolution', () => {
     );
   });
 
-  it('reads local store credentials and ignores legacy database credentials', async () => {
-    const { store, workspace, encryptString } = await setup();
+  it('reads local store credentials and ignores connection metadata', async () => {
+    const { store, workspace } = await setup();
     const { writeSecret } = await import('#lib/server/credentials/local-store');
     writeSecret('github', 'api_key', 'stored-token', { workspaceId: workspace.id, metadata: { masked: '****oken' } });
-    store.saveIntegrationCredential({
+    store.saveIntegrationConnection({
       workspaceId: workspace.id,
       provider: 'github',
       credentialKind: 'api_key',
-      credentialEncrypted: encryptString('legacy-token', 'test-key'),
-      metadata: { masked: '****gacy' }
+      metadata: { masked: '****data' }
     });
 
     const { resolveCredential } = await import('#lib/server/integrations/credentials');
@@ -67,14 +64,13 @@ describe('integration credential resolution', () => {
     );
   });
 
-  it('does not resolve legacy database-only credentials at runtime', async () => {
-    const { store, workspace, encryptString } = await setup();
-    store.saveIntegrationCredential({
+  it('does not resolve connection metadata as a credential', async () => {
+    const { store, workspace } = await setup();
+    store.saveIntegrationConnection({
       workspaceId: workspace.id,
       provider: 'github',
       credentialKind: 'api_key',
-      credentialEncrypted: encryptString('legacy-token', 'test-key'),
-      metadata: { masked: '****gacy' }
+      metadata: { masked: '****data' }
     });
 
     const { resolveCredential } = await import('#lib/server/integrations/credentials');

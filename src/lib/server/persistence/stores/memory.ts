@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import type { FeedbackRecord, ThreadMemory, UserMemory, WorkspaceMemory } from '#lib/types';
+import type { ThreadMemory, UserMemory, WorkspaceMemory } from '#lib/types';
 import type { Db } from './_shared.js';
 import { parseJsonObject } from './_shared.js';
 import { getUser } from './user.js';
@@ -135,34 +134,6 @@ export function upsertThreadMemory(db: Db, memory: ThreadMemory): void {
     `INSERT INTO thread_memory (workspace_id, channel_id, thread_ts, data_json)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(workspace_id, channel_id, thread_ts) DO UPDATE SET
-       data_json = excluded.data_json`
+    data_json = excluded.data_json`
   ).run(memory.workspaceId, memory.channelId, memory.threadTs, JSON.stringify(memory));
-}
-
-export function insertFeedback(
-  db: Db,
-  input: Omit<FeedbackRecord, 'id' | 'createdAt'>
-): FeedbackRecord {
-  const record: FeedbackRecord = {
-    id: randomUUID(),
-    createdAt: new Date().toISOString(),
-    ...input
-  };
-
-  db.prepare(
-    `INSERT INTO feedback_memory (
-      id, workspace_id, session_id, thread_ts, original_action, final_action, note, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    record.id,
-    record.workspaceId,
-    record.sessionId ?? null,
-    record.threadTs,
-    record.originalAction,
-    record.finalAction,
-    record.note,
-    record.createdAt
-  );
-
-  return record;
 }

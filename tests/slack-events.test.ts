@@ -31,7 +31,6 @@ async function setup() {
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: 'test-token',
     botUserId: 'UTZBOT'
   });
 

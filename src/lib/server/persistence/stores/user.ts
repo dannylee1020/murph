@@ -5,10 +5,8 @@ import type { Db } from './_shared.js';
 export interface UpsertUserInput {
   workspaceId: string;
   externalUserId: string;
-  slackUserId?: string;
   displayName: string;
   fallbackExternalUserId?: string;
-  fallbackSlackUserId?: string;
   timezone?: string;
   workdayStartHour?: number;
   workdayEndHour?: number;
@@ -17,10 +15,8 @@ export interface UpsertUserInput {
 interface UserRow {
   id: string;
   workspace_id: string;
-  slack_user_id: string;
-  external_user_id?: string;
+  external_user_id: string;
   display_name: string;
-  fallback_slack_user_id?: string;
   fallback_external_user_id?: string;
   timezone: string;
   workday_start_hour: number;
@@ -31,9 +27,9 @@ function mapUser(row: UserRow): AgentUser {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
-    externalUserId: row.external_user_id ?? row.slack_user_id,
+    externalUserId: row.external_user_id,
     displayName: row.display_name,
-    fallbackExternalUserId: row.fallback_external_user_id ?? row.fallback_slack_user_id,
+    fallbackExternalUserId: row.fallback_external_user_id,
     schedule: {
       timezone: row.timezone,
       workdayStartHour: row.workday_start_hour,
@@ -43,7 +39,7 @@ function mapUser(row: UserRow): AgentUser {
 }
 
 export function upsertUser(db: Db, input: UpsertUserInput): AgentUser {
-  const externalUserId = input.externalUserId ?? input.slackUserId;
+  const externalUserId = input.externalUserId;
   if (!externalUserId) {
     throw new Error('externalUserId is required');
   }
@@ -55,13 +51,11 @@ export function upsertUser(db: Db, input: UpsertUserInput): AgentUser {
 
   db.prepare(
     `INSERT INTO users (
-      id, workspace_id, slack_user_id, external_user_id, display_name, fallback_slack_user_id, fallback_external_user_id,
+      id, workspace_id, external_user_id, display_name, fallback_external_user_id,
       timezone, workday_start_hour, workday_end_hour
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(workspace_id, slack_user_id) DO UPDATE SET
-      external_user_id = excluded.external_user_id,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(workspace_id, external_user_id) DO UPDATE SET
       display_name = excluded.display_name,
-      fallback_slack_user_id = excluded.fallback_slack_user_id,
       fallback_external_user_id = excluded.fallback_external_user_id,
       timezone = excluded.timezone,
       workday_start_hour = excluded.workday_start_hour,
@@ -70,10 +64,8 @@ export function upsertUser(db: Db, input: UpsertUserInput): AgentUser {
     id,
     input.workspaceId,
     externalUserId,
-    externalUserId,
     input.displayName,
-    input.fallbackExternalUserId ?? input.fallbackSlackUserId ?? null,
-    input.fallbackExternalUserId ?? input.fallbackSlackUserId ?? null,
+    input.fallbackExternalUserId ?? null,
     input.timezone ?? 'America/Los_Angeles',
     input.workdayStartHour ?? 9,
     input.workdayEndHour ?? 17
@@ -85,7 +77,7 @@ export function upsertUser(db: Db, input: UpsertUserInput): AgentUser {
 export function getUser(db: Db, workspaceId: string, userId: string): AgentUser | undefined {
   const row = db
     .prepare(
-      `SELECT id, workspace_id, slack_user_id, external_user_id, display_name, fallback_slack_user_id, fallback_external_user_id,
+      `SELECT id, workspace_id, external_user_id, display_name, fallback_external_user_id,
               timezone, workday_start_hour, workday_end_hour
        FROM users WHERE workspace_id = ? AND external_user_id = ?`
     )

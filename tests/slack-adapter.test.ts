@@ -24,7 +24,6 @@ async function setup(): Promise<SlackAdapterTestContext> {
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: 'test-token',
     botUserId: 'UTZBOT'
   });
 

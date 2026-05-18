@@ -43,7 +43,6 @@ async function setup() {
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: 'token',
     botUserId: 'UTZBOT'
   });
   store.upsertUser({ workspaceId: workspace.id, externalUserId: 'U1', displayName: 'Daniel' });

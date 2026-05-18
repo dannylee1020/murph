@@ -45,14 +45,12 @@ async function setup() {
   }));
 
   const { getStore } = await import('#lib/server/persistence/store');
-  const { encryptString } = await import('#lib/server/util/crypto');
   const { writeSecret } = await import('#lib/server/credentials/local-store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botTokenEncrypted: encryptString('xoxb-test', 'test-key'),
     botUserId: 'UTZBOT'
   });
   writeSecret('slack', 'bot_token', 'xoxb-test', {

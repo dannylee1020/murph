@@ -23,7 +23,6 @@ describe('getGatewaySnapshot', () => {
       provider: 'slack',
       externalWorkspaceId: 'T_ACTIVE',
       name: 'Active Workspace',
-      botTokenEncrypted: 'token',
       botUserId: 'UBOT'
     });
     const activeSession = store.createSession({
@@ -40,7 +39,6 @@ describe('getGatewaySnapshot', () => {
       provider: 'slack',
       externalWorkspaceId: 'T_LATEST',
       name: 'Latest Workspace',
-      botTokenEncrypted: 'token',
       botUserId: 'UBOT'
     });
 

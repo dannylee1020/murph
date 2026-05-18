@@ -10,7 +10,6 @@ import type {
   AuditRecord,
   AutopilotSession,
   ContinuityActionType,
-  FeedbackRecord,
   MorningBriefing,
   ProviderSettings,
   RecurringJobRecord,
@@ -59,9 +58,6 @@ export class Store {
   getWorkspaceByExternalId(provider: string, externalWorkspaceId: string): Workspace | undefined {
     return workspace.getWorkspaceByExternalId(this.db, provider, externalWorkspaceId);
   }
-  getWorkspaceByTeamId(slackTeamId: string): Workspace | undefined {
-    return workspace.getWorkspaceByTeamId(this.db, slackTeamId);
-  }
   getWorkspaceById(id: string): Workspace | undefined {
     return workspace.getWorkspaceById(this.db, id);
   }
@@ -104,9 +100,6 @@ export class Store {
   }
   upsertThreadMemory(next: ThreadMemory): void {
     memory.upsertThreadMemory(this.db, next);
-  }
-  insertFeedback(input: Omit<FeedbackRecord, 'id' | 'createdAt'>): FeedbackRecord {
-    return memory.insertFeedback(this.db, input);
   }
 
   // Session
@@ -262,22 +255,22 @@ export class Store {
     return briefing.getWorkspaceSummary(this.db);
   }
 
-  // Integration credentials
-  saveIntegrationCredential(
-    input: integrationCredentials.SaveIntegrationCredentialInput
-  ): integrationCredentials.IntegrationCredential {
+  // Integration connections
+  saveIntegrationConnection(
+    input: integrationCredentials.SaveIntegrationConnectionInput
+  ): integrationCredentials.IntegrationConnection {
     return integrationCredentials.saveCredential(this.db, input);
   }
-  getIntegrationCredential(
+  getIntegrationConnection(
     workspaceId: string,
     provider: string
-  ): integrationCredentials.IntegrationCredential | undefined {
+  ): integrationCredentials.IntegrationConnection | undefined {
     return integrationCredentials.getCredential(this.db, workspaceId, provider);
   }
-  listIntegrationCredentials(workspaceId: string): integrationCredentials.IntegrationCredential[] {
+  listIntegrationConnections(workspaceId: string): integrationCredentials.IntegrationConnection[] {
     return integrationCredentials.listCredentials(this.db, workspaceId);
   }
-  deleteIntegrationCredential(workspaceId: string, provider: string): boolean {
+  deleteIntegrationConnection(workspaceId: string, provider: string): boolean {
     return integrationCredentials.deleteCredential(this.db, workspaceId, provider);
   }
 }

@@ -141,6 +141,15 @@ function maybeDecrypt(value, encryptionKey) {
   return undefined;
 }
 
+function tableExists(db, table) {
+  return Boolean(db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table));
+}
+
+function columnNames(db, table) {
+  if (!tableExists(db, table)) return new Set();
+  return new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((entry) => entry.name));
+}
+
 function migrateEnv() {
   let count = 0;
   const values = envValues();
@@ -162,38 +171,44 @@ function migrateSqlite() {
   let skipped = 0;
 
   try {
-    const workspaces = db.prepare(`SELECT id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id FROM workspaces`).all();
-    for (const workspace of workspaces) {
-      const value = maybeDecrypt(workspace.bot_token_encrypted, encryptionKey);
-      if (!value) {
-        skipped += 1;
-        continue;
+    const workspaceColumns = columnNames(db, 'workspaces');
+    if (workspaceColumns.has('bot_token_encrypted')) {
+      const workspaces = db.prepare(`SELECT id, provider, external_workspace_id, name, bot_token_encrypted, bot_user_id FROM workspaces`).all();
+      for (const workspace of workspaces) {
+        const value = maybeDecrypt(workspace.bot_token_encrypted, encryptionKey);
+        if (!value) {
+          skipped += 1;
+          continue;
+        }
+        const provider = workspace.provider || 'slack';
+        if (writeCredential(provider, 'bot_token', value, {
+          workspaceId: workspace.id,
+          externalWorkspaceId: workspace.external_workspace_id,
+          metadata: { workspaceName: workspace.name, botUserId: workspace.bot_user_id }
+        })) count += 1;
       }
-      const provider = workspace.provider || 'slack';
-      if (writeCredential(provider, 'bot_token', value, {
-        workspaceId: workspace.id,
-        externalWorkspaceId: workspace.external_workspace_id,
-        metadata: { workspaceName: workspace.name, botUserId: workspace.bot_user_id }
-      })) count += 1;
     }
   } catch {}
 
   try {
-    const credentials = db.prepare(`SELECT workspace_id, provider, credential_kind, credential_encrypted, metadata_json FROM integration_credentials WHERE status = 'connected'`).all();
-    for (const credential of credentials) {
-      const value = maybeDecrypt(credential.credential_encrypted, encryptionKey);
-      if (!value) {
-        skipped += 1;
-        continue;
+    const credentialColumns = columnNames(db, 'integration_credentials');
+    if (credentialColumns.has('credential_encrypted')) {
+      const credentials = db.prepare(`SELECT workspace_id, provider, credential_kind, credential_encrypted, metadata_json FROM integration_credentials WHERE status = 'connected'`).all();
+      for (const credential of credentials) {
+        const value = maybeDecrypt(credential.credential_encrypted, encryptionKey);
+        if (!value) {
+          skipped += 1;
+          continue;
+        }
+        let metadata = {};
+        try {
+          metadata = credential.metadata_json ? JSON.parse(credential.metadata_json) : {};
+        } catch {}
+        if (writeCredential(credential.provider, credential.credential_kind, value, {
+          workspaceId: credential.workspace_id,
+          metadata
+        })) count += 1;
       }
-      let metadata = {};
-      try {
-        metadata = credential.metadata_json ? JSON.parse(credential.metadata_json) : {};
-      } catch {}
-      if (writeCredential(credential.provider, credential.credential_kind, value, {
-        workspaceId: credential.workspace_id,
-        metadata
-      })) count += 1;
     }
   } catch {}
 
@@ -249,14 +264,18 @@ function cleanupLegacy() {
   if (existsSync(dbPath)) {
     const db = new Database(dbPath);
     try {
-      sqliteCleared += db
-        .prepare(`UPDATE workspaces SET bot_token_encrypted = 'stored-in-local-credentials' WHERE bot_token_encrypted IS NOT NULL AND bot_token_encrypted != 'stored-in-local-credentials'`)
-        .run().changes;
+      if (columnNames(db, 'workspaces').has('bot_token_encrypted')) {
+        sqliteCleared += db
+          .prepare(`UPDATE workspaces SET bot_token_encrypted = 'stored-in-local-credentials' WHERE bot_token_encrypted IS NOT NULL AND bot_token_encrypted != 'stored-in-local-credentials'`)
+          .run().changes;
+      }
     } catch {}
     try {
-      sqliteCleared += db
-        .prepare(`UPDATE integration_credentials SET credential_encrypted = 'stored-in-local-credentials' WHERE credential_encrypted != 'stored-in-local-credentials'`)
-        .run().changes;
+      if (columnNames(db, 'integration_credentials').has('credential_encrypted')) {
+        sqliteCleared += db
+          .prepare(`UPDATE integration_credentials SET credential_encrypted = 'stored-in-local-credentials' WHERE credential_encrypted != 'stored-in-local-credentials'`)
+          .run().changes;
+      }
     } catch {}
     db.close();
   }

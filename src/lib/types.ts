@@ -36,7 +36,6 @@ export interface Workspace {
     provider: ChannelProvider;
     externalWorkspaceId: string;
     name: string;
-    botTokenEncrypted?: string;
     botUserId?: string;
     installedAt?: string;
 }
@@ -230,17 +229,6 @@ export interface ThreadEvidenceStatus {
         error?: string;
     }>;
     updatedAt: string;
-}
-
-export interface FeedbackRecord {
-    id: string;
-    workspaceId: string;
-    sessionId?: string;
-    threadTs: string;
-    originalAction: ContinuityActionType;
-    finalAction: ContinuityActionType;
-    note: string;
-    createdAt: string;
 }
 
 export interface SkillManifest {
