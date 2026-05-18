@@ -20,7 +20,7 @@ The installer checks the minimal runtime pre-reqs first. If Node.js 20+ and npm 
 curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
-By default, Murph installs into `~/.murph/app` and places the CLI at `~/.local/bin/murph`.
+By default, Murph installs into `~/.murph/app`, places the CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`.
 
 If you want to inspect the installer first:
 
@@ -55,7 +55,7 @@ Use `murph start --background` when you want Murph to keep running after the ter
 murph update
 ```
 
-The updater preserves local state such as `.env` and `data/`.
+The updater preserves local state such as `~/.murph/.credentials`, `.env`, and `data/`.
 
 ## Check your install
 

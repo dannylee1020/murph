@@ -23,6 +23,8 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Then restart your shell or add the line to your shell profile.
 
+Installer-managed helper binaries, including the local Node install and Slack CLI when needed, live in `~/.murph/deps/bin`. The `murph` command adds that directory to its own runtime path.
+
 ## Murph is not built
 
 Build from the app directory:

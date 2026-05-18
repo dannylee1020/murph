@@ -19,7 +19,9 @@ Inspect or migrate local credentials with:
 
 ```bash
 murph credentials doctor
+murph credentials list
 murph credentials migrate
+murph credentials cleanup-legacy
 ```
 
 You can re-run setup when credentials, channels, schedules, or policy choices change.

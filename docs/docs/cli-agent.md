@@ -22,6 +22,17 @@ murph open
 murph update
 ```
 
+## Credential commands
+
+Murph stores local secrets in `~/.murph/.credentials`. Use the credential commands to inspect the store, migrate legacy secrets, or clean old secret values out of the repo-local `.env` file:
+
+```bash
+murph credentials doctor
+murph credentials list
+murph credentials migrate
+murph credentials cleanup-legacy
+```
+
 ## Policy commands
 
 ```bash

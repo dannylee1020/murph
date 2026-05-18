@@ -10,7 +10,7 @@ Start a session before you log off. Murph watches the channels you choose, pulls
 | **Keep control explicit** | Sends safe work, queues risky work, and skips anything it should not answer |
 | **Use your real context** | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
 | **Review what happened** | Shows what was sent, queued, skipped, and why |
-| **Run it yourself** | Stores runtime state locally with SQLite and encrypted credentials |
+| **Run it yourself** | Stores runtime state locally with SQLite and local credentials |
 
 
 Murph is built for people who want async continuity without handing over control: indie developers, founders, operators, and distributed teams.
@@ -74,7 +74,7 @@ Learn more in [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent).
 | LLM providers | OpenAI, Anthropic |
 | Context sources | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian |
 | Runtime tools | Brave-backed web search by default, simple web fetch, file read, shell execution |
-| Storage | Local SQLite with encrypted credentials |
+| Storage | Local SQLite plus `~/.murph/.credentials` |
 
 ## Contributing
 
