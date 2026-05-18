@@ -33,6 +33,7 @@ export function createGranolaAdapter(): IntegrationAdapter {
         description: 'Search Granola meeting notes by query text.',
         sideEffectClass: 'read',
         retrievalEligible: true,
+        retrieval: { profile: 'team_discussion' },
         inputSchema: {
           type: 'object',
           additionalProperties: false,
@@ -84,4 +85,3 @@ export function createGranolaAdapter(): IntegrationAdapter {
     }
   };
 }
-

@@ -35,6 +35,7 @@ export function createGitHubAdapter(): IntegrationAdapter {
         description: 'Search GitHub issues and pull requests by query text.',
         sideEffectClass: 'read',
         retrievalEligible: true,
+        retrieval: { profile: 'code_review' },
         inputSchema: {
           type: 'object',
           additionalProperties: false,

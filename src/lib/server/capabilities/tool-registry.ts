@@ -80,6 +80,7 @@ export class ToolRegistry {
       inputSchema: registered.definition.inputSchema,
       knowledgeDomains: registered.definition.knowledgeDomains,
       retrievalEligible: registered.definition.retrievalEligible ?? false,
+      retrieval: registered.definition.retrieval,
       optional: registered.optional,
       source: registered.source,
       sessionModes: registered.definition.sessionModes,

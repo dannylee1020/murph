@@ -2,6 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { main as runPiMain, defineTool } from '@mariozechner/pi-coding-agent';
 import { Type } from 'typebox';
 import { parse } from 'yaml';
@@ -465,6 +466,31 @@ function safePluginId(raw) {
     return id;
 }
 
+function safeToolName(raw) {
+    const name = String(raw || '').trim();
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) {
+        throw new Error(`Invalid tool name: ${raw || '<empty>'}`);
+    }
+    return name;
+}
+
+const RETRIEVAL_PROFILES = new Set([
+    'generic',
+    'title_keywords',
+    'work_item',
+    'code_review',
+    'email_thread',
+    'team_discussion',
+]);
+
+function safeRetrievalProfile(raw) {
+    const profile = String(raw || 'generic').trim();
+    if (!RETRIEVAL_PROFILES.has(profile)) {
+        throw new Error(`Invalid retrieval profile: ${raw || '<empty>'}`);
+    }
+    return profile;
+}
+
 function ensureUnderRoot(root, candidate) {
     const rootPath = path.resolve(root);
     const resolved = path.resolve(candidate);
@@ -486,6 +512,7 @@ function scaffoldPlugin(params) {
 
     const includeSkill = params.includeSkill !== false;
     const includeAdapter = params.includeAdapter !== false;
+    const includeSearchTool = includeAdapter && params.includeSearchTool !== false;
     const name = params.name || id;
     const description = params.description || `${name} plugin for Murph.`;
     const capabilities = { skills: [], adapters: [] };
@@ -518,6 +545,43 @@ function scaffoldPlugin(params) {
         mkdirSync(adapterDir, { recursive: true });
         const adapterPath = path.join(adapterDir, `${id}.mjs`);
         const envKey = `${id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`;
+        const searchProfile = includeSearchTool
+            ? safeRetrievalProfile(params.searchProfile)
+            : 'generic';
+        const searchToolName = includeSearchTool
+            ? safeToolName(params.searchToolName || `${id}.search`)
+            : `${id}.search`;
+        const toolsSource = includeSearchTool
+            ? `[
+    {
+      name: '${searchToolName}',
+      description: 'Search ${name} by query text.',
+      sideEffectClass: 'read',
+      retrievalEligible: true,
+      retrieval: { profile: '${searchProfile}' },
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['query'],
+        properties: {
+          query: { type: 'string' },
+          limit: { type: 'number' }
+        }
+      },
+      knowledgeDomains: ['integration'],
+      optional: true,
+      requiresWorkspaceEnablement: true,
+      supportsDryRun: true,
+      async execute(input) {
+        return {
+          results: [],
+          query: input.query,
+          hint: 'Implement ${searchToolName} in this adapter. Keep the normalized { query, limit } contract.'
+        };
+      }
+    }
+  ]`
+            : '[]';
         writeFileSync(
             adapterPath,
             `export default {
@@ -530,7 +594,7 @@ function scaffoldPlugin(params) {
     envKey: '${envKey}',
     credentialLabel: 'API key'
   },
-  tools: [],
+  tools: ${toolsSource},
   contextSources: [],
   isConfigured() {
     return Boolean(process.env.${envKey});
@@ -675,6 +739,16 @@ function createMurphTools() {
                 description: Type.Optional(Type.String()),
                 includeSkill: Type.Optional(Type.Boolean()),
                 includeAdapter: Type.Optional(Type.Boolean()),
+                includeSearchTool: Type.Optional(Type.Boolean()),
+                searchProfile: Type.Optional(Type.Union([
+                    Type.Literal('generic'),
+                    Type.Literal('title_keywords'),
+                    Type.Literal('work_item'),
+                    Type.Literal('code_review'),
+                    Type.Literal('email_thread'),
+                    Type.Literal('team_discussion'),
+                ])),
+                searchToolName: Type.Optional(Type.String()),
             }),
             executionMode: 'sequential',
             execute: async (_toolCallId, params) =>
@@ -805,6 +879,7 @@ function murphSystemPrompt(sourceEdits) {
         'Murph async messenger runtime is separate. Do not present yourself as the async runtime brain.',
         'Prefer Murph custom tools for setup, integration status, plugin reload, and policy changes before editing files by hand.',
         'For new capabilities, prefer scoped plugin packages under ~/.murph/plugins/<id> with plugin.json, skills/*.md, and adapters/*.mjs.',
+        'When creating a searchable integration adapter, include a read-only { query, limit } search tool with retrievalEligible: true and retrieval.profile set to the closest preset.',
         'Installed runtime plugin adapters must remain read-only in v1. Do not add external-write adapter tools to scoped plugins.',
         sourceEdits
             ? 'This run explicitly allows Murph source edits. Keep changes focused and validate them.'
@@ -1184,17 +1259,25 @@ async function runAgent(prompt, options, passthrough) {
     });
 }
 
-const { options, prompt, passthrough } = parseArgs(process.argv.slice(2));
-if (options.help) {
-    usage();
-    process.exit(0);
-}
+export { scaffoldPlugin };
 
-runAgent(prompt, options, passthrough).catch((error) => {
-    printBox(
-        'agent failed',
-        [error instanceof Error ? error.message : String(error)],
-        'red',
-    );
-    process.exitCode = 1;
-});
+const isDirectRun =
+    process.argv[1] &&
+    import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
+    const { options, prompt, passthrough } = parseArgs(process.argv.slice(2));
+    if (options.help) {
+        usage();
+        process.exit(0);
+    }
+
+    runAgent(prompt, options, passthrough).catch((error) => {
+        printBox(
+            'agent failed',
+            [error instanceof Error ? error.message : String(error)],
+            'red',
+        );
+        process.exitCode = 1;
+    });
+}

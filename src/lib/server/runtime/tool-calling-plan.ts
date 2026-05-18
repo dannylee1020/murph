@@ -29,7 +29,8 @@ function dedupeTools(tools: Array<AgentToolInventoryItem | ToolInventoryItem>): 
         sideEffectClass: tool.sideEffectClass,
         inputSchema: tool.inputSchema,
         knowledgeDomains: tool.knowledgeDomains,
-        retrievalEligible: tool.retrievalEligible
+        retrievalEligible: tool.retrievalEligible,
+        retrieval: tool.retrieval
       });
     }
   }

@@ -59,6 +59,7 @@ export function createGoogleAdapter(): IntegrationAdapter {
         description: 'Search Gmail threads by query text.',
         sideEffectClass: 'read',
         retrievalEligible: true,
+        retrieval: { profile: 'email_thread' },
         inputSchema: {
           type: 'object',
           additionalProperties: false,
@@ -229,4 +230,3 @@ export function createGoogleAdapter(): IntegrationAdapter {
     }
   };
 }
-

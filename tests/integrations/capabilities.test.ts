@@ -114,7 +114,7 @@ describe('integration capability wiring', () => {
     expect(memory.enabledContextSources).toContain('github.thread_search');
   });
 
-  it('reconcileIntegrationCapabilitiesForWorkspace leaves memory untouched when no credential exists', async () => {
+  it('reconcileIntegrationCapabilitiesForWorkspace enables Slack channel tools without integration credentials', async () => {
     const { store, workspace } = await setup();
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
       '#lib/server/integrations/capabilities'
@@ -123,6 +123,8 @@ describe('integration capability wiring', () => {
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
 
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['slack.search', 'slack.read_thread']));
+    expect(memory.enabledContextSources).toEqual(expect.arrayContaining(['slack.thread_search']));
     expect(memory.enabledOptionalTools).not.toContain('notion.search');
     expect(memory.enabledContextSources).not.toContain('notion.thread_search');
   });

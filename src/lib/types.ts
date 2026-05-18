@@ -517,6 +517,7 @@ export interface AgentToolInventoryItem {
     inputSchema?: Record<string, unknown>;
     knowledgeDomains?: string[];
     retrievalEligible?: boolean;
+    retrieval?: ToolRetrievalConfig;
 }
 
 export interface ModelProvider {
@@ -622,6 +623,19 @@ export interface ToolExecutionContext {
     workspaceMemory?: WorkspaceMemory;
 }
 
+export type ToolRetrievalProfile =
+    | 'title_keywords'
+    | 'work_item'
+    | 'code_review'
+    | 'email_thread'
+    | 'team_discussion'
+    | 'generic';
+
+export interface ToolRetrievalConfig {
+    profile?: ToolRetrievalProfile;
+    queryHints?: Record<string, unknown>;
+}
+
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
     name: string;
     description: string;
@@ -629,6 +643,7 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
     inputSchema?: Record<string, unknown>;
     knowledgeDomains?: string[];
     retrievalEligible?: boolean;
+    retrieval?: ToolRetrievalConfig;
     optional?: boolean;
     sessionModes?: SessionMode[];
     requiresWorkspaceEnablement?: boolean;
@@ -643,6 +658,7 @@ export interface ToolInventoryItem {
     inputSchema?: Record<string, unknown>;
     knowledgeDomains?: string[];
     retrievalEligible?: boolean;
+    retrieval?: ToolRetrievalConfig;
     optional: boolean;
     source: string;
     sessionModes?: SessionMode[];

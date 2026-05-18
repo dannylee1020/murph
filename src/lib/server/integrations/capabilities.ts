@@ -2,6 +2,13 @@ import { getStore } from '#lib/server/persistence/store';
 import type { IntegrationDefinition } from './registry.js';
 import { listIntegrations, readEnvCredential } from './registry.js';
 
+const CHANNEL_PROVIDER_CAPABILITIES: Record<string, Pick<IntegrationDefinition, 'tools' | 'contextSources'>> = {
+  slack: {
+    tools: ['slack.search', 'slack.read_thread'],
+    contextSources: ['slack.thread_search']
+  }
+};
+
 function unionUnique(existing: string[], additions: string[]): string[] {
   const set = new Set(existing);
   for (const value of additions) {
@@ -58,6 +65,12 @@ export function disableIntegrationCapabilities(
  */
 export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string): void {
   const store = getStore();
+  const workspace = store.getWorkspaceById(workspaceId);
+  const channelCapabilities = workspace ? CHANNEL_PROVIDER_CAPABILITIES[workspace.provider] : undefined;
+  if (channelCapabilities) {
+    enableIntegrationCapabilities(workspaceId, channelCapabilities);
+  }
+
   for (const definition of listIntegrations()) {
     const stored = store.getIntegrationCredential(workspaceId, definition.provider);
     const hasDbCred = stored?.status === 'connected';

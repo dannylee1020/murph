@@ -86,7 +86,8 @@ const allTools: ToolInventoryItem[] = [
     optional: true,
     requiresWorkspaceEnablement: true,
     knowledgeDomains: ['documentation'],
-    retrievalEligible: true
+    retrievalEligible: true,
+    retrieval: { profile: 'title_keywords' }
   }),
   tool({
     name: 'notion.read_page',
@@ -117,6 +118,7 @@ describe('listAvailableTools', () => {
       'notion.read_page'
     ]);
     expect(result.retrievalToolNames).toEqual(['notion.search']);
+    expect(result.availableTools.find((t) => t.name === 'notion.search')?.retrieval).toEqual({ profile: 'title_keywords' });
   });
 
   it('hides workspace-enablement-required tools when not allowlisted', () => {

@@ -50,6 +50,8 @@ export default {
     name: '${id}.read',
     description: 'Read ${id}',
     sideEffectClass: '${options.toolSideEffect ?? 'read'}',
+    retrievalEligible: true,
+    retrieval: { profile: 'work_item' },
     async execute() {
       return { ok: true };
     }
@@ -99,6 +101,9 @@ describe('scoped plugin loader', () => {
     ]);
     expect((await loadSkills('__missing__')).map((skill) => skill.name)).toContain('linear');
     expect(getToolRegistry().has('linear.read')).toBe(true);
+    expect(getToolRegistry().list().find((tool) => tool.name === 'linear.read')?.retrieval).toEqual({
+      profile: 'work_item'
+    });
     expect(getContextSourceRegistry().has('linear.context')).toBe(true);
   });
 

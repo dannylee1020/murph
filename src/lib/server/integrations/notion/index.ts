@@ -44,6 +44,7 @@ export function createNotionAdapter(): IntegrationAdapter {
         description: 'Search shared Notion pages by title and return matching page IDs, titles, and URLs.',
         sideEffectClass: 'read',
         retrievalEligible: true,
+        retrieval: { profile: 'title_keywords' },
         inputSchema: {
           type: 'object',
           additionalProperties: false,

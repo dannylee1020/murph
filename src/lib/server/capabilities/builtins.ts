@@ -171,6 +171,7 @@ export function registerBuiltInTools(): void {
       description: 'Search Discord messages in the active guild by free-text query.',
       sideEffectClass: 'read',
       retrievalEligible: true,
+      retrieval: { profile: 'team_discussion' },
       optional: true,
       requiresWorkspaceEnablement: true,
       knowledgeDomains: ['team', 'coordination'],
@@ -394,6 +395,7 @@ export function registerBuiltInTools(): void {
       description: 'Search Slack messages by query text.',
       sideEffectClass: 'read',
       retrievalEligible: true,
+      retrieval: { profile: 'team_discussion' },
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -446,6 +448,7 @@ export function registerBuiltInTools(): void {
         description: 'Search an Obsidian vault by query text.',
         sideEffectClass: 'read',
         retrievalEligible: true,
+        retrieval: { profile: 'title_keywords' },
         inputSchema: {
           type: 'object',
           additionalProperties: false,

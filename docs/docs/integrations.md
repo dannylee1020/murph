@@ -49,6 +49,8 @@ A scoped plugin can contribute:
 
 Scoped plugins are the preferred way to add local/custom integrations without editing Murph core source.
 
+Searchable adapters should expose a read-only `{ query, limit }` search tool with `retrievalEligible: true` and a `retrieval.profile` such as `title_keywords`, `work_item`, `code_review`, `email_thread`, `team_discussion`, or `generic`. This lets Murph normalize vague user requests without requiring core source edits for every new integration.
+
 Use the agent when building a new integration:
 
 ```bash

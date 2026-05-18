@@ -10,7 +10,10 @@ import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { sessionContextToArtifact } from '#lib/server/runtime/session-context';
-import { buildRetrievalQuery } from '#lib/server/util/retrieval-query';
+import {
+  buildNormalizedRetrievalRequest,
+  deterministicRetrievalInputForTool
+} from '#lib/server/runtime/retrieval-request';
 import type {
   AgentToolResult,
   AutopilotSession,
@@ -81,39 +84,6 @@ function toolResultsToArtifacts(toolResults: AgentToolResult[]): ContextArtifact
     title: result.ok ? `${result.name} result` : `${result.name} error`,
     text: JSON.stringify(result.ok ? result.output : result.error)
   }));
-}
-
-function threadQuery(context: ContextAssembly): string {
-  const raw = context.thread.latestMessage ||
-    context.thread.recentMessages.map((message) => message.text).join(' ');
-  return buildRetrievalQuery(raw);
-}
-
-function deterministicRetrievalInput(
-  tool: ContextAssembly['availableTools'][number],
-  context: ContextAssembly
-): Record<string, unknown> | undefined {
-  const schema = tool.inputSchema ?? {};
-  const properties = schema.properties && typeof schema.properties === 'object'
-    ? schema.properties as Record<string, unknown>
-    : {};
-  const required = Array.isArray(schema.required)
-    ? schema.required.filter((value): value is string => typeof value === 'string')
-    : [];
-  const hasQuery = Object.prototype.hasOwnProperty.call(properties, 'query');
-
-  if (!hasQuery) {
-    return undefined;
-  }
-
-  if (required.some((name) => name !== 'query')) {
-    return undefined;
-  }
-
-  return {
-    query: threadQuery(context),
-    limit: 5
-  };
 }
 
 function objectInput(input: unknown): Record<string, unknown> {
@@ -262,7 +232,8 @@ export class AgentRuntime {
         sideEffectClass: tool.sideEffectClass,
         inputSchema: tool.inputSchema,
         knowledgeDomains: tool.knowledgeDomains,
-        retrievalEligible: tool.retrievalEligible
+        retrievalEligible: tool.retrievalEligible,
+        retrieval: tool.retrieval
       })),
       workspaceMemory,
       fallbackSkillName: 'channel-continuity'
@@ -520,13 +491,14 @@ export class AgentRuntime {
     const toolsUsed: string[] = [];
     const toolResults: AgentToolResult[] = [];
     const retrievalNames = new Set(retrievalToolNames);
+    const retrievalRequest = buildNormalizedRetrievalRequest(context);
 
     for (const tool of context.availableTools) {
       if (!retrievalNames.has(tool.name)) {
         continue;
       }
 
-      const input = deterministicRetrievalInput(tool, context);
+      const input = deterministicRetrievalInputForTool(tool, retrievalRequest);
       if (!input) {
         continue;
       }
