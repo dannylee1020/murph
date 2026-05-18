@@ -32,6 +32,7 @@ async function setup() {
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
   process.env.MURPH_APP_DIR = workspaceDir;
   process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
+  process.env.MURPH_CREDENTIALS_PATH = join(workspaceDir, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   process.env.OPENAI_API_KEY = 'sk-test';
   process.env.SLACK_EVENTS_MODE = 'socket';
@@ -45,6 +46,7 @@ async function setup() {
 
   const { getStore } = await import('#lib/server/persistence/store');
   const { encryptString } = await import('#lib/server/util/crypto');
+  const { writeSecret } = await import('#lib/server/credentials/local-store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -52,6 +54,10 @@ async function setup() {
     name: 'Test Workspace',
     botTokenEncrypted: encryptString('xoxb-test', 'test-key'),
     botUserId: 'UTZBOT'
+  });
+  writeSecret('slack', 'bot_token', 'xoxb-test', {
+    workspaceId: workspace.id,
+    externalWorkspaceId: workspace.externalWorkspaceId
   });
   const { systemRoutes } = await import('../../src/server/routes/system');
   const { dispatchRoute } = await import('../../src/server/router');

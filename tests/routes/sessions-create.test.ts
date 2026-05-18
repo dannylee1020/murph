@@ -34,7 +34,9 @@ function jsonResponse(): any & { result: () => JsonResponse } {
 
 async function setup(results: Array<{ channelId: string; name?: string; status: string; reason?: string }>) {
   vi.resetModules();
-  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-session-route-')), 'murph.sqlite');
+  const root = mkdtempSync(join(tmpdir(), 'murph-session-route-'));
+  process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
+  process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   const ensureMember = vi.fn();
   for (const result of results) {
@@ -50,6 +52,7 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
 
   const { getStore } = await import('#lib/server/persistence/store');
   const { encryptString } = await import('#lib/server/util/crypto');
+  const { writeSecret } = await import('#lib/server/credentials/local-store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -57,6 +60,10 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
     name: 'Test Workspace',
     botTokenEncrypted: encryptString('xoxb-test', 'test-key'),
     botUserId: 'UTZBOT'
+  });
+  writeSecret('slack', 'bot_token', 'xoxb-test', {
+    workspaceId: workspace.id,
+    externalWorkspaceId: workspace.externalWorkspaceId
   });
   const { gatewayRoutes } = await import('../../src/server/routes/gateway');
   const { dispatchRoute } = await import('../../src/server/router');

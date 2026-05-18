@@ -99,13 +99,14 @@ function statusFor(provider: string, workspaceId: string) {
   const envValue = readEnvCredential(provider);
   const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
   const local = readSecretRecord(provider, key, { workspaceId }) ?? readSecretRecord(provider, key);
-  const source = envValue ? 'env' : local ? 'credentials' : stored?.status === 'connected' ? 'database' : undefined;
+  const reconnectRequired = !envValue && !local && stored?.status === 'connected';
+  const source = envValue ? 'env' : local ? 'credentials' : undefined;
   const metadata = source === 'credentials'
     ? local?.metadata ?? {}
-    : source === 'database'
-      ? stored?.metadata ?? {}
-      : envValue
+    : envValue
       ? { masked: maskCredential(envValue) }
+      : reconnectRequired
+      ? stored?.metadata ?? {}
       : {};
   const githubRepositories = provider === 'github'
     ? source === 'env'
@@ -121,17 +122,19 @@ function statusFor(provider: string, workspaceId: string) {
     description: definition.description,
     authType: definition.authType,
     credentialLabel: definition.credentialLabel,
-    status: source ? 'connected' : 'disconnected',
+    status: source ? 'connected' : reconnectRequired ? 'reconnect_required' : 'disconnected',
     source,
     envKey: definition.envKey,
     installPath: definition.installPath,
     tools: definition.tools,
     contextSources: definition.contextSources,
-    canDisconnect: source === 'credentials' || source === 'database',
+    canDisconnect: source === 'credentials' || reconnectRequired,
     metadata: provider === 'github'
       ? { ...metadata, repositories: githubRepositories, needsRepoScope: source ? (githubRepositories ?? []).length === 0 : false }
       : metadata,
-    errorMessage: stored?.errorMessage
+    errorMessage: reconnectRequired
+      ? 'Local credential is missing. Reconnect this integration.'
+      : stored?.errorMessage
   };
 }
 
@@ -233,7 +236,7 @@ export const integrationRoutes: Route[] = [
 
     const stored = getStore().getIntegrationCredential(workspace.id, 'github');
     const local = readSecretRecord('github', 'api_key', { workspaceId: workspace.id });
-    if (!stored && !local) {
+    if (!local && !readEnvCredential('github')) {
       sendJson(res, { ok: false, error: 'github_not_connected' }, 400);
       return;
     }
@@ -253,7 +256,7 @@ export const integrationRoutes: Route[] = [
       workspaceId: workspace.id,
       provider: 'github',
       credentialKind: stored?.credentialKind ?? 'api_key',
-      credentialEncrypted: stored?.credentialEncrypted ?? 'stored-in-local-credentials',
+      credentialEncrypted: 'stored-in-local-credentials',
       metadata: {
         ...(stored?.metadata ?? local?.metadata),
         repositories

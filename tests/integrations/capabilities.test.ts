@@ -95,12 +95,16 @@ describe('integration capability wiring', () => {
 
   it('reconcileIntegrationCapabilitiesForWorkspace enables GitHub even before repositories are selected', async () => {
     const { store, workspace } = await setup();
-    const { encryptString } = await import('#lib/server/util/crypto');
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('github', 'api_key', 'github-token', {
+      workspaceId: workspace.id,
+      metadata: { account: 'octo-user', repositories: [] }
+    });
     store.saveIntegrationCredential({
       workspaceId: workspace.id,
       provider: 'github',
       credentialKind: 'api_key',
-      credentialEncrypted: encryptString('github-token', 'test-key'),
+      credentialEncrypted: 'stored-in-local-credentials',
       metadata: { account: 'octo-user', repositories: [] }
     });
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(

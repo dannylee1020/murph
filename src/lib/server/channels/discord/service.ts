@@ -1,6 +1,6 @@
-import { decryptString, encryptString } from '#lib/server/util/crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
+import { readSecret, writeSecret } from '#lib/server/credentials/local-store';
 import type { ChannelMessage, ChannelThreadRef, Workspace } from '#lib/types';
 
 interface DiscordTokenResponse {
@@ -99,23 +99,26 @@ export class DiscordService {
     }
 
     const guild = (await guildResponse.json()) as DiscordGuild;
-    return this.store.saveInstall({
+    const workspace = this.store.saveInstall({
       provider: 'discord',
       externalWorkspaceId: guild.id,
       name: guild.name ?? guild.id,
-      botTokenEncrypted: this.encryptBotTokenForStorage(),
+      botTokenEncrypted: 'stored-in-local-credentials',
       botUserId: await this.fetchBotUserId()
     });
-  }
-
-  private encryptBotTokenForStorage(): string {
     if (!this.env.discordBotToken) {
       throw new Error('DISCORD_BOT_TOKEN is not configured');
     }
-    if (!this.env.encryptionKey) {
-      return this.env.discordBotToken;
-    }
-    return encryptString(this.env.discordBotToken, this.env.encryptionKey);
+    writeSecret('discord', 'bot_token', this.env.discordBotToken, {
+      workspaceId: workspace.id,
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      metadata: {
+        guildName: workspace.name,
+        botUserId: workspace.botUserId,
+        validatedAt: new Date().toISOString()
+      }
+    });
+    return workspace;
   }
 
   getBotToken(): string {
@@ -123,14 +126,24 @@ export class DiscordService {
       return this.env.discordBotToken;
     }
 
-    const workspace = this.store.getWorkspaceByExternalId('discord', this.store.getFirstWorkspace()?.externalWorkspaceId ?? '');
-    if (!workspace?.botTokenEncrypted) {
-      throw new Error('No Discord bot token configured');
+    for (const workspace of this.store.listWorkspaces().filter((entry) => entry.provider === 'discord')) {
+      const token = readSecret('discord', 'bot_token', {
+        workspaceId: workspace.id,
+        externalWorkspaceId: workspace.externalWorkspaceId
+      }) ??
+        readSecret('discord', 'bot_token', { workspaceId: workspace.id }) ??
+        readSecret('discord', 'bot_token', { externalWorkspaceId: workspace.externalWorkspaceId });
+      if (token) {
+        return token;
+      }
     }
-    if (!this.env.encryptionKey) {
-      return workspace.botTokenEncrypted;
+
+    const globalToken = readSecret('discord', 'bot_token');
+    if (globalToken) {
+      return globalToken;
     }
-    return decryptString(workspace.botTokenEncrypted, this.env.encryptionKey);
+
+    throw new Error('Discord bot token is missing from local credentials. Reconnect Discord.');
   }
 
   private async fetchBotUserId(): Promise<string | undefined> {

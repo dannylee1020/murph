@@ -61,7 +61,7 @@ export function disableIntegrationCapabilities(
 
 /**
  * Reconciles workspace memory with currently effective integration credentials.
- * For each integration whose credential is present (local store, DB, or env), unions its tools/contextSources
+ * For each integration whose credential is present (local store or env), unions its tools/contextSources
  * into the workspace's enabled lists. Idempotent.
  */
 export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string): void {
@@ -73,13 +73,11 @@ export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string
   }
 
   for (const definition of listIntegrations()) {
-    const stored = store.getIntegrationCredential(workspaceId, definition.provider);
-    const hasDbCred = stored?.status === 'connected';
     const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
     const hasLocalCred = hasSecret(definition.provider, key, { workspaceId }) ||
       hasSecret(definition.provider, key);
     const hasEnvCred = Boolean(readEnvCredential(definition.provider));
-    if (hasLocalCred || hasDbCred || hasEnvCred) {
+    if (hasLocalCred || hasEnvCred) {
       enableIntegrationCapabilities(workspaceId, definition);
     }
   }

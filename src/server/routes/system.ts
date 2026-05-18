@@ -16,6 +16,7 @@ import {
 } from '#lib/server/setup/config-file';
 import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-client';
 import { getSlackService } from '#lib/server/channels/slack/service';
+import { readSecret } from '#lib/server/credentials/local-store';
 import { readJson } from '../http.js';
 import type { SetupDefaults, Workspace } from '#lib/types';
 
@@ -95,7 +96,13 @@ export const systemRoutes: Route[] = [
     const setupDefaults = effectiveSetupDefaults();
     const workspaces = getStore().listWorkspaces();
     const slackWorkspace = getSlackService().getUsableWorkspace();
-    const discordWorkspace = workspaces.find((workspace) => workspace.provider === 'discord' && workspace.botTokenEncrypted);
+    const discordWorkspace = workspaces.find((workspace) => (
+      workspace.provider === 'discord' &&
+      (Boolean(env.discordBotToken) || Boolean(readSecret('discord', 'bot_token', {
+        workspaceId: workspace.id,
+        externalWorkspaceId: workspace.externalWorkspaceId
+      })))
+    ));
     const config = readMurphConfig();
     const agentInheritsRuntime = process.env.MURPH_AGENT_PROVIDER === undefined &&
       process.env.MURPH_AGENT_MODEL === undefined &&

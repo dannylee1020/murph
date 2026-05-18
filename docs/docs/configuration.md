@@ -59,7 +59,11 @@ Murph uses local SQLite by default:
 MURPH_SQLITE_PATH=data/murph.sqlite
 ```
 
-Secrets are stored locally in plaintext at `~/.murph/.credentials` with owner-only file permissions. Use `murph credentials migrate` to copy legacy `.env` and SQLite credentials into that file.
+Secrets are stored locally in plaintext at `~/.murph/.credentials` with owner-only file permissions. Runtime credential reads come from that file or explicit environment overrides, not SQLite. Use `murph credentials migrate` to copy legacy `.env` and SQLite credentials into the local credential file, then `murph credentials cleanup-legacy` to clear old secret fields.
+
+> **Local credential storage**
+>
+> Murph writes `~/.murph/.credentials` with `0600` permissions, so only your local user account can read it. Credentials are not uploaded to Murph servers. They only leave your machine when Murph uses them to call the providers you connected, such as Slack, GitHub, Google, OpenAI, or Anthropic.
 
 ## Web search
 

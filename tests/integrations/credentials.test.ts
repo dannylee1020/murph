@@ -46,7 +46,7 @@ describe('integration credential resolution', () => {
     );
   });
 
-  it('reads local store credentials before legacy database credentials', async () => {
+  it('reads local store credentials and ignores legacy database credentials', async () => {
     const { store, workspace, encryptString } = await setup();
     const { writeSecret } = await import('#lib/server/credentials/local-store');
     writeSecret('github', 'api_key', 'stored-token', { workspaceId: workspace.id, metadata: { masked: '****oken' } });
@@ -65,6 +65,20 @@ describe('integration credential resolution', () => {
         value: 'stored-token'
       })
     );
+  });
+
+  it('does not resolve legacy database-only credentials at runtime', async () => {
+    const { store, workspace, encryptString } = await setup();
+    store.saveIntegrationCredential({
+      workspaceId: workspace.id,
+      provider: 'github',
+      credentialKind: 'api_key',
+      credentialEncrypted: encryptString('legacy-token', 'test-key'),
+      metadata: { masked: '****gacy' }
+    });
+
+    const { resolveCredential } = await import('#lib/server/integrations/credentials');
+    expect(resolveCredential(workspace.id, 'github')).toBeUndefined();
   });
 
   it('falls back to env credentials when none are stored', async () => {

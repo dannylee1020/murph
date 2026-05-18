@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 async function setup() {
   vi.resetModules();
   process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-membership-')), 'murph.sqlite');
+  process.env.MURPH_CREDENTIALS_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-membership-creds-')), '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   const { encryptString } = await import('#lib/server/util/crypto');
   const { createSlackChannelAdapter } = await import('#lib/server/channels/slack/adapter');
@@ -17,6 +18,11 @@ async function setup() {
     name: 'Test Workspace',
     botTokenEncrypted: encryptString('xoxb-test', 'test-key'),
     botUserId: 'UTZBOT'
+  });
+  const { writeSecret } = await import('#lib/server/credentials/local-store');
+  writeSecret('slack', 'bot_token', 'xoxb-test', {
+    workspaceId: workspace.id,
+    externalWorkspaceId: workspace.externalWorkspaceId
   });
 
   return { adapter: createSlackChannelAdapter(), workspace };

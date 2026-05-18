@@ -148,7 +148,7 @@ type IntegrationStatusPayload = {
     authType: string;
     credentialLabel: string;
     installPath?: string;
-    status: 'connected' | 'disconnected';
+    status: 'connected' | 'disconnected' | 'reconnect_required';
     source?: 'database' | 'env';
     envKey: string;
     tools: string[];
@@ -1116,7 +1116,9 @@ function integrationCard(integration: IntegrationStatusPayload['integrations'][n
       detailRows.push(`<div><dt>Repositories</dt><dd>${escapeHtml(githubRepositorySummary(integration))}</dd></div>`);
     }
   } else {
-    const authLabel = integration.authType === 'oauth' ? 'OAuth' : 'API key';
+    const authLabel = integration.status === 'reconnect_required'
+      ? 'Reconnect required'
+      : integration.authType === 'oauth' ? 'OAuth' : 'API key';
     detailRows.push(`<div><dt>Auth</dt><dd>${escapeHtml(authLabel)}</dd></div>`);
     if (integration.tools.length > 0) {
       const toolsLabel = integration.tools.length === 1 ? '1 tool' : `${integration.tools.length} tools`;
@@ -1126,9 +1128,10 @@ function integrationCard(integration: IntegrationStatusPayload['integrations'][n
 
   const primaryLabel = connected
     ? integration.source === 'env' ? 'Override' : 'Reconnect'
+    : integration.status === 'reconnect_required' ? 'Reconnect'
     : 'Connect';
   const primaryCta = integration.authType === 'oauth' && installHref
-    ? `<a class="button" href="${escapeHtml(installHref)}">${connected ? 'Reconnect' : 'Connect with Google'}</a>`
+    ? `<a class="button" href="${escapeHtml(installHref)}">${connected || integration.status === 'reconnect_required' ? 'Reconnect' : 'Connect with Google'}</a>`
     : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${primaryLabel}</button>`;
 
   return `

@@ -229,18 +229,39 @@ function doctor() {
 
 function cleanupLegacy() {
   const raw = readEnvFile();
-  if (!raw) {
-    console.log('No .env file found.');
-    return;
-  }
+  let envRemoved = 0;
   const secretKeys = new Set(Object.keys(SECRET_KEY_MAP));
-  const lines = raw.split(/\r?\n/).filter((line) => {
-    const match = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)=/);
-    return !match || !secretKeys.has(match[1]);
-  });
-  writeFileSync(envPath, `${lines.join('\n').replace(/\n+$/, '')}\n`, { mode: 0o600 });
-  chmodSync(envPath, 0o600);
-  console.log('Removed known secret keys from .env.');
+  if (raw) {
+    const lines = raw.split(/\r?\n/).filter((line) => {
+      const match = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)=/);
+      if (match && secretKeys.has(match[1])) {
+        envRemoved += 1;
+        return false;
+      }
+      return true;
+    });
+    writeFileSync(envPath, `${lines.join('\n').replace(/\n+$/, '')}\n`, { mode: 0o600 });
+    chmodSync(envPath, 0o600);
+  }
+
+  let sqliteCleared = 0;
+  const dbPath = sqlitePath();
+  if (existsSync(dbPath)) {
+    const db = new Database(dbPath);
+    try {
+      sqliteCleared += db
+        .prepare(`UPDATE workspaces SET bot_token_encrypted = 'stored-in-local-credentials' WHERE bot_token_encrypted IS NOT NULL AND bot_token_encrypted != 'stored-in-local-credentials'`)
+        .run().changes;
+    } catch {}
+    try {
+      sqliteCleared += db
+        .prepare(`UPDATE integration_credentials SET credential_encrypted = 'stored-in-local-credentials' WHERE credential_encrypted != 'stored-in-local-credentials'`)
+        .run().changes;
+    } catch {}
+    db.close();
+  }
+
+  console.log(`Removed ${envRemoved} .env secret(s) and cleared ${sqliteCleared} legacy SQLite secret field(s).`);
 }
 
 const command = process.argv[2] || 'help';

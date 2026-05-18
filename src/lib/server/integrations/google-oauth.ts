@@ -1,4 +1,3 @@
-import { encryptString, decryptString } from '#lib/server/util/crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { deleteSecret, readSecretRecord, writeSecret } from '#lib/server/credentials/local-store';
@@ -77,17 +76,11 @@ export async function exchangeGoogleCode(
   }
 
   const store = getStore();
-  const existing = store.getIntegrationCredential(workspaceId, 'google');
   let existingBundle: Partial<OAuthBundle> = {};
   const existingLocal = readSecretRecord('google', 'oauth_bundle', { workspaceId });
   if (existingLocal) {
     try {
       existingBundle = JSON.parse(existingLocal.value);
-    } catch {}
-  }
-  if (existing?.status === 'connected' && env.encryptionKey) {
-    try {
-      existingBundle = JSON.parse(decryptString(existing.credentialEncrypted, env.encryptionKey));
     } catch {}
   }
 
@@ -123,9 +116,7 @@ export async function exchangeGoogleCode(
     workspaceId,
     provider: 'google',
     credentialKind: 'oauth_bundle',
-    credentialEncrypted: env.encryptionKey
-      ? encryptString(JSON.stringify(bundle), env.encryptionKey)
-      : 'stored-in-local-credentials',
+    credentialEncrypted: 'stored-in-local-credentials',
     metadata
   });
 
@@ -163,8 +154,6 @@ async function refreshAccessToken(bundle: OAuthBundle): Promise<OAuthBundle> {
 }
 
 export async function getValidGoogleAccessToken(workspaceId: string): Promise<string> {
-  const env = getRuntimeEnv();
-
   const store = getStore();
   const stored = store.getIntegrationCredential(workspaceId, 'google');
   const local = readSecretRecord('google', 'oauth_bundle', { workspaceId });
@@ -187,31 +176,8 @@ export async function getValidGoogleAccessToken(workspaceId: string): Promise<st
         workspaceId,
         provider: 'google',
         credentialKind: 'oauth_bundle',
-        credentialEncrypted: stored?.credentialEncrypted ?? 'stored-in-local-credentials',
+        credentialEncrypted: 'stored-in-local-credentials',
         metadata: stored?.metadata ?? local.metadata
-      });
-      return refreshed.access_token;
-    }
-
-    return bundle.access_token;
-  }
-
-  if (stored?.status === 'connected' && env.encryptionKey) {
-    let bundle: OAuthBundle;
-    try {
-      bundle = JSON.parse(decryptString(stored.credentialEncrypted, env.encryptionKey));
-    } catch {
-      throw new Error('Failed to decrypt Google credential');
-    }
-
-    if (bundle.refresh_token && bundle.expires_at < Date.now() + 60_000) {
-      const refreshed = await refreshAccessToken(bundle);
-      store.saveIntegrationCredential({
-        workspaceId,
-        provider: 'google',
-        credentialKind: 'oauth_bundle',
-        credentialEncrypted: encryptString(JSON.stringify(refreshed), env.encryptionKey),
-        metadata: stored.metadata
       });
       return refreshed.access_token;
     }
@@ -228,9 +194,6 @@ export async function getValidGoogleAccessToken(workspaceId: string): Promise<st
 }
 
 export async function revokeGoogleToken(workspaceId: string): Promise<void> {
-  const env = getRuntimeEnv();
-  const store = getStore();
-  const stored = store.getIntegrationCredential(workspaceId, 'google');
   const local = readSecretRecord('google', 'oauth_bundle', { workspaceId });
 
   if (local) {
@@ -243,14 +206,5 @@ export async function revokeGoogleToken(workspaceId: string): Promise<void> {
       });
     } catch {}
     deleteSecret('google', 'oauth_bundle', { workspaceId });
-  } else if (stored?.status === 'connected' && env.encryptionKey) {
-    try {
-      const bundle: OAuthBundle = JSON.parse(decryptString(stored.credentialEncrypted, env.encryptionKey));
-      const token = bundle.refresh_token || bundle.access_token;
-      await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      });
-    } catch {}
   }
 }

@@ -10,6 +10,7 @@ import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { evaluatePolicy } from '#lib/server/runtime/policy';
 import { SessionContextBuilder } from '#lib/server/runtime/session-context';
+import { outputSummary } from '#lib/server/runtime/tool-output';
 import type {
   ActionContextSnapshot,
   AgentToolResult,
@@ -21,6 +22,7 @@ import type {
   RecurringJobRecord,
   ReviewItem,
   RuntimeEventType,
+  ThreadEvidenceStatus,
   Workspace,
   WorkspaceMemory
 } from '#lib/types';
@@ -29,8 +31,33 @@ function failedToolNames(results: AgentToolResult[]): string[] {
   return results.filter((result) => !result.ok).map((result) => result.name);
 }
 
-function shouldPersistThreadSummary(proposedAction: { type: string; confidence: number }, failedTools: string[]): boolean {
-  return failedTools.length === 0 && proposedAction.type === 'reply' && proposedAction.confidence >= 0.7;
+function evidenceStatusFromToolResults(results: AgentToolResult[]): ThreadEvidenceStatus {
+  const successfulTools = results
+    .filter((result) => result.ok)
+    .map((result) => ({
+      name: result.name,
+      summary: outputSummary(result.output)
+    }));
+  const failedTools = results
+    .filter((result) => !result.ok)
+    .map((result) => ({
+      name: result.name,
+      error: result.error
+    }));
+
+  return {
+    status: failedTools.length === 0 ? 'complete' : successfulTools.length > 0 ? 'partial' : 'none',
+    successfulTools,
+    failedTools,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function shouldPersistThreadSummary(
+  proposedAction: { type: string; confidence: number },
+  evidenceStatus: ThreadEvidenceStatus
+): boolean {
+  return proposedAction.type === 'reply' && proposedAction.confidence >= 0.7 && evidenceStatus.status !== 'none';
 }
 
 function compactSnapshotText(text: string, limit = 1000): string {
@@ -248,6 +275,7 @@ export class Gateway {
     workspace: Workspace;
     session: AutopilotSession;
     workspaceMemory: WorkspaceMemory;
+    evidenceStatus?: ThreadEvidenceStatus;
   }): Promise<ActionContextSnapshot> {
     let messages = input.context.thread.recentMessages;
 
@@ -274,6 +302,7 @@ export class Gateway {
     return {
       summary: input.context.summary ?? input.context.thread.latestMessage,
       continuityCase: input.context.continuityCase,
+      evidenceStatus: input.evidenceStatus,
       thread: {
         channelId: input.task.thread.channelId,
         threadTs: input.task.thread.threadTs,
@@ -406,16 +435,18 @@ export class Gateway {
       nextHeartbeatAt: proposedAction.followUpAt
     });
 
+    const evidenceStatus = evidenceStatusFromToolResults(runResult.toolResults);
     const failedTools = failedToolNames(runResult.toolResults);
     const contextSnapshot = await this.buildActionContextSnapshot({
       context,
       task,
       workspace,
       session,
-      workspaceMemory
+      workspaceMemory,
+      evidenceStatus
     });
-    const persistThreadSummary = shouldPersistThreadSummary(proposedAction, failedTools);
-    await this.tools.execute<
+    const persistThreadSummary = shouldPersistThreadSummary(proposedAction, evidenceStatus);
+    const threadMemory = await this.tools.execute<
       {
         workspaceId: string;
         channelId: string;
@@ -423,8 +454,9 @@ export class Gateway {
         targetUserId?: string;
         summary?: string;
         openQuestions?: string[];
+        evidenceStatus?: ThreadEvidenceStatus;
       },
-      unknown
+      ContextAssembly['memory']['thread']
     >(
       'memory.thread.write',
       {
@@ -433,7 +465,8 @@ export class Gateway {
         threadTs: task.thread.threadTs,
         targetUserId: task.targetUserId,
         summary: persistThreadSummary ? context.summary : undefined,
-        openQuestions: context.unresolvedQuestions
+        openQuestions: context.unresolvedQuestions,
+        evidenceStatus
       },
       { workspace, session, task, workspaceMemory }
     );
@@ -441,19 +474,23 @@ export class Gateway {
     if (persistThreadSummary) {
       await this.tools.execute<{ context: typeof context }, unknown>(
         'memory.thread.write_markdown',
-        { context },
+        { context: { ...context, memory: { ...context.memory, thread: threadMemory } } },
         { workspace, session, task, workspaceMemory }
       );
       toolsUsed.push('memory.thread.write_markdown');
       this.emitRunEvent(run.id, 'agent.memory.written', {
-        tools: ['memory.thread.write', 'memory.thread.write_markdown']
+        tools: ['memory.thread.write', 'memory.thread.write_markdown'],
+        evidenceStatus: evidenceStatus.status,
+        successfulTools: evidenceStatus.successfulTools.map((tool) => tool.name),
+        failedTools
       });
     } else {
       this.emitRunEvent(run.id, 'agent.memory.skipped', {
-        reason: failedTools.length > 0
-          ? 'Tool failures make the draft unsafe to persist as thread summary.'
+        reason: evidenceStatus.status === 'none'
+          ? 'No successful grounding tools were available for a durable factual summary.'
           : 'Only high-confidence replies are persisted as durable thread summaries.',
         failedTools,
+        evidenceStatus: evidenceStatus.status,
         skipped: ['summary', 'markdown']
       });
     }

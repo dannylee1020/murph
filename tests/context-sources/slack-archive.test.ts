@@ -1,9 +1,13 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('SlackService searchMessages', () => {
   beforeEach(() => {
     vi.resetModules();
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
+    process.env.MURPH_CREDENTIALS_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-search-')), '.credentials');
   });
 
   it('searches Slack messages and normalizes thread retrieval results', async () => {
@@ -35,6 +39,7 @@ describe('SlackService searchMessages', () => {
     const { encryptString } = await import('#lib/server/util/crypto');
     const { getStore } = await import('#lib/server/persistence/store');
     const { getSlackService } = await import('#lib/server/channels/slack/service');
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
     const store = getStore();
     const workspace = store.saveInstall({
       provider: 'slack',
@@ -43,9 +48,14 @@ describe('SlackService searchMessages', () => {
       botTokenEncrypted: encryptString('xoxb-test-token', 'test-key'),
       botUserId: 'UBOT'
     });
+    writeSecret('slack', 'user_search_token', 'xoxp-search-token', {
+      workspaceId: workspace.id,
+      externalWorkspaceId: workspace.externalWorkspaceId
+    });
 
     const slack = getSlackService();
     const results = await slack.searchMessages(workspace, 'launch timing', 3);
+    expect(fetchMock.mock.calls[0][1]?.headers.authorization).toBe('Bearer xoxp-search-token');
 
     expect(results).toEqual([
       {

@@ -208,9 +208,10 @@ describe('Gateway session-first policy', () => {
 
     const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222');
     expect(memory.summary).toBe('Owner was asked to confirm status.');
+    expect(memory.evidenceStatus?.status).toBe('complete');
   });
 
-  it('does not persist thread summary when tool calls failed', async () => {
+  it('does not persist thread summary when all tool calls failed', async () => {
     const { gateway, store, workspace } = await setup({
       toolResults: [{
         id: 'call-1',
@@ -228,6 +229,38 @@ describe('Gateway session-first policy', () => {
     const events = store.listAgentRunEvents(runs[0].id);
     expect(events.some((event) => event.type === 'agent.memory.skipped')).toBe(true);
     expect(events.some((event) => event.type === 'agent.memory.written')).toBe(false);
+  });
+
+  it('persists thread summary with partial evidence when at least one tool succeeds', async () => {
+    const { gateway, store, workspace } = await setup({
+      toolResults: [
+        {
+          id: 'call-1',
+          name: 'notion.search',
+          ok: true,
+          output: { results: [{ title: 'Launch plan' }] }
+        },
+        {
+          id: 'call-2',
+          name: 'slack.search',
+          ok: false,
+          error: 'not_allowed_token_type'
+        }
+      ]
+    });
+
+    await gateway.handleTask(task());
+
+    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222');
+    expect(memory.summary).toBe('Owner was asked to confirm status.');
+    expect(memory.evidenceStatus).toMatchObject({
+      status: 'partial',
+      successfulTools: [expect.objectContaining({ name: 'notion.search' })],
+      failedTools: [expect.objectContaining({ name: 'slack.search', error: 'not_allowed_token_type' })]
+    });
+    const runs = store.listAgentRuns(undefined, 1);
+    const events = store.listAgentRunEvents(runs[0].id);
+    expect(events.some((event) => event.type === 'agent.memory.written')).toBe(true);
   });
 
   it('persists unresolved questions but not summary for ask actions', async () => {

@@ -272,6 +272,7 @@ export function registerBuiltInTools(): void {
           targetUserId?: string;
           summary?: string;
           openQuestions?: string[];
+          evidenceStatus?: any;
         },
         context
       ) {
@@ -281,7 +282,8 @@ export function registerBuiltInTools(): void {
           input.threadTs,
           input.targetUserId,
           input.summary,
-          input.openQuestions ?? []
+          input.openQuestions ?? [],
+          input.evidenceStatus
         );
         return next;
       }

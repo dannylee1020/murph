@@ -18,7 +18,7 @@ Use Murph for Discord when your team or community needs coverage during offline 
 
 ## How it works
 
-Configure Discord through setup, then start Murph locally:
+Configure Discord through setup, then start Murph locally. Discord bot secrets are stored in `~/.murph/.credentials`; SQLite keeps workspace metadata only.
 
 ```bash
 murph setup

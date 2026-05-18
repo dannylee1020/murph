@@ -18,7 +18,7 @@ Use Murph for Slack when you want an async handoff agent that stays under your c
 
 ## How it works
 
-Murph uses Slack Socket Mode by default, so local development does not require a public Events URL. During setup, Murph asks for Slack credentials, stores secrets in `~/.murph/.credentials`, guides workspace installation, and lets you choose watched channels.
+Murph uses Slack Socket Mode by default, so local development does not require a public Events URL. During setup, Murph asks for Slack credentials, stores bot and user-search tokens in `~/.murph/.credentials`, guides workspace installation, and lets you choose watched channels. Reconnect Slack after adding new scopes so Murph can store a fresh user-search token.
 
 ```bash
 murph setup slack

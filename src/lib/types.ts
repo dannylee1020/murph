@@ -216,6 +216,20 @@ export interface ThreadMemory {
     openQuestions: string[];
     blockerNotes: string[];
     lastResolvedAt?: string;
+    evidenceStatus?: ThreadEvidenceStatus;
+}
+
+export interface ThreadEvidenceStatus {
+    status: 'complete' | 'partial' | 'none';
+    successfulTools: Array<{
+        name: string;
+        summary?: Record<string, unknown>;
+    }>;
+    failedTools: Array<{
+        name: string;
+        error?: string;
+    }>;
+    updatedAt: string;
 }
 
 export interface FeedbackRecord {
@@ -427,6 +441,7 @@ export interface ReviewItem {
 export interface ActionContextSnapshot {
     summary: string;
     continuityCase: ContinuityCase;
+    evidenceStatus?: ThreadEvidenceStatus;
     thread: {
         channelId: string;
         threadTs: string;

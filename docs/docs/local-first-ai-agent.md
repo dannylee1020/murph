@@ -17,6 +17,8 @@ Murph keeps the core handoff workflow close to your environment:
 - explicit provider keys for OpenAI or Anthropic
 - policy-controlled autonomy for sending, queuing, or skipping replies
 
+Credentials are stored with `0600` owner-only permissions and are not uploaded to Murph servers. They are used locally to call the providers you connect.
+
 This makes Murph a fit for founders, operators, developers, and small teams that want async automation without handing every workflow to a hosted agent.
 
 ## Handoff workflow
