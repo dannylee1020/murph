@@ -50,5 +50,5 @@ Use `murph status` to check whether the background process is running.
 ## Next
 
 - [Configuration](/docs/configuration): understand provider keys, storage, policy profiles, and local health.
-- [CLI & Agent](/docs/cli-agent): use `murph` and `murph agent` for setup, status, and plugin work.
+- [Usage](/docs/usage): use `murph`, the browser UI, and `murph agent` for setup, status, sessions, and plugin work.
 - [Channels](/docs/channels): connect Slack or Discord and verify the messenger runtime.

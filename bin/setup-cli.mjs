@@ -12,7 +12,7 @@ const murphUrl = process.env.MURPH_URL || `http://localhost:${process.env.MURPH_
 const murphHome = process.env.MURPH_HOME || path.join(homedir(), '.murph');
 const credentialsPath = process.env.MURPH_CREDENTIALS_PATH || path.join(murphHome, '.credentials');
 const configPath = process.env.MURPH_CONFIG_PATH || path.join(murphHome, 'config.yaml');
-const slackManifestPath = path.join(appDir, 'docs', 'public', 'slack-socket-mode-manifest.yml');
+const slackManifestPath = path.join(appDir, 'docs', 'public', 'slack-manifest.yaml');
 const slackApiBase = process.env.MURPH_SLACK_API_BASE || 'https://slack.com/api';
 const rl = readline.createInterface({ input, output });
 
@@ -763,7 +763,7 @@ async function promptManualSlackConfig() {
   if (options.nonInteractive) {
     fail('Missing Slack app settings. Set SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET.');
   }
-  info('Use docs/public/slack-socket-mode-manifest.yml and this redirect URL:');
+  info('Use docs/public/slack-manifest.yaml and this redirect URL:');
   callout('Redirect URL', slackRedirectUrl());
   const values = { SLACK_EVENTS_MODE: 'socket' };
   if (!readSetupValue('SLACK_APP_TOKEN')) {

@@ -58,18 +58,48 @@ export default defineConfig({
           text: 'Operate',
           items: [
             { text: 'Configuration', link: '/docs/configuration' },
-            { text: 'CLI & Agent', link: '/docs/cli-agent' },
             { text: 'Core Concepts', link: '/docs/core-concepts' },
-            { text: 'Channels', link: '/docs/channels' },
             { text: 'Integrations', link: '/docs/integrations' },
             { text: 'Contributing', link: '/docs/contributing' }
           ]
         },
         {
+          text: 'Usage',
+          items: [
+            { text: 'Overview', link: '/docs/usage' },
+            { text: 'Murph Agent', link: '/docs/usage/murph-agent' },
+            { text: 'Browser UI', link: '/docs/usage/browser-ui' },
+            { text: 'CLI', link: '/docs/usage/cli' },
+            { text: 'Best Practices', link: '/docs/usage/best-practices' }
+          ]
+        },
+        {
+          text: 'Plugins',
+          items: [
+            { text: 'Overview', link: '/docs/plugins' },
+            { text: 'Package Structure', link: '/docs/plugins/package-structure' },
+            { text: 'Skills', link: '/docs/plugins/skills' },
+            { text: 'Connectors', link: '/docs/plugins/connectors' },
+            { text: 'Tools', link: '/docs/plugins/tools' },
+            { text: 'Create a Plugin', link: '/docs/plugins/create' },
+            { text: 'Reload Plugins', link: '/docs/plugins/reload' },
+            { text: 'Plugin Status', link: '/docs/plugins/status' }
+          ]
+        },
+        {
+          text: 'Channels',
+          items: [
+            { text: 'Overview', link: '/docs/channels' },
+            { text: 'Setup Flow', link: '/docs/channels/setup-flow' },
+            { text: 'Watched Channels', link: '/docs/channels/watched-channels' },
+            { text: 'Slack', link: '/docs/channels/slack' },
+            { text: 'Discord', link: '/docs/channels/discord' },
+            { text: 'Troubleshooting', link: '/docs/channels/troubleshooting' }
+          ]
+        },
+        {
           text: 'Guides',
           items: [
-            { text: 'Slack Agent', link: '/docs/slack-agent' },
-            { text: 'Discord Agent', link: '/docs/discord-agent' },
             { text: 'Local-first AI Agent', link: '/docs/local-first-ai-agent' },
             { text: 'Web Search', link: '/docs/web-search' }
           ]

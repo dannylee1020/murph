@@ -20,7 +20,7 @@ describe('murph agent CLI plugin scaffold', () => {
     delete process.env.MURPH_HOME;
   });
 
-  it('scaffolds searchable integration adapters with retrieval metadata', async () => {
+  it('scaffolds searchable connectors with retrieval metadata', async () => {
     const home = mkdtempSync(join(tmpdir(), 'murph-agent-cli-'));
     mkdirSync(join(home, 'plugins'), { recursive: true });
     const { scaffoldPlugin } = await loadAgentCli(home);

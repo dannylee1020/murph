@@ -37,23 +37,6 @@ Murph enables capabilities when an integration is connected, so the model can us
 
 The shipped providers are just defaults. Murph's integration model is meant to grow: a new web search provider, self-hosted search service, or richer fetch/extraction backend can be added behind the existing tool shape instead of changing how the runtime asks for web context.
 
-## Scoped plugins
+## Custom integrations
 
-Murph Agent can create scoped plugins under `~/.murph/plugins/<id>`.
-
-A scoped plugin can contribute:
-
-- skills
-- read-only integration adapters
-
-Scoped plugins are the preferred way to add local/custom integrations without editing Murph core source.
-
-Searchable adapters should expose a read-only `{ query, limit }` search tool with `retrievalEligible: true` and a `retrieval.profile` such as `title_keywords`, `work_item`, `code_review`, `email_thread`, `team_discussion`, or `generic`. This lets Murph normalize vague user requests without requiring core source edits for every new integration.
-
-Use the agent when building a new integration:
-
-```bash
-murph agent
-```
-
-Then ask it to create or update a scoped plugin.
+Use [Plugins](/docs/plugins) when you want to add a local or custom integration without editing Murph core source.

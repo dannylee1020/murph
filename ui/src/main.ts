@@ -1327,7 +1327,7 @@ async function renderSetup(): Promise<void> {
     stepContent = `
       <div class="wizard-step">
         <h1>Create the Slack app</h1>
-        <p>Use the manifest at <code>docs/slack-socket-mode-manifest.yml</code>, enable Socket Mode, and confirm Slack lists <code>http://localhost:5173/api/slack/oauth/callback</code> under Redirect URLs.</p>
+        <p>Use the manifest at <code>/slack-manifest.yaml</code>, enable Socket Mode, and confirm Slack lists <code>http://localhost:5173/api/slack/oauth/callback</code> under Redirect URLs.</p>
         ${setup.slack.socketConfigured && setup.slack.oauthConfigured
           ? `<div class="setup-success">Slack app config is ready</div>`
           : `<form class="form" id="slack-config-form">

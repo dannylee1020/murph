@@ -5,39 +5,29 @@ description: Connect messaging surfaces that Murph can watch.
 
 # Channels
 
-Channels are the messaging surfaces Murph watches while you are offline.
+Channels are messaging surfaces that Murph can watch during a bounded handoff session.
 
 ## Supported channels
 
 - Slack
 - Discord
 
-## Slack
+## Setup flow
 
-Murph uses Slack Socket Mode by default. This avoids exposing a public Events URL during local development.
-
-The Slack app manifest is available at:
-
-```text
-/slack-socket-mode-manifest.yml
-```
-
-During setup, Murph creates the Slack app from the manifest and saves local credentials. Secrets are stored in `~/.murph/.credentials`, and non-secret app and workspace metadata is stored in `~/.murph/config.yaml`.
-
-```bash
-murph setup slack
-```
-
-The OAuth redirect URL is:
-
-```text
-http://localhost:5173/api/slack/oauth/callback
-```
-
-## Discord
-
-Discord support uses the same channel-adapter model as Slack. Configure it through setup and keep credentials in `~/.murph/.credentials`.
+Use [Setup Flow](/docs/channels/setup-flow) to connect a channel and save local defaults.
 
 ## Watched channels
 
-Murph only watches the channels you select for a session. Use setup to choose defaults, then start a session when you want an offline handoff.
+Use [Watched Channels](/docs/channels/watched-channels) to decide whether Murph watches selected channels or all accessible channels.
+
+## Slack
+
+Use [Slack](/docs/channels/slack) for Socket Mode setup, OAuth, channel membership, and reconnect notes.
+
+## Discord
+
+Use [Discord](/docs/channels/discord) for Discord bot setup and current runtime expectations.
+
+## Troubleshooting
+
+Use [Troubleshooting](/docs/channels/troubleshooting) when setup checks, reconnects, scopes, or channel access fail.

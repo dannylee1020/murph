@@ -23,7 +23,7 @@ const manifest = [
 function createAppDir(): string {
   const appDir = mkdtempSync(path.join(tmpdir(), 'murph-setup-cli-'));
   mkdirSync(path.join(appDir, 'docs/public'), { recursive: true });
-  writeFileSync(path.join(appDir, 'docs/public/slack-socket-mode-manifest.yml'), manifest);
+  writeFileSync(path.join(appDir, 'docs/public/slack-manifest.yaml'), manifest);
   return appDir;
 }
 
