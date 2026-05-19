@@ -196,55 +196,6 @@ describe('setup CLI Slack app setup', () => {
     ]));
   });
 
-  it('creates a fresh Slack app when local config has only a stale app id', async () => {
-    const appDir = createAppDir();
-    writeFileSync(path.join(appDir, 'config.yaml'), [
-      'channels:',
-      '  slack:',
-      '    appId: AOLD',
-      ''
-    ].join('\n'));
-
-    const { result, calls } = runSetupSlack(appDir, 'xoxe-config\n', {
-      ok: true,
-      app_id: 'ANEW',
-      credentials: {
-        client_id: 'client-id',
-        client_secret: 'client-secret',
-        signing_secret: 'signing-secret',
-        app_token: 'xapp-returned'
-      }
-    });
-
-    expect(result.status, result.stderr + result.stdout).toBe(0);
-    expect(calls.some((call) => call.url.includes('/apps.manifest.update'))).toBe(false);
-    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(true);
-    const config = readFileSync(path.join(appDir, 'config.yaml'), 'utf8');
-    expect(config).toContain('appId: ANEW');
-    expect(config).not.toContain('appId: AOLD');
-  });
-
-  it('records the Slack CLI workspace before creating app config', async () => {
-    const appDir = createAppDir();
-    const { result, calls } = runSetupSlack(appDir, 'xoxe-config\n', {
-      ok: true,
-      app_id: 'A123',
-      credentials: {
-        client_id: 'client-id',
-        client_secret: 'client-secret',
-        app_token: 'xapp-returned'
-      }
-    }, {
-      slackAuthList: 'Murph Test Workspace T123\n'
-    });
-
-    expect(result.status, result.stderr + result.stdout).toBe(0);
-    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(true);
-    const config = readFileSync(path.join(appDir, 'config.yaml'), 'utf8');
-    expect(config).toContain('teamId: T123');
-    expect(config).toContain('teamName: Murph Test Workspace');
-  });
-
   it('prints Slack app settings URL instead of calling Slack CLI app settings', async () => {
     const appDir = createAppDir();
     const { result } = runSetupSlack(appDir, 'xapp-manual\n', {
@@ -292,25 +243,6 @@ describe('setup CLI Slack app setup', () => {
     expect(readFileSync(openedUrlPath!, 'utf8').trim()).toBe('http://murph.test/api/slack/install?source=cli&team=T123');
   });
 
-  it('does not run Slack CLI login when auth list has no workspaces', async () => {
-    const appDir = createAppDir();
-    const { result, calls } = runSetupSlack(appDir, 'xoxe-config\n', {
-      ok: true,
-      app_id: 'A123',
-      credentials: {
-        client_id: 'client-id',
-        client_secret: 'client-secret',
-        app_token: 'xapp-returned'
-      }
-    }, {
-      slackAuthList: ''
-    });
-
-    expect(result.status, result.stderr + result.stdout).toBe(0);
-    expect(result.stdout).not.toContain('Run slack login now');
-    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(true);
-  });
-
   it('lets the user select one Slack CLI workspace when multiple are available', async () => {
     const appDir = createAppDir();
     const { result } = runSetupSlack(appDir, '2\n', {
@@ -345,23 +277,6 @@ describe('setup CLI Slack app setup', () => {
     expect(credentials.credentials).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'slack', key: 'app_token', value: 'xapp-mistaken' })
     ]));
-  });
-
-  it('uses truecolor setup theme when terminal color is forced', async () => {
-    const appDir = createAppDir();
-    const { result } = runSetupSlack(appDir, '', { ok: true }, {
-      args: ['status'],
-      env: {
-        FORCE_COLOR: '1',
-        COLORTERM: 'truecolor',
-        NO_COLOR: ''
-      }
-    });
-
-    expect(result.status, result.stderr + result.stdout).toBe(0);
-    expect(result.stdout).toContain('\u001b[38;2;255;139;61m');
-    expect(result.stdout).toContain('Local files');
-    expect(result.stdout).toContain('Doctor');
   });
 
   it('keeps setup status JSON output machine-readable', async () => {

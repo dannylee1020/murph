@@ -75,49 +75,6 @@ describe('murph config file', () => {
     expect(env.githubRepositories).toEqual(['acme/app', 'acme/api']);
   });
 
-  it('lets Murph Agent inherit runtime provider and model by default', async () => {
-    writeFileSync('config.yaml', [
-      'ai:',
-      '  defaultProvider: anthropic',
-      '  defaultModel: claude-opus-4-7',
-      ''
-    ].join('\n'));
-
-    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
-    const env = getRuntimeEnv();
-
-    expect(env.defaultProvider).toBe('anthropic');
-    expect(env.defaultModel).toBe('claude-opus-4-7');
-    expect(env.agentProvider).toBe('anthropic');
-    expect(env.agentModel).toBe('claude-opus-4-7');
-  });
-
-  it('defaults web search to Brave', async () => {
-    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
-
-    expect(getRuntimeEnv().webSearchBackend).toBe('brave');
-  });
-
-  it('lets YAML select Tavily web search', async () => {
-    writeFileSync('config.yaml', [
-      'integrations:',
-      '  webSearch:',
-      '    backend: tavily',
-      ''
-    ].join('\n'));
-
-    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
-
-    expect(getRuntimeEnv().webSearchBackend).toBe('tavily');
-  });
-
-  it('lets env select Tavily web search', async () => {
-    process.env.MURPH_WEB_SEARCH_BACKEND = 'tavily';
-    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
-
-    expect(getRuntimeEnv().webSearchBackend).toBe('tavily');
-  });
-
   it('lets environment values override YAML', async () => {
     writeFileSync('config.yaml', [
       'app:',

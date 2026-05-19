@@ -37,6 +37,12 @@ describe('sqlite schema cleanup', () => {
       '001_create_current_schema',
       '002_simplify_local_first_schema'
     ]);
+    const { runMigrations } = await import('#lib/server/persistence/migrator');
+    runMigrations(db, sqlitePath);
+    expect(migrationIds(db)).toEqual([
+      '001_create_current_schema',
+      '002_simplify_local_first_schema'
+    ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(false);
   });
 
@@ -179,22 +185,6 @@ describe('sqlite schema cleanup', () => {
     ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(true);
     (migrated as unknown as { close?: () => void }).close?.();
-  });
-
-  it('does not re-run already recorded migrations', async () => {
-    vi.resetModules();
-    const sqlitePath = join(mkdtempSync(join(tmpdir(), 'murph-schema-idempotent-')), 'murph.sqlite');
-    process.env.MURPH_SQLITE_PATH = sqlitePath;
-
-    const { getDb } = await import('#lib/server/persistence/db');
-    const { runMigrations } = await import('#lib/server/persistence/migrator');
-    const db = getDb();
-    const firstRows = migrationIds(db);
-
-    runMigrations(db, sqlitePath);
-
-    expect(migrationIds(db)).toEqual(firstRows);
-    expect((db.prepare(`SELECT COUNT(*) AS count FROM schema_migrations`).get() as { count: number }).count).toBe(2);
   });
 
   it('rolls back failed migrations without recording them', async () => {

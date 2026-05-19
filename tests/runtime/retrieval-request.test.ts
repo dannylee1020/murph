@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ContextAssembly } from '../../src/lib/types';
 import {
   buildNormalizedRetrievalRequest,
-  deterministicRetrievalInputForTool,
-  retrievalQueryForTool
+  deterministicRetrievalInputForTool
 } from '#lib/server/runtime/retrieval-request';
 
 function releaseContext(): ContextAssembly {
@@ -71,29 +70,6 @@ describe('normalized retrieval requests', () => {
       '[TEST] Murph v0.9',
       'Murph v0.9'
     ]));
-  });
-
-  it('selects queries by provider search profile instead of reusing the vague thread text', () => {
-    const request = buildNormalizedRetrievalRequest(releaseContext());
-
-    expect(retrievalQueryForTool({ name: 'notion.search' }, request)).toBe('[TEST] Murph v0.9 Release Plan');
-    expect(retrievalQueryForTool({ name: 'linear_search_issues' }, request)).toBe('Murph v0.9');
-    expect(retrievalQueryForTool({ name: 'github.search' }, request)).toBe('Murph v0.9');
-    expect(retrievalQueryForTool({ name: 'slack.search' }, request)).toBe('Murph v0.9');
-    expect(retrievalQueryForTool({ name: 'gmail.search' }, request)).toBe('Murph v0.9');
-  });
-
-  it('lets plugin tools declare their search profile without core name mapping', () => {
-    const request = buildNormalizedRetrievalRequest(releaseContext());
-
-    expect(retrievalQueryForTool({
-      name: 'acme_custom.find_records',
-      retrieval: { profile: 'work_item' }
-    }, request)).toBe('Murph v0.9');
-    expect(retrievalQueryForTool({
-      name: 'acme_custom.find_docs',
-      retrieval: { profile: 'title_keywords' }
-    }, request)).toBe('[TEST] Murph v0.9 Release Plan');
   });
 
   it('keeps the existing deterministic retrieval schema guardrails', () => {

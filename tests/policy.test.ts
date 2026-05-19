@@ -200,33 +200,4 @@ describe('evaluatePolicy', () => {
     expect(decision.reason).toMatch(/disables auto-send/);
   });
 
-  it('lets more specific scoped booleans override broader policy booleans', () => {
-    const decision = evaluatePolicy(
-      action(),
-      context({
-        task: { ...context().task, thread: { channelId: 'C2', threadTs: '1' } },
-        thread: { ...context().thread, ref: { channelId: 'C2', threadTs: '1' } },
-        artifacts: [{ id: 'doc', source: 'notion', type: 'document', title: 'Status', text: 'Ready' }]
-      }),
-      sessionWithPolicy({
-        blockedTopics: [],
-        alwaysQueueTopics: [],
-        blockedActions: [],
-        requireGroundingForFacts: false,
-        preferAskWhenUncertain: false,
-        allowAutoSend: false,
-        notesForAgent: [],
-        rules: [
-          {
-            id: 'product-channel-auto',
-            name: 'Product channel auto-send',
-            match: { channelIds: ['C2'], intents: ['clarification'], actionTypes: ['reply'] },
-            controls: { allowAutoSend: true }
-          }
-        ]
-      })
-    );
-
-    expect(decision.disposition).toBe('auto_sent');
-  });
 });

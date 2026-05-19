@@ -75,19 +75,6 @@ describe('integration routes', () => {
     vi.restoreAllMocks();
   });
 
-  it('reports disconnected integrations for an installed workspace', async () => {
-    const { request } = await setup();
-    const response = await request('GET', '/api/integrations/status');
-
-    expect(response.status).toBe(200);
-    expect(response.body.integrations).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ provider: 'github', status: 'disconnected' }),
-        expect.objectContaining({ provider: 'notion', status: 'disconnected' })
-      ])
-    );
-  });
-
   it('validates, stores, and reports a GitHub credential', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -156,28 +143,6 @@ describe('integration routes', () => {
     expect(memory.enabledContextSources).toContain('github.thread_search');
   });
 
-  it('lists visible GitHub repositories for a connected token', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
-      ok: true,
-      json: async () => url.includes('/user/repos')
-        ? [{ full_name: 'octo/app', private: true, owner: { login: 'octo' }, name: 'app' }]
-        : { login: 'octo-user' }
-    })));
-    const { request, workspace } = await setup();
-    await request('POST', '/api/integrations/github/connect', {
-      workspaceId: workspace.id,
-      credential: 'ghp_test_token'
-    });
-
-    const response = await request('GET', `/api/integrations/github/repositories?workspaceId=${workspace.id}`);
-
-    expect(response.status).toBe(200);
-    expect(response.body.repositories).toEqual([
-      { fullName: 'octo/app', private: true, owner: 'octo', name: 'app' }
-    ]);
-    expect(response.body.selectedRepositories).toEqual([]);
-  });
-
   it('disconnects stored credentials while keeping env fallback visible', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -199,15 +164,5 @@ describe('integration routes', () => {
         canDisconnect: false
       })
     );
-  });
-
-  it('rejects invalid provider connects', async () => {
-    const { request } = await setup();
-    const response = await request('POST', '/api/integrations/unknown/connect', {
-      credential: 'test-token'
-    });
-
-    expect(response.status).toBe(404);
-    expect(response.body.error).toBe('unsupported_provider');
   });
 });

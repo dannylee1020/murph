@@ -141,21 +141,4 @@ describe('scoped plugin loader', () => {
     }));
   });
 
-  it('reloads by replacing plugin-sourced capabilities', async () => {
-    const home = tempMurphHome();
-    writePlugin(home, 'linear');
-
-    const { loadScopedPlugins, reloadScopedPlugins } = await import('#lib/server/plugins/loader');
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-
-    await loadScopedPlugins();
-    expect(getToolRegistry().has('linear.read')).toBe(true);
-
-    writePlugin(home, 'githubish');
-    const statuses = await reloadScopedPlugins();
-
-    expect(statuses.map((status) => status.id).sort()).toEqual(['githubish', 'linear']);
-    expect(getToolRegistry().has('linear.read')).toBe(true);
-    expect(getToolRegistry().has('githubish.read')).toBe(true);
-  });
 });

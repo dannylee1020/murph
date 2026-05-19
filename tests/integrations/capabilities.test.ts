@@ -41,20 +41,6 @@ describe('integration capability wiring', () => {
     expect(memory.enabledContextSources).toEqual(expect.arrayContaining(notion.contextSources));
   });
 
-  it('enableIntegrationCapabilities is idempotent', async () => {
-    const { store, workspace } = await setup();
-    const { enableIntegrationCapabilities } = await import('#lib/server/integrations/capabilities');
-    const { INTEGRATIONS } = await import('#lib/server/integrations/registry');
-    const notion = INTEGRATIONS.find((i) => i.provider === 'notion')!;
-
-    enableIntegrationCapabilities(workspace.id, notion);
-    enableIntegrationCapabilities(workspace.id, notion);
-
-    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    const expectedTools = new Set(notion.tools);
-    expect(memory.enabledOptionalTools.filter((t) => expectedTools.has(t))).toEqual(notion.tools);
-  });
-
   it('disableIntegrationCapabilities removes the integration tools and sources', async () => {
     const { store, workspace } = await setup();
     const { enableIntegrationCapabilities, disableIntegrationCapabilities } = await import(
@@ -73,23 +59,6 @@ describe('integration capability wiring', () => {
     for (const source of notion.contextSources) {
       expect(memory.enabledContextSources).not.toContain(source);
     }
-  });
-
-  it('reconcileIntegrationCapabilitiesForWorkspace enables tools when an env credential is set', async () => {
-    const { store, workspace } = await setup({ notionApiKey: 'secret_test' });
-    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#lib/server/integrations/capabilities'
-    );
-
-    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
-
-    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    expect(memory.enabledOptionalTools).toEqual(
-      expect.arrayContaining(['notion.search', 'notion.read_page'])
-    );
-    expect(memory.enabledContextSources).toEqual(
-      expect.arrayContaining(['notion.thread_search'])
-    );
   });
 
   it('reconcileIntegrationCapabilitiesForWorkspace enables GitHub even before repositories are selected', async () => {

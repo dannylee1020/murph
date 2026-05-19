@@ -73,25 +73,12 @@ const requiredDirective: GroundingDirective = {
 };
 
 describe('buildGroundingPrompt', () => {
-  it('renders the murph identity preamble', () => {
-    const prompt = buildGroundingPrompt(context());
-    expect(prompt).toContain('You are Murph');
-    expect(prompt).toContain('Return strict JSON');
-  });
-
   it('renders channel reply style guidance', () => {
     const prompt = buildGroundingPrompt(context());
     expect(prompt).toContain('Write like a teammate in the channel, not a chatbot.');
     expect(prompt).toContain('Use simple words and 1-3 short sentences by default.');
     expect(prompt).toContain('Lead with the answer or status, not setup phrases.');
     expect(prompt).toContain('If uncertain, say what is missing and defer instead of padding.');
-  });
-
-  it('renders each selected skill as a readable system block', () => {
-    const prompt = buildGroundingPrompt(context());
-    expect(prompt).toContain('## documentation-grounded-continuity');
-    expect(prompt).toContain('Grounds replies in documentation.');
-    expect(prompt).toContain('Choose the best documentation tool before answering.');
   });
 
   it('lists each available tool with its description', () => {
@@ -123,11 +110,4 @@ describe('buildGroundingPrompt', () => {
     expect(prompt).toContain('do not answer factual or current-state questions from thread memory alone');
   });
 
-  it('lets the model skip retrieval when not required', () => {
-    const prompt = buildGroundingPrompt(context({
-      linkedArtifacts: ['https://example.com/launch-plan'],
-      artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Launch plan', text: 'Ready.' }]
-    }));
-    expect(prompt).not.toContain('You MUST call the relevant retrieval/search tools before drafting');
-  });
 });

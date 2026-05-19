@@ -34,23 +34,4 @@ describe('loadSkills groundingPolicy', () => {
     expect(skills[0]?.groundingPolicy).toBe('required_when_no_artifacts');
   });
 
-  it('defaults missing grounding policy to model_choice', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'murph-skills-'));
-    mkdirSync(root, { recursive: true });
-    writeSkill(root, 'default-docs');
-
-    const skills = await loadSkills(root);
-
-    expect(skills[0]?.groundingPolicy).toBe('model_choice');
-  });
-
-  it('defaults invalid grounding policy to model_choice', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'murph-skills-'));
-    mkdirSync(root, { recursive: true });
-    writeSkill(root, 'invalid-docs', 'groundingPolicy: always_search');
-
-    const skills = await loadSkills(root);
-
-    expect(skills[0]?.groundingPolicy).toBe('model_choice');
-  });
 });

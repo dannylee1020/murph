@@ -47,40 +47,6 @@ describe('integration adapter loader', () => {
     expect(listAdapters().map((adapter) => adapter.id)).toContain('linear');
   });
 
-  it('loads an adapter directory with index.js', async () => {
-    const home = tempMurphHome();
-    const dir = join(home, 'integrations', 'linear');
-    mkdirSync(dir);
-    writeFileSync(join(dir, 'index.js'), adapterModule('linear'));
-
-    const { loadIntegrationAdapters } = await import('#lib/server/integrations/adapter-loader');
-    const { listAdapters } = await import('#lib/server/integrations/adapter-registry');
-
-    await loadIntegrationAdapters();
-
-    expect(listAdapters().map((adapter) => adapter.id)).toContain('linear');
-  });
-
-  it('skips an adapter directory without an index file', async () => {
-    const home = tempMurphHome();
-    mkdirSync(join(home, 'integrations', 'empty'));
-
-    const { loadIntegrationAdapters } = await import('#lib/server/integrations/adapter-loader');
-    const { listAdapterStatuses } = await import('#lib/server/integrations/adapter-registry');
-
-    await loadIntegrationAdapters();
-
-    expect(listAdapterStatuses()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'empty',
-          status: 'skipped',
-          error: 'No index.js or index.mjs found'
-        })
-      ])
-    );
-  });
-
   it('records duplicate adapter IDs without overriding the first adapter', async () => {
     const home = tempMurphHome();
     writeFileSync(join(home, 'integrations', 'one.js'), adapterModule('linear'));

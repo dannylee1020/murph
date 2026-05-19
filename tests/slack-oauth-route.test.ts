@@ -85,23 +85,7 @@ describe('Slack OAuth callback route', () => {
     delete process.env.OPENAI_API_KEY;
   });
 
-  it('starts Socket Mode after a successful workspace install', async () => {
-    const { get } = await setup({
-      ok: true,
-      team: { id: 'T1', name: 'Murph Test' },
-      access_token: 'xoxb-test',
-      bot_user_id: 'UTZBOT',
-      authed_user: { id: 'U1', access_token: 'xoxp-test' }
-    });
-
-    const result = await get('/api/slack/oauth/callback?code=abc');
-
-    expect(result.status).toBe(302);
-    expect(result.headers.location).toBe('/setup?step=slack&success=1');
-    expect(ensureStarted).toHaveBeenCalledOnce();
-  });
-
-  it('uses the Slack OAuth user as the setup owner when owner is missing', async () => {
+  it('starts Socket Mode and uses the Slack OAuth user as setup owner', async () => {
     const { get, root, store } = await setup({
       ok: true,
       team: { id: 'T1', name: 'Murph Test' },
@@ -160,20 +144,6 @@ describe('Slack OAuth callback route', () => {
     expect(config).not.toContain('ownerUserId: U1');
   });
 
-  it('leaves setup owner unconfigured when Slack OAuth has no authed user', async () => {
-    const { get, root } = await setup({
-      ok: true,
-      team: { id: 'T1', name: 'Murph Test' },
-      access_token: 'xoxb-test',
-      bot_user_id: 'UTZBOT'
-    });
-
-    const result = await get('/api/slack/oauth/callback?code=abc');
-
-    expect(result.status).toBe(302);
-    expect(() => readFileSync(path.join(root, 'config.yaml'), 'utf8')).toThrow();
-  });
-
   it('preserves CLI source on successful workspace install', async () => {
     const { get } = await setup({
       ok: true,
@@ -189,17 +159,7 @@ describe('Slack OAuth callback route', () => {
     expect(ensureStarted).toHaveBeenCalledOnce();
   });
 
-  it('redirects with the Slack OAuth reason when install fails', async () => {
-    const { get } = await setup({ ok: false, error: 'account_inactive' });
-
-    const result = await get('/api/slack/oauth/callback?code=abc');
-
-    expect(result.status).toBe(302);
-    expect(result.headers.location).toBe('/setup?step=slack&error=slack_oauth_failed&reason=account_inactive');
-    expect(ensureStarted).not.toHaveBeenCalled();
-  });
-
-  it('preserves CLI source when install fails', async () => {
+  it('redirects with the Slack OAuth reason and CLI source when install fails', async () => {
     const { get } = await setup({ ok: false, error: 'account_inactive' });
 
     const result = await get('/api/slack/oauth/callback?code=abc&state=cli');

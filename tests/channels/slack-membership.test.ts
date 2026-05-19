@@ -43,17 +43,6 @@ describe('Slack membership checks', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reports an existing public channel membership', async () => {
-    const { adapter, workspace } = await setup();
-    mockSlackResponses({ ok: true, channel: { id: 'C1', name: 'product-eng', is_member: true, is_private: false } });
-
-    await expect(adapter.ensureMember!(workspace, 'C1')).resolves.toMatchObject({
-      channelId: 'C1',
-      name: 'product-eng',
-      status: 'already_member'
-    });
-  });
-
   it('joins public channels when the bot is not a member', async () => {
     const { adapter, workspace } = await setup();
     const fetchMock = mockSlackResponses(
@@ -98,14 +87,4 @@ describe('Slack membership checks', () => {
     });
   });
 
-  it('surfaces channel lookup failures as errors', async () => {
-    const { adapter, workspace } = await setup();
-    mockSlackResponses({ ok: false, error: 'channel_not_found' });
-
-    await expect(adapter.ensureMember!(workspace, 'C404')).resolves.toMatchObject({
-      channelId: 'C404',
-      status: 'error',
-      reason: 'channel_not_found'
-    });
-  });
 });

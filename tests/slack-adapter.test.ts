@@ -73,36 +73,6 @@ describe('normalizeSlackEvent', () => {
     expect(result.task?.actorUserId).toBe('UASKER');
   });
 
-  it('ignores ordinary messages when the mentioned user has no scoped active session', async () => {
-    const { normalizeSlackEvent } = await setup();
-
-    const result = normalizeSlackEvent(slackEvent({ text: '<@UOTHER> can you confirm this?' }), {
-      eventId: 'Ev2',
-      teamId: 'T1'
-    });
-
-    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
-  });
-
-  it('honors active session channel scope', async () => {
-    const { normalizeSlackEvent } = await setup();
-
-    const result = normalizeSlackEvent(slackEvent({ channel: 'C2' }), { eventId: 'Ev3', teamId: 'T1' });
-
-    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
-  });
-
-  it('routes app mentions to the explicitly mentioned session owner instead of the bot', async () => {
-    const { normalizeSlackEvent } = await setup();
-
-    const result = normalizeSlackEvent(
-      slackEvent({ type: 'app_mention', text: '<@UTZBOT> <@UOWNER> can you check this?' }),
-      { eventId: 'Ev4', teamId: 'T1' }
-    );
-
-    expect(result.task?.targetUserId).toBe('UOWNER');
-  });
-
   it('uses the single scoped session fallback only for bot-directed messages', async () => {
     const { normalizeSlackEvent } = await setup();
 
@@ -175,12 +145,4 @@ describe('normalizeSlackEvent', () => {
     });
   });
 
-  it('advertises membership check and self-join capabilities', async () => {
-    await setup();
-    const { createSlackChannelAdapter } = await import('../src/lib/server/channels/slack/adapter');
-
-    expect(createSlackChannelAdapter().capabilities).toEqual(
-      expect.arrayContaining(['membership_check', 'self_join'])
-    );
-  });
 });

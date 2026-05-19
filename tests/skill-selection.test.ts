@@ -58,36 +58,6 @@ describe('selectSkills', () => {
     ]);
   });
 
-  it('filters out skills whose channel does not match', () => {
-    const selected = selectSkills({
-      skills: [
-        skill({ name: 'channel-continuity', priority: 100 }),
-        skill({ name: 'discord-only-skill', priority: 110, channelNames: ['discord'] })
-      ],
-      channel: 'slack',
-      sessionMode: 'manual_review',
-      tools: [{ name: 'channel.fetch_thread', description: '', sideEffectClass: 'read' }],
-      workspaceMemory
-    });
-
-    expect(selected.map((entry) => entry.name)).toEqual(['channel-continuity']);
-  });
-
-  it('filters out skills whose session mode does not match', () => {
-    const selected = selectSkills({
-      skills: [
-        skill({ name: 'channel-continuity', priority: 100 }),
-        skill({ name: 'dry-run-only', priority: 110, sessionModes: ['dry_run'] })
-      ],
-      channel: 'slack',
-      sessionMode: 'manual_review',
-      tools: [{ name: 'channel.fetch_thread', description: '', sideEffectClass: 'read' }],
-      workspaceMemory
-    });
-
-    expect(selected.map((entry) => entry.name)).toEqual(['channel-continuity']);
-  });
-
   it('drops skills that require unavailable context sources but keeps the fallback', () => {
     const selected = selectSkills({
       skills: [

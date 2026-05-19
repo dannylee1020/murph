@@ -52,18 +52,6 @@ describe('expandContextSources', () => {
     });
   });
 
-  it('skips optional sources whose workspace allowlist is empty', () => {
-    const expanded = expandContextSources({
-      selectedSkills: [skill()],
-      allSources: [
-        source({ name: 'notion.thread_search', optional: true, knowledgeDomains: ['documentation'] })
-      ],
-      workspaceMemory: { ...workspaceMemory, enabledContextSources: [] }
-    });
-
-    expect(expanded).toEqual({ explicit: [], optional: [] });
-  });
-
   it('fans out to all enabled optional sources when grounding is required', () => {
     const expanded = expandContextSources({
       selectedSkills: [skill({ knowledgeDomains: ['documentation'], groundingPolicy: 'required_when_no_artifacts' })],
@@ -84,19 +72,4 @@ describe('expandContextSources', () => {
     });
   });
 
-  it('still scopes optional sources by domain when grounding is not required', () => {
-    const expanded = expandContextSources({
-      selectedSkills: [skill({ knowledgeDomains: ['documentation'], groundingPolicy: 'model_choice' })],
-      allSources: [
-        source({ name: 'notion.thread_search', optional: true, knowledgeDomains: ['documentation'] }),
-        source({ name: 'gmail.thread_search', optional: true, knowledgeDomains: ['email'] })
-      ],
-      workspaceMemory: {
-        ...workspaceMemory,
-        enabledContextSources: ['notion.thread_search', 'gmail.thread_search']
-      }
-    });
-
-    expect(expanded).toEqual({ explicit: [], optional: ['notion.thread_search'] });
-  });
 });

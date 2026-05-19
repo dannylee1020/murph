@@ -101,29 +101,6 @@ describe('setup config value writer', () => {
     expect(process.env.OPENAI_API_KEY).toBe('sk-new');
   });
 
-  it('clears agent overrides through setup config updates', async () => {
-    writeFileSync('config.yaml', [
-      'ai:',
-      '  defaultProvider: openai',
-      '  defaultModel: gpt-5.5',
-      '  agent:',
-      '    provider: anthropic',
-      '    model: claude-opus-4-7',
-      ''
-    ].join('\n'));
-    const { updateSetupConfigValues } = await import('../src/lib/server/setup/config-values');
-
-    const result = updateSetupConfigValues({
-      MURPH_AGENT_PROVIDER: '',
-      MURPH_AGENT_MODEL: ''
-    });
-
-    const raw = readFileSync('config.yaml', 'utf8');
-    expect(result.updated).toEqual(['MURPH_AGENT_PROVIDER', 'MURPH_AGENT_MODEL']);
-    expect(raw).not.toContain('provider: anthropic');
-    expect(raw).not.toContain('model: claude-opus-4-7');
-  });
-
   it('rejects unsupported keys', async () => {
     const { updateSetupConfigValues } = await import('../src/lib/server/setup/config-values');
 

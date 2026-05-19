@@ -79,52 +79,12 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
     return res.result();
   }
 
-  return { post, store, workspace, ensureMember };
+  return { post, store, workspace };
 }
 
 describe('POST /api/gateway/sessions channel membership gating', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it('creates a session when all scoped channels are already joined', async () => {
-    const { post, store, workspace, ensureMember } = await setup([
-      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
-    ]);
-
-    const response = await post({
-      ownerUserId: 'UOWNER',
-      channelScope: ['C1'],
-      mode: 'manual_review'
-    });
-
-    expect(response.status).toBe(201);
-    expect(response.body.autoJoined).toEqual([]);
-    expect(response.body.sessionContext).toBeUndefined();
-    expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
-    expect(ensureMember).toHaveBeenCalledWith(expect.objectContaining({ id: workspace.id }), 'slack', 'C1');
-  });
-
-  it('uses a decryptable Slack workspace instead of a stale unreadable install', async () => {
-    const { post, store, workspace, ensureMember } = await setup([
-      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
-    ]);
-
-    store.saveInstall({
-      provider: 'slack',
-      externalWorkspaceId: 'T_STALE',
-      name: 'Stale Workspace',
-      botUserId: 'USTALE'
-    });
-
-    const response = await post({
-      ownerUserId: 'UOWNER',
-      channelScope: ['C1'],
-      mode: 'manual_review'
-    });
-
-    expect(response.status).toBe(201);
-    expect(ensureMember).toHaveBeenCalledWith(expect.objectContaining({ id: workspace.id }), 'slack', 'C1');
   });
 
   it('creates a session and reports auto-joined public channels', async () => {

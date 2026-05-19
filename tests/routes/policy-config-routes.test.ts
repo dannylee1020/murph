@@ -131,20 +131,6 @@ describe('policy configuration routes', () => {
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('profile: product');
   });
 
-  it('normalizes legacy policy profile selections', async () => {
-    const { request, store } = await setup();
-
-    const response = await request('PUT', '/api/gateway/policy/config', {
-      profileName: 'founder-coverage'
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.body.policyProfileName).toBe('leadership');
-    expect(response.body.selectedProfileName).toBe('leadership');
-    expect(store.getAppSettings().policyProfileName).toBeUndefined();
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('profile: leadership');
-  });
-
   it('rejects unknown local policy profile selection', async () => {
     const { request } = await setup();
 

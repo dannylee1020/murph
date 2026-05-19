@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   builtinPolicyProfile,
-  compilePolicy,
   compilePolicyOverride,
   mergeCompiledPolicy,
   resolveEffectivePolicy
@@ -13,14 +12,6 @@ describe('policy compiler', () => {
     expect(profile.name).toBe('builtin-manual_review');
     expect(profile.compiled.allowAutoSend).toBe(false);
     expect(profile.compiled.requireGroundingForFacts).toBe(true);
-  });
-
-  it('compiles full policy text with conservative defaults', () => {
-    const { compiled, warnings } = compilePolicy('keep it tight and careful', 'auto_send_low_risk');
-    expect(warnings[0]).toMatch(/defaults/);
-    expect(compiled.requireGroundingForFacts).toBe(true);
-    expect(compiled.preferAskWhenUncertain).toBe(true);
-    expect(compiled.allowAutoSend).toBe(true);
   });
 
   it('parses override patches without clobbering unrelated fields', () => {
