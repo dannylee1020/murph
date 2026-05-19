@@ -52,15 +52,15 @@ murph uninstall
 
 | Topic | What's covered |
 | --- | --- |
-| [Quickstart](https://docs.murph-agent.com/docs/quickstart) | Install Murph, run setup, start the local server, and check health. |
-| [Installation](https://docs.murph-agent.com/docs/installation) | Installer behavior, local setup, and manual install paths. |
-| [Configuration](https://docs.murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and local runtime settings. |
-| [Usage](https://docs.murph-agent.com/docs/usage) | Use `murph`, the browser UI, and `murph agent` for setup, sessions, review, and daily operation. |
-| [Plugins](https://docs.murph-agent.com/docs/plugins) | Create scoped plugins with skills, connectors, and read-only tools. |
-| [Channels](https://docs.murph-agent.com/docs/channels) | Connect Slack or Discord, choose watched channels, and use the Slack manifest at `/slack-manifest.yaml`. |
-| [Integrations](https://docs.murph-agent.com/docs/integrations) | Connect context sources like docs, GitHub, Gmail, Calendar, and meetings. |
-| [Core Concepts](https://docs.murph-agent.com/docs/core-concepts) | Sessions, context, skills, policy, triage, and audit trails. |
-| [Contributing](https://docs.murph-agent.com/docs/contributing) | Local development, project structure, and contribution workflow. |
+| [Quickstart](https://murph-agent.com/docs/quickstart) | Install Murph, run setup, start the local server, and check health. |
+| [Installation](https://murph-agent.com/docs/installation) | Installer behavior, local setup, and manual install paths. |
+| [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and local runtime settings. |
+| [Usage](https://murph-agent.com/docs/usage) | Use `murph`, the browser UI, and `murph agent` for setup, sessions, review, and daily operation. |
+| [Plugins](https://murph-agent.com/docs/plugins) | Create scoped plugins with skills, connectors, and read-only tools. |
+| [Channels](https://murph-agent.com/docs/channels) | Connect Slack or Discord, choose watched channels, and use the Slack manifest at `/slack-manifest.yaml`. |
+| [Integrations](https://murph-agent.com/docs/integrations) | Connect context sources like docs, GitHub, Gmail, Calendar, and meetings. |
+| [Core Concepts](https://murph-agent.com/docs/core-concepts) | Sessions, context, skills, policy, triage, and audit trails. |
+| [Contributing](https://murph-agent.com/docs/contributing) | Local development, project structure, and contribution workflow. |
 
 ## Murph Agent
 
@@ -72,7 +72,7 @@ murph agent
 
 Use it to connect services, inspect setup issues, and create scoped plugins without editing Murph core. By default, it can write plugin and configuration files; source edits require an explicit `--source-edits` flag.
 
-Learn more in [Murph Agent](https://docs.murph-agent.com/docs/usage/murph-agent).
+Learn more in [Murph Agent](https://murph-agent.com/docs/usage/murph-agent).
 
 ## What you can connect
 
