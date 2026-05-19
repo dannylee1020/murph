@@ -22,6 +22,8 @@ Murph runs locally at:
 http://localhost:5173
 ```
 
+If `5173` is occupied, stop the other process or choose a port intentionally with `MURPH_PORT=<port>`. Murph does not auto-switch ports because channel OAuth callbacks must keep matching the local origin.
+
 ## Setup wizard
 
 Use the setup wizard to configure the AI provider, Slack connection, owner identity, watched channels, schedule, and policy profile.

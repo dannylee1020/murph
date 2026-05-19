@@ -57,3 +57,5 @@ http://localhost:5173/api/slack/oauth/callback
 ```
 
 Socket Mode does not require a public Slack Events URL.
+
+If you intentionally run Murph on another port with `MURPH_PORT=<port>`, update this redirect URL to use that same port.

@@ -115,6 +115,29 @@ port_listener_pid() {
   printf '%s\n' "$pid"
 }
 
+fail_port_unavailable() {
+  local pid="" owner=""
+  if pid="$(port_listener_pid)"; then
+    owner=" by PID $pid"
+  fi
+
+  fail "Port $MURPH_PORT is already in use$owner, and $MURPH_URL is not a Murph server. Stop that process, or set MURPH_PORT intentionally after updating OAuth callback URLs and local tunnels."
+}
+
+ensure_port_available_for_start() {
+  if health_check_murph; then
+    return 0
+  fi
+
+  if health_check; then
+    fail_port_unavailable
+  fi
+
+  if port_listener_pid >/dev/null 2>&1; then
+    fail_port_unavailable
+  fi
+}
+
 stop_responding_murph() {
   have_command node || return 1
   health_check_murph || return 1
@@ -161,10 +184,11 @@ wait_for_health() {
 
 start_foreground() {
   require_runtime
-  if health_check; then
+  if health_check_murph; then
     printf 'Murph is already running at %s\n' "$MURPH_URL"
     return
   fi
+  ensure_port_available_for_start
 
   printf 'Starting Murph on %s\n' "$MURPH_URL"
   printf 'Press Ctrl-C to stop.\n'
@@ -176,10 +200,11 @@ start_background() {
   require_runtime
   mkdir -p "$MURPH_HOME"
 
-  if health_check; then
+  if health_check_murph; then
     printf 'Murph is already running at %s\n' "$MURPH_URL"
     return
   fi
+  ensure_port_available_for_start
 
   local pid
   if pid="$(pid_value)" && ! is_pid_running "$pid"; then
@@ -250,11 +275,16 @@ stop_background() {
 status() {
   local pid=""
   if pid="$(pid_value)" && is_pid_running "$pid"; then
-    if health_check; then
+    if health_check_murph; then
       printf 'Murph is running.\n'
       printf 'URL: %s\n' "$MURPH_URL"
       printf 'PID: %s\n' "$pid"
       return
+    fi
+    if health_check; then
+      printf 'Murph PID exists, but %s is responding with a non-Murph health payload.\n' "$MURPH_URL"
+      printf 'PID: %s\n' "$pid"
+      return 1
     fi
     printf 'Murph PID exists, but the health check is failing.\n'
     printf 'PID: %s\n' "$pid"
@@ -262,9 +292,13 @@ status() {
     return 1
   fi
 
-  if health_check; then
+  if health_check_murph; then
     printf 'Murph is responding at %s, but no CLI PID file exists.\n' "$MURPH_URL"
     return
+  fi
+  if health_check; then
+    printf 'A non-Murph server is responding at %s.\n' "$MURPH_URL"
+    return 1
   fi
 
   rm -f "$MURPH_PID_FILE"

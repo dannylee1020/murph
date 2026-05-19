@@ -35,7 +35,7 @@ Start Murph:
 murph start
 ```
 
-Murph runs locally at `http://localhost:5173`.
+Murph runs locally at `http://localhost:5173` by default. If that port is already in use, Murph stops with a port-conflict message instead of switching ports automatically, because OAuth callbacks and local tunnels must match the configured origin. To use another port, start Murph with `MURPH_PORT=<port>` and update any provider callback URLs to match.
 
 ## 4. Check
 

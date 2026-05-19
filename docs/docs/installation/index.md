@@ -49,6 +49,8 @@ murph restart
 
 Use `murph start --background` when you want Murph to keep running after the terminal closes.
 
+Murph uses `http://localhost:5173` by default. If another process owns that port, startup fails clearly instead of choosing a different port, because OAuth callback URLs and tunnels depend on the exact origin. Use `MURPH_PORT=<port>` only after updating those callback URLs.
+
 ## Update
 
 ```bash

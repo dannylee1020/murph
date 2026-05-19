@@ -12,12 +12,20 @@ import { integrationRoutes } from './routes/integrations.js';
 import { pluginRoutes } from './routes/plugins.js';
 import { slackRoutes } from './routes/slack.js';
 import { systemRoutes } from './routes/system.js';
+import { resolveListenPort, startServer } from './startup.js';
 import { getGateway } from '#lib/server/runtime/gateway';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
 const staticRoot = path.resolve(repoRoot, 'dist/ui');
-const port = Number(process.env.PORT ?? 5173);
+let port: number;
+try {
+  port = resolveListenPort();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
+
 const routes: Route[] = [...systemRoutes, ...gatewayRoutes, ...channelRoutes, ...integrationRoutes, ...pluginRoutes, ...googleRoutes, ...slackRoutes, ...discordRoutes, ...formRoutes];
 const gateway = getGateway();
 
@@ -41,8 +49,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   await serveStatic(req, res, url, staticRoot);
 }
 
-gateway.ensureStarted();
-
 const server = createServer((req, res) => {
   void handleRequest(req, res).catch((error) => {
     console.error(error);
@@ -54,8 +60,12 @@ const server = createServer((req, res) => {
   });
 });
 
-server.listen(port, () => {
-  console.log(`Murph server listening on http://localhost:${port}`);
+startServer(server, {
+  port,
+  onListening: () => {
+    gateway.ensureStarted();
+    console.log(`Murph server listening on http://localhost:${port}`);
+  }
 });
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
