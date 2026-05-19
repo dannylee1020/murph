@@ -44,9 +44,9 @@ function createInstalledFixture() {
   mkdirSync(join(murphHome, 'deps/bin'), { recursive: true });
   mkdirSync(binDir, { recursive: true });
   writeFileSync(join(murphHome, '.credentials'), '{"version":1,"credentials":[]}\n');
+  writeFileSync(join(murphHome, 'config.yaml'), 'app:\n  sqlitePath: data/murph.sqlite\n');
   writeFileSync(join(murphHome, 'murph.log'), 'log\n');
   writeFileSync(join(murphHome, 'murph.pid'), '999999\n');
-  writeFileSync(join(appDir, '.env'), 'MURPH_SQLITE_PATH=data/murph.sqlite\n');
   writeFileSync(join(appDir, 'data/murph.sqlite'), '');
   symlinkSync(join(appDir, 'bin/murph'), join(binDir, 'murph'));
 
@@ -117,11 +117,10 @@ describe('murph uninstall', () => {
     mkdirSync(join(sourceDir, 'data'), { recursive: true });
     mkdirSync(murphHome, { recursive: true });
     mkdirSync(binDir, { recursive: true });
-    writeFileSync(join(sourceDir, '.env'), 'MURPH_SQLITE_PATH=data/murph.sqlite\n');
-    writeFileSync(join(sourceDir, 'murph.config.yaml'), 'app:\n  sqlitePath: data/murph.sqlite\n');
     writeFileSync(join(sourceDir, '.murph-install.log'), 'install log\n');
     writeFileSync(join(sourceDir, 'data/murph.sqlite'), '');
     writeFileSync(join(murphHome, '.credentials'), '{"version":1,"credentials":[]}\n');
+    writeFileSync(join(murphHome, 'config.yaml'), 'app:\n  sqlitePath: data/murph.sqlite\n');
     symlinkSync(join(sourceDir, 'bin/murph'), join(binDir, 'murph'));
 
     const result = spawnSync('bash', [join(sourceDir, 'bin/murph'), 'uninstall', '--yes'], {
@@ -139,8 +138,6 @@ describe('murph uninstall', () => {
     expect(result.status).toBe(0);
     expect(existsSync(sourceDir)).toBe(true);
     expect(existsSync(join(sourceDir, 'package.json'))).toBe(true);
-    expect(existsSync(join(sourceDir, '.env'))).toBe(false);
-    expect(existsSync(join(sourceDir, 'murph.config.yaml'))).toBe(false);
     expect(existsSync(join(sourceDir, 'data'))).toBe(false);
     expect(existsSync(join(sourceDir, '.murph-install.log'))).toBe(false);
     expect(existsSync(murphHome)).toBe(false);

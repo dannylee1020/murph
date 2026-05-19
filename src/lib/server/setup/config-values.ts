@@ -19,7 +19,7 @@ const SETUP_SECRET_KEYS: Record<string, { provider: string; key: string }> = {
   BRAVE_SEARCH_API_KEY: { provider: 'brave_search', key: 'api_key' }
 };
 
-export function updateSetupEnv(values: Record<string, string | undefined>): { updated: string[] } {
+export function updateSetupConfigValues(values: Record<string, string | undefined>): { updated: string[] } {
   const secretValues: Record<string, string | undefined> = {};
   const configValues: Record<string, string | undefined> = {};
 

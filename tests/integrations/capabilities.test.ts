@@ -7,7 +7,7 @@ async function setup(options: { notionApiKey?: string } = {}) {
   vi.resetModules();
   process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-capabilities-')), 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
-  // Set explicitly (even to empty string) so loadDotEnv leaves it alone — it only fills undefined.
+  // Set explicitly, even to empty string, so this test does not read local credentials.
   process.env.NOTION_API_KEY = options.notionApiKey ?? '';
 
   const { getStore } = await import('#lib/server/persistence/store');

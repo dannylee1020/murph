@@ -5,6 +5,7 @@ APP_URL_DEFAULT="http://localhost:5173"
 SQLITE_PATH_DEFAULT="data/murph.sqlite"
 LOG_FILE=".murph-install.log"
 DEFAULT_INSTALL_DIR="$HOME/.murph/app"
+CONFIG_PATH_DEFAULT="$HOME/.murph/config.yaml"
 SOURCE_ARCHIVE_URL="https://github.com/dannylee1020/murph/archive/refs/heads/master.tar.gz"
 BIN_DIR_DEFAULT="$HOME/.local/bin"
 MURPH_DEPS_BIN="${MURPH_DEPS_DIR:-$HOME/.murph/deps}/bin"
@@ -202,8 +203,28 @@ check_node() {
 env_value() {
   local key="$1"
   local value=""
-  if [[ -f .env ]]; then
-    value="$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}=" .env | tail -n 1 | sed -E "s/^[[:space:]]*(export[[:space:]]+)?${key}=//; s/^['\"]//; s/['\"]$//" || true)"
+  if [[ -n "${!key:-}" ]]; then
+    printf '%s\n' "${!key}"
+    return
+  fi
+  if [[ -f "$CONFIG_PATH_DEFAULT" ]]; then
+    case "$key" in
+      MURPH_APP_URL)
+        value="$(grep -E '^[[:space:]]+url:' "$CONFIG_PATH_DEFAULT" | head -n 1 | sed -E 's/^[[:space:]]+url:[[:space:]]*//; s/^"//; s/"$//' || true)"
+        ;;
+      MURPH_SQLITE_PATH)
+        value="$(grep -E '^[[:space:]]+sqlitePath:' "$CONFIG_PATH_DEFAULT" | head -n 1 | sed -E 's/^[[:space:]]+sqlitePath:[[:space:]]*//; s/^"//; s/"$//' || true)"
+        ;;
+      MURPH_DEFAULT_PROVIDER)
+        value="$(grep -E '^[[:space:]]+defaultProvider:' "$CONFIG_PATH_DEFAULT" | head -n 1 | sed -E 's/^[[:space:]]+defaultProvider:[[:space:]]*//; s/^"//; s/"$//' || true)"
+        ;;
+      SLACK_EVENTS_MODE)
+        value="$(grep -E '^[[:space:]]+eventsMode:' "$CONFIG_PATH_DEFAULT" | head -n 1 | sed -E 's/^[[:space:]]+eventsMode:[[:space:]]*//; s/^"//; s/"$//' || true)"
+        ;;
+      SLACK_CLIENT_ID)
+        value="$(grep -E '^[[:space:]]+clientId:' "$CONFIG_PATH_DEFAULT" | head -n 1 | sed -E 's/^[[:space:]]+clientId:[[:space:]]*//; s/^"//; s/"$//' || true)"
+        ;;
+    esac
   fi
   if [[ -n "$value" ]]; then
     printf '%s\n' "$value"
@@ -239,10 +260,10 @@ run_doctor() {
   section "Murph install doctor"
 
   local problems=0
-  if [[ -f .env ]]; then
-    doctor_check ".env" "ok" "present"
+  if [[ -f "$CONFIG_PATH_DEFAULT" ]]; then
+    doctor_check "Config file" "ok" "$CONFIG_PATH_DEFAULT"
   else
-    doctor_check ".env" "missing" "run ./install.sh"
+    doctor_check "Config file" "missing" "run ./install.sh"
     problems=$((problems + 1))
   fi
 
@@ -360,7 +381,7 @@ chmodSync(path, 0o600);
 NODE
 }
 
-write_env_file() {
+write_config_file() {
   local provider="openai"
 
   if [[ "${LLM_PROVIDER:-}" == "openai" ]]; then
@@ -372,46 +393,45 @@ write_env_file() {
   fi
 
   umask 077
-  cat > .env <<EOF
-# Core
-MURPH_APP_URL=$APP_URL_DEFAULT
-MURPH_SQLITE_PATH=$SQLITE_PATH_DEFAULT
-
-# LLM provider. Secrets live in ~/.murph/.credentials.
-MURPH_DEFAULT_PROVIDER=$provider
-
-# Slack channel setup
-SLACK_EVENTS_MODE=socket
-SLACK_CLIENT_ID=
-
-# Discord channel setup
-DISCORD_CLIENT_ID=
-DISCORD_REDIRECT_URI=
+  mkdir -p "$HOME/.murph"
+  cat > "$CONFIG_PATH_DEFAULT" <<EOF
+app:
+  url: $APP_URL_DEFAULT
+  sqlitePath: $SQLITE_PATH_DEFAULT
+ai:
+  defaultProvider: $provider
+channels:
+  slack:
+    eventsMode: socket
+    clientId: ""
+  discord:
+    clientId: ""
+    redirectUri: ""
 EOF
 }
 
-configure_env() {
+configure_config() {
   section "Configuring Murph"
 
   mkdir -p data
   printf 'Created data/ if it was missing.\n'
 
-  if [[ -f .env && "$force" != true ]]; then
-    printf '.env already exists. Leaving it unchanged.\n'
+  if [[ -f "$CONFIG_PATH_DEFAULT" && "$force" != true ]]; then
+    printf 'Config already exists at %s. Leaving it unchanged.\n' "$CONFIG_PATH_DEFAULT"
     return
   fi
 
-  if [[ -f .env && "$force" == true ]]; then
-    local backup=".env.backup.$(date +%Y%m%d%H%M%S)"
-    cp .env "$backup"
-    printf 'Backed up existing .env to %s.\n' "$backup"
+  if [[ -f "$CONFIG_PATH_DEFAULT" && "$force" == true ]]; then
+    local backup="$CONFIG_PATH_DEFAULT.backup.$(date +%Y%m%d%H%M%S)"
+    cp "$CONFIG_PATH_DEFAULT" "$backup"
+    printf 'Backed up existing config to %s.\n' "$backup"
   fi
 
   if [[ "$simple" != true ]]; then
     prompt_llm_key
   fi
-  write_env_file
-  printf 'Wrote .env. Secrets are stored in ~/.murph/.credentials when provided.\n'
+  write_config_file
+  printf 'Wrote %s. Secrets are stored in ~/.murph/.credentials when provided.\n' "$CONFIG_PATH_DEFAULT"
 }
 
 install_dependencies() {
@@ -487,7 +507,7 @@ print_next_steps() {
 Installed:
   - Dependencies installed
   - $build_status
-  - .env present
+  - ~/.murph/config.yaml present
   - SQLite data directory ready
 
 Agent-ready checklist:
@@ -515,7 +535,7 @@ Discord app setup:
   DISCORD_REDIRECT_URI: <public-origin>/api/discord/oauth/callback
 
 Optional context sources such as Notion, GitHub, Google, Granola, Obsidian, and web search can be added later.
-Full configuration reference: murph.config.yaml, ~/.murph/.credentials, and .env.example for overrides
+Full configuration reference: ~/.murph/config.yaml and ~/.murph/.credentials
 Local health check: murph doctor
 Install log: $LOG_FILE
 EOF
@@ -554,7 +574,7 @@ check_node
 if [[ "$doctor" == true ]]; then
   run_doctor
 fi
-configure_env
+configure_config
 install_dependencies
 build_app
 install_cli

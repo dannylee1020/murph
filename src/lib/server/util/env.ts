@@ -2,9 +2,6 @@ import { DEFAULT_PROVIDER_MODEL, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_P
 import type { ProviderName } from '#lib/types';
 import { readMurphConfig } from '#lib/server/setup/config-file';
 import { readSecret } from '#lib/server/credentials/local-store';
-import { loadDotEnv } from './dotenv.js';
-
-loadDotEnv();
 
 export interface RuntimeEnv {
   appUrl: string;

@@ -35,6 +35,8 @@ function jsonResponse(): any & { result: () => JsonResponse } {
 async function setup(results: Array<{ channelId: string; name?: string; status: string; reason?: string }>) {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-session-route-'));
+  process.env.MURPH_APP_DIR = root;
+  process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';

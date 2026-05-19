@@ -9,6 +9,9 @@ import { parse } from 'yaml';
 
 const appDir = path.resolve(process.env.MURPH_APP_DIR || process.cwd());
 const murphHome = process.env.MURPH_HOME || path.join(homedir(), '.murph');
+const configPath = process.env.MURPH_CONFIG_PATH || path.join(murphHome, 'config.yaml');
+const credentialsPath =
+    process.env.MURPH_CREDENTIALS_PATH || path.join(murphHome, '.credentials');
 const agentDir =
     process.env.MURPH_AGENT_DIR || path.join(murphHome, 'pi-agent');
 const murphUrl =
@@ -181,31 +184,7 @@ function usage() {
     ]);
 }
 
-function loadEnv() {
-    const envPath = path.join(appDir, '.env');
-    if (!existsSync(envPath)) {
-        return;
-    }
-
-    for (const rawLine of readFileSync(envPath, 'utf8').split('\n')) {
-        const trimmed = rawLine.trim();
-        if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) {
-            continue;
-        }
-        const idx = trimmed.indexOf('=');
-        const key = trimmed.slice(0, idx).trim();
-        const value = trimmed
-            .slice(idx + 1)
-            .trim()
-            .replace(/^['"]|['"]$/g, '');
-        if (key && process.env[key] === undefined) {
-            process.env[key] = value;
-        }
-    }
-}
-
 function loadConfig() {
-    const configPath = path.join(appDir, 'murph.config.yaml');
     if (!existsSync(configPath)) return {};
     const parsed = parse(readFileSync(configPath, 'utf8')) ?? {};
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
@@ -223,6 +202,28 @@ function configString(parts) {
     return typeof cursor === 'string' && cursor.trim()
         ? cursor.trim()
         : undefined;
+}
+
+function credentialValue(provider, key) {
+    if (!existsSync(credentialsPath)) return undefined;
+    try {
+        const parsed = JSON.parse(readFileSync(credentialsPath, 'utf8'));
+        const entry = (Array.isArray(parsed.credentials)
+            ? parsed.credentials
+            : []
+        ).find(
+            (item) =>
+                item?.provider === provider &&
+                item?.key === key &&
+                !item?.workspaceId &&
+                !item?.userId,
+        );
+        return typeof entry?.value === 'string' && entry.value.trim()
+            ? entry.value.trim()
+            : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 function parseArgs(argv) {
@@ -286,8 +287,10 @@ function defaultProvider() {
         return process.env.MURPH_DEFAULT_PROVIDER;
     const runtimeProvider = configString(['ai', 'defaultProvider']);
     if (runtimeProvider) return runtimeProvider;
-    if (process.env.OPENAI_API_KEY) return 'openai';
-    if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
+    if (process.env.OPENAI_API_KEY || credentialValue('openai', 'api_key'))
+        return 'openai';
+    if (process.env.ANTHROPIC_API_KEY || credentialValue('anthropic', 'api_key'))
+        return 'anthropic';
     return 'openai';
 }
 
@@ -307,11 +310,17 @@ function defaultModel(provider) {
 }
 
 function apiKeyFor(provider) {
-    if (provider === 'anthropic') return process.env.ANTHROPIC_API_KEY;
-    if (provider === 'openai') return process.env.OPENAI_API_KEY;
-    return process.env[
-        `${provider.toUpperCase().replaceAll('-', '_')}_API_KEY`
-    ];
+    if (provider === 'anthropic')
+        return (
+            process.env.ANTHROPIC_API_KEY ||
+            credentialValue('anthropic', 'api_key')
+        );
+    if (provider === 'openai')
+        return process.env.OPENAI_API_KEY || credentialValue('openai', 'api_key');
+    return (
+        process.env[`${provider.toUpperCase().replaceAll('-', '_')}_API_KEY`] ||
+        credentialValue(provider, 'api_key')
+    );
 }
 
 function sessionDirForCwd(cwd) {
@@ -349,7 +358,7 @@ function allowedWriteRoots() {
 }
 
 function allowedWriteFiles() {
-    return [path.join(appDir, '.env'), path.join(appDir, '.env.example')];
+    return [configPath];
 }
 
 function isAllowedPluginOrConfigPath(absolutePath) {
@@ -1198,7 +1207,7 @@ function buildPiArgs(prompt, options, passthrough) {
     const apiKey = apiKeyFor(provider);
     if (!apiKey) {
         throw new Error(
-            `Missing API key for ${provider}. Run murph setup ai to choose model defaults or set the provider API key in .env.`,
+            `Missing API key for ${provider}. Run murph setup ai to choose model defaults or set the provider API key in ~/.murph/.credentials.`,
         );
     }
 
@@ -1247,7 +1256,6 @@ async function runAgent(prompt, options, passthrough) {
         return;
     }
 
-    loadEnv();
     mkdirSync(agentDir, { recursive: true });
     process.env.PI_CODING_AGENT_DIR = agentDir;
 

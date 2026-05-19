@@ -38,7 +38,7 @@ Commands:
   status               Show process and health status.
   doctor               Check local setup.
   setup [section]      Run the first-class CLI setup workflow.
-  credentials <cmd>    List, migrate, and inspect local credentials.
+  credentials <cmd>    List and inspect local credentials.
   agent [prompt]       Chat with Murph's setup and plugin agent.
   policy <command>     List, preview, and save policy configuration.
   logs [-f]            Show runtime logs.
@@ -72,7 +72,6 @@ EOF
 
 require_runtime() {
   require_app
-  [[ -f "$MURPH_APP_DIR/.env" ]] || fail "Murph is missing .env. Run: murph doctor"
   [[ -f "$MURPH_APP_DIR/dist/server/index.js" ]] || fail "Murph is not built. Run: murph build"
 }
 
@@ -476,17 +475,11 @@ update_app() {
   [[ -n "$source_dir" && -f "$source_dir/package.json" ]] || fail "Downloaded archive did not contain a Murph source tree."
 
   mkdir -p "$preserve_dir"
-  if [[ -f "$MURPH_APP_DIR/.env" ]]; then
-    cp "$MURPH_APP_DIR/.env" "$preserve_dir/.env"
-  fi
   if [[ -d "$MURPH_APP_DIR/data" ]]; then
     cp -R "$MURPH_APP_DIR/data" "$preserve_dir/data"
   fi
 
   cp -R "$source_dir"/. "$MURPH_APP_DIR"/
-  if [[ -f "$preserve_dir/.env" ]]; then
-    cp "$preserve_dir/.env" "$MURPH_APP_DIR/.env"
-  fi
   if [[ -d "$preserve_dir/data" ]]; then
     rm -rf "$MURPH_APP_DIR/data"
     cp -R "$preserve_dir/data" "$MURPH_APP_DIR/data"
@@ -689,8 +682,6 @@ uninstall_command() {
   if [[ "$remove_app_dir" == true ]]; then
     remove_uninstall_path "$dry_run" "app dir" "$MURPH_APP_DIR"
   elif [[ -d "$MURPH_APP_DIR" ]]; then
-    remove_uninstall_path "$dry_run" "app .env" "$MURPH_APP_DIR/.env"
-    remove_uninstall_path "$dry_run" "app config" "$MURPH_APP_DIR/murph.config.yaml"
     remove_uninstall_path "$dry_run" "app data" "$MURPH_APP_DIR/data"
     remove_uninstall_path "$dry_run" "install log" "$MURPH_APP_DIR/.murph-install.log"
   fi

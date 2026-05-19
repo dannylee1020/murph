@@ -6,15 +6,15 @@ import { getNotionStatus } from '#lib/server/context-sources/notion';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import { getStore } from '#lib/server/persistence/store';
 import { getSetupDoctor } from '#lib/server/setup/doctor';
-import { updateSetupEnv } from '#lib/server/setup/env-file';
+import { updateSetupConfigValues } from '#lib/server/setup/config-values';
 import {
   MURPH_CONFIG_FILE,
   SETUP_CONFIG_KEYS,
+  murphConfigPath,
   murphConfigExists,
   readMurphConfig,
   updateMurphSetupDefaults
 } from '#lib/server/setup/config-file';
-import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-client';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { readSecret } from '#lib/server/credentials/local-store';
 import { readJson } from '../http.js';
@@ -117,7 +117,14 @@ export const systemRoutes: Route[] = [
         signingSecretConfigured: Boolean(env.slackSigningSecret),
         eventsMode: env.slackEventsMode,
         socketConfigured: Boolean(env.slackAppToken),
-        userSearchConfigured: Boolean(slackWorkspace && getSlackService().getUserSearchToken(slackWorkspace))
+        userSearchConfigured: Boolean(slackWorkspace && getSlackService().getUserSearchToken(slackWorkspace)),
+        workspace: slackWorkspace
+          ? {
+              id: slackWorkspace.id,
+              externalWorkspaceId: slackWorkspace.externalWorkspaceId,
+              name: slackWorkspace.name
+            }
+          : undefined
       },
       discord: {
         installed: Boolean(discordWorkspace),
@@ -135,6 +142,7 @@ export const systemRoutes: Route[] = [
       },
       config: {
         file: MURPH_CONFIG_FILE,
+        path: murphConfigPath(),
         configured: murphConfigExists(),
         envOverrides: envOverrides()
       },
@@ -181,17 +189,14 @@ export const systemRoutes: Route[] = [
     await ensureRuntimeInitialized();
     sendJson(res, getSetupDoctor());
   }),
-  route('POST', '/api/setup/env', async ({ req, res }) => {
+  route('POST', '/api/setup/config', async ({ req, res }) => {
     const body = await readJson<Record<string, string | undefined>>(req);
 
     try {
-      const result = updateSetupEnv(body);
-      if (result.updated.some((key) => ['SLACK_EVENTS_MODE', 'SLACK_APP_TOKEN'].includes(key))) {
-        getSlackSocketModeClient().ensureStarted();
-      }
+      const result = updateSetupConfigValues(body);
       sendJson(res, { ok: true, ...result, doctor: getSetupDoctor() });
     } catch (error) {
-      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'setup_env_update_failed' }, 400);
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'setup_config_update_failed' }, 400);
     }
   })
 ];

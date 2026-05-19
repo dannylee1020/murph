@@ -31,6 +31,7 @@ async function setup() {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-policy-config-route-'));
   process.env.MURPH_APP_DIR = workspaceDir;
+  process.env.MURPH_CONFIG_PATH = join(workspaceDir, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   vi.doMock('#lib/server/runtime/bootstrap', () => ({
@@ -66,6 +67,7 @@ async function setup() {
 describe('policy configuration routes', () => {
   const originalCwd = process.cwd();
   const originalAppDir = process.env.MURPH_APP_DIR;
+  const originalConfigPath = process.env.MURPH_CONFIG_PATH;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -75,6 +77,11 @@ describe('policy configuration routes', () => {
     } else {
       process.env.MURPH_APP_DIR = originalAppDir;
     }
+    if (originalConfigPath === undefined) {
+      delete process.env.MURPH_CONFIG_PATH;
+    } else {
+      process.env.MURPH_CONFIG_PATH = originalConfigPath;
+    }
   });
 
   afterEach(() => {
@@ -83,6 +90,11 @@ describe('policy configuration routes', () => {
       delete process.env.MURPH_APP_DIR;
     } else {
       process.env.MURPH_APP_DIR = originalAppDir;
+    }
+    if (originalConfigPath === undefined) {
+      delete process.env.MURPH_CONFIG_PATH;
+    } else {
+      process.env.MURPH_CONFIG_PATH = originalConfigPath;
     }
   });
 
@@ -116,7 +128,7 @@ describe('policy configuration routes', () => {
     expect(response.body.policyProfileName).toBe('product');
     expect(response.body.selectedProfileName).toBe('product');
     expect(store.getAppSettings().policyProfileName).toBeUndefined();
-    expect(readFileSync(join(process.env.MURPH_APP_DIR!, 'murph.config.yaml'), 'utf8')).toContain('profile: product');
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('profile: product');
   });
 
   it('normalizes legacy policy profile selections', async () => {
@@ -130,7 +142,7 @@ describe('policy configuration routes', () => {
     expect(response.body.policyProfileName).toBe('leadership');
     expect(response.body.selectedProfileName).toBe('leadership');
     expect(store.getAppSettings().policyProfileName).toBeUndefined();
-    expect(readFileSync(join(process.env.MURPH_APP_DIR!, 'murph.config.yaml'), 'utf8')).toContain('profile: leadership');
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('profile: leadership');
   });
 
   it('rejects unknown local policy profile selection', async () => {

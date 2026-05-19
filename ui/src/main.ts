@@ -1212,8 +1212,15 @@ async function renderSetup(): Promise<void> {
   }
 
   const params = new URLSearchParams(window.location.search);
-  if (params.get('step') === 'slack' && params.get('success') === '1') {
-    setupWizardState.currentStep = 4;
+  let setupNotice = '';
+  const slackCliReturn = params.get('step') === 'slack' && params.get('source') === 'cli';
+  if (params.get('step') === 'slack' && params.get('success') === '1' && !slackCliReturn) {
+    setupNotice = '<div class="setup-success">Slack workspace connected</div>';
+    history.replaceState(null, '', '/setup');
+  } else if (params.get('step') === 'slack' && params.get('error') === 'slack_oauth_failed' && !slackCliReturn) {
+    setupWizardState.currentStep = 3;
+    const reason = params.get('reason') || 'Slack app installation failed.';
+    setupNotice = `<div class="notice danger">Slack app installation failed: ${escapeHtml(reason)}</div>`;
     history.replaceState(null, '', '/setup');
   }
 
@@ -1223,6 +1230,31 @@ async function renderSetup(): Promise<void> {
     getJson<SetupDefaultsPayload>('/api/setup/defaults')
   ]);
   applySetupDefaults(defaults);
+
+  if (slackCliReturn) {
+    const failed = params.get('error') === 'slack_oauth_failed';
+    const reason = params.get('reason') || 'Slack app installation failed.';
+    history.replaceState(null, '', '/setup');
+    app.innerHTML = `
+      <div class="wizard-container">
+        <div class="wizard-panel">
+          <div class="wizard-header">
+            <span class="wizard-brand"><img src="/img/murph-logo.svg" alt="" aria-hidden="true" />Murph</span>
+          </div>
+          <div class="wizard-step">
+            <h1>${failed ? 'Slack installation failed' : 'Slack connected'}</h1>
+            ${failed
+              ? `<div class="notice danger">Slack app installation failed: ${escapeHtml(reason)}</div>`
+              : '<div class="setup-success">Slack workspace connected</div>'
+            }
+            <p>Return to your terminal to finish setup.</p>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   if (setupWizardState.currentStep === 0 && doctor.nextStep !== 'core') {
     setupWizardState.currentStep = setupStepForNextStep(doctor.nextStep);
   }
@@ -1396,6 +1428,7 @@ async function renderSetup(): Promise<void> {
           <span class="wizard-brand"><img src="/img/murph-logo.svg" alt="" aria-hidden="true" />Murph</span>
           ${step > 0 ? `<div class="wizard-progress-dots">${dots}</div>` : ''}
         </div>
+        ${setupNotice}
         ${stepContent}
       </div>
     </div>
@@ -1561,7 +1594,7 @@ async function renderSetup(): Promise<void> {
       const selectedAgentModel = String(formData.get('agentModel') ?? agentModel(setup)).trim();
       if (agentModelMode === 'custom' && !selectedAgentModel) return;
       if (!setup.provider.configured && !apiKey) return;
-      await postJson('/api/setup/env', {
+      await postJson('/api/setup/config', {
         ...(!setup.provider.configured
           ? {
               MURPH_DEFAULT_PROVIDER: provider,
@@ -1587,7 +1620,7 @@ async function renderSetup(): Promise<void> {
       const clientId = String(formData.get('clientId') ?? '').trim();
       const clientSecret = String(formData.get('clientSecret') ?? '').trim();
       if ((!setup.slack.socketConfigured && !appToken) || (!setup.slack.oauthConfigured && (!clientId || !clientSecret))) return;
-      await postJson('/api/setup/env', {
+      await postJson('/api/setup/config', {
         SLACK_EVENTS_MODE: 'socket',
         SLACK_APP_TOKEN: appToken,
         SLACK_CLIENT_ID: clientId,

@@ -12,8 +12,6 @@ Channels are the messaging surfaces Murph watches while you are offline.
 - Slack
 - Discord
 
-Slack is the most complete setup path today.
-
 ## Slack
 
 Murph uses Slack Socket Mode by default. This avoids exposing a public Events URL during local development.
@@ -24,7 +22,7 @@ The Slack app manifest is available at:
 /slack-socket-mode-manifest.yml
 ```
 
-During setup, Murph asks for Slack credentials, stores secrets in `~/.murph/.credentials`, and then guides you through workspace installation.
+During setup, Murph creates the Slack app from the manifest and saves local credentials. Secrets are stored in `~/.murph/.credentials`, and non-secret app and workspace metadata is stored in `~/.murph/config.yaml`.
 
 ```bash
 murph setup slack

@@ -17,7 +17,7 @@ integrations:
     backend: brave
 ```
 
-Set the key through setup or as a local credential. `.env` also works as a development override:
+Set the key through setup or as a local credential. An explicit environment variable also works as a development or hosted runtime override:
 
 ```text
 BRAVE_SEARCH_API_KEY=...

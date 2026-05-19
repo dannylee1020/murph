@@ -89,6 +89,21 @@ interface UsersListResponse {
   }>;
 }
 
+interface UsersInfoResponse {
+  ok: boolean;
+  error?: string;
+  user?: {
+    id: string;
+    name?: string;
+    real_name?: string;
+    profile?: {
+      display_name?: string;
+      real_name?: string;
+      image_48?: string;
+    };
+  };
+}
+
 export interface SlackMember {
   id: string;
   displayName: string;
@@ -121,6 +136,11 @@ export interface SlackSearchResult {
   userId?: string;
 }
 
+export interface SlackInstallResult {
+  workspace: Workspace;
+  authedUser?: SlackMember;
+}
+
 export class SlackService {
   private readonly store = getStore();
 
@@ -128,7 +148,7 @@ export class SlackService {
     return getRuntimeEnv();
   }
 
-  buildInstallUrl(appUrl = this.env.appUrl): string | undefined {
+  buildInstallUrl(appUrl = this.env.appUrl, teamId?: string, source?: string): string | undefined {
     if (!this.env.slackClientId) {
       return undefined;
     }
@@ -141,11 +161,17 @@ export class SlackService {
       user_scope: 'search:read.public,search:read.private,search:read.im,search:read.mpim',
       redirect_uri: redirectUri
     });
+    if (teamId?.trim()) {
+      params.set('team', teamId.trim());
+    }
+    if (source === 'cli') {
+      params.set('state', 'cli');
+    }
 
     return `https://slack.com/oauth/v2/authorize?${params.toString()}`;
   }
 
-  async exchangeCode(code: string, appUrl = this.env.appUrl): Promise<Workspace> {
+  async exchangeCode(code: string, appUrl = this.env.appUrl): Promise<SlackInstallResult> {
     if (!this.env.slackClientId || !this.env.slackClientSecret) {
       throw new Error('Slack OAuth is not configured');
     }
@@ -192,7 +218,15 @@ export class SlackService {
         }
       });
     }
-    return workspace;
+
+    const authedUser = payload.authed_user?.id
+      ? await this.getMember(workspace, payload.authed_user.id).catch(() => ({
+          id: payload.authed_user!.id!,
+          displayName: payload.authed_user!.id!
+        }))
+      : undefined;
+
+    return { workspace, authedUser };
   }
 
   verifySignature(headers: Headers, rawBody: string): boolean {
@@ -420,6 +454,29 @@ export class SlackService {
         displayName: m.profile?.display_name || m.profile?.real_name || m.real_name || m.name || m.id,
         avatar: m.profile?.image_48
       }));
+  }
+
+  async getMember(workspace: Workspace, userId: string): Promise<SlackMember> {
+    const response = await fetch('https://slack.com/api/users.info', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({ user: userId })
+    });
+    const payload = (await response.json()) as UsersInfoResponse;
+
+    if (!payload.ok || !payload.user?.id) {
+      throw new Error(payload.error ?? 'Failed to fetch Slack member');
+    }
+
+    const user = payload.user;
+    return {
+      id: user.id,
+      displayName: user.profile?.display_name || user.profile?.real_name || user.real_name || user.name || user.id,
+      avatar: user.profile?.image_48
+    };
   }
 
   async listChannels(workspace: Workspace): Promise<SlackChannelChoice[]> {

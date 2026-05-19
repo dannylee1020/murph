@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
 import type { ProviderName, SetupDefaults } from '#lib/types';
 
-export const MURPH_CONFIG_FILE = 'murph.config.yaml';
+export const MURPH_CONFIG_FILE = 'config.yaml';
 
 export interface MurphConfig {
   app?: {
@@ -26,6 +27,9 @@ export interface MurphConfig {
     slack?: {
       eventsMode?: 'socket' | 'http';
       clientId?: string;
+      appId?: string;
+      teamId?: string;
+      teamName?: string;
     };
     discord?: {
       clientId?: string;
@@ -73,6 +77,9 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   MURPH_AGENT_MODEL: (config, value) => setPath(config, ['ai', 'agent', 'model'], value),
   SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
   SLACK_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'clientId'], value),
+  SLACK_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'appId'], value),
+  SLACK_TEAM_ID: (config, value) => setPath(config, ['channels', 'slack', 'teamId'], value),
+  SLACK_TEAM_NAME: (config, value) => setPath(config, ['channels', 'slack', 'teamName'], value),
   DISCORD_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'clientId'], value),
   DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value),
   NOTION_VERSION: (config, value) => setPath(config, ['integrations', 'notion', 'version'], value),
@@ -92,8 +99,16 @@ const CONFIG_KEY_CLEARERS: Record<string, (config: Record<string, unknown>) => v
   MURPH_AGENT_MODEL: (config) => deletePath(config, ['ai', 'agent', 'model'])
 };
 
-function configPath(cwd = process.cwd()): string {
-  return path.resolve(process.env.MURPH_APP_DIR || cwd, MURPH_CONFIG_FILE);
+function murphHome(): string {
+  return process.env.MURPH_HOME || path.join(homedir(), '.murph');
+}
+
+export function murphConfigPath(): string {
+  return process.env.MURPH_CONFIG_PATH || path.join(murphHome(), MURPH_CONFIG_FILE);
+}
+
+function configPath(_cwd = process.cwd()): string {
+  return path.resolve(murphConfigPath());
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -138,7 +153,9 @@ function readRawConfig(cwd = process.cwd()): Record<string, unknown> {
 }
 
 function writeRawConfig(config: Record<string, unknown>, cwd = process.cwd()): void {
-  writeFileSync(configPath(cwd), stringify(config, { lineWidth: 100 }), { mode: 0o600 });
+  const target = configPath(cwd);
+  mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+  writeFileSync(target, stringify(config, { lineWidth: 100 }), { mode: 0o600 });
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -240,7 +257,10 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
     channels: {
       slack: {
         eventsMode: slack.eventsMode === 'http' ? 'http' : slack.eventsMode === 'socket' ? 'socket' : undefined,
-        clientId: stringValue(slack.clientId)
+        clientId: stringValue(slack.clientId),
+        appId: stringValue(slack.appId),
+        teamId: stringValue(slack.teamId),
+        teamName: stringValue(slack.teamName)
       },
       discord: {
         clientId: stringValue(discord.clientId),

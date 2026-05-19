@@ -9,6 +9,7 @@ const socketConstructor = vi.fn(function SocketModeClientMock() {
   return { on, start, disconnect, onWebSocketMessage, stateMachine };
 });
 const handleSlackEventEnvelope = vi.fn();
+const getUsableWorkspace = vi.fn();
 
 vi.mock('@slack/socket-mode', () => ({
   LogLevel: { WARN: 'warn' },
@@ -17,6 +18,10 @@ vi.mock('@slack/socket-mode', () => ({
 
 vi.mock('#lib/server/channels/slack/events', () => ({
   handleSlackEventEnvelope
+}));
+
+vi.mock('#lib/server/channels/slack/service', () => ({
+  getSlackService: () => ({ getUsableWorkspace })
 }));
 
 describe('SlackSocketModeClient', () => {
@@ -33,6 +38,8 @@ describe('SlackSocketModeClient', () => {
     start.mockReset();
     start.mockResolvedValue({});
     handleSlackEventEnvelope.mockReset();
+    getUsableWorkspace.mockReset();
+    getUsableWorkspace.mockReturnValue(undefined);
     process.env.SLACK_APP_TOKEN = '';
     delete process.env.SLACK_EVENTS_MODE;
   });
@@ -55,8 +62,18 @@ describe('SlackSocketModeClient', () => {
     expect(socketConstructor).not.toHaveBeenCalled();
   });
 
+  it('does not start before the Slack app is installed in a workspace', async () => {
+    process.env.SLACK_APP_TOKEN = 'xapp-test';
+    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+
+    new SlackSocketModeClient().ensureStarted();
+
+    expect(socketConstructor).not.toHaveBeenCalled();
+  });
+
   it('starts Socket Mode when configured', async () => {
     process.env.SLACK_APP_TOKEN = 'xapp-test';
+    getUsableWorkspace.mockReturnValue({ id: 'workspace-1' });
     const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
 
     new SlackSocketModeClient().ensureStarted();
@@ -69,6 +86,7 @@ describe('SlackSocketModeClient', () => {
   it('restarts when Slack disconnects while the socket is connecting', async () => {
     vi.useFakeTimers();
     process.env.SLACK_APP_TOKEN = 'xapp-test';
+    getUsableWorkspace.mockReturnValue({ id: 'workspace-1' });
     stateMachine.getCurrentState.mockReturnValue('connecting');
     const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
 

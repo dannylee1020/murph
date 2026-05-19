@@ -1,8 +1,5 @@
 version: '3'
 
-dotenv:
-  - .env
-
 tasks:
   db:clear-workflow:
     desc: Clear workflow/test data from the local Murph SQLite DB while preserving setup and credentials.
@@ -27,7 +24,6 @@ tasks:
         DELETE FROM recurring_jobs;
         DELETE FROM thread_states;
         DELETE FROM thread_memory;
-        DELETE FROM feedback_memory;
         DELETE FROM slack_events;
         DELETE FROM autopilot_sessions;
         COMMIT;

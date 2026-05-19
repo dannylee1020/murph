@@ -31,6 +31,7 @@ async function setup() {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
   process.env.MURPH_APP_DIR = workspaceDir;
+  process.env.MURPH_CONFIG_PATH = join(workspaceDir, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
   process.env.MURPH_CREDENTIALS_PATH = join(workspaceDir, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
@@ -77,6 +78,7 @@ async function setup() {
 describe('setup defaults routes', () => {
   const originalCwd = process.cwd();
   const originalAppDir = process.env.MURPH_APP_DIR;
+  const originalConfigPath = process.env.MURPH_CONFIG_PATH;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -86,6 +88,11 @@ describe('setup defaults routes', () => {
     } else {
       process.env.MURPH_APP_DIR = originalAppDir;
     }
+    if (originalConfigPath === undefined) {
+      delete process.env.MURPH_CONFIG_PATH;
+    } else {
+      process.env.MURPH_CONFIG_PATH = originalConfigPath;
+    }
   });
 
   afterEach(() => {
@@ -94,6 +101,11 @@ describe('setup defaults routes', () => {
       delete process.env.MURPH_APP_DIR;
     } else {
       process.env.MURPH_APP_DIR = originalAppDir;
+    }
+    if (originalConfigPath === undefined) {
+      delete process.env.MURPH_CONFIG_PATH;
+    } else {
+      process.env.MURPH_CONFIG_PATH = originalConfigPath;
     }
   });
 
@@ -123,8 +135,8 @@ describe('setup defaults routes', () => {
       workdayEndHour: 16
     });
     expect(store.getAppSettings().setupDefaults).toBeUndefined();
-    expect(readFileSync(join(process.env.MURPH_APP_DIR!, 'murph.config.yaml'), 'utf8')).toContain('ownerUserId: U1');
-    expect(readFileSync(join(process.env.MURPH_APP_DIR!, 'murph.config.yaml'), 'utf8')).toContain('displayName: "#product"');
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('ownerUserId: U1');
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('displayName: "#product"');
   });
 
   it('marks setup ready only after identity and channels are configured', async () => {
@@ -146,5 +158,17 @@ describe('setup defaults routes', () => {
     const after = await request('GET', '/api/setup/doctor');
     expect(after.body.ready).toBe(true);
     expect(after.body.nextStep).toBe('ready');
+  });
+
+  it('returns connected Slack workspace metadata in setup status', async () => {
+    const { request } = await setup();
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.slack.workspace).toEqual(expect.objectContaining({
+      externalWorkspaceId: 'T1',
+      name: 'Test Workspace'
+    }));
   });
 });

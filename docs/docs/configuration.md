@@ -5,7 +5,7 @@ description: Configure providers, policy, storage, and runtime defaults.
 
 # Configuration
 
-Murph stores non-secret local settings in `murph.config.yaml`, local secrets in `~/.murph/.credentials`, and runtime state in SQLite. `.env` remains supported for development overrides and legacy installs.
+Murph stores non-secret local settings in `~/.murph/config.yaml`, local secrets in `~/.murph/.credentials`, and runtime state in SQLite. Setup does not read or write `.env` files; explicit process environment variables are still supported for development and hosted runtime overrides.
 
 ## Setup wizard
 
@@ -15,13 +15,11 @@ Use the CLI setup wizard for normal configuration:
 murph setup
 ```
 
-Inspect or migrate local credentials with:
+Inspect local credentials with:
 
 ```bash
 murph credentials doctor
 murph credentials list
-murph credentials migrate
-murph credentials cleanup-legacy
 ```
 
 You can re-run setup when credentials, channels, schedules, or policy choices change.
@@ -59,7 +57,7 @@ Murph uses local SQLite by default:
 MURPH_SQLITE_PATH=data/murph.sqlite
 ```
 
-Secrets are stored locally in plaintext at `~/.murph/.credentials` with owner-only file permissions. Runtime credential reads come from that file or explicit environment overrides, not SQLite. Use `murph credentials migrate` to copy legacy `.env` and SQLite credentials into the local credential file, then `murph credentials cleanup-legacy` to clear old secret fields.
+Secrets are stored locally in plaintext at `~/.murph/.credentials` with owner-only file permissions. Runtime credential reads come from that file or explicit environment overrides, not SQLite.
 
 > **Local credential storage**
 >
@@ -75,7 +73,7 @@ integrations:
     backend: brave
 ```
 
-Set `BRAVE_SEARCH_API_KEY` through setup or `~/.murph/.credentials`. `.env` still works as a development override.
+Set `BRAVE_SEARCH_API_KEY` through setup or `~/.murph/.credentials`. For development and hosted deployments, an explicit `BRAVE_SEARCH_API_KEY` environment variable overrides the local credential.
 
 Tavily is also supported out of the box:
 

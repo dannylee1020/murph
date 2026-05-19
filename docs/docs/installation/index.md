@@ -55,7 +55,7 @@ Use `murph start --background` when you want Murph to keep running after the ter
 murph update
 ```
 
-The updater preserves local state such as `~/.murph/.credentials`, `.env`, and `data/`.
+The updater preserves local state such as `~/.murph/config.yaml`, `~/.murph/.credentials`, and `data/`.
 
 ## Uninstall
 

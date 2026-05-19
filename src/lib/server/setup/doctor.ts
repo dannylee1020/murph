@@ -3,7 +3,7 @@ import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { getNotionStatus } from '#lib/server/context-sources/notion';
 import { getSlackService } from '#lib/server/channels/slack/service';
-import { MURPH_CONFIG_FILE, murphConfigExists, readMurphConfig } from '#lib/server/setup/config-file';
+import { MURPH_CONFIG_FILE, murphConfigExists, murphConfigPath, readMurphConfig } from '#lib/server/setup/config-file';
 import { credentialsPath, listSecrets } from '#lib/server/credentials/local-store';
 
 export type SetupCheckStatus = 'ok' | 'warning' | 'action_required' | 'error';
@@ -41,11 +41,11 @@ export function getSetupDoctor(): SetupDoctorPayload {
   const hasCredentialsFile = existsSync(credentialsPath());
   const checks: SetupDoctorCheck[] = [];
 
-  const hasConfigSource = murphConfigExists() || existsSync('.env') || hasCredentialsFile || Boolean(env.openaiApiKey || env.anthropicApiKey);
+  const hasConfigSource = murphConfigExists() || hasCredentialsFile || Boolean(env.openaiApiKey || env.anthropicApiKey);
   checks.push(
     hasConfigSource
-      ? check('env_file', 'Configuration source', 'ok', murphConfigExists() ? `${MURPH_CONFIG_FILE} exists.` : hasCredentialsFile ? `${credentialsPath()} exists.` : existsSync('.env') ? '.env exists.' : 'process env is configured.')
-      : check('env_file', 'Configuration source', 'action_required', `${MURPH_CONFIG_FILE} is missing.`, 'Run ./install.sh or murph setup core.')
+      ? check('config_file', 'Configuration source', 'ok', murphConfigExists() ? `${murphConfigPath()} exists.` : hasCredentialsFile ? `${credentialsPath()} exists.` : 'process env is configured.')
+      : check('config_file', 'Configuration source', 'action_required', `${MURPH_CONFIG_FILE} is missing.`, 'Run ./install.sh or murph setup core.')
   );
 
   checks.push(
@@ -114,7 +114,7 @@ export function getSetupDoctor(): SetupDoctorPayload {
   );
 
   const nextStep =
-    checks.find((entry) => entry.id === 'env_file')?.status !== 'ok' ||
+    checks.find((entry) => entry.id === 'config_file')?.status !== 'ok' ||
     checks.find((entry) => entry.id === 'credentials_file')?.status === 'action_required'
       ? 'core'
       : checks.find((entry) => entry.id === 'ai_provider')?.status !== 'ok'

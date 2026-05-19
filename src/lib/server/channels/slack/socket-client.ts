@@ -1,6 +1,7 @@
 import { LogLevel, SocketModeClient } from '@slack/socket-mode';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { handleSlackEventEnvelope } from '#lib/server/channels/slack/events';
+import { getSlackService } from '#lib/server/channels/slack/service';
 
 interface SlackSocketEventEnvelope {
   ack?: () => Promise<void>;
@@ -39,6 +40,10 @@ export class SlackSocketModeClient {
     }
 
     if (!env.slackAppToken) {
+      return;
+    }
+
+    if (!getSlackService().getUsableWorkspace()) {
       return;
     }
 

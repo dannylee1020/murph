@@ -27,13 +27,11 @@ Use `murph uninstall` when you want to remove Murph-owned local files and return
 
 ## Credential commands
 
-Murph stores local secrets in `~/.murph/.credentials`. Use the credential commands to inspect the store, migrate legacy secrets, or clean old secret values out of `.env` and legacy SQLite fields:
+Murph stores local secrets in `~/.murph/.credentials`. Use the credential commands to inspect the store:
 
 ```bash
 murph credentials doctor
 murph credentials list
-murph credentials migrate
-murph credentials cleanup-legacy
 ```
 
 ## Policy commands
@@ -69,7 +67,7 @@ murph agent --no-server
 
 ## Agent write scope
 
-By default, Murph Agent can write plugin and configuration files, but not core Murph source files.
+By default, Murph Agent can write scoped plugin files and `~/.murph/config.yaml`, but not core Murph source files.
 
 Use `--source-edits` only when you explicitly want it to edit Murph source:
 

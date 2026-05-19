@@ -18,6 +18,9 @@ channels:
   slack:
     eventsMode: socket
     clientId: ""
+    appId: ""
+    teamId: ""
+    teamName: ""
   discord:
     clientId: ""
     redirectUri: ""

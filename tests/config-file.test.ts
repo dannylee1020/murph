@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const originalCwd = process.cwd();
 const envKeys = [
   'MURPH_APP_DIR',
+  'MURPH_CONFIG_PATH',
   'MURPH_APP_URL',
   'MURPH_DEFAULT_PROVIDER',
   'MURPH_DEFAULT_MODEL',
@@ -27,6 +28,7 @@ describe('murph config file', () => {
     for (const key of envKeys) {
       delete process.env[key];
     }
+    process.env.MURPH_CONFIG_PATH = path.join(workspace, 'config.yaml');
   });
 
   afterEach(() => {
@@ -41,7 +43,7 @@ describe('murph config file', () => {
   });
 
   it('loads typed YAML values into runtime env', async () => {
-    writeFileSync('murph.config.yaml', [
+    writeFileSync('config.yaml', [
       'app:',
       '  url: https://murph.example',
       'ai:',
@@ -74,7 +76,7 @@ describe('murph config file', () => {
   });
 
   it('lets Murph Agent inherit runtime provider and model by default', async () => {
-    writeFileSync('murph.config.yaml', [
+    writeFileSync('config.yaml', [
       'ai:',
       '  defaultProvider: anthropic',
       '  defaultModel: claude-opus-4-7',
@@ -97,7 +99,7 @@ describe('murph config file', () => {
   });
 
   it('lets YAML select Tavily web search', async () => {
-    writeFileSync('murph.config.yaml', [
+    writeFileSync('config.yaml', [
       'integrations:',
       '  webSearch:',
       '    backend: tavily',
@@ -117,7 +119,7 @@ describe('murph config file', () => {
   });
 
   it('lets environment values override YAML', async () => {
-    writeFileSync('murph.config.yaml', [
+    writeFileSync('config.yaml', [
       'app:',
       '  url: https://murph.example',
       'ai:',
@@ -141,7 +143,7 @@ describe('murph config file', () => {
   });
 
   it('updates non-secret setup keys without dropping unrelated YAML', async () => {
-    writeFileSync('murph.config.yaml', 'custom:\n  keep: true\n');
+    writeFileSync('config.yaml', 'custom:\n  keep: true\n');
     const { updateMurphConfigValues } = await import('../src/lib/server/setup/config-file');
 
     const result = updateMurphConfigValues({
@@ -151,7 +153,7 @@ describe('murph config file', () => {
       GITHUB_REPOSITORIES: 'acme/app,acme/api'
     });
 
-    const raw = readFileSync('murph.config.yaml', 'utf8');
+    const raw = readFileSync('config.yaml', 'utf8');
     expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES']);
     expect(raw).toContain('keep: true');
     expect(raw).toContain('url: https://murph.example');
@@ -162,7 +164,7 @@ describe('murph config file', () => {
   });
 
   it('clears explicit Murph Agent overrides so the agent can inherit runtime', async () => {
-    writeFileSync('murph.config.yaml', [
+    writeFileSync('config.yaml', [
       'ai:',
       '  defaultProvider: openai',
       '  defaultModel: gpt-5.5',
@@ -178,7 +180,7 @@ describe('murph config file', () => {
       MURPH_AGENT_MODEL: ''
     });
 
-    const raw = readFileSync('murph.config.yaml', 'utf8');
+    const raw = readFileSync('config.yaml', 'utf8');
     expect(result.updated).toEqual(['MURPH_AGENT_PROVIDER', 'MURPH_AGENT_MODEL']);
     expect(raw).toContain('defaultProvider: openai');
     expect(raw).toContain('defaultModel: gpt-5.5');

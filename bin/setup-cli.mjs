@@ -11,8 +11,9 @@ const appDir = process.env.MURPH_APP_DIR || process.cwd();
 const murphUrl = process.env.MURPH_URL || `http://localhost:${process.env.MURPH_PORT || '5173'}`;
 const murphHome = process.env.MURPH_HOME || path.join(homedir(), '.murph');
 const credentialsPath = process.env.MURPH_CREDENTIALS_PATH || path.join(murphHome, '.credentials');
-const envPath = path.join(appDir, '.env');
-const configPath = path.join(appDir, 'murph.config.yaml');
+const configPath = process.env.MURPH_CONFIG_PATH || path.join(murphHome, 'config.yaml');
+const slackManifestPath = path.join(appDir, 'docs', 'public', 'slack-socket-mode-manifest.yml');
+const slackApiBase = process.env.MURPH_SLACK_API_BASE || 'https://slack.com/api';
 const rl = readline.createInterface({ input, output });
 
 const args = process.argv.slice(2);
@@ -20,20 +21,44 @@ const options = {
   quick: args.includes('--quick'),
   nonInteractive: args.includes('--non-interactive'),
   json: args.includes('--json'),
-  auto: args.includes('--auto'),
-  manual: args.includes('--manual'),
   reconnectSearch: args.includes('--reconnect-search')
 };
 const section = args.find((arg) => !arg.startsWith('--')) || 'all';
-const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
+const colorEnabled = !process.env.NO_COLOR && (process.stdout.isTTY || Boolean(process.env.FORCE_COLOR));
+const trueColorEnabled = colorEnabled && (
+  process.env.COLORTERM === 'truecolor' ||
+  process.env.COLORTERM === '24bit' ||
+  Boolean(process.env.FORCE_COLOR)
+);
+const rgb = (r, g, b) => trueColorEnabled ? `\x1b[38;2;${r};${g};${b}m` : '';
 const color = {
-  reset: useColor ? '\x1b[0m' : '',
-  bold: useColor ? '\x1b[1m' : '',
-  dim: useColor ? '\x1b[2m' : '',
-  green: useColor ? '\x1b[32m' : '',
-  yellow: useColor ? '\x1b[33m' : '',
-  cyan: useColor ? '\x1b[36m' : '',
-  red: useColor ? '\x1b[31m' : ''
+  reset: colorEnabled ? '\x1b[0m' : '',
+  bold: colorEnabled ? '\x1b[1m' : '',
+  dim: colorEnabled ? '\x1b[2m' : '',
+  primary: trueColorEnabled ? rgb(255, 139, 61) : colorEnabled ? '\x1b[33m' : '',
+  secondary: trueColorEnabled ? rgb(68, 146, 255) : colorEnabled ? '\x1b[36m' : '',
+  accent: trueColorEnabled ? rgb(168, 122, 255) : colorEnabled ? '\x1b[35m' : '',
+  success: trueColorEnabled ? rgb(74, 222, 128) : colorEnabled ? '\x1b[32m' : '',
+  warning: trueColorEnabled ? rgb(251, 146, 60) : colorEnabled ? '\x1b[33m' : '',
+  error: trueColorEnabled ? rgb(248, 113, 113) : colorEnabled ? '\x1b[31m' : '',
+  info: trueColorEnabled ? rgb(34, 211, 238) : colorEnabled ? '\x1b[36m' : '',
+  muted: trueColorEnabled ? rgb(148, 163, 184) : colorEnabled ? '\x1b[2m' : '',
+  border: trueColorEnabled ? rgb(82, 82, 91) : colorEnabled ? '\x1b[2m' : '',
+  green: colorEnabled ? '\x1b[32m' : '',
+  yellow: colorEnabled ? '\x1b[33m' : '',
+  cyan: colorEnabled ? '\x1b[36m' : '',
+  red: colorEnabled ? '\x1b[31m' : ''
+};
+const SECTION_PURPOSES = {
+  Core: 'Create local config defaults and the data directory.',
+  'AI provider': 'Choose the runtime model and API key.',
+  'Murph Agent model': 'Choose whether the local setup agent inherits runtime defaults.',
+  Slack: 'Create the Slack app config and connect the workspace.',
+  Identity: 'Confirm the Slack user Murph should watch for.',
+  Channels: 'Choose the default Slack channel scope.',
+  Schedule: 'Save the default workday schedule.',
+  Policy: 'Choose the local policy profile.',
+  'Setup status': 'Review local files, credentials, and setup readiness.'
 };
 const DEFAULT_PROVIDER_MODEL = {
   openai: 'gpt-5.5',
@@ -49,6 +74,9 @@ const CONFIG_KEY_SETTERS = {
   MURPH_AGENT_MODEL: (config, value) => setPath(config, ['ai', 'agent', 'model'], value),
   SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
   SLACK_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'clientId'], value),
+  SLACK_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'appId'], value),
+  SLACK_TEAM_ID: (config, value) => setPath(config, ['channels', 'slack', 'teamId'], value),
+  SLACK_TEAM_NAME: (config, value) => setPath(config, ['channels', 'slack', 'teamName'], value),
   DISCORD_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'clientId'], value),
   DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value)
 };
@@ -78,6 +106,19 @@ function paint(style, text) {
   return `${color[style] || ''}${text}${color.reset}`;
 }
 
+function line(label, message, tone = 'info') {
+  console.log(`${paint(tone, label.padEnd(6))} ${message}`);
+}
+
+function muted(text) {
+  return paint('muted', text);
+}
+
+function callout(label, value) {
+  console.log(`  ${paint('border', '|')} ${paint('bold', label)}`);
+  console.log(`  ${paint('border', '|')} ${paint('primary', value)}`);
+}
+
 function usage() {
   console.log(`Usage: murph setup [section] [options]
 
@@ -93,8 +134,6 @@ Sections:
 
 Options:
   --quick            Skip sections that are already configured.
-  --auto             Prefer local automation when a provider CLI is available.
-  --manual           Skip provider CLI assistance and use manual credential entry.
   --reconnect-search Re-run Slack OAuth to refresh user-search consent.
   --non-interactive  Do not prompt; report missing setup and exit nonzero.
   --json             JSON output for status.
@@ -104,7 +143,9 @@ Options:
 function sectionTitle(title) {
   if (!options.json) {
     console.log('');
-    console.log(paint('cyan', '== ') + paint('bold', title) + paint('cyan', ' =='));
+    console.log(`${paint('primary', '==')} ${paint('bold', title)}`);
+    const purpose = SECTION_PURPOSES[title];
+    if (purpose) console.log(`   ${muted(purpose)}`);
   }
 }
 
@@ -113,15 +154,15 @@ function fail(message) {
 }
 
 function info(message) {
-  console.log(`${paint('cyan', '->')} ${message}`);
+  line('info', message, 'info');
 }
 
 function success(message) {
-  console.log(`${paint('green', 'OK')} ${message}`);
+  line('ok', message, 'success');
 }
 
 function warn(message) {
-  console.log(`${paint('yellow', '!!')} ${message}`);
+  line('warn', message, 'warning');
 }
 
 function haveCommand(command) {
@@ -133,7 +174,7 @@ async function ask(question, defaultValue = '') {
     return defaultValue;
   }
   const suffix = defaultValue ? ` [${defaultValue}]` : '';
-  const answer = await rl.question(`${paint('bold', '?')} ${question}${paint('dim', suffix)}: `);
+  const answer = await rl.question(`${paint('accent', '?')} ${paint('bold', question)}${muted(suffix)}: `);
   return answer.trim() || defaultValue;
 }
 
@@ -211,29 +252,28 @@ async function askChannelSelection(defaultAnswer, channels) {
 
 function banner() {
   if (options.json) return;
-  console.log(paint('cyan', '========================================'));
-  console.log(`${paint('bold', 'Murph setup')} ${paint('dim', 'CLI-first configuration')}`);
-  console.log(paint('cyan', '========================================'));
+  console.log(paint('border', '========================================'));
+  console.log(`${paint('primary', 'Murph')} ${paint('bold', 'setup')} ${muted('CLI-first configuration')}`);
+  console.log(`${muted('config')} ${configPath}`);
+  console.log(`${muted('home  ')} ${murphHome}`);
+  console.log(paint('border', '========================================'));
 }
 
 function statusLine(label, state, detail = '') {
-  const marker = state === 'ok'
-    ? paint('green', 'OK')
-    : state === 'warning'
-      ? paint('yellow', '!!')
-      : paint('red', '--');
-  console.log(`${marker} ${label.padEnd(22)} ${detail}`);
+  const tone = state === 'ok' ? 'success' : state === 'warning' ? 'warning' : 'error';
+  const marker = state === 'ok' ? 'ok' : state === 'warning' ? 'warn' : 'miss';
+  console.log(`${paint(tone, marker.padEnd(6))} ${label.padEnd(22)} ${detail}`);
 }
 
-function readEnvFile() {
-  return existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+function statusGroup(title) {
+  if (!options.json) console.log(`\n${paint('accent', title)}`);
 }
 
 function readConfigFile() {
   if (!existsSync(configPath)) return {};
   const parsed = parse(readFileSync(configPath, 'utf8')) ?? {};
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    fail('murph.config.yaml must contain a YAML object.');
+    fail(`${configPath} must contain a YAML object.`);
   }
   return parsed;
 }
@@ -285,6 +325,7 @@ function writeCredentialValue(provider, key, value) {
 }
 
 function writeConfigFile(config) {
+  mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
   writeFileSync(configPath, stringify(config, { lineWidth: 100 }), { mode: 0o600 });
 }
 
@@ -331,24 +372,25 @@ function readConfigValue(key) {
   if (key === 'MURPH_AGENT_MODEL') return getPath(config, ['ai', 'agent', 'model']);
   if (key === 'SLACK_EVENTS_MODE') return getPath(config, ['channels', 'slack', 'eventsMode']);
   if (key === 'SLACK_CLIENT_ID') return getPath(config, ['channels', 'slack', 'clientId']);
+  if (key === 'SLACK_APP_ID') return getPath(config, ['channels', 'slack', 'appId']);
+  if (key === 'SLACK_TEAM_ID') return getPath(config, ['channels', 'slack', 'teamId']);
+  if (key === 'SLACK_TEAM_NAME') return getPath(config, ['channels', 'slack', 'teamName']);
   if (key === 'DISCORD_CLIENT_ID') return getPath(config, ['channels', 'discord', 'clientId']);
   if (key === 'DISCORD_REDIRECT_URI') return getPath(config, ['channels', 'discord', 'redirectUri']);
   return '';
 }
 
-function readEnvValue(key) {
+function readSetupValue(key) {
   const secretTarget = SECRET_KEY_MAP[key];
   if (process.env[key]) return process.env[key];
   if (secretTarget) {
     const value = readCredentialValue(secretTarget[0], secretTarget[1]);
     if (value) return value;
   }
-  const match = readEnvFile().match(new RegExp(`^\\s*(?:export\\s+)?${key}=([^\\n]*)`, 'm'));
-  if (match) return match[1].trim().replace(/^['"]|['"]$/g, '');
   return readConfigValue(key);
 }
 
-function writeEnvValues(values) {
+function writeSetupValues(values) {
   const secretValues = {};
   const configValues = {};
   for (const [key, value] of Object.entries(values)) {
@@ -404,26 +446,26 @@ function normalizeProvider(value, fallback = 'openai') {
 }
 
 function currentDefaultProvider() {
-  return readEnvValue('MURPH_DEFAULT_PROVIDER') ||
-    (readEnvValue('OPENAI_API_KEY') ? 'openai' : readEnvValue('ANTHROPIC_API_KEY') ? 'anthropic' : 'openai');
+  return readSetupValue('MURPH_DEFAULT_PROVIDER') ||
+    (readSetupValue('OPENAI_API_KEY') ? 'openai' : readSetupValue('ANTHROPIC_API_KEY') ? 'anthropic' : 'openai');
 }
 
 function currentDefaultModel(provider = currentDefaultProvider()) {
-  return readEnvValue('MURPH_DEFAULT_MODEL') || DEFAULT_PROVIDER_MODEL[provider];
+  return readSetupValue('MURPH_DEFAULT_MODEL') || DEFAULT_PROVIDER_MODEL[provider];
 }
 
 function currentAgentProvider(fallbackProvider = 'openai') {
-  const configured = readEnvValue('MURPH_AGENT_PROVIDER');
+  const configured = readSetupValue('MURPH_AGENT_PROVIDER');
   return configured ? normalizeProvider(configured, fallbackProvider) : fallbackProvider;
 }
 
 function currentAgentModel(provider, runtimeProvider = currentDefaultProvider()) {
-  return readEnvValue('MURPH_AGENT_MODEL') ||
+  return readSetupValue('MURPH_AGENT_MODEL') ||
     (provider === runtimeProvider ? currentDefaultModel(runtimeProvider) : DEFAULT_AGENT_MODEL[provider]);
 }
 
 function hasAgentOverride() {
-  return Boolean(readEnvValue('MURPH_AGENT_PROVIDER') || readEnvValue('MURPH_AGENT_MODEL'));
+  return Boolean(readSetupValue('MURPH_AGENT_PROVIDER') || readSetupValue('MURPH_AGENT_MODEL'));
 }
 
 async function saveAgentModelDefaults(providerFallback) {
@@ -446,8 +488,8 @@ async function promptAgentModel(providerFallback) {
   );
   if (overrideChoice === '1' || overrideChoice.toLowerCase() === 'inherit') {
     const values = { MURPH_AGENT_PROVIDER: '', MURPH_AGENT_MODEL: '' };
-    writeEnvValues(values);
-    await postSetupEnv(values);
+    writeSetupValues(values);
+    await postSetupConfig(values);
     success(`Murph Agent will inherit runtime model: ${providerFallback}/${runtimeModel}.`);
     return;
   }
@@ -473,9 +515,328 @@ async function promptAgentModel(providerFallback) {
       ? await askRequired('Custom agent model id', existingModel === recommended ? '' : existingModel)
       : modelChoice.trim();
   const values = { MURPH_AGENT_PROVIDER: provider, MURPH_AGENT_MODEL: model };
-  writeEnvValues(values);
-  await postSetupEnv(values);
+  writeSetupValues(values);
+  await postSetupConfig(values);
   success(`Saved Murph Agent model: ${provider}/${model}.`);
+}
+
+function slackRedirectUrl() {
+  return `${murphUrl}/api/slack/oauth/callback`;
+}
+
+function slackAppConfigured() {
+  return Boolean(readSetupValue('SLACK_APP_TOKEN') && readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET'));
+}
+
+function slackOAuthConfigured() {
+  return Boolean(readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET'));
+}
+
+function isSlackAppLevelToken(value) {
+  return String(value || '').trim().startsWith('xapp-');
+}
+
+function parseSlackAuthList(output) {
+  const entries = [];
+  const seen = new Set();
+  const lines = String(output || '')
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const idMatch = line.match(/\bT[A-Z0-9]{2,}\b/);
+    if (!idMatch || seen.has(idMatch[0])) continue;
+    const cells = line
+      .split(/[|│]/)
+      .map((cell) => cell.trim())
+      .filter(Boolean);
+    const idCellIndex = cells.findIndex((cell) => cell.includes(idMatch[0]));
+    const nearbyName = idCellIndex > 0
+      ? cells[idCellIndex - 1]
+      : idCellIndex >= 0 && cells[idCellIndex + 1]
+        ? cells[idCellIndex + 1]
+        : '';
+    const parenName = line.match(/([^()|│]+)\(\s*T[A-Z0-9]{2,}\s*\)/)?.[1]?.trim();
+    const leadingName = line.slice(0, idMatch.index).replace(/[-:]+$/, '').trim();
+    const name = (parenName || nearbyName || leadingName || idMatch[0]).trim() || idMatch[0];
+    entries.push({ id: idMatch[0], name });
+    seen.add(idMatch[0]);
+  }
+
+  return entries;
+}
+
+function runSlackCli(args, stdio = 'pipe') {
+  return spawnSync('slack', args, {
+    cwd: appDir,
+    encoding: 'utf8',
+    stdio
+  });
+}
+
+function listSlackCliWorkspaces() {
+  if (!haveCommand('slack')) return [];
+  const result = runSlackCli(['auth', 'list', '--skip-update', '--no-color']);
+  if (result.status !== 0) return [];
+  return parseSlackAuthList(`${result.stdout || ''}\n${result.stderr || ''}`);
+}
+
+async function selectSlackWorkspaceFromCli() {
+  if (!haveCommand('slack')) {
+    warn('Slack CLI was not found. The app configuration token will determine the Slack workspace.');
+    return null;
+  }
+
+  const workspaces = listSlackCliWorkspaces();
+  if (workspaces.length === 0) {
+    warn('Slack CLI has no authorized workspace. The app configuration token will determine the Slack workspace.');
+    return null;
+  }
+  if (workspaces.length === 1) {
+    return workspaces[0];
+  }
+
+  info('Select the Slack workspace to configure:');
+  numberedList(workspaces, (workspace) => `${workspace.name} (${workspace.id})`);
+  return workspaces[await askIndex('Slack workspace', workspaces, 1)];
+}
+
+async function saveSlackWorkspaceContext(workspace) {
+  if (!workspace?.id) return null;
+  const values = {
+    SLACK_TEAM_ID: workspace.id
+  };
+  if (workspace.name) values.SLACK_TEAM_NAME = workspace.name;
+  writeSetupValues(values);
+  await postSetupConfig(values);
+  success(`Slack setup workspace: ${workspace.name || workspace.id} (${workspace.id}).`);
+  return workspace;
+}
+
+async function ensureSlackWorkspaceContext() {
+  const existingTeamId = readSetupValue('SLACK_TEAM_ID');
+  if (existingTeamId) {
+    return {
+      id: existingTeamId,
+      name: readSetupValue('SLACK_TEAM_NAME') || existingTeamId
+    };
+  }
+  const selected = await selectSlackWorkspaceFromCli();
+  return saveSlackWorkspaceContext(selected);
+}
+
+function renderSlackManifest() {
+  if (!existsSync(slackManifestPath)) {
+    fail(`Slack manifest is missing: ${slackManifestPath}`);
+  }
+  const manifest = parse(readFileSync(slackManifestPath, 'utf8')) ?? {};
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    fail('Slack manifest must contain a YAML object.');
+  }
+  setPath(manifest, ['oauth_config', 'redirect_urls'], [slackRedirectUrl()]);
+  setPath(manifest, ['settings', 'socket_mode_enabled'], true);
+  return manifest;
+}
+
+function slackCredentialsFromPayload(payload) {
+  const app = payload?.app && typeof payload.app === 'object' ? payload.app : {};
+  const credentials = payload?.credentials && typeof payload.credentials === 'object'
+    ? payload.credentials
+    : app.credentials && typeof app.credentials === 'object'
+      ? app.credentials
+      : {};
+  return {
+    appId: payload?.app_id || payload?.appId || app.id || app.app_id || credentials.app_id || readSetupValue('SLACK_APP_ID'),
+    clientId: credentials.client_id || credentials.clientId || app.client_id || payload?.client_id || readSetupValue('SLACK_CLIENT_ID'),
+    clientSecret: credentials.client_secret || credentials.clientSecret || app.client_secret || payload?.client_secret || readSetupValue('SLACK_CLIENT_SECRET'),
+    signingSecret: credentials.signing_secret || credentials.signingSecret || app.signing_secret || payload?.signing_secret || readSetupValue('SLACK_SIGNING_SECRET'),
+    appToken: credentials.app_token || credentials.appToken || app.app_token || payload?.app_token || payload?.appToken || readSetupValue('SLACK_APP_TOKEN'),
+    teamId: payload?.team_id || payload?.teamId || app.team_id || app.teamId || credentials.team_id || readSetupValue('SLACK_TEAM_ID'),
+    teamName: payload?.team_name || payload?.teamName || app.team_name || app.teamName || credentials.team_name || readSetupValue('SLACK_TEAM_NAME')
+  };
+}
+
+async function slackManifestApi(method, token, body) {
+  const response = await fetch(`${slackApiBase}/${method}`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json; charset=utf-8'
+    },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.ok) {
+    const details = Array.isArray(payload.errors)
+      ? payload.errors
+          .map((entry) => entry?.message || entry?.error || '')
+          .filter(Boolean)
+          .join('; ')
+      : '';
+    const error = payload.error || `Slack ${method} failed`;
+    fail(details ? `${error}: ${details}` : error);
+  }
+  return payload;
+}
+
+function printSlackAppSettingsUrl(appId) {
+  if (!appId) return;
+  const settingsUrl = `https://api.slack.com/apps/${encodeURIComponent(appId)}/general`;
+  info('Open Slack app settings:');
+  callout('Slack app settings', settingsUrl);
+}
+
+async function saveSlackAppConfig(credentials, workspace = null) {
+  const values = {
+    SLACK_EVENTS_MODE: 'socket',
+    SLACK_CLIENT_ID: credentials.clientId,
+    SLACK_CLIENT_SECRET: credentials.clientSecret
+  };
+  if (credentials.appId) values.SLACK_APP_ID = credentials.appId;
+  if (credentials.signingSecret) values.SLACK_SIGNING_SECRET = credentials.signingSecret;
+  if (credentials.appToken) values.SLACK_APP_TOKEN = credentials.appToken;
+  if (credentials.teamId || workspace?.id) values.SLACK_TEAM_ID = credentials.teamId || workspace.id;
+  if (credentials.teamName || workspace?.name) values.SLACK_TEAM_NAME = credentials.teamName || workspace.name;
+  const updated = writeSetupValues(values);
+  await postSetupConfig(values);
+  success(`Saved Slack app config: ${updated.join(', ')}`);
+}
+
+async function trySlackManifestAutomation(workspace = null) {
+  if (slackAppConfigured()) return true;
+  if (haveCommand('slack')) {
+    info('Slack CLI detected. Murph will use it where possible and fall back to manual setup if needed.');
+  } else {
+    warn('Slack CLI was not found. Trying direct Slack manifest setup, then falling back to manual setup if needed.');
+  }
+
+  const workspaceLabel = workspace?.id ? ` for ${workspace.name || workspace.id}` : '';
+  info(`Provide a Slack app configuration token${workspaceLabel}. Murph uses it once to create the app from the manifest, then discards it.`);
+  const existingToken = process.env.MURPH_SLACK_CONFIG_TOKEN || '';
+  const token = existingToken || await askSecret(`Slack app configuration token${workspaceLabel} (blank for manual setup)`);
+  if (!token.trim()) {
+    fail('Slack app configuration token was not provided.');
+  }
+  if (isSlackAppLevelToken(token)) {
+    warn('That looks like a Slack app-level token, not an app configuration token.');
+    const values = { SLACK_APP_TOKEN: token.trim() };
+    writeSetupValues(values);
+    await postSetupConfig(values);
+    fail('Saved it as SLACK_APP_TOKEN. Slack app OAuth credentials are still missing.');
+  }
+
+  const staleAppId = readSetupValue('SLACK_APP_ID');
+  if (staleAppId && !slackAppConfigured()) {
+    warn(`Saved Slack app ID ${staleAppId} is incomplete without OAuth credentials. Creating a fresh Slack app.`);
+  }
+  const manifest = renderSlackManifest();
+  const manifestBody = JSON.stringify(manifest);
+  const payload = await slackManifestApi('apps.manifest.create', token.trim(), { manifest: manifestBody });
+  const credentials = slackCredentialsFromPayload(payload);
+  if (!credentials.clientId || !credentials.clientSecret) {
+    fail('Slack manifest response did not include client credentials.');
+  }
+
+  await saveSlackAppConfig(credentials, workspace);
+  return true;
+}
+
+async function promptSlackAppToken(appId = readSetupValue('SLACK_APP_ID')) {
+  if (readSetupValue('SLACK_APP_TOKEN')) return;
+  if (options.nonInteractive) {
+    fail('Missing Slack app-level token. Set SLACK_APP_TOKEN, or run murph setup slack interactively.');
+  }
+  if (appId) {
+    printSlackAppSettingsUrl(appId);
+    info('Create or copy the app-level token (xapp-...), then paste it here.');
+  }
+  const token = await askRequired('Slack app-level token (xapp-...)', readSetupValue('SLACK_APP_TOKEN'));
+  const values = { SLACK_APP_TOKEN: token };
+  writeSetupValues(values);
+  await postSetupConfig(values);
+  success(`Saved Slack app-level token (${mask(token)}).`);
+}
+
+async function promptManualSlackConfig() {
+  if (options.nonInteractive) {
+    fail('Missing Slack app settings. Set SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET.');
+  }
+  info('Use docs/public/slack-socket-mode-manifest.yml and this redirect URL:');
+  callout('Redirect URL', slackRedirectUrl());
+  const values = { SLACK_EVENTS_MODE: 'socket' };
+  if (!readSetupValue('SLACK_APP_TOKEN')) {
+    values.SLACK_APP_TOKEN = await askRequired('Slack app-level token (xapp-...)');
+  }
+  if (!readSetupValue('SLACK_CLIENT_ID')) {
+    values.SLACK_CLIENT_ID = await askRequired('Slack client ID');
+  }
+  if (!readSetupValue('SLACK_CLIENT_SECRET')) {
+    values.SLACK_CLIENT_SECRET = await askRequired('Slack client secret');
+  }
+  const signingSecret = await askSecret('Slack signing secret (optional)', readSetupValue('SLACK_SIGNING_SECRET'));
+  if (signingSecret.trim()) values.SLACK_SIGNING_SECRET = signingSecret.trim();
+  writeSetupValues(values);
+  await postSetupConfig(values);
+}
+
+async function ensureSlackAppConfig(workspace = null) {
+  if (slackAppConfigured()) {
+    success('Slack app settings are configured.');
+    return;
+  }
+  if (options.quick) {
+    if (options.nonInteractive) {
+      fail('Missing Slack app settings. Set SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET.');
+    }
+    info('Slack app settings are incomplete.');
+  }
+  if (slackOAuthConfigured()) {
+    await promptSlackAppToken();
+    if (slackAppConfigured()) return;
+  }
+
+  try {
+    await trySlackManifestAutomation(workspace);
+    await promptSlackAppToken();
+  } catch (error) {
+    warn(`Slack app automation failed: ${error instanceof Error ? error.message : String(error)}`);
+    if (options.nonInteractive) {
+      fail('Slack setup cannot continue non-interactively without complete Slack app settings.');
+    }
+    warn('Falling back to manual Slack app setup.');
+    await promptManualSlackConfig();
+  }
+
+  if (!slackAppConfigured()) {
+    await promptManualSlackConfig();
+  }
+  if (!slackAppConfigured()) {
+    fail('Slack app settings are still incomplete.');
+  }
+}
+
+function slackInstallUrl(workspace = null) {
+  const teamId = workspace?.id || readSetupValue('SLACK_TEAM_ID');
+  const params = new URLSearchParams({ source: 'cli' });
+  if (teamId) params.set('team', teamId);
+  return `${murphUrl}/api/slack/install?${params.toString()}`;
+}
+
+function slackWorkspaceMatches(status, workspace = null) {
+  const targetTeamId = workspace?.id || readSetupValue('SLACK_TEAM_ID');
+  if (!targetTeamId || !status.slack?.installed) return Boolean(status.slack?.installed);
+  const connectedTeamId = status.slack?.workspace?.externalWorkspaceId;
+  return !connectedTeamId || connectedTeamId === targetTeamId;
+}
+
+function assertSlackWorkspaceMatch(status, workspace = null) {
+  const targetTeamId = workspace?.id || readSetupValue('SLACK_TEAM_ID');
+  const connectedTeamId = status.slack?.workspace?.externalWorkspaceId;
+  if (targetTeamId && connectedTeamId && connectedTeamId !== targetTeamId) {
+    fail(`Connected Slack workspace ${connectedTeamId}, but setup selected ${targetTeamId}. Re-run murph setup slack and connect the selected workspace.`);
+  }
 }
 
 async function request(pathname, options = {}) {
@@ -502,27 +863,27 @@ async function health() {
   }
 }
 
-async function postSetupEnv(values) {
+async function postSetupConfig(values) {
   if (!(await health())) return;
   try {
-    await request('/api/setup/env', {
+    await request('/api/setup/config', {
       method: 'POST',
       body: JSON.stringify(values)
     });
   } catch (error) {
-    const hasConfigValues = Object.keys(values).some((key) => CONFIG_KEYS.has(key));
+    const hasLocalConfigValues = Object.keys(values).some((key) => CONFIG_KEYS.has(key));
     const isUnsupportedSetupKey = error instanceof Error && error.message.includes('Unsupported setup key');
-    if (!hasConfigValues || !isUnsupportedSetupKey) {
+    if (!hasLocalConfigValues || !isUnsupportedSetupKey) {
       throw error;
     }
 
-    const envValues = Object.fromEntries(
+    const setupValues = Object.fromEntries(
       Object.entries(values).filter(([key, value]) => !CONFIG_KEYS.has(key) && String(value || '').trim())
     );
-    if (Object.keys(envValues).length > 0) {
-      await request('/api/setup/env', {
+    if (Object.keys(setupValues).length > 0) {
+      await request('/api/setup/config', {
         method: 'POST',
-        body: JSON.stringify(envValues)
+        body: JSON.stringify(setupValues)
       });
     }
     warn('Saved local config. Restart Murph if the running server does not show the new model settings yet.');
@@ -554,20 +915,34 @@ async function ensureServer() {
   fail(`Murph did not become healthy at ${murphUrl}. Run: murph logs`);
 }
 
-function openUrl(url) {
-  if (!process.stdout.isTTY || options.nonInteractive) return;
-  const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
-  spawnSync(opener, [url], { stdio: 'ignore' });
+function browserOpenCommand(url) {
+  if (process.env.MURPH_BROWSER_OPEN_COMMAND) {
+    return { command: process.env.MURPH_BROWSER_OPEN_COMMAND, args: [url] };
+  }
+  if (!output.isTTY) return null;
+  if (process.platform === 'darwin') return { command: 'open', args: [url] };
+  if (process.platform === 'win32') return { command: 'cmd', args: ['/c', 'start', '', url] };
+  return { command: 'xdg-open', args: [url] };
+}
+
+function openBrowserUrl(url) {
+  if (options.nonInteractive) return false;
+  const opener = browserOpenCommand(url);
+  if (!opener) return false;
+  const result = spawnSync(opener.command, opener.args, { stdio: 'ignore' });
+  if (result.status === 0 && !result.error) return true;
+  warn('Murph could not open the browser automatically. Use the URL above to continue.');
+  return false;
 }
 
 async function setupCore() {
   sectionTitle('Core');
   mkdirSync(path.join(appDir, 'data'), { recursive: true });
   const values = {};
-  if (!readEnvValue('MURPH_APP_URL')) values.MURPH_APP_URL = murphUrl;
-  if (!readEnvValue('MURPH_SQLITE_PATH')) values.MURPH_SQLITE_PATH = 'data/murph.sqlite';
-  if (!readEnvValue('SLACK_EVENTS_MODE')) values.SLACK_EVENTS_MODE = 'socket';
-  const updated = writeEnvValues(values);
+  if (!readSetupValue('MURPH_APP_URL')) values.MURPH_APP_URL = murphUrl;
+  if (!readSetupValue('MURPH_SQLITE_PATH')) values.MURPH_SQLITE_PATH = 'data/murph.sqlite';
+  if (!readSetupValue('SLACK_EVENTS_MODE')) values.SLACK_EVENTS_MODE = 'socket';
+  const updated = writeSetupValues(values);
   if (updated.length > 0) {
     success(`Updated configuration: ${updated.join(', ')}`);
   } else {
@@ -578,7 +953,7 @@ async function setupCore() {
 async function setupAi() {
   sectionTitle('AI provider');
   const currentProvider = currentDefaultProvider();
-  const hasKey = Boolean(readEnvValue('OPENAI_API_KEY') || readEnvValue('ANTHROPIC_API_KEY'));
+  const hasKey = Boolean(readSetupValue('OPENAI_API_KEY') || readSetupValue('ANTHROPIC_API_KEY'));
   if (options.quick && hasKey) {
     success(`AI provider is configured (${currentProvider}).`);
     await saveAgentModelDefaults(currentProvider);
@@ -595,7 +970,7 @@ async function setupAi() {
   const providerInput = await askChoice('Provider: [1] OpenAI  [2] Anthropic', ['1', '2', 'openai', 'anthropic'], currentProvider === 'anthropic' ? '2' : '1');
   const provider = providerInput === '2' || providerInput.toLowerCase() === 'anthropic' ? 'anthropic' : 'openai';
   const keyName = provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
-  const existing = readEnvValue(keyName);
+  const existing = readSetupValue(keyName);
   const key = await askRequired(
     existing
       ? `${provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key (leave blank to keep current)`
@@ -603,60 +978,45 @@ async function setupAi() {
     existing
   );
   const values = { MURPH_DEFAULT_PROVIDER: provider, [keyName]: key };
-  writeEnvValues(values);
-  await postSetupEnv(values);
+  writeSetupValues(values);
+  await postSetupConfig(values);
   success(`Saved ${provider} key (${mask(key)}).`);
   await promptAgentModel(provider);
 }
 
 async function setupSlack() {
   sectionTitle('Slack');
-  const configured = Boolean(readEnvValue('SLACK_APP_TOKEN') && readEnvValue('SLACK_CLIENT_ID') && readEnvValue('SLACK_CLIENT_SECRET'));
-  if (!(options.quick && configured)) {
-    if (options.nonInteractive && !configured) {
-      fail('Missing Slack app settings. Set SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET.');
-    }
-    if (!options.manual && haveCommand('slack')) {
-      info('Slack CLI detected. Use it to create or update the app from docs/public/slack-socket-mode-manifest.yml, then continue here with the app credentials.');
-    } else if (options.auto && !options.manual) {
-      warn('Slack CLI was not found. Falling back to manual Slack app setup.');
-    }
-    info('Use docs/public/slack-socket-mode-manifest.yml and this redirect URL:');
-    console.log(`   ${paint('bold', `${murphUrl}/api/slack/oauth/callback`)}`);
-    const values = {
-      SLACK_EVENTS_MODE: 'socket',
-      SLACK_APP_TOKEN: await askRequired('Slack app-level token (xapp-...)', readEnvValue('SLACK_APP_TOKEN')),
-      SLACK_CLIENT_ID: await askRequired('Slack client ID', readEnvValue('SLACK_CLIENT_ID')),
-      SLACK_CLIENT_SECRET: await askRequired('Slack client secret', readEnvValue('SLACK_CLIENT_SECRET'))
-    };
-    writeEnvValues(values);
-    await postSetupEnv(values);
-  }
+  const workspace = await ensureSlackWorkspaceContext();
+  await ensureSlackAppConfig(workspace);
 
   await ensureServer();
   let status = await request('/api/setup/status');
-  if (status.slack?.installed && !options.reconnectSearch) {
-    success('Slack workspace is connected.');
+  assertSlackWorkspaceMatch(status, workspace);
+  if (slackWorkspaceMatches(status, workspace) && !options.reconnectSearch) {
+    const label = status.slack?.workspace?.name || workspace?.name || 'Slack workspace';
+    success(`${label} is connected.`);
     return;
   }
 
-  const installUrl = `${murphUrl}/api/slack/install`;
-  info('Open Slack OAuth:');
-  console.log(`   ${paint('bold', installUrl)}`);
-  openUrl(installUrl);
+  const installUrl = slackInstallUrl(workspace);
+  info('Slack app config is saved. Opening this URL to install Murph in your Slack workspace:');
+  callout('Slack install URL', installUrl);
+  openBrowserUrl(installUrl);
   if (options.nonInteractive) {
-    fail('Slack OAuth is not complete.');
+    fail('Slack app installation is not complete.');
   }
-  await rl.question('Press Enter after Slack OAuth finishes.');
+  await rl.question('Press Enter after Slack app installation finishes.');
   for (let i = 0; i < 20; i += 1) {
     status = await request('/api/setup/status');
-    if (status.slack?.installed) {
-      success('Slack workspace connected.');
+    assertSlackWorkspaceMatch(status, workspace);
+    if (slackWorkspaceMatches(status, workspace)) {
+      const label = status.slack?.workspace?.name || workspace?.name || 'Slack workspace';
+      success(`${label} connected.`);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  fail('Slack OAuth did not complete yet. Re-run: murph setup slack');
+  fail('Slack app installation did not complete yet. Re-run: murph setup slack');
 }
 
 async function getDefaults() {
@@ -674,7 +1034,7 @@ async function saveDefaults(defaults) {
 
 function numberedList(items, formatter) {
   items.forEach((item, index) => {
-    console.log(`  ${paint('cyan', String(index + 1).padStart(2, ' '))}. ${formatter(item)}`);
+    console.log(`  ${paint('secondary', String(index + 1).padStart(2, ' '))}. ${formatter(item)}`);
   });
 }
 
@@ -687,6 +1047,10 @@ async function setupIdentity() {
   }
   if (options.nonInteractive && !current.defaults?.ownerUserId) {
     fail('Missing owner identity. Run murph setup identity.');
+  }
+  if (section !== 'identity' && current.defaults?.ownerUserId) {
+    success(`Owner is configured: ${current.defaults.ownerDisplayName || current.defaults.ownerUserId}`);
+    return current.defaults;
   }
 
   const members = await request('/api/slack/members');
@@ -730,7 +1094,7 @@ async function setupChannels() {
   if (channels.length === 0) {
     const next = { ...current.defaults, channelScopeMode: 'all_accessible', selectedChannels: [] };
     await saveDefaults(next);
-    console.log('No channels returned. Saved all accessible channels.');
+    info('No channels returned. Saved all accessible channels.');
     return next;
   }
 
@@ -807,17 +1171,16 @@ async function setupPolicy() {
 }
 
 async function setupStatus() {
-  const envStatus = {
-    envFile: existsSync(envPath),
+  const localStatus = {
     configFile: existsSync(configPath),
     credentialsFile: existsSync(credentialsPath),
-    aiProvider: Boolean(readEnvValue('OPENAI_API_KEY') || readEnvValue('ANTHROPIC_API_KEY')),
+    aiProvider: Boolean(readSetupValue('OPENAI_API_KEY') || readSetupValue('ANTHROPIC_API_KEY')),
     defaultProvider: currentDefaultProvider(),
     defaultModel: currentDefaultModel(currentDefaultProvider()),
     agentProvider: currentAgentProvider(currentDefaultProvider()),
     agentModel: currentAgentModel(currentAgentProvider(currentDefaultProvider())),
     agentInheritsRuntime: !hasAgentOverride(),
-    slackConfig: Boolean(readEnvValue('SLACK_APP_TOKEN') && readEnvValue('SLACK_CLIENT_ID') && readEnvValue('SLACK_CLIENT_SECRET'))
+    slackConfig: Boolean(readSetupValue('SLACK_APP_TOKEN') && readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET'))
   };
   let server = null;
   if (await health()) {
@@ -829,19 +1192,23 @@ async function setupStatus() {
   }
 
   if (options.json) {
-    console.log(JSON.stringify({ ok: true, env: envStatus, server }, null, 2));
+    console.log(JSON.stringify({ ok: true, local: localStatus, server }, null, 2));
     return;
   }
 
   sectionTitle('Setup status');
-  statusLine('Config file', envStatus.configFile || envStatus.envFile ? 'ok' : 'missing', envStatus.configFile ? 'murph.config.yaml present' : envStatus.envFile ? '.env present' : 'missing');
-  statusLine('Credentials file', envStatus.credentialsFile ? 'ok' : 'warning', envStatus.credentialsFile ? credentialsPath : 'will be created when a secret is saved');
-  statusLine('AI provider', envStatus.aiProvider ? 'ok' : 'missing', envStatus.aiProvider ? `${envStatus.defaultProvider}/${envStatus.defaultModel}` : 'missing');
-  statusLine('Murph Agent model', envStatus.agentModel ? 'ok' : 'missing', envStatus.agentInheritsRuntime
-    ? `inherits runtime (${envStatus.agentProvider}/${envStatus.agentModel})`
-    : `${envStatus.agentProvider}/${envStatus.agentModel}`);
-  statusLine('Slack app config', envStatus.slackConfig ? 'ok' : 'missing', envStatus.slackConfig ? 'configured' : 'missing');
+  statusGroup('Local files');
+  statusLine('Config file', localStatus.configFile ? 'ok' : 'missing', localStatus.configFile ? configPath : 'missing');
+  statusLine('Credentials file', localStatus.credentialsFile ? 'ok' : 'warning', localStatus.credentialsFile ? credentialsPath : 'will be created when a secret is saved');
+  statusGroup('AI');
+  statusLine('AI provider', localStatus.aiProvider ? 'ok' : 'missing', localStatus.aiProvider ? `${localStatus.defaultProvider}/${localStatus.defaultModel}` : 'missing');
+  statusLine('Murph Agent model', localStatus.agentModel ? 'ok' : 'missing', localStatus.agentInheritsRuntime
+    ? `inherits runtime (${localStatus.agentProvider}/${localStatus.agentModel})`
+    : `${localStatus.agentProvider}/${localStatus.agentModel}`);
+  statusGroup('Slack');
+  statusLine('Slack app config', localStatus.slackConfig ? 'ok' : 'missing', localStatus.slackConfig ? 'configured' : 'missing');
   if (server) {
+    statusGroup('Doctor');
     for (const check of server.doctor.checks) {
       statusLine(check.label, check.status === 'ok' ? 'ok' : check.status === 'warning' ? 'warning' : 'missing', check.message);
     }
@@ -862,7 +1229,7 @@ async function runAll() {
   await setupStatus();
   console.log('');
   success('Murph setup is complete.');
-  console.log(`   ${paint('bold', murphUrl)}`);
+  callout('Murph URL', murphUrl);
 }
 
 try {

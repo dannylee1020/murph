@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const originalCwd = process.cwd();
 const envKeys = [
   'MURPH_APP_DIR',
+  'MURPH_CONFIG_PATH',
   'MURPH_CREDENTIALS_PATH',
   'MURPH_APP_URL',
   'MURPH_SQLITE_PATH',
@@ -17,21 +18,26 @@ const envKeys = [
   'ANTHROPIC_API_KEY',
   'SLACK_EVENTS_MODE',
   'SLACK_APP_TOKEN',
+  'SLACK_APP_ID',
+  'SLACK_TEAM_ID',
+  'SLACK_TEAM_NAME',
   'SLACK_CLIENT_ID',
-  'SLACK_CLIENT_SECRET'
+  'SLACK_CLIENT_SECRET',
+  'SLACK_SIGNING_SECRET'
 ] as const;
 const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 
-describe('setup env file writer', () => {
+describe('setup config value writer', () => {
   let workspace: string;
 
   beforeEach(() => {
     vi.resetModules();
-    workspace = mkdtempSync(path.join(tmpdir(), 'murph-setup-env-'));
+    workspace = mkdtempSync(path.join(tmpdir(), 'murph-setup-config-'));
     process.chdir(workspace);
     for (const key of envKeys) {
       delete process.env[key];
     }
+    process.env.MURPH_CONFIG_PATH = path.join(workspace, 'config.yaml');
     process.env.MURPH_CREDENTIALS_PATH = path.join(workspace, '.credentials');
   });
 
@@ -46,47 +52,57 @@ describe('setup env file writer', () => {
     }
   });
 
-  it('updates known setup keys without dropping unrelated lines', async () => {
-    writeFileSync('.env', 'MURPH_APP_URL=http://localhost:5173\n\n# User setting\nCUSTOM_VALUE=keep\nOPENAI_API_KEY=old\n');
-    const { updateSetupEnv } = await import('../src/lib/server/setup/env-file');
+  it('writes known setup keys to config and credentials', async () => {
+    writeFileSync('config.yaml', 'custom:\n  keep: true\n');
+    const { updateSetupConfigValues } = await import('../src/lib/server/setup/config-values');
 
-    const result = updateSetupEnv({
+    const result = updateSetupConfigValues({
       MURPH_DEFAULT_PROVIDER: 'openai',
       MURPH_DEFAULT_MODEL: 'gpt-5.5',
       MURPH_AGENT_PROVIDER: 'anthropic',
       MURPH_AGENT_MODEL: 'claude-opus-4-7',
       OPENAI_API_KEY: 'sk-new',
       SLACK_EVENTS_MODE: 'socket',
-      SLACK_APP_TOKEN: 'xapp-test'
+      SLACK_APP_TOKEN: 'xapp-test',
+      SLACK_APP_ID: 'A123',
+      SLACK_TEAM_ID: 'T123',
+      SLACK_TEAM_NAME: 'Murph Test',
+      SLACK_SIGNING_SECRET: 'signing-test'
     });
 
     expect(result.updated).toEqual([
       'OPENAI_API_KEY',
       'SLACK_APP_TOKEN',
+      'SLACK_SIGNING_SECRET',
       'MURPH_DEFAULT_PROVIDER',
       'MURPH_DEFAULT_MODEL',
       'MURPH_AGENT_PROVIDER',
       'MURPH_AGENT_MODEL',
-      'SLACK_EVENTS_MODE'
+      'SLACK_EVENTS_MODE',
+      'SLACK_APP_ID',
+      'SLACK_TEAM_ID',
+      'SLACK_TEAM_NAME'
     ]);
-    expect(readFileSync('.env', 'utf8')).toContain('CUSTOM_VALUE=keep');
-    expect(readFileSync('.env', 'utf8')).not.toContain('OPENAI_API_KEY=sk-new');
-    expect(readFileSync('.env', 'utf8')).not.toContain('SLACK_APP_TOKEN=xapp-test');
     const credentials = JSON.parse(readFileSync(path.join(workspace, '.credentials'), 'utf8'));
     expect(credentials.credentials).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'openai', key: 'api_key', value: 'sk-new' }),
-      expect.objectContaining({ provider: 'slack', key: 'app_token', value: 'xapp-test' })
+      expect.objectContaining({ provider: 'slack', key: 'app_token', value: 'xapp-test' }),
+      expect.objectContaining({ provider: 'slack', key: 'signing_secret', value: 'signing-test' })
     ]));
-    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('defaultProvider: openai');
-    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('defaultModel: gpt-5.5');
-    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('provider: anthropic');
-    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('model: claude-opus-4-7');
-    expect(readFileSync('murph.config.yaml', 'utf8')).toContain('eventsMode: socket');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('keep: true');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('defaultProvider: openai');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('defaultModel: gpt-5.5');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('provider: anthropic');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('model: claude-opus-4-7');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('eventsMode: socket');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('appId: A123');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('teamId: T123');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('teamName: Murph Test');
     expect(process.env.OPENAI_API_KEY).toBe('sk-new');
   });
 
-  it('clears agent overrides through setup env updates', async () => {
-    writeFileSync('murph.config.yaml', [
+  it('clears agent overrides through setup config updates', async () => {
+    writeFileSync('config.yaml', [
       'ai:',
       '  defaultProvider: openai',
       '  defaultModel: gpt-5.5',
@@ -95,22 +111,22 @@ describe('setup env file writer', () => {
       '    model: claude-opus-4-7',
       ''
     ].join('\n'));
-    const { updateSetupEnv } = await import('../src/lib/server/setup/env-file');
+    const { updateSetupConfigValues } = await import('../src/lib/server/setup/config-values');
 
-    const result = updateSetupEnv({
+    const result = updateSetupConfigValues({
       MURPH_AGENT_PROVIDER: '',
       MURPH_AGENT_MODEL: ''
     });
 
-    const raw = readFileSync('murph.config.yaml', 'utf8');
+    const raw = readFileSync('config.yaml', 'utf8');
     expect(result.updated).toEqual(['MURPH_AGENT_PROVIDER', 'MURPH_AGENT_MODEL']);
     expect(raw).not.toContain('provider: anthropic');
     expect(raw).not.toContain('model: claude-opus-4-7');
   });
 
   it('rejects unsupported keys', async () => {
-    const { updateSetupEnv } = await import('../src/lib/server/setup/env-file');
+    const { updateSetupConfigValues } = await import('../src/lib/server/setup/config-values');
 
-    expect(() => updateSetupEnv({ NOT_A_SETUP_KEY: 'nope' })).toThrow('Unsupported setup key');
+    expect(() => updateSetupConfigValues({ NOT_A_SETUP_KEY: 'nope' })).toThrow('Unsupported setup key');
   });
 });
