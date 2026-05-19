@@ -23,4 +23,4 @@ Failed plugins include an error message from manifest parsing, skill parsing, pa
 
 ## Capability lists
 
-Status responses list registered skill names and connector ids for each plugin.
+Status responses list registered channel ids, skill names, and connector ids for each plugin.

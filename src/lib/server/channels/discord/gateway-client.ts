@@ -93,6 +93,17 @@ export class DiscordGatewayClient {
       return;
     }
 
+    const inserted = store.saveChannelEvent({
+      provider: 'discord',
+      workspaceId: workspace.id,
+      dedupeKey: task.dedupeKey ?? task.id,
+      eventType: task.eventType ?? 'MESSAGE_CREATE',
+      payloadJson: raw
+    });
+    if (!inserted) {
+      return;
+    }
+
     await getGateway().handleTask(task);
   }
 

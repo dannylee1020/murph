@@ -12,16 +12,27 @@ Plugins are local extension packages that add behavior without editing Murph cor
 Scoped plugins live under one of these roots:
 
 ```text
-~/.murph/plugins/<id>
-./plugins/<id>
+~/.murph/plugins/<category>/<id>
+./plugins/<category>/<id>
 ```
 
-Use `~/.murph/plugins/<id>` for user-local extensions. Use `./plugins/<id>` for repo-local development.
+Use `~/.murph/plugins/<category>/<id>` for user-local extensions. Use `./plugins/<category>/<id>` for repo-local development.
+
+Categories keep extension types separated:
+
+- `channels` for advanced Slack/Discord-style messaging provider extensions.
+- `tools` for connector-backed tools.
+- `skills` for prompt guidance.
+- `context` for grounding sources.
+- `bundles` for plugins that intentionally combine multiple categories.
+
+Murph still loads older flat plugin directories under `plugins/<id>` for compatibility, but new plugins should use the category-first layout.
 
 ## Capabilities
 
 A scoped plugin can contribute:
 
+- [channels](/docs/plugins/channels)
 - [skills](/docs/plugins/skills)
 - [connectors](/docs/plugins/connectors)
 - [read-only tools](/docs/plugins/tools)
@@ -44,4 +55,6 @@ Use [Murph Agent](/docs/usage/murph-agent) to create or update scoped plugins:
 murph agent
 ```
 
-Then ask it to create or update a plugin under `~/.murph/plugins/<id>`.
+Then ask it to create or update a plugin under the right category root, such as `~/.murph/plugins/tools/linear`.
+
+For a new messaging provider, ask Murph Agent to create a channel plugin under `~/.murph/plugins/channels/<id>`. A custom channel should not require edits to Murph core runtime files, but it may still require manual app, bot, scope, webhook, or approval steps in the provider's console.

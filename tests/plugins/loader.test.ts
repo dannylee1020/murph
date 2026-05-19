@@ -72,6 +72,47 @@ export default {
   return root;
 }
 
+function writeChannelPlugin(home: string, id: string): string {
+  const root = join(home, 'plugins', 'channels', id);
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, 'plugin.json'), JSON.stringify({
+    id,
+    name: id,
+    description: `${id} channel`,
+    version: '0.1.0',
+    capabilities: {
+      channels: ['channel.mjs']
+    }
+  }));
+  writeFileSync(join(root, 'channel.mjs'), `
+export const channel = {
+  id: '${id}',
+  displayName: '${id}',
+  adapter: {
+    id: '${id}',
+    displayName: '${id}',
+    capabilities: ['event_ingress', 'thread_fetch', 'reply_post'],
+    normalizeEvent() {
+      return null;
+    },
+    async fetchThread() {
+      return [];
+    },
+    async postReply() {}
+  },
+  connector: {
+    async listMembers() {
+      return [{ id: 'U1', displayName: 'User One' }];
+    },
+    async listChannels() {
+      return [{ id: 'C1', displayName: '#general' }];
+    }
+  }
+};
+`);
+  return root;
+}
+
 describe('scoped plugin loader', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -94,6 +135,7 @@ describe('scoped plugin loader', () => {
         id: 'linear',
         status: 'loaded',
         capabilities: {
+          channels: [],
           skills: ['linear'],
           adapters: ['linear']
         }
@@ -120,8 +162,8 @@ describe('scoped plugin loader', () => {
     expect(statuses[0]).toEqual(expect.objectContaining({
       id: 'linear',
       status: 'failed',
-      error: 'Plugin adapter linear tool linear.read must be read-only'
-    }));
+        error: 'Plugin adapter linear tool linear.read must be read-only'
+      }));
     expect(getToolRegistry().has('linear.read')).toBe(false);
     expect((await loadSkills('__missing__')).map((skill) => skill.name)).not.toContain('linear');
   });
@@ -138,6 +180,34 @@ describe('scoped plugin loader', () => {
       id: 'linear',
       status: 'failed',
       error: 'Plugin path escapes package root: ../outside.md'
+    }));
+  });
+
+  it('loads category-first channel plugins', async () => {
+    const home = tempMurphHome();
+    writeChannelPlugin(home, 'teams');
+
+    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
+    const { getChannelRegistry } = await import('#lib/server/capabilities/channel-registry');
+
+    const statuses = await loadScopedPlugins();
+
+    expect(statuses).toEqual([
+      expect.objectContaining({
+        id: 'teams',
+        category: 'channels',
+        status: 'loaded',
+        capabilities: {
+          channels: ['teams'],
+          skills: [],
+          adapters: []
+        }
+      })
+    ]);
+    expect(getChannelRegistry().list().find((channel) => channel.id === 'teams')).toEqual(expect.objectContaining({
+      id: 'teams',
+      source: 'plugin',
+      setup: expect.objectContaining({ configurable: true })
     }));
   });
 

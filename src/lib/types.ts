@@ -325,6 +325,77 @@ export interface ChannelEnsureMemberResult {
     reason?: string;
 }
 
+export interface ChannelSetupMember {
+    id: string;
+    displayName: string;
+    avatar?: string;
+}
+
+export interface ChannelSetupChannel {
+    id: string;
+    displayName: string;
+    name?: string;
+    isMember?: boolean;
+    isPrivate?: boolean;
+}
+
+export interface ChannelSetupRequirement {
+    key: string;
+    label: string;
+    kind: 'config' | 'secret' | 'manual';
+    required?: boolean;
+    description?: string;
+}
+
+export interface ChannelConnectorStatus {
+    configured: boolean;
+    installed?: boolean;
+    error?: string;
+    workspace?: {
+        id: string;
+        externalWorkspaceId: string;
+        name: string;
+    };
+}
+
+export interface ChannelConnector {
+    requirements?: ChannelSetupRequirement[];
+    getStatus?(): Promise<ChannelConnectorStatus> | ChannelConnectorStatus;
+    listMembers?(workspace: Workspace): Promise<ChannelSetupMember[]>;
+    getMember?(workspace: Workspace, userId: string): Promise<ChannelSetupMember>;
+    listChannels?(workspace: Workspace): Promise<ChannelSetupChannel[]>;
+    getChannel?(workspace: Workspace, channelId: string): Promise<ChannelSetupChannel>;
+    handleSetupAction?(input: {
+        action: string;
+        body: Record<string, unknown>;
+        url: URL;
+    }): Promise<unknown>;
+    handleOAuthCallback?(input: { url: URL }): Promise<{ redirect?: string; body?: unknown } | unknown>;
+}
+
+export interface ChannelIngressStartContext {
+    provider: ChannelProvider;
+}
+
+export interface ChannelIngress {
+    start?(context: ChannelIngressStartContext): void | Promise<void>;
+    handleWebhook?(input: {
+        rawBody: string;
+        headers: Headers;
+        url: URL;
+    }): Promise<unknown>;
+}
+
+export interface ChannelPlugin {
+    id: ChannelProvider;
+    displayName: string;
+    description?: string;
+    version?: string;
+    adapter: ChannelAdapter;
+    connector?: ChannelConnector;
+    ingress?: ChannelIngress;
+}
+
 export interface ContextSource {
     name: string;
     description: string;

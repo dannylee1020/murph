@@ -1,33 +1,80 @@
 import type {
   ChannelAdapter,
   ChannelEnsureMemberResult,
+  ChannelConnector,
+  ChannelIngress,
   ChannelMembershipStatus,
   ChannelMessage,
+  ChannelPlugin,
   ChannelProvider,
+  ChannelSetupChannel,
+  ChannelSetupMember,
   ChannelThreadRef,
   ContinuityTask,
   Workspace
 } from '#lib/types';
 
+type ChannelSource = 'builtin' | 'plugin' | 'runtime';
+
+interface RegisteredChannel {
+  plugin: ChannelPlugin;
+  source: ChannelSource;
+  filePath?: string;
+}
+
 export class ChannelRegistry {
-  private readonly adapters = new Map<ChannelProvider, ChannelAdapter>();
+  private readonly channels = new Map<ChannelProvider, RegisteredChannel>();
 
   register(adapter: ChannelAdapter): void {
-    if (this.adapters.has(adapter.id)) {
-      throw new Error(`Channel adapter already registered: ${adapter.id}`);
+    this.registerPlugin({
+      id: adapter.id,
+      displayName: adapter.displayName,
+      adapter
+    }, { source: 'runtime' });
+  }
+
+  registerPlugin(plugin: ChannelPlugin, opts: { source: ChannelSource; filePath?: string }): void {
+    if (!plugin.id || !/^[a-z0-9][a-z0-9._-]*$/i.test(plugin.id)) {
+      throw new Error(`Invalid channel id: ${plugin.id || '<empty>'}`);
+    }
+    if (!plugin.adapter || plugin.adapter.id !== plugin.id) {
+      throw new Error(`Channel plugin ${plugin.id} adapter id must match plugin id`);
+    }
+    if (this.channels.has(plugin.id)) {
+      throw new Error(`Channel adapter already registered: ${plugin.id}`);
     }
 
-    this.adapters.set(adapter.id, adapter);
+    this.channels.set(plugin.id, {
+      plugin,
+      source: opts.source,
+      filePath: opts.filePath
+    });
   }
 
   get(provider: ChannelProvider): ChannelAdapter {
-    const adapter = this.adapters.get(provider);
+    const adapter = this.channels.get(provider)?.plugin.adapter;
 
     if (!adapter) {
       throw new Error(`Unknown channel adapter: ${provider}`);
     }
 
     return adapter;
+  }
+
+  getPlugin(provider: ChannelProvider): ChannelPlugin {
+    const plugin = this.channels.get(provider)?.plugin;
+    if (!plugin) {
+      throw new Error(`Unknown channel adapter: ${provider}`);
+    }
+    return plugin;
+  }
+
+  getConnector(provider: ChannelProvider): ChannelConnector | undefined {
+    return this.channels.get(provider)?.plugin.connector;
+  }
+
+  getIngress(provider: ChannelProvider): ChannelIngress | undefined {
+    return this.channels.get(provider)?.plugin.ingress;
   }
 
   normalizeEvent(
@@ -81,11 +128,69 @@ export class ChannelRegistry {
     return await adapter.ensureMember(workspace, channelId);
   }
 
+  async listMembers(workspace: Workspace): Promise<ChannelSetupMember[]> {
+    const connector = this.getConnector(workspace.provider);
+    if (!connector?.listMembers) {
+      throw new Error(`Channel ${workspace.provider} does not support member discovery`);
+    }
+    return connector.listMembers(workspace);
+  }
+
+  async getMember(workspace: Workspace, userId: string): Promise<ChannelSetupMember> {
+    const connector = this.getConnector(workspace.provider);
+    if (!connector?.getMember) {
+      throw new Error(`Channel ${workspace.provider} does not support member lookup`);
+    }
+    return connector.getMember(workspace, userId);
+  }
+
+  async listChannels(workspace: Workspace): Promise<ChannelSetupChannel[]> {
+    const connector = this.getConnector(workspace.provider);
+    if (!connector?.listChannels) {
+      throw new Error(`Channel ${workspace.provider} does not support channel discovery`);
+    }
+    return connector.listChannels(workspace);
+  }
+
+  async getChannel(workspace: Workspace, channelId: string): Promise<ChannelSetupChannel> {
+    const connector = this.getConnector(workspace.provider);
+    if (!connector?.getChannel) {
+      throw new Error(`Channel ${workspace.provider} does not support channel lookup`);
+    }
+    return connector.getChannel(workspace, channelId);
+  }
+
+  async startIngress(): Promise<void> {
+    await Promise.all([...this.channels.values()].map(async ({ plugin }) => {
+      await plugin.ingress?.start?.({ provider: plugin.id });
+    }));
+  }
+
+  unregisterBySource(source: ChannelSource): void {
+    for (const [id, registered] of this.channels.entries()) {
+      if (registered.source === source) {
+        this.channels.delete(id);
+      }
+    }
+  }
+
   list() {
-    return [...this.adapters.values()].map((adapter) => ({
-      id: adapter.id,
-      displayName: adapter.displayName,
-      capabilities: adapter.capabilities
+    return [...this.channels.values()].map(({ plugin, source, filePath }) => ({
+      id: plugin.id,
+      displayName: plugin.displayName,
+      description: plugin.description,
+      version: plugin.version,
+      source,
+      filePath,
+      capabilities: plugin.adapter.capabilities,
+      setup: {
+        configurable: Boolean(plugin.connector),
+        requirements: plugin.connector?.requirements ?? []
+      },
+      ingress: {
+        startable: Boolean(plugin.ingress?.start),
+        webhook: Boolean(plugin.ingress?.handleWebhook)
+      }
     }));
   }
 }

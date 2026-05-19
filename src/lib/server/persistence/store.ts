@@ -69,6 +69,9 @@ export class Store {
   saveSlackEvent(input: workspace.SlackEventInput): boolean {
     return workspace.saveSlackEvent(this.db, input);
   }
+  saveChannelEvent(input: workspace.ChannelEventInput): boolean {
+    return workspace.saveChannelEvent(this.db, input);
+  }
 
   // User
   upsertUser(input: user.UpsertUserInput): AgentUser {

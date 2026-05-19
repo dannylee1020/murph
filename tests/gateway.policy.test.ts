@@ -134,6 +134,8 @@ async function setup(
   vi.doMock('#lib/server/capabilities/channel-registry', () => ({
     getChannelRegistry: () => ({
       register: vi.fn(),
+      registerPlugin: vi.fn(),
+      startIngress: vi.fn(),
       fetchThread,
       postReply: vi.fn(),
       postMessage: vi.fn()

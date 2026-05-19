@@ -59,3 +59,11 @@ Inside the TUI:
 ```
 
 Tool logs are quiet by default. Turn them on when you need detailed debugging.
+
+## Channel setup
+
+Murph Agent can lead setup for built-in channels such as Slack and Discord.
+
+For custom channels, Murph Agent can scaffold a channel plugin and guide the work, but it uses Murph's docs, setup APIs, and plugin metadata as its source of truth. A plugin-local `README.md` or `SETUP.md` can be useful maintenance documentation after the plugin exists, but it is not required for Murph Agent to begin setup.
+
+Most messaging providers still require manual provider-console steps outside Murph, such as creating an app or bot, choosing scopes, approving access, and configuring webhooks or realtime transport.

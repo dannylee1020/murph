@@ -1,5 +1,6 @@
 import { getDiscordService } from '#lib/server/channels/discord/service';
-import { getDiscordGatewayClient } from '#lib/server/channels/discord/gateway-client';
+import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
+import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { readJson, redirect, sendJson } from '../http.js';
@@ -26,6 +27,7 @@ export const discordRoutes: Route[] = [
       return;
     }
 
+    await ensureRuntimeInitialized();
     const workspace = await getDiscordService().exchangeCode(code, guildId);
     const env = getRuntimeEnv();
     getStore().upsertProviderSettings({
@@ -33,7 +35,7 @@ export const discordRoutes: Route[] = [
       provider: env.defaultProvider,
       model: env.defaultModel
     });
-    getDiscordGatewayClient().ensureStarted();
+    await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
 
     redirect(res, '/settings?installed=discord');
   }),
@@ -46,6 +48,7 @@ export const discordRoutes: Route[] = [
     }
 
     try {
+      await ensureRuntimeInitialized();
       const guild = await getDiscordService().fetchGuild(guildId);
       const workspace = await getDiscordService().saveGuildWorkspace(guild);
       const env = getRuntimeEnv();
@@ -54,7 +57,7 @@ export const discordRoutes: Route[] = [
         provider: env.defaultProvider,
         model: env.defaultModel
       });
-      getDiscordGatewayClient().ensureStarted();
+      await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
       sendJson(res, {
         ok: true,
         workspace: {

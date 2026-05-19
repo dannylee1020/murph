@@ -2,7 +2,7 @@ import { getRuntimeEnv } from '#lib/server/util/env';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import { handleSlackEventEnvelope, verifySlackHttpSignature } from '#lib/server/channels/slack/events';
 import { getSlackService } from '#lib/server/channels/slack/service';
-import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-client';
+import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getStore } from '#lib/server/persistence/store';
 import { readMurphConfig, updateMurphSetupDefaults } from '#lib/server/setup/config-file';
 import { readBody, redirect, sendJson, toHeaders } from '../http.js';
@@ -90,6 +90,7 @@ export const slackRoutes: Route[] = [
     }
 
     try {
+      await ensureRuntimeInitialized();
       const install = await getSlackService().exchangeCode(code, publicAppUrl(req, url));
       const { workspace } = install;
       const env = getRuntimeEnv();
@@ -100,7 +101,7 @@ export const slackRoutes: Route[] = [
         model: env.defaultModel
       });
       saveAuthedUserAsDefaultOwner(install);
-      getSlackSocketModeClient().ensureStarted();
+      await getChannelRegistry().getIngress('slack')?.start?.({ provider: 'slack' });
 
       redirect(res, `/setup?step=slack&success=1${sourceSuffix}`);
     } catch (error) {

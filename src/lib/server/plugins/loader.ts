@@ -5,11 +5,15 @@ import { pathToFileURL } from 'node:url';
 import { PLUGINS_ROOT } from '#lib/config';
 import { registerAdapter, unregisterAdaptersBySource } from '#lib/server/integrations/adapter-registry';
 import type { IntegrationAdapter } from '#lib/server/integrations/adapter';
+import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { parseSkillFile } from '#lib/server/skills/loader';
-import type { SkillManifest } from '#lib/types';
+import type { ChannelPlugin, SkillManifest } from '#lib/types';
 import { clearScopedPluginSkills, registerScopedPluginSkill } from './skill-registry.js';
 
 type ScopedPluginStatus = 'loaded' | 'failed' | 'skipped';
+type ScopedPluginCategory = 'channels' | 'tools' | 'skills' | 'context' | 'bundles' | 'legacy';
+
+const PLUGIN_CATEGORIES = new Set<ScopedPluginCategory>(['channels', 'tools', 'skills', 'context', 'bundles']);
 
 interface ScopedPluginManifest {
   id: string;
@@ -19,6 +23,7 @@ interface ScopedPluginManifest {
   capabilities?: {
     skills?: string[];
     adapters?: string[];
+    channels?: string[];
   };
 }
 
@@ -29,7 +34,9 @@ export interface ScopedPluginLoadStatus {
   root: string;
   status: ScopedPluginStatus;
   error?: string;
+  category?: ScopedPluginCategory;
   capabilities: {
+    channels: string[];
     skills: string[];
     adapters: string[];
   };
@@ -89,8 +96,9 @@ function parseManifest(raw: string): ScopedPluginManifest {
   const capabilities = isObject(parsed.capabilities) ? parsed.capabilities : {};
   const skills = asStringArray(capabilities.skills);
   const adapters = asStringArray(capabilities.adapters);
-  if (skills.length + adapters.length === 0) {
-    throw new Error('plugin.json must declare at least one skill or adapter');
+  const channels = asStringArray(capabilities.channels);
+  if (skills.length + adapters.length + channels.length === 0) {
+    throw new Error('plugin.json must declare at least one skill, adapter, or channel');
   }
 
   return {
@@ -98,7 +106,7 @@ function parseManifest(raw: string): ScopedPluginManifest {
     name,
     description,
     version: typeof parsed.version === 'string' ? parsed.version : undefined,
-    capabilities: { skills, adapters }
+    capabilities: { skills, adapters, channels }
   };
 }
 
@@ -117,6 +125,14 @@ function moduleAdapter(module: Record<string, unknown>): IntegrationAdapter | un
     return undefined;
   }
   return candidate as IntegrationAdapter;
+}
+
+function moduleChannel(module: Record<string, unknown>): ChannelPlugin | undefined {
+  const candidate = module.default ?? module.channel;
+  if (!candidate || typeof candidate !== 'object') {
+    return undefined;
+  }
+  return candidate as ChannelPlugin;
 }
 
 function validatePluginAdapter(adapter: IntegrationAdapter, manifest: ScopedPluginManifest): void {
@@ -148,11 +164,52 @@ async function loadAdapter(filePath: string, manifest: ScopedPluginManifest): Pr
   return adapter;
 }
 
-async function loadPluginPackage(root: string, opts: { register: boolean }): Promise<ScopedPluginLoadStatus> {
+function validatePluginChannel(channel: ChannelPlugin, manifest: ScopedPluginManifest): void {
+  if (!channel.id || !/^[a-z0-9][a-z0-9._-]*$/i.test(channel.id)) {
+    throw new Error(`Invalid channel id: ${channel.id || '<empty>'}`);
+  }
+  if (channel.id !== manifest.id) {
+    throw new Error(`Channel plugin ${manifest.id} must export channel id ${manifest.id}`);
+  }
+  if (!channel.adapter || channel.adapter.id !== channel.id) {
+    throw new Error(`Channel plugin ${manifest.id} adapter id must match channel id`);
+  }
+  if (!Array.isArray(channel.adapter.capabilities)) {
+    throw new Error(`Channel plugin ${manifest.id} adapter must declare capabilities`);
+  }
+  if (typeof channel.adapter.normalizeEvent !== 'function') {
+    throw new Error(`Channel plugin ${manifest.id} adapter must implement normalizeEvent`);
+  }
+  if (typeof channel.adapter.fetchThread !== 'function') {
+    throw new Error(`Channel plugin ${manifest.id} adapter must implement fetchThread`);
+  }
+  if (typeof channel.adapter.postReply !== 'function') {
+    throw new Error(`Channel plugin ${manifest.id} adapter must implement postReply`);
+  }
+}
+
+async function loadChannel(filePath: string, manifest: ScopedPluginManifest): Promise<ChannelPlugin> {
+  const moduleUrl = pathToFileURL(filePath);
+  moduleUrl.searchParams.set('v', String(importVersion));
+  const module = await import(moduleUrl.href);
+  const channel = moduleChannel(module as Record<string, unknown>);
+  if (!channel) {
+    throw new Error(`Channel ${path.relative(process.cwd(), filePath)} must export default or named channel`);
+  }
+  validatePluginChannel(channel, manifest);
+  return channel;
+}
+
+async function loadPluginPackage(
+  root: string,
+  opts: { register: boolean; category?: ScopedPluginCategory }
+): Promise<ScopedPluginLoadStatus> {
   const rawManifest = await readFile(manifestPath(root), 'utf8');
   const manifest = parseManifest(rawManifest);
   const skills: SkillManifest[] = [];
   const adapters: Array<{ adapter: IntegrationAdapter; adapterPath: string }> = [];
+  const channels: Array<{ channel: ChannelPlugin; channelPath: string }> = [];
+  const channelIds: string[] = [];
   const skillNames: string[] = [];
   const adapterIds: string[] = [];
 
@@ -173,12 +230,22 @@ async function loadPluginPackage(root: string, opts: { register: boolean }): Pro
     adapterIds.push(adapter.id);
   }
 
+  for (const relativeChannelPath of manifest.capabilities?.channels ?? []) {
+    const channelPath = resolveUnder(root, relativeChannelPath);
+    const channel = await loadChannel(channelPath, manifest);
+    channels.push({ channel, channelPath });
+    channelIds.push(channel.id);
+  }
+
   if (opts.register) {
     for (const skill of skills) {
       registerScopedPluginSkill(skill);
     }
     for (const { adapter, adapterPath } of adapters) {
       registerAdapter(adapter, { source: 'plugin', filePath: adapterPath });
+    }
+    for (const { channel, channelPath } of channels) {
+      getChannelRegistry().registerPlugin(channel, { source: 'plugin', filePath: channelPath });
     }
   }
 
@@ -188,15 +255,17 @@ async function loadPluginPackage(root: string, opts: { register: boolean }): Pro
     version: manifest.version,
     root,
     status: 'loaded',
+    category: opts.category,
     capabilities: {
+      channels: channelIds,
       skills: skillNames,
       adapters: adapterIds
     }
   };
 }
 
-async function discoverPluginPackages(): Promise<string[]> {
-  const packages: string[] = [];
+async function discoverPluginPackages(): Promise<Array<{ root: string; category: ScopedPluginCategory }>> {
+  const packages: Array<{ root: string; category: ScopedPluginCategory }> = [];
 
   for (const root of getScopedPluginRoots()) {
     let entries;
@@ -205,15 +274,33 @@ async function discoverPluginPackages(): Promise<string[]> {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== 'ENOENT') {
-        packages.push(root);
+        packages.push({ root, category: 'legacy' });
       }
       continue;
     }
 
     for (const entry of entries) {
-      if (entry.isDirectory()) {
-        packages.push(path.join(root, entry.name));
+      if (!entry.isDirectory()) {
+        continue;
       }
+
+      if (PLUGIN_CATEGORIES.has(entry.name as ScopedPluginCategory)) {
+        const category = entry.name as ScopedPluginCategory;
+        const categoryRoot = path.join(root, entry.name);
+        try {
+          const categoryEntries = await readdir(categoryRoot, { withFileTypes: true });
+          for (const categoryEntry of categoryEntries) {
+            if (categoryEntry.isDirectory()) {
+              packages.push({ root: path.join(categoryRoot, categoryEntry.name), category });
+            }
+          }
+        } catch {
+          packages.push({ root: categoryRoot, category });
+        }
+        continue;
+      }
+
+      packages.push({ root: path.join(root, entry.name), category: 'legacy' });
     }
   }
 
@@ -232,17 +319,19 @@ export async function loadScopedPlugins(): Promise<ScopedPluginLoadStatus[]> {
   const nextStatuses: ScopedPluginLoadStatus[] = [];
   importVersion += 1;
 
-  for (const root of await discoverPluginPackages()) {
+  for (const { root, category } of await discoverPluginPackages()) {
     try {
       await access(manifestPath(root));
-      nextStatuses.push(await loadPluginPackage(root, { register: true }));
+      nextStatuses.push(await loadPluginPackage(root, { register: true, category }));
     } catch (error) {
       nextStatuses.push({
         id: path.basename(root),
         root,
         status: 'failed',
+        category,
         error: error instanceof Error ? error.message : 'failed to load plugin',
         capabilities: {
+          channels: [],
           skills: [],
           adapters: []
         }
@@ -257,6 +346,7 @@ export async function loadScopedPlugins(): Promise<ScopedPluginLoadStatus[]> {
 
 export async function reloadScopedPlugins(): Promise<ScopedPluginLoadStatus[]> {
   unregisterAdaptersBySource('plugin');
+  getChannelRegistry().unregisterBySource('plugin');
   clearScopedPluginSkills();
   loaded = false;
   statuses = [];

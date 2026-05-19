@@ -62,4 +62,4 @@ Connector ids must be stable and use simple id characters: letters, numbers, dot
 
 ## Safety boundary
 
-Scoped plugin connectors can add skills, context sources, and read-only tools. They cannot register messaging channels or model providers through the scoped plugin loader.
+Scoped plugin connectors can add skills, context sources, and read-only tools. Messaging providers belong in [channel plugins](/docs/plugins/channels), not connector modules.

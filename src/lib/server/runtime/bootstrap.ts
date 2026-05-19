@@ -1,6 +1,5 @@
 import { registerBuiltInTools } from '#lib/server/capabilities/builtins';
-import { getDiscordGatewayClient } from '#lib/server/channels/discord/gateway-client';
-import { getSlackSocketModeClient } from '#lib/server/channels/slack/socket-client';
+import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { loadRuntimePlugins } from '#lib/server/capabilities/plugins';
 import { loadIntegrationAdapters } from '#lib/server/integrations/adapter-loader';
 import { registerBuiltInIntegrationAdapters } from '#lib/server/integrations/register-builtins';
@@ -32,9 +31,8 @@ export async function ensureRuntimeInitialized(): Promise<void> {
       registerBuiltInIntegrationAdapters();
       await loadIntegrationAdapters();
       await loadScopedPlugins();
-      getDiscordGatewayClient().ensureStarted();
-      getSlackSocketModeClient().ensureStarted();
       await loadRuntimePlugins();
+      await getChannelRegistry().startIngress();
       reconcileIntegrationCapabilities();
       initialized = true;
     })().finally(() => {

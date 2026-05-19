@@ -78,6 +78,7 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/docs/plugins' },
             { text: 'Package Structure', link: '/docs/plugins/package-structure' },
+            { text: 'Channels', link: '/docs/plugins/channels' },
             { text: 'Skills', link: '/docs/plugins/skills' },
             { text: 'Connectors', link: '/docs/plugins/connectors' },
             { text: 'Tools', link: '/docs/plugins/tools' },

@@ -514,19 +514,97 @@ function ensureUnderRoot(root, candidate) {
 
 function scaffoldPlugin(params) {
     const id = safePluginId(params.id);
-    const root = path.join(murphHome, 'plugins', id);
+    const allowedCategories = new Set([
+        'channels',
+        'tools',
+        'skills',
+        'context',
+        'bundles',
+        'legacy',
+    ]);
+    const category =
+        params.includeChannel === true
+            ? 'channels'
+            : allowedCategories.has(params.category)
+              ? params.category
+              : 'tools';
+    const root =
+        category === 'legacy'
+            ? path.join(murphHome, 'plugins', id)
+            : path.join(murphHome, 'plugins', category, id);
     if (existsSync(root)) {
         throw new Error(`Plugin already exists: ${root}`);
     }
 
-    const includeSkill = params.includeSkill !== false;
-    const includeAdapter = params.includeAdapter !== false;
+    const includeChannel = category === 'channels' || params.includeChannel === true;
+    const includeSkill = includeChannel
+        ? params.includeSkill === true
+        : category === 'skills'
+          ? params.includeSkill !== false
+          : params.includeSkill !== false;
+    const includeAdapter = includeChannel
+        ? params.includeAdapter === true
+        : category === 'skills'
+          ? params.includeAdapter === true
+          : params.includeAdapter !== false;
     const includeSearchTool = includeAdapter && params.includeSearchTool !== false;
     const name = params.name || id;
     const description = params.description || `${name} plugin for Murph.`;
-    const capabilities = { skills: [], adapters: [] };
+    const capabilities = { channels: [], skills: [], adapters: [] };
 
     mkdirSync(root, { recursive: true });
+
+    if (includeChannel) {
+        const channelPath = path.join(root, 'channel.mjs');
+        writeFileSync(
+            channelPath,
+            `export const channel = {
+  id: '${id}',
+  displayName: '${name}',
+  description: '${description}',
+  adapter: {
+    id: '${id}',
+    displayName: '${name}',
+    capabilities: ['event_ingress', 'thread_fetch', 'reply_post'],
+    normalizeEvent(event, envelope) {
+      // Convert provider webhook/realtime payloads into Murph ContinuityTask objects.
+      return null;
+    },
+    async fetchThread(workspace, thread) {
+      return [];
+    },
+    async postReply(workspace, thread, text) {
+      throw new Error('Implement ${id} postReply');
+    }
+  },
+  connector: {
+    requirements: [],
+    getStatus() {
+      return { configured: false, installed: false };
+    },
+    async listMembers(workspace) {
+      return [];
+    },
+    async getMember(workspace, userId) {
+      return { id: userId, displayName: userId };
+    },
+    async listChannels(workspace) {
+      return [];
+    },
+    async getChannel(workspace, channelId) {
+      return { id: channelId, displayName: channelId };
+    }
+  },
+  ingress: {
+    async handleWebhook({ rawBody, headers, url }) {
+      return { ok: false, error: 'Implement ${id} webhook handling' };
+    }
+  }
+};
+`,
+        );
+        capabilities.channels.push('channel.mjs');
+    }
 
     if (includeSkill) {
         const skillDir = ensureUnderRoot(root, path.join(root, 'skills'));
@@ -638,6 +716,7 @@ function validatePluginRoot(pluginRoot) {
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
     const capabilities = manifest.capabilities || {};
     const paths = [
+        ...(capabilities.channels || []),
         ...(capabilities.skills || []),
         ...(capabilities.adapters || []),
     ];
@@ -650,7 +729,7 @@ function validatePluginRoot(pluginRoot) {
     }
     if (paths.length === 0) {
         throw new Error(
-            'plugin.json must declare at least one skill or adapter',
+            'plugin.json must declare at least one channel, skill, or adapter',
         );
     }
     for (const relativePath of paths) {
@@ -739,13 +818,22 @@ function createMurphTools() {
             name: 'murph_plugin_create_draft',
             label: 'Create Murph plugin draft',
             description:
-                'Create a scoped Murph plugin draft under ~/.murph/plugins.',
+                'Create a scoped Murph plugin draft under ~/.murph/plugins/<category>.',
             promptSnippet:
-                'murph_plugin_create_draft: create a scoped skill/adapter plugin package.',
+                'murph_plugin_create_draft: create a scoped channel, skill, or adapter plugin package.',
             parameters: Type.Object({
                 id: Type.String(),
                 name: Type.Optional(Type.String()),
                 description: Type.Optional(Type.String()),
+                category: Type.Optional(Type.Union([
+                    Type.Literal('channels'),
+                    Type.Literal('tools'),
+                    Type.Literal('skills'),
+                    Type.Literal('context'),
+                    Type.Literal('bundles'),
+                    Type.Literal('legacy'),
+                ])),
+                includeChannel: Type.Optional(Type.Boolean()),
                 includeSkill: Type.Optional(Type.Boolean()),
                 includeAdapter: Type.Optional(Type.Boolean()),
                 includeSearchTool: Type.Optional(Type.Boolean()),
@@ -773,7 +861,7 @@ function createMurphTools() {
             parameters: Type.Object({
                 root: Type.String({
                     description:
-                        'Absolute plugin root, or a plugin id under ~/.murph/plugins.',
+                        'Absolute plugin root, or a plugin id/path under ~/.murph/plugins.',
                 }),
             }),
             execute: async (_toolCallId, params) => {
@@ -793,7 +881,7 @@ function createMurphTools() {
             parameters: Type.Object({
                 root: Type.String({
                     description:
-                        'Absolute plugin root, or a plugin id under ~/.murph/plugins.',
+                        'Absolute plugin root, or a plugin id/path under ~/.murph/plugins.',
                 }),
             }),
             executionMode: 'sequential',
@@ -887,9 +975,10 @@ function murphSystemPrompt(sourceEdits) {
         'Your job is to help the local operator set up Murph, debug Murph, build scoped integrations, create skills/connectors, and adjust policy configuration.',
         'Murph async messenger runtime is separate. Do not present yourself as the async runtime brain.',
         'Prefer Murph custom tools for setup, integration status, plugin reload, and policy changes before editing files by hand.',
-        'For new capabilities, prefer scoped plugin packages under ~/.murph/plugins/<id> with plugin.json, skills/*.md, and adapters/*.mjs.',
+        'For new capabilities, prefer category-scoped plugin packages under ~/.murph/plugins/{channels,tools,skills,context,bundles}/<id>.',
+        'For custom messaging providers, create channel plugins under ~/.murph/plugins/channels/<id>; do not edit Murph core runtime files.',
         'When creating a searchable connector, implement it as an adapters/*.mjs module and include a read-only { query, limit } search tool with retrievalEligible: true and retrieval.profile set to the closest preset.',
-        'Installed runtime plugin connectors must remain read-only in v1. Do not add external-write tools to scoped plugins.',
+        'Installed connector tools must remain read-only. Channel plugins may post through their channel adapter but should keep unrelated tools read-only.',
         sourceEdits
             ? 'This run explicitly allows Murph source edits. Keep changes focused and validate them.'
             : 'Default write scope is Plugin+Config. Do not modify Murph source files unless the operator restarts with --source-edits or explicitly asks for source edits.',

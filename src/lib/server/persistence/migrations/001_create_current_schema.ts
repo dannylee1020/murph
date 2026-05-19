@@ -27,16 +27,26 @@ export const createCurrentSchema: Migration = {
         UNIQUE(workspace_id, external_user_id)
       );
 
-      CREATE TABLE IF NOT EXISTS slack_events (
-        id TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL,
-        dedupe_key TEXT NOT NULL UNIQUE,
-        event_type TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        received_at TEXT NOT NULL
-      );
+	      CREATE TABLE IF NOT EXISTS slack_events (
+	        id TEXT PRIMARY KEY,
+	        workspace_id TEXT NOT NULL,
+	        dedupe_key TEXT NOT NULL UNIQUE,
+	        event_type TEXT NOT NULL,
+	        payload_json TEXT NOT NULL,
+	        received_at TEXT NOT NULL
+	      );
 
-      CREATE TABLE IF NOT EXISTS autopilot_sessions (
+	      CREATE TABLE IF NOT EXISTS channel_events (
+	        id TEXT PRIMARY KEY,
+	        provider TEXT NOT NULL,
+	        workspace_id TEXT NOT NULL,
+	        dedupe_key TEXT NOT NULL UNIQUE,
+	        event_type TEXT NOT NULL,
+	        payload_json TEXT NOT NULL,
+	        received_at TEXT NOT NULL
+	      );
+
+	      CREATE TABLE IF NOT EXISTS autopilot_sessions (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL,
         owner_user_id TEXT NOT NULL,

@@ -16,6 +16,10 @@ export interface SlackEventInput {
   payloadJson: string;
 }
 
+export interface ChannelEventInput extends SlackEventInput {
+  provider: string;
+}
+
 interface WorkspaceRow {
   id: string;
   provider: string;
@@ -129,6 +133,25 @@ export function saveSlackEvent(db: Db, input: SlackEventInput): boolean {
     )
     .run(
       randomUUID(),
+      input.workspaceId,
+      input.dedupeKey,
+      input.eventType,
+      input.payloadJson,
+      new Date().toISOString()
+    );
+
+  return result.changes > 0;
+}
+
+export function saveChannelEvent(db: Db, input: ChannelEventInput): boolean {
+  const result = db
+    .prepare(
+      `INSERT OR IGNORE INTO channel_events (id, provider, workspace_id, dedupe_key, event_type, payload_json, received_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      randomUUID(),
+      input.provider,
       input.workspaceId,
       input.dedupeKey,
       input.eventType,

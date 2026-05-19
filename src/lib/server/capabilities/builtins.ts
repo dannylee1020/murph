@@ -13,9 +13,8 @@ import { createFileReadTool } from '#lib/server/tools/file-ops';
 import { createShellExecTool } from '#lib/server/tools/shell';
 import { createWebFetchTool } from '#lib/server/tools/web-fetch';
 import { createWebSearchTool } from '#lib/server/tools/web-search';
-import { createSlackChannelAdapter } from '#lib/server/channels/slack/adapter';
+import { registerBuiltInChannelPlugins } from '#lib/server/channels/register-builtins';
 import { getSlackService } from '#lib/server/channels/slack/service';
-import { createDiscordChannelAdapter } from '#lib/server/channels/discord/adapter';
 import { getDiscordArchiveService, readDiscordThread, toArtifact as discordToArtifact } from '#lib/server/context-sources/discord-archive';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
@@ -60,8 +59,7 @@ export function registerBuiltInTools(): void {
   const slack = getSlackService();
   const discord = getDiscordArchiveService();
 
-  channels.register(createSlackChannelAdapter());
-  channels.register(createDiscordChannelAdapter());
+  registerBuiltInChannelPlugins();
   contextSources.register(
     {
       name: 'memory.linked_artifacts',

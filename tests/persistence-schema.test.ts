@@ -31,17 +31,20 @@ describe('sqlite schema cleanup', () => {
     const db = getDb();
 
     expect(tableExists(db, 'workspaces')).toBe(true);
+    expect(tableExists(db, 'channel_events')).toBe(true);
     expect(tableExists(db, 'integration_connections')).toBe(true);
     expect(tableExists(db, 'schema_migrations')).toBe(true);
     expect(migrationIds(db)).toEqual([
       '001_create_current_schema',
-      '002_simplify_local_first_schema'
+      '002_simplify_local_first_schema',
+      '003_add_channel_events'
     ]);
     const { runMigrations } = await import('#lib/server/persistence/migrator');
     runMigrations(db, sqlitePath);
     expect(migrationIds(db)).toEqual([
       '001_create_current_schema',
-      '002_simplify_local_first_schema'
+      '002_simplify_local_first_schema',
+      '003_add_channel_events'
     ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(false);
   });
@@ -181,7 +184,8 @@ describe('sqlite schema cleanup', () => {
     expect(tableExists(migrated, 'feedback_memory')).toBe(false);
     expect(migrationIds(migrated)).toEqual([
       '001_create_current_schema',
-      '002_simplify_local_first_schema'
+      '002_simplify_local_first_schema',
+      '003_add_channel_events'
     ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(true);
     (migrated as unknown as { close?: () => void }).close?.();

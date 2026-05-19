@@ -74,6 +74,13 @@ export async function handleSlackEventEnvelope(
     eventType: routedTask.eventType ?? 'unknown',
     payloadJson: options.rawPayload ?? JSON.stringify(payload)
   });
+  store.saveChannelEvent({
+    provider: 'slack',
+    workspaceId: workspace.id,
+    dedupeKey: routedTask.dedupeKey ?? routedTask.id,
+    eventType: routedTask.eventType ?? 'unknown',
+    payloadJson: options.rawPayload ?? JSON.stringify(payload)
+  });
 
   if (!inserted) {
     console.info('[slack] ignored event', {

@@ -41,4 +41,24 @@ describe('murph agent CLI plugin scaffold', () => {
     expect(adapter).toContain("required: ['query']");
     expect(adapter).toContain('Keep the normalized { query, limit } contract.');
   });
+
+  it('scaffolds channel plugins under the channels category', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'murph-agent-cli-channel-'));
+    mkdirSync(join(home, 'plugins'), { recursive: true });
+    const { scaffoldPlugin } = await loadAgentCli(home);
+
+    const result = scaffoldPlugin({
+      id: 'teams_test',
+      name: 'Teams Test',
+      category: 'channels'
+    });
+    const manifest = readFileSync(join(result.root, 'plugin.json'), 'utf8');
+    const channel = readFileSync(join(result.root, 'channel.mjs'), 'utf8');
+
+    expect(result.root).toContain(join('plugins', 'channels', 'teams_test'));
+    expect(manifest).toContain('"channels": [');
+    expect(channel).toContain("id: 'teams_test'");
+    expect(channel).toContain('connector:');
+    expect(channel).toContain('ingress:');
+  });
 });

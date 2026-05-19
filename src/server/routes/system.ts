@@ -17,6 +17,7 @@ import {
 } from '#lib/server/setup/config-file';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getDiscordService } from '#lib/server/channels/discord/service';
+import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { readSecret } from '#lib/server/credentials/local-store';
 import { readJson } from '../http.js';
 import type { SetupDefaults, Workspace } from '#lib/types';
@@ -198,15 +199,7 @@ export const systemRoutes: Route[] = [
       sendJson(res, { ok: false, error: 'workspace_required' }, 400);
       return;
     }
-    if (workspace.provider === 'slack') {
-      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, members: await getSlackService().listMembers(workspace) });
-      return;
-    }
-    if (workspace.provider === 'discord') {
-      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, members: await getDiscordService().listMembers(workspace) });
-      return;
-    }
-    sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
+    sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, members: await getChannelRegistry().listMembers(workspace) });
   }),
   route('GET', '/api/setup/member', async ({ res, url }) => {
     await ensureRuntimeInitialized();
@@ -221,15 +214,7 @@ export const systemRoutes: Route[] = [
       sendJson(res, { ok: false, error: 'user_id_required' }, 400);
       return;
     }
-    if (workspace.provider === 'slack') {
-      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, member: await getSlackService().getMember(workspace, userId) });
-      return;
-    }
-    if (workspace.provider === 'discord') {
-      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, member: await getDiscordService().getMember(workspace, userId) });
-      return;
-    }
-    sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
+    sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, member: await getChannelRegistry().getMember(workspace, userId) });
   }),
   route('GET', '/api/setup/channels', async ({ res, url }) => {
     await ensureRuntimeInitialized();
@@ -239,15 +224,7 @@ export const systemRoutes: Route[] = [
       sendJson(res, { ok: false, error: 'workspace_required' }, 400);
       return;
     }
-    if (workspace.provider === 'slack') {
-      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channels: await getSlackService().listChannels(workspace) });
-      return;
-    }
-    if (workspace.provider === 'discord') {
-      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channels: await getDiscordService().listChannels(workspace) });
-      return;
-    }
-    sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
+    sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channels: await getChannelRegistry().listChannels(workspace) });
   }),
   route('GET', '/api/setup/channel', async ({ res, url }) => {
     await ensureRuntimeInitialized();
@@ -262,26 +239,7 @@ export const systemRoutes: Route[] = [
       sendJson(res, { ok: false, error: 'channel_id_required' }, 400);
       return;
     }
-    if (workspace.provider === 'slack') {
-      const channel = await getSlackService().getChannelInfo(workspace, channelId);
-      sendJson(res, {
-        ok: true,
-        workspaceId: workspace.id,
-        provider: workspace.provider,
-        channel: {
-          id: channel.id,
-          displayName: channel.name ? `#${channel.name}` : channel.id,
-          isPrivate: channel.isPrivate,
-          isMember: channel.isMember
-        }
-      });
-      return;
-    }
-    if (workspace.provider === 'discord') {
-      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channel: await getDiscordService().getChannel(workspace, channelId) });
-      return;
-    }
-    sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
+    sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channel: await getChannelRegistry().getChannel(workspace, channelId) });
   }),
   route('PUT', '/api/setup/defaults', async ({ req, res }) => {
     await ensureRuntimeInitialized();
