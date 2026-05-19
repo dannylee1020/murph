@@ -14,7 +14,8 @@ export class DiscordGatewayClient {
   private started = false;
 
   ensureStarted(): void {
-    if (this.started || !getDiscordService().isConfigured()) {
+    const hasDiscordWorkspace = getStore().listWorkspaces().some((workspace) => workspace.provider === 'discord');
+    if (this.started || !hasDiscordWorkspace || !getDiscordService().isConfigured()) {
       return;
     }
     this.started = true;
@@ -25,6 +26,9 @@ export class DiscordGatewayClient {
     this.socket = new WebSocket(DISCORD_GATEWAY_URL);
     this.socket.on('message', (data) => {
       void this.handlePayload(String(data));
+    });
+    this.socket.on('error', (error) => {
+      console.warn('[discord] gateway error:', error instanceof Error ? error.message : error);
     });
     this.socket.on('close', () => {
       this.cleanupHeartbeat();
@@ -60,6 +64,16 @@ export class DiscordGatewayClient {
       return;
     }
 
+    if (payload.op === 0 && payload.t === 'READY' && payload.d) {
+      await this.saveReadyGuilds(payload.d as Record<string, unknown>);
+      return;
+    }
+
+    if (payload.op === 0 && payload.t === 'GUILD_CREATE' && payload.d) {
+      await this.saveGuild(payload.d as Record<string, unknown>);
+      return;
+    }
+
     if (payload.op !== 0 || payload.t !== 'MESSAGE_CREATE' || !payload.d) {
       return;
     }
@@ -80,6 +94,31 @@ export class DiscordGatewayClient {
     }
 
     await getGateway().handleTask(task);
+  }
+
+  private async saveReadyGuilds(event: Record<string, unknown>): Promise<void> {
+    const guilds = Array.isArray(event.guilds) ? event.guilds : [];
+    for (const guild of guilds) {
+      if (guild && typeof guild === 'object') {
+        await this.saveGuild(guild as Record<string, unknown>);
+      }
+    }
+  }
+
+  private async saveGuild(event: Record<string, unknown>): Promise<void> {
+    const id = typeof event.id === 'string' ? event.id : undefined;
+    if (!id) return;
+    const name = typeof event.name === 'string' && event.name.trim()
+      ? event.name.trim()
+      : undefined;
+    try {
+      const guild = name
+        ? { id, name }
+        : await getDiscordService().fetchGuild(id);
+      await getDiscordService().saveGuildWorkspace(guild);
+    } catch (error) {
+      console.warn('[discord] failed to save guild workspace:', error instanceof Error ? error.message : error);
+    }
   }
 
   private send(payload: unknown): void {

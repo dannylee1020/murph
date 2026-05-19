@@ -7,6 +7,8 @@ const SETTINGS_KEY = 'local';
 function normalizeSettings(settings: AppSettings): AppSettings {
   const setupDefaults = settings.setupDefaults
     ? {
+        channelProvider: settings.setupDefaults.channelProvider?.trim() || undefined,
+        workspaceId: settings.setupDefaults.workspaceId?.trim() || undefined,
         ownerUserId: settings.setupDefaults.ownerUserId?.trim() || undefined,
         ownerDisplayName: settings.setupDefaults.ownerDisplayName?.trim() || undefined,
         channelScopeMode: settings.setupDefaults.channelScopeMode === 'all_accessible' ? 'all_accessible' as const : 'selected' as const,

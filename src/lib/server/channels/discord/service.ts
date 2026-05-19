@@ -3,6 +3,8 @@ import { getStore } from '#lib/server/persistence/store';
 import { readSecret, writeSecret } from '#lib/server/credentials/local-store';
 import type { ChannelMessage, ChannelThreadRef, Workspace } from '#lib/types';
 
+export const DISCORD_BOT_PERMISSIONS = '274877991936';
+
 interface DiscordTokenResponse {
   access_token?: string;
   token_type?: string;
@@ -12,6 +14,29 @@ interface DiscordTokenResponse {
 interface DiscordGuild {
   id: string;
   name: string;
+}
+
+interface DiscordApplication {
+  id: string;
+  name?: string;
+}
+
+interface DiscordUser {
+  id: string;
+  username?: string;
+  global_name?: string | null;
+  bot?: boolean;
+}
+
+interface DiscordGuildMember {
+  user?: DiscordUser;
+  nick?: string | null;
+}
+
+interface DiscordChannel {
+  id: string;
+  name?: string;
+  type?: number;
 }
 
 interface DiscordMessage {
@@ -39,27 +64,82 @@ export interface DiscordSearchResponse {
   retryAfterSeconds?: number;
 }
 
+export interface DiscordBotConfig {
+  botUserId: string;
+  botUsername?: string;
+  applicationId: string;
+  applicationName?: string;
+}
+
+export interface DiscordChannelChoice {
+  id: string;
+  displayName: string;
+  isPrivate: boolean;
+  isMember: boolean;
+}
+
+export interface DiscordMemberChoice {
+  id: string;
+  displayName: string;
+}
+
+export interface DiscordGuildChoice {
+  id: string;
+  name: string;
+}
+
 export class DiscordService {
-  private readonly env = getRuntimeEnv();
   private readonly store = getStore();
 
-  isConfigured(): boolean {
-    return Boolean(this.env.discordBotToken && this.env.discordClientId && this.env.discordClientSecret);
+  private get env() {
+    return getRuntimeEnv();
   }
 
-  buildInstallUrl(): string | undefined {
-    if (!this.env.discordClientId || !this.env.discordRedirectUri) {
+  isConfigured(): boolean {
+    return Boolean(this.env.discordBotToken);
+  }
+
+  buildInstallUrl(clientId = this.env.discordClientId): string | undefined {
+    if (!clientId) {
       return undefined;
     }
 
     const params = new URLSearchParams({
-      client_id: this.env.discordClientId,
-      redirect_uri: this.env.discordRedirectUri,
-      response_type: 'code',
-      scope: 'identify guilds bot',
-      permissions: '274877991936'
+      client_id: clientId,
+      scope: 'bot',
+      permissions: DISCORD_BOT_PERMISSIONS
     });
     return `https://discord.com/oauth2/authorize?${params.toString()}`;
+  }
+
+  async validateBotToken(): Promise<DiscordBotConfig> {
+    const [botUser, application] = await Promise.all([
+      this.fetchBotUser(),
+      this.fetchCurrentApplication().catch(() => undefined)
+    ]);
+    return {
+      botUserId: botUser.id,
+      botUsername: botUser.global_name ?? botUser.username,
+      applicationId: application?.id ?? botUser.id,
+      applicationName: application?.name
+    };
+  }
+
+  async configureInstallParams(): Promise<boolean> {
+    const response = await fetch('https://discord.com/api/v10/applications/@me', {
+      method: 'PATCH',
+      headers: {
+        authorization: `Bot ${this.getBotToken()}`,
+        'content-type': 'application/json; charset=utf-8'
+      },
+      body: JSON.stringify({
+        install_params: {
+          scopes: ['bot'],
+          permissions: DISCORD_BOT_PERMISSIONS
+        }
+      })
+    });
+    return response.ok;
   }
 
   async exchangeCode(code: string, guildId?: string): Promise<Workspace> {
@@ -99,25 +179,7 @@ export class DiscordService {
     }
 
     const guild = (await guildResponse.json()) as DiscordGuild;
-    const workspace = this.store.saveInstall({
-      provider: 'discord',
-      externalWorkspaceId: guild.id,
-      name: guild.name ?? guild.id,
-      botUserId: await this.fetchBotUserId()
-    });
-    if (!this.env.discordBotToken) {
-      throw new Error('DISCORD_BOT_TOKEN is not configured');
-    }
-    writeSecret('discord', 'bot_token', this.env.discordBotToken, {
-      workspaceId: workspace.id,
-      externalWorkspaceId: workspace.externalWorkspaceId,
-      metadata: {
-        guildName: workspace.name,
-        botUserId: workspace.botUserId,
-        validatedAt: new Date().toISOString()
-      }
-    });
-    return workspace;
+    return this.saveGuildWorkspace(guild);
   }
 
   getBotToken(): string {
@@ -145,6 +207,74 @@ export class DiscordService {
     throw new Error('Discord bot token is missing from local credentials. Reconnect Discord.');
   }
 
+  async saveGuildWorkspace(guild: DiscordGuild): Promise<Workspace> {
+    const workspace = this.store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: guild.id,
+      name: guild.name ?? guild.id,
+      botUserId: await this.fetchBotUserId()
+    });
+    const token = this.env.discordBotToken ?? readSecret('discord', 'bot_token');
+    if (token) {
+      writeSecret('discord', 'bot_token', token, {
+        workspaceId: workspace.id,
+        externalWorkspaceId: workspace.externalWorkspaceId,
+        metadata: {
+          guildName: workspace.name,
+          botUserId: workspace.botUserId,
+          validatedAt: new Date().toISOString()
+        }
+      });
+    }
+    return workspace;
+  }
+
+  async fetchGuild(guildId: string): Promise<DiscordGuild> {
+    const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
+      headers: { authorization: `Bot ${this.getBotToken()}` }
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch Discord guild');
+    }
+    return (await response.json()) as DiscordGuild;
+  }
+
+  async listCurrentGuilds(): Promise<DiscordGuildChoice[]> {
+    const response = await fetch('https://discord.com/api/v10/users/@me/guilds?limit=200', {
+      headers: { authorization: `Bot ${this.getBotToken()}` }
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch Discord bot guilds');
+    }
+    const guilds = (await response.json()) as Array<{ id?: string; name?: string }>;
+    return guilds
+      .filter((guild): guild is { id: string; name?: string } => Boolean(guild.id))
+      .map((guild) => ({
+        id: guild.id,
+        name: guild.name?.trim() || guild.id
+      }));
+  }
+
+  private async fetchBotUser(): Promise<DiscordUser> {
+    const response = await fetch('https://discord.com/api/v10/users/@me', {
+      headers: { authorization: `Bot ${this.getBotToken()}` }
+    });
+    if (!response.ok) {
+      throw new Error('Discord bot token validation failed');
+    }
+    return (await response.json()) as DiscordUser;
+  }
+
+  private async fetchCurrentApplication(): Promise<DiscordApplication> {
+    const response = await fetch('https://discord.com/api/v10/oauth2/applications/@me', {
+      headers: { authorization: `Bot ${this.getBotToken()}` }
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch Discord application');
+    }
+    return (await response.json()) as DiscordApplication;
+  }
+
   private async fetchBotUserId(): Promise<string | undefined> {
     const response = await fetch('https://discord.com/api/v10/users/@me', {
       headers: { authorization: `Bot ${this.getBotToken()}` }
@@ -154,6 +284,45 @@ export class DiscordService {
     }
     const payload = (await response.json()) as { id?: string };
     return payload.id;
+  }
+
+  async listChannels(workspace: Workspace): Promise<DiscordChannelChoice[]> {
+    const response = await fetch(`https://discord.com/api/v10/guilds/${workspace.externalWorkspaceId}/channels`, {
+      headers: { authorization: `Bot ${this.getBotToken()}` }
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch Discord channels');
+    }
+    const channels = (await response.json()) as DiscordChannel[];
+    const textLikeTypes = new Set([0, 5, 15]);
+    return channels
+      .filter((channel) => channel.id && textLikeTypes.has(channel.type ?? -1))
+      .map((channel) => ({
+        id: channel.id,
+        displayName: channel.name ? `#${channel.name}` : channel.id,
+        isPrivate: false,
+        isMember: true
+      }));
+  }
+
+  async listMembers(workspace: Workspace): Promise<DiscordMemberChoice[]> {
+    const response = await fetch(`https://discord.com/api/v10/guilds/${workspace.externalWorkspaceId}/members?limit=1000`, {
+      headers: { authorization: `Bot ${this.getBotToken()}` }
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch Discord members');
+    }
+    const members = (await response.json()) as DiscordGuildMember[];
+    return members
+      .map((member) => {
+        const user = member.user;
+        if (!user?.id || user.bot) return undefined;
+        return {
+          id: user.id,
+          displayName: member.nick ?? user.global_name ?? user.username ?? user.id
+        };
+      })
+      .filter((member): member is DiscordMemberChoice => Boolean(member));
   }
 
   async fetchThreadMessages(_workspace: Workspace, thread: ChannelThreadRef): Promise<ChannelMessage[]> {

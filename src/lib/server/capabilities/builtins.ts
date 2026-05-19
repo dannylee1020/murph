@@ -61,9 +61,7 @@ export function registerBuiltInTools(): void {
   const discord = getDiscordArchiveService();
 
   channels.register(createSlackChannelAdapter());
-  if (discord.isConfigured()) {
-    channels.register(createDiscordChannelAdapter());
-  }
+  channels.register(createDiscordChannelAdapter());
   contextSources.register(
     {
       name: 'memory.linked_artifacts',
@@ -84,24 +82,25 @@ export function registerBuiltInTools(): void {
     { optional: false, source: 'core' }
   );
 
-  if (discord.isConfigured()) {
-    contextSources.register(
-      {
-        name: 'discord.thread_search',
-        description: 'Search recent Discord messages by the current thread text.',
-        optional: true,
-        knowledgeDomains: ['team', 'coordination'],
-        async retrieve(input) {
-          const query =
-            input.context.thread.latestMessage ||
-            input.context.thread.recentMessages.map((message) => message.text).join(' ');
-          const results = await discord.searchMessages(input.workspace, query, 3);
-          return results.pendingIndex ? [] : results.results.map((result) => discordToArtifact(result));
+  contextSources.register(
+    {
+      name: 'discord.thread_search',
+      description: 'Search recent Discord messages by the current thread text.',
+      optional: true,
+      knowledgeDomains: ['team', 'coordination'],
+      async retrieve(input) {
+        if (input.workspace.provider !== 'discord' || !discord.isConfigured()) {
+          return [];
         }
-      },
-      { optional: true, source: 'core' }
-    );
-  }
+        const query =
+          input.context.thread.latestMessage ||
+          input.context.thread.recentMessages.map((message) => message.text).join(' ');
+        const results = await discord.searchMessages(input.workspace, query, 3);
+        return results.pendingIndex ? [] : results.results.map((result) => discordToArtifact(result));
+      }
+    },
+    { optional: true, source: 'core' }
+  );
 
   contextSources.register(
     {

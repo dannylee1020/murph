@@ -14,6 +14,8 @@ const credentialsPath = process.env.MURPH_CREDENTIALS_PATH || path.join(murphHom
 const configPath = process.env.MURPH_CONFIG_PATH || path.join(murphHome, 'config.yaml');
 const slackManifestPath = path.join(appDir, 'docs', 'public', 'slack-manifest.yaml');
 const slackApiBase = process.env.MURPH_SLACK_API_BASE || 'https://slack.com/api';
+const discordApiBase = process.env.MURPH_DISCORD_API_BASE || 'https://discord.com/api/v10';
+const discordBotPermissions = '274877991936';
 const rl = readline.createInterface({ input, output });
 
 const args = process.argv.slice(2);
@@ -53,9 +55,11 @@ const SECTION_PURPOSES = {
   Core: 'Create local config defaults and the data directory.',
   'AI provider': 'Choose the runtime model and API key.',
   'Murph Agent model': 'Choose whether the local setup agent inherits runtime defaults.',
+  'Channel provider': 'Choose the channel Murph should connect first.',
   Slack: 'Create the Slack app config and connect the workspace.',
-  Identity: 'Confirm the Slack user Murph should watch for.',
-  Channels: 'Choose the default Slack channel scope.',
+  Discord: 'Connect a Discord bot to a server.',
+  Identity: 'Confirm the user Murph should watch for.',
+  Channels: 'Choose the default channel scope.',
   Schedule: 'Save the default workday schedule.',
   Policy: 'Choose the local policy profile.',
   'Setup status': 'Review local files, credentials, and setup readiness.'
@@ -102,6 +106,9 @@ const SECRET_KEY_MAP = {
   BRAVE_SEARCH_API_KEY: ['brave_search', 'api_key']
 };
 
+let selectedChannelProvider = null;
+let selectedWorkspaceId = null;
+
 function paint(style, text) {
   return `${color[style] || ''}${text}${color.reset}`;
 }
@@ -126,8 +133,9 @@ Sections:
   core        Create core local config values and data directory.
   ai          Configure OpenAI or Anthropic.
   slack       Configure Slack app credentials and OAuth install.
-  identity    Pick the Slack user Murph watches for.
-  channels    Pick watched Slack channels or all accessible channels.
+  discord     Configure Discord bot credentials and server install.
+  identity    Pick the user Murph watches for.
+  channels    Pick watched channels or all accessible channels.
   schedule    Save the default workday schedule.
   policy      Select the local policy profile.
   status      Show setup readiness.
@@ -388,6 +396,31 @@ function readSetupValue(key) {
     if (value) return value;
   }
   return readConfigValue(key);
+}
+
+function localSetupDefaults() {
+  const setup = readConfigFile().setup;
+  return setup && typeof setup === 'object' && !Array.isArray(setup) ? setup : {};
+}
+
+function currentChannelProvider() {
+  return selectedChannelProvider || localSetupDefaults().channelProvider || 'slack';
+}
+
+function currentWorkspaceId() {
+  return selectedWorkspaceId || localSetupDefaults().workspaceId || '';
+}
+
+function writeLocalSetupDefaults(nextValues) {
+  const config = readConfigFile();
+  const current = config.setup && typeof config.setup === 'object' && !Array.isArray(config.setup)
+    ? config.setup
+    : {};
+  config.setup = {
+    ...current,
+    ...nextValues
+  };
+  writeConfigFile(config);
 }
 
 function writeSetupValues(values) {
@@ -839,6 +872,184 @@ function assertSlackWorkspaceMatch(status, workspace = null) {
   }
 }
 
+function discordInstallUrl(clientId = readSetupValue('DISCORD_CLIENT_ID')) {
+  if (!clientId) return '';
+  const params = new URLSearchParams({
+    client_id: clientId,
+    scope: 'bot',
+    permissions: discordBotPermissions
+  });
+  return `https://discord.com/oauth2/authorize?${params.toString()}`;
+}
+
+async function discordApi(pathname, token, options = {}) {
+  const response = await fetch(`${discordApiBase}${pathname}`, {
+    ...options,
+    headers: {
+      authorization: `Bot ${token}`,
+      ...(options.body ? { 'content-type': 'application/json; charset=utf-8' } : {}),
+      ...(options.headers || {})
+    }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = payload.message || payload.error || `Discord API request failed: ${pathname}`;
+    fail(error);
+  }
+  return payload;
+}
+
+async function validateDiscordBotToken(token) {
+  const bot = await discordApi('/users/@me', token);
+  const app = await discordApi('/oauth2/applications/@me', token).catch(() => ({}));
+  return {
+    botUserId: bot.id,
+    botName: bot.global_name || bot.username || bot.id,
+    applicationId: app.id || bot.id,
+    applicationName: app.name
+  };
+}
+
+async function configureDiscordInstallParams(token) {
+  try {
+    await discordApi('/applications/@me', token, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        install_params: {
+          scopes: ['bot'],
+          permissions: discordBotPermissions
+        }
+      })
+    });
+    success('Saved Discord bot install parameters.');
+    return true;
+  } catch (error) {
+    warn(`Discord app install parameter automation failed: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
+
+async function discoverDiscordGuilds(token) {
+  try {
+    const guilds = await discordApi('/users/@me/guilds?limit=200', token);
+    return Array.isArray(guilds)
+      ? guilds
+          .filter((guild) => guild?.id)
+          .map((guild) => ({ id: String(guild.id), name: guild.name || String(guild.id) }))
+      : [];
+  } catch (error) {
+    warn(`Discord REST guild discovery failed: ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
+
+async function fetchDiscordGuild(token, guildId) {
+  const guild = await discordApi(`/guilds/${encodeURIComponent(guildId)}`, token);
+  return {
+    id: String(guild.id || guildId),
+    name: guild.name || String(guild.id || guildId)
+  };
+}
+
+function isStaleDiscordGuildRouteError(error) {
+  return error instanceof Error &&
+    error.status === 404 &&
+    error.pathname === '/api/discord/guild' &&
+    (error.payload?.error === 'not_found' || error.message === 'not_found');
+}
+
+async function postDiscordGuild(guild) {
+  return request('/api/discord/guild', {
+    method: 'POST',
+    body: JSON.stringify({ guildId: guild.id })
+  });
+}
+
+async function restartMurphAfterStaleSetupApi() {
+  warn('Discord is connected, but the local Murph server is running an older setup API. Restarting Murph and retrying...');
+  runMurphCommand(['restart']);
+  for (let i = 0; i < 20; i += 1) {
+    if (await health()) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  fail(`Murph did not become healthy at ${murphUrl}. Run: murph logs`);
+}
+
+async function saveDiscordGuild(guild) {
+  let payload;
+  try {
+    payload = await postDiscordGuild(guild);
+  } catch (error) {
+    if (!isStaleDiscordGuildRouteError(error)) {
+      throw error;
+    }
+    await restartMurphAfterStaleSetupApi();
+    try {
+      payload = await postDiscordGuild(guild);
+    } catch (retryError) {
+      if (isStaleDiscordGuildRouteError(retryError)) {
+        fail('Discord is connected, but Murph still cannot save it because the local server is running an older build. Run: murph build && murph restart');
+      }
+      throw retryError;
+    }
+  }
+  await rememberSetupWorkspace('discord', payload.workspace?.id);
+  success(`${payload.workspace?.name || guild.name || 'Discord server'} connected.`);
+}
+
+async function rememberSetupWorkspace(provider, workspaceId) {
+  if (!workspaceId) return;
+  const current = localSetupDefaults();
+  const changed = current.channelProvider !== provider || current.workspaceId !== workspaceId;
+  const next = changed
+    ? {
+        channelProvider: provider,
+        workspaceId,
+        ownerUserId: '',
+        ownerDisplayName: '',
+        channelScopeMode: 'selected',
+        selectedChannels: [],
+        timezone: current.timezone,
+        workdayStartHour: current.workdayStartHour,
+        workdayEndHour: current.workdayEndHour
+      }
+    : {
+        ...current,
+        channelProvider: provider,
+        workspaceId
+      };
+  selectedChannelProvider = provider;
+  selectedWorkspaceId = workspaceId;
+  writeLocalSetupDefaults(next);
+  if (await health()) {
+    await saveDefaults(next);
+  }
+}
+
+async function chooseAndSaveDiscordGuild(token, guilds) {
+  if (guilds.length > 0) {
+    const configuredGuildId = process.env.MURPH_DISCORD_GUILD_ID;
+    const configuredGuild = configuredGuildId
+      ? guilds.find((guild) => guild.id === configuredGuildId) ?? await fetchDiscordGuild(token, configuredGuildId)
+      : null;
+    if (configuredGuild) {
+      await saveDiscordGuild(configuredGuild);
+      return;
+    }
+    info('Choose the Discord server Murph should use.');
+    numberedList(guilds, (guild) => `${guild.name} (${guild.id})`);
+    const selected = guilds[await askIndex('Discord server', guilds, 1)];
+    await saveDiscordGuild(selected);
+    return;
+  }
+  info('If the bot is installed but Murph did not detect it, paste the Discord server ID to finish setup.');
+  const guildId = process.env.MURPH_DISCORD_GUILD_ID || await ask('Discord server ID (blank to stop)');
+  if (!guildId.trim()) {
+    fail('Discord bot installation was not detected yet. Re-run: murph setup discord');
+  }
+  await saveDiscordGuild(await fetchDiscordGuild(token, guildId.trim()));
+}
+
 async function request(pathname, options = {}) {
   const response = await fetch(`${murphUrl}${pathname}`, {
     ...options,
@@ -849,7 +1060,11 @@ async function request(pathname, options = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    fail(payload.error || `Request failed: ${pathname}`);
+    const error = new Error(payload.error || `Request failed: ${pathname}`);
+    error.status = response.status;
+    error.pathname = pathname;
+    error.payload = payload;
+    throw error;
   }
   return payload;
 }
@@ -984,7 +1199,28 @@ async function setupAi() {
   await promptAgentModel(provider);
 }
 
+async function setupChannelProvider() {
+  sectionTitle('Channel provider');
+  const current = currentChannelProvider();
+  if (options.quick && current) {
+    selectedChannelProvider = current;
+    success(`Channel provider is configured: ${current}.`);
+    return current;
+  }
+  if (options.nonInteractive) {
+    selectedChannelProvider = current;
+    return current;
+  }
+  const choice = await askChoice('Channel: [1] Slack  [2] Discord', ['1', '2', 'slack', 'discord'], current === 'discord' ? '2' : '1');
+  const provider = choice === '2' || choice.toLowerCase() === 'discord' ? 'discord' : 'slack';
+  selectedChannelProvider = provider;
+  writeLocalSetupDefaults({ channelProvider: provider });
+  success(`Selected channel provider: ${provider}.`);
+  return provider;
+}
+
 async function setupSlack() {
+  selectedChannelProvider = 'slack';
   sectionTitle('Slack');
   const workspace = await ensureSlackWorkspaceContext();
   await ensureSlackAppConfig(workspace);
@@ -994,6 +1230,7 @@ async function setupSlack() {
   assertSlackWorkspaceMatch(status, workspace);
   if (slackWorkspaceMatches(status, workspace) && !options.reconnectSearch) {
     const label = status.slack?.workspace?.name || workspace?.name || 'Slack workspace';
+    await rememberSetupWorkspace('slack', status.slack?.workspace?.id);
     success(`${label} is connected.`);
     return;
   }
@@ -1005,12 +1242,13 @@ async function setupSlack() {
   if (options.nonInteractive) {
     fail('Slack app installation is not complete.');
   }
-  await rl.question('Press Enter after Slack app installation finishes.');
+  await ask('Press Enter after Slack app installation finishes.');
   for (let i = 0; i < 20; i += 1) {
     status = await request('/api/setup/status');
     assertSlackWorkspaceMatch(status, workspace);
     if (slackWorkspaceMatches(status, workspace)) {
       const label = status.slack?.workspace?.name || workspace?.name || 'Slack workspace';
+      await rememberSetupWorkspace('slack', status.slack?.workspace?.id);
       success(`${label} connected.`);
       return;
     }
@@ -1019,16 +1257,72 @@ async function setupSlack() {
   fail('Slack app installation did not complete yet. Re-run: murph setup slack');
 }
 
+async function setupDiscord() {
+  selectedChannelProvider = 'discord';
+  sectionTitle('Discord');
+  const existingToken = readSetupValue('DISCORD_BOT_TOKEN');
+  if (options.nonInteractive && !existingToken) {
+    fail('Missing Discord bot token. Set DISCORD_BOT_TOKEN, or run murph setup discord interactively.');
+  }
+  const token = await askRequired('Discord bot token', existingToken);
+  const bot = await validateDiscordBotToken(token);
+  const values = {
+    DISCORD_BOT_TOKEN: token,
+    DISCORD_CLIENT_ID: bot.applicationId
+  };
+  writeSetupValues(values);
+  await postSetupConfig(values);
+  success(`Discord bot validated: ${bot.botName} (${bot.botUserId}).`);
+  await configureDiscordInstallParams(token);
+
+  await ensureServer();
+  let status = await request('/api/setup/status');
+  if (status.discord?.installed) {
+    await rememberSetupWorkspace('discord', status.discord.workspace?.id);
+    success(`${status.discord.workspace?.name || 'Discord server'} is connected.`);
+    return;
+  }
+
+  const installUrl = discordInstallUrl(bot.applicationId);
+  if (!installUrl) {
+    fail('Discord application ID is missing.');
+  }
+  info('Install Murph in your Discord server with this URL:');
+  callout('Discord install URL', installUrl);
+  info('In the Discord Developer Portal, make sure Message Content Intent is enabled for this bot.');
+  openBrowserUrl(installUrl);
+  if (options.nonInteractive) {
+    fail('Discord bot installation is not complete.');
+  }
+  if (process.env.MURPH_DISCORD_SKIP_INSTALL_CONFIRM === '1') {
+    info('Continuing after Discord install prompt was skipped by environment.');
+  } else {
+    await ask('Press Enter after Discord bot installation finishes.');
+  }
+  info('Checking Discord servers for the installed bot...');
+  const discoveredGuilds = await discoverDiscordGuilds(token);
+  if (discoveredGuilds.length === 1) {
+    await saveDiscordGuild(discoveredGuilds[0]);
+    return;
+  }
+  await chooseAndSaveDiscordGuild(token, discoveredGuilds);
+}
+
 async function getDefaults() {
   await ensureServer();
-  return request('/api/setup/defaults');
+  const workspaceId = currentWorkspaceId();
+  return request(`/api/setup/defaults${workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''}`);
 }
 
 async function saveDefaults(defaults) {
   await ensureServer();
   return request('/api/setup/defaults', {
     method: 'PUT',
-    body: JSON.stringify(defaults)
+    body: JSON.stringify({
+      ...defaults,
+      channelProvider: defaults.channelProvider || currentChannelProvider(),
+      workspaceId: defaults.workspaceId || currentWorkspaceId()
+    })
   });
 }
 
@@ -1040,6 +1334,8 @@ function numberedList(items, formatter) {
 
 async function setupIdentity() {
   sectionTitle('Identity');
+  const provider = currentChannelProvider();
+  const workspaceId = currentWorkspaceId();
   const current = await getDefaults();
   if (options.quick && current.defaults?.ownerUserId) {
     success(`Owner is configured: ${current.defaults.ownerDisplayName || current.defaults.ownerUserId}`);
@@ -1053,17 +1349,27 @@ async function setupIdentity() {
     return current.defaults;
   }
 
-  const members = await request('/api/slack/members');
-  if (!members.members?.length) {
-    const name = await askRequired('Display name');
-    const id = name.toLowerCase().replace(/\s+/g, '_');
-    return (await saveDefaults({ ...current.defaults, ownerUserId: id, ownerDisplayName: name })).defaults;
+  let membersPayload = { members: [] };
+  try {
+    const params = new URLSearchParams({ provider });
+    if (workspaceId) params.set('workspaceId', workspaceId);
+    membersPayload = await request(`/api/setup/members?${params.toString()}`);
+  } catch (error) {
+    if (provider !== 'discord') throw error;
+    warn(`Discord member list is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const members = membersPayload.members || [];
+  if (!members.length) {
+    const displayName = await askRequired('Display name');
+    const defaultId = provider === 'discord' ? '' : displayName.toLowerCase().replace(/\s+/g, '_');
+    const id = await askRequired(provider === 'discord' ? 'Discord user ID' : 'User ID', defaultId);
+    return (await saveDefaults({ ...current.defaults, ownerUserId: id, ownerDisplayName: displayName })).defaults;
   }
 
-  info('Choose the Slack user Murph should watch for.');
-  numberedList(members.members, (member) => member.displayName);
-  const defaultIndex = Math.max(1, members.members.findIndex((member) => member.id === current.defaults?.ownerUserId) + 1);
-  const selectedMember = members.members[await askIndex('Choose yourself', members.members, defaultIndex || 1)];
+  info(`Choose the ${provider === 'discord' ? 'Discord' : 'Slack'} user Murph should watch for.`);
+  numberedList(members, (member) => member.displayName);
+  const defaultIndex = Math.max(1, members.findIndex((member) => member.id === current.defaults?.ownerUserId) + 1);
+  const selectedMember = members[await askIndex('Choose yourself', members, defaultIndex || 1)];
   const next = {
     ...current.defaults,
     ownerUserId: selectedMember.id,
@@ -1076,6 +1382,8 @@ async function setupIdentity() {
 
 async function setupChannels() {
   sectionTitle('Channels');
+  const provider = currentChannelProvider();
+  const workspaceId = currentWorkspaceId();
   const current = await getDefaults();
   const hasChannels = current.defaults?.channelScopeMode === 'all_accessible' ||
     (current.defaults?.selectedChannels?.length || 0) > 0;
@@ -1089,7 +1397,9 @@ async function setupChannels() {
     fail('Missing channel defaults. Run murph setup channels.');
   }
 
-  const payload = await request('/api/slack/channels');
+  const params = new URLSearchParams({ provider });
+  if (workspaceId) params.set('workspaceId', workspaceId);
+  const payload = await request(`/api/setup/channels?${params.toString()}`);
   const channels = payload.channels || [];
   if (channels.length === 0) {
     const next = { ...current.defaults, channelScopeMode: 'all_accessible', selectedChannels: [] };
@@ -1180,7 +1490,10 @@ async function setupStatus() {
     agentProvider: currentAgentProvider(currentDefaultProvider()),
     agentModel: currentAgentModel(currentAgentProvider(currentDefaultProvider())),
     agentInheritsRuntime: !hasAgentOverride(),
-    slackConfig: Boolean(readSetupValue('SLACK_APP_TOKEN') && readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET'))
+    channelProvider: currentChannelProvider(),
+    workspaceId: currentWorkspaceId(),
+    slackConfig: Boolean(readSetupValue('SLACK_APP_TOKEN') && readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET')),
+    discordConfig: Boolean(readSetupValue('DISCORD_BOT_TOKEN') && readSetupValue('DISCORD_CLIENT_ID'))
   };
   let server = null;
   if (await health()) {
@@ -1207,6 +1520,8 @@ async function setupStatus() {
     : `${localStatus.agentProvider}/${localStatus.agentModel}`);
   statusGroup('Slack');
   statusLine('Slack app config', localStatus.slackConfig ? 'ok' : 'missing', localStatus.slackConfig ? 'configured' : 'missing');
+  statusGroup('Discord');
+  statusLine('Discord bot config', localStatus.discordConfig ? 'ok' : 'missing', localStatus.discordConfig ? 'configured' : 'missing');
   if (server) {
     statusGroup('Doctor');
     for (const check of server.doctor.checks) {
@@ -1221,7 +1536,12 @@ async function runAll() {
   banner();
   await setupCore();
   await setupAi();
-  await setupSlack();
+  const provider = await setupChannelProvider();
+  if (provider === 'discord') {
+    await setupDiscord();
+  } else {
+    await setupSlack();
+  }
   await setupIdentity();
   await setupChannels();
   await setupSchedule();
@@ -1246,6 +1566,9 @@ try {
       break;
     case 'slack':
       await setupSlack();
+      break;
+    case 'discord':
+      await setupDiscord();
       break;
     case 'identity':
       await setupIdentity();

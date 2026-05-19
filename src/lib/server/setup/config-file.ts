@@ -189,6 +189,8 @@ function setupDefaultsValue(value: unknown): SetupDefaults | undefined {
         .filter((channel) => channel.id && channel.displayName)
     : undefined;
   return {
+    channelProvider: stringValue(value.channelProvider),
+    workspaceId: stringValue(value.workspaceId),
     ownerUserId: stringValue(value.ownerUserId),
     ownerDisplayName: stringValue(value.ownerDisplayName),
     channelScopeMode: value.channelScopeMode === 'all_accessible' ? 'all_accessible' : value.channelScopeMode === 'selected' ? 'selected' : undefined,

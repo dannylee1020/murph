@@ -170,6 +170,8 @@ export interface WorkspaceMemory {
 }
 
 export interface SetupDefaults {
+    channelProvider?: ChannelProvider;
+    workspaceId?: string;
     ownerUserId?: string;
     ownerDisplayName?: string;
     channelScopeMode?: 'selected' | 'all_accessible';

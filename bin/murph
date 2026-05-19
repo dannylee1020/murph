@@ -93,6 +93,51 @@ health_check() {
   curl -fsS --max-time 2 "$MURPH_URL/api/health" >/dev/null 2>&1
 }
 
+health_payload() {
+  have_command curl || return 1
+  curl -fsS --max-time 2 "$MURPH_URL/api/health" 2>/dev/null
+}
+
+health_check_murph() {
+  local payload
+  payload="$(health_payload)" || return 1
+  printf '%s' "$payload" | node -e 'let raw = ""; process.stdin.on("data", c => raw += c); process.stdin.on("end", () => { try { const data = JSON.parse(raw); process.exit(data && data.service === "murph" ? 0 : 1); } catch { process.exit(1); } });'
+}
+
+port_listener_pid() {
+  local pid=""
+  if have_command lsof; then
+    pid="$(lsof -tiTCP:"$MURPH_PORT" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+  elif have_command fuser; then
+    pid="$(fuser "$MURPH_PORT/tcp" 2>/dev/null | awk '{ print $1 }' || true)"
+  fi
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$pid"
+}
+
+stop_responding_murph() {
+  have_command node || return 1
+  health_check_murph || return 1
+
+  local pid
+  pid="$(port_listener_pid)" || return 1
+  kill "$pid" >/dev/null 2>&1 || true
+
+  local attempt
+  for attempt in {1..20}; do
+    if ! is_pid_running "$pid"; then
+      rm -f "$MURPH_PID_FILE"
+      printf 'Stopped Murph process listening on %s.\n' "$MURPH_URL"
+      return
+    fi
+    sleep 0.25
+  done
+
+  kill -9 "$pid" >/dev/null 2>&1 || true
+  rm -f "$MURPH_PID_FILE"
+  printf 'Force-stopped Murph process listening on %s.\n' "$MURPH_URL"
+}
+
 pretty_json() {
   node -e 'let raw = ""; process.stdin.on("data", c => raw += c); process.stdin.on("end", () => { try { console.log(JSON.stringify(JSON.parse(raw), null, 2)); } catch { process.stdout.write(raw); } });'
 }
@@ -719,6 +764,9 @@ case "$command" in
   restart)
     [[ $# -eq 0 ]] || fail "restart does not accept options."
     stop_background
+    if health_check; then
+      stop_responding_murph || fail "Murph is responding at $MURPH_URL, but this CLI could not stop it. Stop that process and run: murph start --background"
+    fi
     start_background
     ;;
   status)

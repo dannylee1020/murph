@@ -16,6 +16,7 @@ import {
   updateMurphSetupDefaults
 } from '#lib/server/setup/config-file';
 import { getSlackService } from '#lib/server/channels/slack/service';
+import { getDiscordService } from '#lib/server/channels/discord/service';
 import { readSecret } from '#lib/server/credentials/local-store';
 import { readJson } from '../http.js';
 import type { SetupDefaults, Workspace } from '#lib/types';
@@ -30,6 +31,8 @@ function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
     .filter((channel): channel is { id: string; displayName: string } => Boolean(channel.id && channel.displayName));
 
   return {
+    channelProvider: value.channelProvider?.trim() || undefined,
+    workspaceId: value.workspaceId?.trim() || undefined,
     ownerUserId: value.ownerUserId?.trim() || undefined,
     ownerDisplayName: value.ownerDisplayName?.trim() || undefined,
     channelScopeMode,
@@ -42,9 +45,15 @@ function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
 
 function getSetupWorkspace(workspaceId?: string): Workspace | undefined {
   const store = getStore();
-  return workspaceId
-    ? store.getWorkspaceById(workspaceId)
-    : getSlackService().getUsableWorkspace() ?? store.getFirstWorkspace();
+  const defaults = effectiveSetupDefaults();
+  const resolvedWorkspaceId = workspaceId ?? defaults.workspaceId;
+  if (resolvedWorkspaceId) {
+    return store.getWorkspaceById(resolvedWorkspaceId);
+  }
+  if (defaults.channelProvider) {
+    return store.listWorkspaces().find((workspace) => workspace.provider === defaults.channelProvider);
+  }
+  return getSlackService().getUsableWorkspace() ?? store.getFirstWorkspace();
 }
 
 function setupDefaultsPayload(workspace?: Workspace) {
@@ -59,6 +68,24 @@ function setupDefaultsPayload(workspace?: Workspace) {
     defaults,
     user
   };
+}
+
+function getProviderWorkspace(provider?: string, workspaceId?: string): Workspace | undefined {
+  const store = getStore();
+  if (workspaceId) {
+    const workspace = store.getWorkspaceById(workspaceId);
+    return provider && workspace?.provider !== provider ? undefined : workspace;
+  }
+  const defaults = effectiveSetupDefaults();
+  const targetProvider = provider ?? defaults.channelProvider;
+  if (targetProvider) {
+    if (targetProvider === 'slack') {
+      return getSlackService().getUsableWorkspace() ??
+        store.listWorkspaces().find((workspace) => workspace.provider === 'slack');
+    }
+    return store.listWorkspaces().find((workspace) => workspace.provider === targetProvider);
+  }
+  return getSetupWorkspace();
 }
 
 function effectiveSetupDefaults(): SetupDefaults {
@@ -128,8 +155,15 @@ export const systemRoutes: Route[] = [
       },
       discord: {
         installed: Boolean(discordWorkspace),
-        oauthConfigured: Boolean(env.discordClientId && env.discordClientSecret && env.discordRedirectUri),
-        botTokenConfigured: Boolean(env.discordBotToken)
+        botTokenConfigured: Boolean(env.discordBotToken || readSecret('discord', 'bot_token')),
+        clientIdConfigured: Boolean(env.discordClientId),
+        workspace: discordWorkspace
+          ? {
+              id: discordWorkspace.id,
+              externalWorkspaceId: discordWorkspace.externalWorkspaceId,
+              name: discordWorkspace.name
+            }
+          : undefined
       },
       provider: {
         configured: Boolean(env.openaiApiKey || env.anthropicApiKey),
@@ -155,6 +189,42 @@ export const systemRoutes: Route[] = [
   route('GET', '/api/setup/defaults', async ({ res, url }) => {
     await ensureRuntimeInitialized();
     sendJson(res, setupDefaultsPayload(getSetupWorkspace(url.searchParams.get('workspaceId') ?? undefined)));
+  }),
+  route('GET', '/api/setup/members', async ({ res, url }) => {
+    await ensureRuntimeInitialized();
+    const provider = url.searchParams.get('provider') ?? undefined;
+    const workspace = getProviderWorkspace(provider, url.searchParams.get('workspaceId') ?? undefined);
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'workspace_required' }, 400);
+      return;
+    }
+    if (workspace.provider === 'slack') {
+      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, members: await getSlackService().listMembers(workspace) });
+      return;
+    }
+    if (workspace.provider === 'discord') {
+      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, members: await getDiscordService().listMembers(workspace) });
+      return;
+    }
+    sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
+  }),
+  route('GET', '/api/setup/channels', async ({ res, url }) => {
+    await ensureRuntimeInitialized();
+    const provider = url.searchParams.get('provider') ?? undefined;
+    const workspace = getProviderWorkspace(provider, url.searchParams.get('workspaceId') ?? undefined);
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'workspace_required' }, 400);
+      return;
+    }
+    if (workspace.provider === 'slack') {
+      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channels: await getSlackService().listChannels(workspace) });
+      return;
+    }
+    if (workspace.provider === 'discord') {
+      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channels: await getDiscordService().listChannels(workspace) });
+      return;
+    }
+    sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
   }),
   route('PUT', '/api/setup/defaults', async ({ req, res }) => {
     await ensureRuntimeInitialized();
