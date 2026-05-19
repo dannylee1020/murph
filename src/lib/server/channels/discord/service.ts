@@ -4,6 +4,10 @@ import { readSecret, writeSecret } from '#lib/server/credentials/local-store';
 import type { ChannelMessage, ChannelThreadRef, Workspace } from '#lib/types';
 
 export const DISCORD_BOT_PERMISSIONS = '274877991936';
+export const DISCORD_REQUIRED_LIMITED_INTENT_FLAGS = {
+  GUILD_MEMBERS: 1 << 15,
+  MESSAGE_CONTENT: 1 << 19
+} as const;
 
 interface DiscordTokenResponse {
   access_token?: string;
@@ -19,6 +23,7 @@ interface DiscordGuild {
 interface DiscordApplication {
   id: string;
   name?: string;
+  flags?: number;
 }
 
 interface DiscordUser {
@@ -37,6 +42,7 @@ interface DiscordChannel {
   id: string;
   name?: string;
   type?: number;
+  guild_id?: string;
 }
 
 interface DiscordMessage {
@@ -88,6 +94,11 @@ export interface DiscordGuildChoice {
   name: string;
 }
 
+export interface DiscordAppConfigurationResult {
+  permissionsConfigured: boolean;
+  intentsConfigured: boolean;
+}
+
 export class DiscordService {
   private readonly store = getStore();
 
@@ -126,6 +137,18 @@ export class DiscordService {
   }
 
   async configureInstallParams(): Promise<boolean> {
+    const result = await this.configureApplication();
+    return result.permissionsConfigured;
+  }
+
+  async configureApplication(): Promise<DiscordAppConfigurationResult> {
+    const application = await this.fetchCurrentApplication().catch(() => undefined);
+    const flags = typeof application?.flags === 'number'
+      ? application.flags |
+        DISCORD_REQUIRED_LIMITED_INTENT_FLAGS.GUILD_MEMBERS |
+        DISCORD_REQUIRED_LIMITED_INTENT_FLAGS.MESSAGE_CONTENT
+      : undefined;
+
     const response = await fetch('https://discord.com/api/v10/applications/@me', {
       method: 'PATCH',
       headers: {
@@ -136,10 +159,22 @@ export class DiscordService {
         install_params: {
           scopes: ['bot'],
           permissions: DISCORD_BOT_PERMISSIONS
-        }
+        },
+        integration_types_config: {
+          0: {
+            oauth2_install_params: {
+              scopes: ['bot'],
+              permissions: DISCORD_BOT_PERMISSIONS
+            }
+          }
+        },
+        ...(flags === undefined ? {} : { flags })
       })
     });
-    return response.ok;
+    return {
+      permissionsConfigured: response.ok,
+      intentsConfigured: response.ok && flags !== undefined
+    };
   }
 
   async exchangeCode(code: string, guildId?: string): Promise<Workspace> {
@@ -291,18 +326,33 @@ export class DiscordService {
       headers: { authorization: `Bot ${this.getBotToken()}` }
     });
     if (!response.ok) {
-      throw new Error('Failed to fetch Discord channels');
+      throw new Error(await discordErrorMessage(response, 'Failed to fetch Discord channels'));
     }
     const channels = (await response.json()) as DiscordChannel[];
-    const textLikeTypes = new Set([0, 5, 15]);
     return channels
-      .filter((channel) => channel.id && textLikeTypes.has(channel.type ?? -1))
-      .map((channel) => ({
-        id: channel.id,
-        displayName: channel.name ? `#${channel.name}` : channel.id,
-        isPrivate: false,
-        isMember: true
-      }));
+      .map((channel) => toChannelChoice(channel))
+      .filter((channel): channel is DiscordChannelChoice => Boolean(channel));
+  }
+
+  async getChannel(workspace: Workspace, channelId: string): Promise<DiscordChannelChoice> {
+    const response = await fetch(
+      `https://discord.com/api/v10/channels/${encodeURIComponent(channelId)}`,
+      {
+        headers: { authorization: `Bot ${this.getBotToken()}` }
+      }
+    );
+    if (!response.ok) {
+      throw new Error(await discordErrorMessage(response, 'Failed to fetch Discord channel'));
+    }
+    const channel = (await response.json()) as DiscordChannel;
+    if (channel.guild_id && channel.guild_id !== workspace.externalWorkspaceId) {
+      throw new Error('Discord channel does not belong to the selected server');
+    }
+    const choice = toChannelChoice(channel);
+    if (!choice) {
+      throw new Error('Discord channel is not a supported text channel');
+    }
+    return choice;
   }
 
   async listMembers(workspace: Workspace): Promise<DiscordMemberChoice[]> {
@@ -310,19 +360,29 @@ export class DiscordService {
       headers: { authorization: `Bot ${this.getBotToken()}` }
     });
     if (!response.ok) {
-      throw new Error('Failed to fetch Discord members');
+      throw new Error(await discordErrorMessage(response, 'Failed to fetch Discord members'));
     }
     const members = (await response.json()) as DiscordGuildMember[];
     return members
-      .map((member) => {
-        const user = member.user;
-        if (!user?.id || user.bot) return undefined;
-        return {
-          id: user.id,
-          displayName: member.nick ?? user.global_name ?? user.username ?? user.id
-        };
-      })
+      .map((member) => toMemberChoice(member))
       .filter((member): member is DiscordMemberChoice => Boolean(member));
+  }
+
+  async getMember(workspace: Workspace, userId: string): Promise<DiscordMemberChoice> {
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${workspace.externalWorkspaceId}/members/${encodeURIComponent(userId)}`,
+      {
+        headers: { authorization: `Bot ${this.getBotToken()}` }
+      }
+    );
+    if (!response.ok) {
+      throw new Error(await discordErrorMessage(response, 'Failed to fetch Discord member'));
+    }
+    const member = toMemberChoice((await response.json()) as DiscordGuildMember);
+    if (!member) {
+      throw new Error('Discord member response did not include a user ID');
+    }
+    return member;
   }
 
   async fetchThreadMessages(_workspace: Workspace, thread: ChannelThreadRef): Promise<ChannelMessage[]> {
@@ -457,4 +517,32 @@ export function getDiscordService(): DiscordService {
     service = new DiscordService();
   }
   return service;
+}
+
+async function discordErrorMessage(response: Response, fallback: string): Promise<string> {
+  const payload = await response.json().catch(() => undefined) as { message?: string; error?: string } | undefined;
+  const detail = payload?.message ?? payload?.error;
+  return detail ? `${fallback}: ${detail}` : `${fallback} (${response.status})`;
+}
+
+function toMemberChoice(member: DiscordGuildMember): DiscordMemberChoice | undefined {
+  const user = member.user;
+  if (!user?.id || user.bot) return undefined;
+  return {
+    id: user.id,
+    displayName: member.nick ?? user.global_name ?? user.username ?? user.id
+  };
+}
+
+function toChannelChoice(channel: DiscordChannel): DiscordChannelChoice | undefined {
+  const textLikeTypes = new Set([0, 5, 15]);
+  if (!channel.id || !textLikeTypes.has(channel.type ?? -1)) {
+    return undefined;
+  }
+  return {
+    id: channel.id,
+    displayName: channel.name ? `#${channel.name}` : channel.id,
+    isPrivate: false,
+    isMember: true
+  };
 }

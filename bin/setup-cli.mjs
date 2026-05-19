@@ -16,6 +16,18 @@ const slackManifestPath = path.join(appDir, 'docs', 'public', 'slack-manifest.ya
 const slackApiBase = process.env.MURPH_SLACK_API_BASE || 'https://slack.com/api';
 const discordApiBase = process.env.MURPH_DISCORD_API_BASE || 'https://discord.com/api/v10';
 const discordBotPermissions = '274877991936';
+const discordLimitedIntentFlags = {
+  guildMembers: 1 << 15,
+  messageContent: 1 << 19
+};
+const discordRequiredLimitedIntentFlags = discordLimitedIntentFlags.guildMembers | discordLimitedIntentFlags.messageContent;
+const discordPermissionLabels = [
+  'View Channels',
+  'Send Messages',
+  'Embed Links',
+  'Read Message History',
+  'Send Messages in Threads'
+];
 const rl = readline.createInterface({ input, output });
 
 const args = process.argv.slice(2);
@@ -906,11 +918,15 @@ async function validateDiscordBotToken(token) {
     botUserId: bot.id,
     botName: bot.global_name || bot.username || bot.id,
     applicationId: app.id || bot.id,
-    applicationName: app.name
+    applicationName: app.name,
+    applicationFlags: typeof app.flags === 'number' ? app.flags : undefined
   };
 }
 
-async function configureDiscordInstallParams(token) {
+async function configureDiscordApplication(token, applicationFlags) {
+  const flags = typeof applicationFlags === 'number'
+    ? applicationFlags | discordRequiredLimitedIntentFlags
+    : undefined;
   try {
     await discordApi('/applications/@me', token, {
       method: 'PATCH',
@@ -918,13 +934,29 @@ async function configureDiscordInstallParams(token) {
         install_params: {
           scopes: ['bot'],
           permissions: discordBotPermissions
-        }
+        },
+        integration_types_config: {
+          0: {
+            oauth2_install_params: {
+              scopes: ['bot'],
+              permissions: discordBotPermissions
+            }
+          }
+        },
+        ...(flags === undefined ? {} : { flags })
       })
     });
-    success('Saved Discord bot install parameters.');
+    success(flags === undefined
+      ? 'Saved Discord bot install permissions.'
+      : 'Saved Discord bot install permissions and privileged intent settings.');
+    if (flags === undefined) {
+      warn('Could not read current Discord app flags, so privileged intents may still need to be enabled manually.');
+    }
     return true;
   } catch (error) {
-    warn(`Discord app install parameter automation failed: ${error instanceof Error ? error.message : String(error)}`);
+    warn(`Discord app configuration automation failed: ${error instanceof Error ? error.message : String(error)}`);
+    warn('If Discord blocks the API update, open Developer Portal > Bot and enable Server Members Intent and Message Content Intent.');
+    warn(`Set bot install permissions to: ${discordPermissionLabels.join(', ')}.`);
     return false;
   }
 }
@@ -1067,6 +1099,20 @@ async function request(pathname, options = {}) {
     throw error;
   }
   return payload;
+}
+
+async function fetchSetupMember(provider, workspaceId, userId) {
+  const params = new URLSearchParams({ provider, userId });
+  if (workspaceId) params.set('workspaceId', workspaceId);
+  const payload = await request(`/api/setup/member?${params.toString()}`);
+  return payload.member;
+}
+
+async function fetchSetupChannel(provider, workspaceId, channelId) {
+  const params = new URLSearchParams({ provider, channelId });
+  if (workspaceId) params.set('workspaceId', workspaceId);
+  const payload = await request(`/api/setup/channel?${params.toString()}`);
+  return payload.channel;
 }
 
 async function health() {
@@ -1273,13 +1319,20 @@ async function setupDiscord() {
   writeSetupValues(values);
   await postSetupConfig(values);
   success(`Discord bot validated: ${bot.botName} (${bot.botUserId}).`);
-  await configureDiscordInstallParams(token);
+  const configuredApp = await configureDiscordApplication(token, bot.applicationFlags);
 
   await ensureServer();
   let status = await request('/api/setup/status');
   if (status.discord?.installed) {
     await rememberSetupWorkspace('discord', status.discord.workspace?.id);
     success(`${status.discord.workspace?.name || 'Discord server'} is connected.`);
+    if (configuredApp) {
+      const reinstallUrl = discordInstallUrl(bot.applicationId);
+      if (reinstallUrl) {
+        info('If this bot was installed before setup configured permissions, re-open the Discord install URL and approve the updated server permissions.');
+        callout('Discord install URL', reinstallUrl);
+      }
+    }
     return;
   }
 
@@ -1289,7 +1342,10 @@ async function setupDiscord() {
   }
   info('Install Murph in your Discord server with this URL:');
   callout('Discord install URL', installUrl);
-  info('In the Discord Developer Portal, make sure Message Content Intent is enabled for this bot.');
+  info(`Murph requests these bot permissions: ${discordPermissionLabels.join(', ')}.`);
+  if (!configuredApp) {
+    info('In the Discord Developer Portal, enable Server Members Intent and Message Content Intent before continuing.');
+  }
   openBrowserUrl(installUrl);
   if (options.nonInteractive) {
     fail('Discord bot installation is not complete.');
@@ -1357,12 +1413,27 @@ async function setupIdentity() {
   } catch (error) {
     if (provider !== 'discord') throw error;
     warn(`Discord member list is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    warn('Enable Server Members Intent in the Discord Developer Portal to use the member picker.');
   }
   const members = membersPayload.members || [];
   if (!members.length) {
+    if (provider === 'discord') {
+      const id = await askRequired('Discord user ID');
+      try {
+        const member = await fetchSetupMember(provider, workspaceId, id);
+        if (member?.displayName) {
+          return (await saveDefaults({ ...current.defaults, ownerUserId: member.id || id, ownerDisplayName: member.displayName })).defaults;
+        }
+      } catch (error) {
+        warn(`Could not fetch that Discord user: ${error instanceof Error ? error.message : String(error)}`);
+        warn('Continuing with manual display name. No separate Discord API key is needed.');
+      }
+      const displayName = await askRequired('Display name', id);
+      return (await saveDefaults({ ...current.defaults, ownerUserId: id, ownerDisplayName: displayName })).defaults;
+    }
     const displayName = await askRequired('Display name');
-    const defaultId = provider === 'discord' ? '' : displayName.toLowerCase().replace(/\s+/g, '_');
-    const id = await askRequired(provider === 'discord' ? 'Discord user ID' : 'User ID', defaultId);
+    const defaultId = displayName.toLowerCase().replace(/\s+/g, '_');
+    const id = await askRequired('User ID', defaultId);
     return (await saveDefaults({ ...current.defaults, ownerUserId: id, ownerDisplayName: displayName })).defaults;
   }
 
@@ -1399,7 +1470,13 @@ async function setupChannels() {
 
   const params = new URLSearchParams({ provider });
   if (workspaceId) params.set('workspaceId', workspaceId);
-  const payload = await request(`/api/setup/channels?${params.toString()}`);
+  let payload;
+  try {
+    payload = await request(`/api/setup/channels?${params.toString()}`);
+  } catch (error) {
+    if (provider !== 'discord') throw error;
+    return setupDiscordChannelsManually(current, workspaceId, error);
+  }
   const channels = payload.channels || [];
   if (channels.length === 0) {
     const next = { ...current.defaults, channelScopeMode: 'all_accessible', selectedChannels: [] };
@@ -1426,6 +1503,44 @@ async function setupChannels() {
   success(next.channelScopeMode === 'all_accessible'
     ? 'Saved channel scope: all accessible channels.'
     : `Saved ${next.selectedChannels.length} selected channel(s).`);
+  return next;
+}
+
+async function setupDiscordChannelsManually(current, workspaceId, cause) {
+  warn(`Discord channel list is unavailable: ${cause instanceof Error ? cause.message : String(cause)}`);
+  warn('Likely causes: the bot is not installed in this server, lacks View Channels, or needs re-approval after permission changes.');
+  const installUrl = discordInstallUrl();
+  if (installUrl) {
+    info('Ask a server admin to re-open this install URL and approve the requested permissions.');
+    callout('Discord install URL', installUrl);
+  }
+  if (options.nonInteractive) {
+    fail('Missing Discord channel defaults. Re-approve the bot permissions or run murph setup channels interactively.');
+  }
+
+  const answer = await askRequired('Discord channel ID(s), comma-separated');
+  const ids = [...new Set(answer.split(',').map((entry) => entry.trim()).filter(Boolean))];
+  if (!ids.length) {
+    fail('At least one Discord channel ID is required.');
+  }
+
+  const channels = [];
+  for (const id of ids) {
+    try {
+      const channel = await fetchSetupChannel('discord', workspaceId, id);
+      channels.push({ id: channel.id || id, displayName: channel.displayName || id });
+    } catch (error) {
+      fail(`Could not validate Discord channel ${id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const next = {
+    ...current.defaults,
+    channelScopeMode: 'selected',
+    selectedChannels: channels
+  };
+  await saveDefaults(next);
+  success(`Saved ${channels.length} selected Discord channel(s).`);
   return next;
 }
 

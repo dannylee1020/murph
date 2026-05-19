@@ -208,6 +208,29 @@ export const systemRoutes: Route[] = [
     }
     sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
   }),
+  route('GET', '/api/setup/member', async ({ res, url }) => {
+    await ensureRuntimeInitialized();
+    const provider = url.searchParams.get('provider') ?? undefined;
+    const workspace = getProviderWorkspace(provider, url.searchParams.get('workspaceId') ?? undefined);
+    const userId = url.searchParams.get('userId')?.trim();
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'workspace_required' }, 400);
+      return;
+    }
+    if (!userId) {
+      sendJson(res, { ok: false, error: 'user_id_required' }, 400);
+      return;
+    }
+    if (workspace.provider === 'slack') {
+      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, member: await getSlackService().getMember(workspace, userId) });
+      return;
+    }
+    if (workspace.provider === 'discord') {
+      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, member: await getDiscordService().getMember(workspace, userId) });
+      return;
+    }
+    sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
+  }),
   route('GET', '/api/setup/channels', async ({ res, url }) => {
     await ensureRuntimeInitialized();
     const provider = url.searchParams.get('provider') ?? undefined;
@@ -222,6 +245,40 @@ export const systemRoutes: Route[] = [
     }
     if (workspace.provider === 'discord') {
       sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channels: await getDiscordService().listChannels(workspace) });
+      return;
+    }
+    sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);
+  }),
+  route('GET', '/api/setup/channel', async ({ res, url }) => {
+    await ensureRuntimeInitialized();
+    const provider = url.searchParams.get('provider') ?? undefined;
+    const workspace = getProviderWorkspace(provider, url.searchParams.get('workspaceId') ?? undefined);
+    const channelId = url.searchParams.get('channelId')?.trim();
+    if (!workspace) {
+      sendJson(res, { ok: false, error: 'workspace_required' }, 400);
+      return;
+    }
+    if (!channelId) {
+      sendJson(res, { ok: false, error: 'channel_id_required' }, 400);
+      return;
+    }
+    if (workspace.provider === 'slack') {
+      const channel = await getSlackService().getChannelInfo(workspace, channelId);
+      sendJson(res, {
+        ok: true,
+        workspaceId: workspace.id,
+        provider: workspace.provider,
+        channel: {
+          id: channel.id,
+          displayName: channel.name ? `#${channel.name}` : channel.id,
+          isPrivate: channel.isPrivate,
+          isMember: channel.isMember
+        }
+      });
+      return;
+    }
+    if (workspace.provider === 'discord') {
+      sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channel: await getDiscordService().getChannel(workspace, channelId) });
       return;
     }
     sendJson(res, { ok: false, error: `unsupported_provider:${workspace.provider}` }, 400);

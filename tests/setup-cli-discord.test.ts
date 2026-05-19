@@ -45,14 +45,22 @@ let setupStatusIndex = 0;
 let discordGuildSaveAttempts = 0;
 
 globalThis.fetch = async (url, options = {}) => {
+  const body = options.body ? JSON.parse(String(options.body)) : undefined;
   appendFileSync(callsPath, JSON.stringify({
     url: String(url),
     method: options.method || 'GET',
-    body: options.body ? JSON.parse(String(options.body)) : undefined,
+    body,
     authorization: options.headers?.authorization
   }) + '\\n');
   if (String(url).includes('/users/@me/guilds')) {
     return Response.json(JSON.parse(process.env.MOCK_DISCORD_GUILDS || '[{"id":"guild-direct","name":"Direct Guild"}]'));
+  }
+  if (String(url).includes('/guilds/') && String(url).includes('/members/')) {
+    const userId = String(url).split('/members/')[1]?.split(/[?#]/)[0] || 'user-1';
+    return Response.json({
+      user: { id: userId, username: 'daniel', global_name: 'Daniel Lee' },
+      nick: process.env.MOCK_DISCORD_MEMBER_NICK || null
+    });
   }
   if (String(url).includes('/guilds/')) {
     if (process.env.MOCK_DISCORD_GUILD_FETCH_FAIL === '1') {
@@ -68,9 +76,12 @@ globalThis.fetch = async (url, options = {}) => {
     return Response.json({ id: 'bot-user-1', username: 'murph-bot', bot: true });
   }
   if (String(url).includes('/oauth2/applications/@me')) {
-    return Response.json({ id: 'app-123', name: 'Murph' });
+    return Response.json({ id: 'app-123', name: 'Murph', flags: 0 });
   }
   if (String(url).includes('/applications/@me')) {
+    if (process.env.MOCK_DISCORD_APP_CONFIG_FAIL === '1') {
+      return Response.json({ message: 'Missing Access' }, { status: 403 });
+    }
     return Response.json({ id: 'app-123' });
   }
   if (String(url).includes('/api/health')) {
@@ -84,8 +95,36 @@ globalThis.fetch = async (url, options = {}) => {
     setupStatusIndex += 1;
     return Response.json(payload);
   }
+  if (String(url).includes('/api/setup/channels')) {
+    if (process.env.MOCK_SETUP_CHANNELS_FAIL === '1') {
+      return Response.json({ ok: false, error: 'Failed to fetch Discord channels: Missing Access' }, { status: 500 });
+    }
+    return Response.json({
+      ok: true,
+      channels: JSON.parse(process.env.MOCK_SETUP_CHANNELS || '[{"id":"channel-1","displayName":"#general","isPrivate":false,"isMember":true}]')
+    });
+  }
+  if (String(url).includes('/api/setup/channel')) {
+    const parsed = new URL(String(url));
+    const channelId = parsed.searchParams.get('channelId') || 'channel-1';
+    if (process.env.MOCK_SETUP_CHANNEL_INVALID === channelId) {
+      return Response.json({ ok: false, error: 'Failed to fetch Discord channel: Unknown Channel' }, { status: 500 });
+    }
+    return Response.json({ ok: true, channel: { id: channelId, displayName: channelId === 'channel-2' ? '#launch' : '#general' } });
+  }
   if (String(url).includes('/api/setup/defaults')) {
-    return Response.json({ ok: true, defaults: {} });
+    return Response.json({ ok: true, defaults: body || JSON.parse(process.env.MOCK_SETUP_DEFAULTS || '{}') });
+  }
+  if (String(url).includes('/api/setup/members')) {
+    if (process.env.MOCK_SETUP_MEMBERS_FAIL === '1') {
+      return Response.json({ ok: false, error: 'Failed to fetch Discord members: Missing Access' }, { status: 500 });
+    }
+    return Response.json({ ok: true, members: JSON.parse(process.env.MOCK_SETUP_MEMBERS || '[]') });
+  }
+  if (String(url).includes('/api/setup/member')) {
+    const parsed = new URL(String(url));
+    const userId = parsed.searchParams.get('userId') || 'user-1';
+    return Response.json({ ok: true, member: { id: userId, displayName: 'Daniel Lee' } });
   }
   if (String(url).includes('/api/discord/guilds')) {
     return Response.json({ ok: true, guilds: [{ id: 'guild-rest', name: 'REST Guild' }] });
@@ -162,6 +201,50 @@ describe('setup CLI Discord setup', () => {
     const calls = readCalls(callsPath);
     expect(calls.find((call) => call.url.includes('/users/@me'))?.authorization).toBe('Bot discord-bot-token');
     expect(calls.some((call) => call.url.includes('/api/setup/config') && call.method === 'POST')).toBe(true);
+    const appConfigCall = calls.find((call) => call.url.includes('/applications/@me') && call.method === 'PATCH');
+    expect(appConfigCall?.body).toEqual(expect.objectContaining({
+      install_params: {
+        scopes: ['bot'],
+        permissions: '274877991936'
+      },
+      integration_types_config: {
+        0: {
+          oauth2_install_params: {
+            scopes: ['bot'],
+            permissions: '274877991936'
+          }
+        }
+      },
+      flags: 557056
+    }));
+  });
+
+  it('continues with manual guidance when Discord app configuration fails', () => {
+    const appDir = createAppDir();
+    const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir);
+    const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
+      cwd: repoRoot,
+      input: '\n',
+      env: {
+        ...process.env,
+        MURPH_APP_DIR: appDir,
+        MURPH_CONFIG_PATH: path.join(appDir, 'config.yaml'),
+        MURPH_CREDENTIALS_PATH: path.join(appDir, '.credentials'),
+        MURPH_URL: 'http://murph.test',
+        MURPH_DISCORD_API_BASE: 'http://discord.test/api/v10',
+        DISCORD_BOT_TOKEN: 'discord-bot-token',
+        MOCK_DISCORD_APP_CONFIG_FAIL: '1',
+        MOCK_FETCH_CALLS: callsPath,
+        MOCK_SETUP_STATUSES: setupStatusesPath,
+        PATH: '/usr/bin:/bin'
+      },
+      encoding: 'utf8'
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Discord app configuration automation failed');
+    expect(result.stdout).toContain('Server Members Intent and Message Content Intent');
+    expect(result.stdout).toContain('Murph Guild is connected.');
   });
 
   it('falls back to manual guild ID when Discord REST does not return servers', () => {
@@ -370,5 +453,129 @@ describe('setup CLI Discord setup', () => {
     const calls = readCalls(callsPath);
     expect(calls.some((call) => call.url.includes('/guilds/guild-manual'))).toBe(true);
     expect(calls.some((call) => call.url.includes('/api/discord/guild'))).toBe(false);
+  });
+
+  it('validates a manual Discord user ID when member listing is unavailable', () => {
+    const appDir = createAppDir();
+    writeFileSync(path.join(appDir, 'config.yaml'), [
+      'setup:',
+      '  channelProvider: discord',
+      '  workspaceId: ws-discord',
+      ''
+    ].join('\n'));
+    const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir);
+    const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'identity'], {
+      cwd: repoRoot,
+      input: 'user-123\n',
+      env: {
+        ...process.env,
+        MURPH_APP_DIR: appDir,
+        MURPH_CONFIG_PATH: path.join(appDir, 'config.yaml'),
+        MURPH_CREDENTIALS_PATH: path.join(appDir, '.credentials'),
+        MURPH_URL: 'http://murph.test',
+        MOCK_SETUP_MEMBERS_FAIL: '1',
+        MOCK_FETCH_CALLS: callsPath,
+        MOCK_SETUP_STATUSES: setupStatusesPath,
+        PATH: '/usr/bin:/bin'
+      },
+      encoding: 'utf8'
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Server Members Intent');
+
+    const calls = readCalls(callsPath);
+    expect(calls.some((call) => call.url.includes('/api/setup/members'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/api/setup/member') && call.url.includes('user-123'))).toBe(true);
+    const saveCall = calls.find((call) => call.url.includes('/api/setup/defaults') && call.method === 'PUT');
+    expect(saveCall?.body).toEqual(expect.objectContaining({
+      ownerUserId: 'user-123',
+      ownerDisplayName: 'Daniel Lee'
+    }));
+  });
+
+  it('falls back to validated Discord channel IDs when channel listing is unavailable', () => {
+    const appDir = createAppDir();
+    writeFileSync(path.join(appDir, 'config.yaml'), [
+      'channels:',
+      '  discord:',
+      '    clientId: app-123',
+      'setup:',
+      '  channelProvider: discord',
+      '  workspaceId: ws-discord',
+      ''
+    ].join('\n'));
+    const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir);
+    const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'channels'], {
+      cwd: repoRoot,
+      input: 'channel-1, channel-2\n',
+      env: {
+        ...process.env,
+        MURPH_APP_DIR: appDir,
+        MURPH_CONFIG_PATH: path.join(appDir, 'config.yaml'),
+        MURPH_CREDENTIALS_PATH: path.join(appDir, '.credentials'),
+        MURPH_URL: 'http://murph.test',
+        MOCK_SETUP_CHANNELS_FAIL: '1',
+        MOCK_FETCH_CALLS: callsPath,
+        MOCK_SETUP_STATUSES: setupStatusesPath,
+        PATH: '/usr/bin:/bin'
+      },
+      encoding: 'utf8'
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Failed to fetch Discord channels: Missing Access');
+    expect(result.stdout).toContain('approve the requested permissions');
+    expect(result.stdout).toContain('Saved 2 selected Discord channel(s).');
+
+    const calls = readCalls(callsPath);
+    expect(calls.some((call) => call.url.includes('/api/setup/channels'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/api/setup/channel') && call.url.includes('channel-1'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/api/setup/channel') && call.url.includes('channel-2'))).toBe(true);
+    const saveCall = calls.find((call) => call.url.includes('/api/setup/defaults') && call.method === 'PUT');
+    expect(saveCall?.body).toEqual(expect.objectContaining({
+      channelScopeMode: 'selected',
+      selectedChannels: [
+        { id: 'channel-1', displayName: '#general' },
+        { id: 'channel-2', displayName: '#launch' }
+      ]
+    }));
+  });
+
+  it('fails clearly when manual Discord channel validation fails', () => {
+    const appDir = createAppDir();
+    writeFileSync(path.join(appDir, 'config.yaml'), [
+      'channels:',
+      '  discord:',
+      '    clientId: app-123',
+      'setup:',
+      '  channelProvider: discord',
+      '  workspaceId: ws-discord',
+      ''
+    ].join('\n'));
+    const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir);
+    const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'channels'], {
+      cwd: repoRoot,
+      input: 'bad-channel\n',
+      env: {
+        ...process.env,
+        MURPH_APP_DIR: appDir,
+        MURPH_CONFIG_PATH: path.join(appDir, 'config.yaml'),
+        MURPH_CREDENTIALS_PATH: path.join(appDir, '.credentials'),
+        MURPH_URL: 'http://murph.test',
+        MOCK_SETUP_CHANNELS_FAIL: '1',
+        MOCK_SETUP_CHANNEL_INVALID: 'bad-channel',
+        MOCK_FETCH_CALLS: callsPath,
+        MOCK_SETUP_STATUSES: setupStatusesPath,
+        PATH: '/usr/bin:/bin'
+      },
+      encoding: 'utf8'
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr + result.stdout).toContain('Could not validate Discord channel bad-channel');
+
+    const calls = readCalls(callsPath);
+    expect(calls.some((call) => call.url.includes('/api/setup/defaults') && call.method === 'PUT')).toBe(false);
   });
 });
