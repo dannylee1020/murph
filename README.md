@@ -55,8 +55,9 @@ murph uninstall
 | [Quickstart](https://docs.murph-agent.com/docs/quickstart) | Install Murph, run setup, start the local server, and check health. |
 | [Installation](https://docs.murph-agent.com/docs/installation) | Installer behavior, local setup, and manual install paths. |
 | [Configuration](https://docs.murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and local runtime settings. |
-| [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent) | `murph` commands and the local agent for setup, debugging, and plugins. |
-| [Channels](https://docs.murph-agent.com/docs/channels) | Connect the messenger you use and choose the channels Murph should watch. |
+| [Usage](https://docs.murph-agent.com/docs/usage) | Use `murph`, the browser UI, and `murph agent` for setup, sessions, review, and daily operation. |
+| [Plugins](https://docs.murph-agent.com/docs/plugins) | Create scoped plugins with skills, connectors, and read-only tools. |
+| [Channels](https://docs.murph-agent.com/docs/channels) | Connect Slack or Discord, choose watched channels, and use the Slack manifest at `/slack-manifest.yaml`. |
 | [Integrations](https://docs.murph-agent.com/docs/integrations) | Connect context sources like docs, GitHub, Gmail, Calendar, and meetings. |
 | [Core Concepts](https://docs.murph-agent.com/docs/core-concepts) | Sessions, context, skills, policy, triage, and audit trails. |
 | [Contributing](https://docs.murph-agent.com/docs/contributing) | Local development, project structure, and contribution workflow. |
@@ -69,9 +70,9 @@ Murph includes a local coding agent for setup, debugging, policy changes, and sc
 murph agent
 ```
 
-Use it to connect services, inspect setup issues, and create plugins without editing Murph core. By default, it can write plugin and configuration files; source edits require an explicit `--source-edits` flag.
+Use it to connect services, inspect setup issues, and create scoped plugins without editing Murph core. By default, it can write plugin and configuration files; source edits require an explicit `--source-edits` flag.
 
-Learn more in [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent).
+Learn more in [Murph Agent](https://docs.murph-agent.com/docs/usage/murph-agent).
 
 ## What you can connect
 
@@ -88,12 +89,15 @@ Learn more in [CLI & Agent](https://docs.murph-agent.com/docs/cli-agent).
 Murph is organized around a few extension points:
 
 - **Channels** for messaging surfaces.
-- **Integrations** for external context and tools.
+- **Integrations** for built-in external context sources.
+- **Plugins** for local extensions.
 - **Skills** for request-specific behavior.
+- **Connectors** for one outside source inside a plugin.
+- **Tools** for individual callable actions exposed by connectors.
 - **Policies** for autonomy and review rules.
 - **Providers** for model backends.
 
-The listed providers and tools are defaults, not a closed set. New search providers, fetch backends, and local integrations should fit these extension points before changing Murph core.
+The listed providers and tools are defaults, not a closed set. New search providers, fetch backends, and local integrations should start as scoped plugins before changing Murph core.
 
 For local development:
 
