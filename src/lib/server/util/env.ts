@@ -23,6 +23,8 @@ export interface RuntimeEnv {
   defaultModel: string;
   agentProvider: ProviderName;
   agentModel: string;
+  policyProvider: ProviderName;
+  policyModel: string;
   notionApiKey?: string;
   notionVersion: string;
   notionMaxResults: number;
@@ -95,6 +97,11 @@ export function getRuntimeEnv(): RuntimeEnv {
         : envOrSecret('ANTHROPIC_API_KEY', 'anthropic', 'api_key')
           ? 'anthropic'
           : defaultProvider;
+  const policyProvider: ProviderName = process.env.MURPH_POLICY_PROVIDER === 'anthropic'
+    ? 'anthropic'
+    : process.env.MURPH_POLICY_PROVIDER === 'openai'
+      ? 'openai'
+      : config.ai?.policy?.provider ?? defaultProvider;
 
   cachedEnv = {
     appUrl: envOrConfigString('MURPH_APP_URL', config.app?.url, 'http://localhost:5173'),
@@ -122,6 +129,10 @@ export function getRuntimeEnv(): RuntimeEnv {
     agentModel: process.env.MURPH_AGENT_MODEL ||
       config.ai?.agent?.model ||
       (agentProvider === defaultProvider ? defaultModel : DEFAULT_PROVIDER_MODEL[agentProvider]),
+    policyProvider,
+    policyModel: process.env.MURPH_POLICY_MODEL ||
+      config.ai?.policy?.model ||
+      (policyProvider === defaultProvider ? defaultModel : DEFAULT_PROVIDER_MODEL[policyProvider]),
     notionApiKey: envOrSecret('NOTION_API_KEY', 'notion', 'api_key'),
     notionVersion: envOrConfigString('NOTION_VERSION', config.integrations?.notion?.version, '2026-03-11'),
     notionMaxResults: envOrConfigNumber('NOTION_MAX_RESULTS', config.integrations?.notion?.maxResults, 3),
@@ -130,7 +141,7 @@ export function getRuntimeEnv(): RuntimeEnv {
     obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH ?? config.integrations?.obsidian?.vaultPath,
     granolaApiKey: envOrSecret('GRANOLA_API_KEY', 'granola', 'api_key'),
     googleAccessToken: envOrSecret('GOOGLE_ACCESS_TOKEN', 'google', 'access_token'),
-    googleClientId: process.env.GOOGLE_CLIENT_ID,
+    googleClientId: process.env.GOOGLE_CLIENT_ID ?? config.integrations?.google?.clientId,
     googleClientSecret: envOrSecret('GOOGLE_CLIENT_SECRET', 'google', 'client_secret'),
     googleCalendarId: envOrConfigString('GOOGLE_CALENDAR_ID', config.integrations?.google?.calendarId, 'primary'),
     webSearchBackend: process.env.MURPH_WEB_SEARCH_BACKEND === 'brave'

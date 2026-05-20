@@ -2,6 +2,7 @@ import { getStore } from '#lib/server/persistence/store';
 import { hasSecret } from '#lib/server/credentials/local-store';
 import type { IntegrationDefinition } from './registry.js';
 import { listIntegrations, readEnvCredential } from './registry.js';
+import { findGoogleOAuthRecord } from './google-oauth.js';
 
 const CHANNEL_PROVIDER_CAPABILITIES: Record<string, Pick<IntegrationDefinition, 'tools' | 'contextSources'>> = {
   slack: {
@@ -74,8 +75,9 @@ export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string
 
   for (const definition of listIntegrations()) {
     const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
-    const hasLocalCred = hasSecret(definition.provider, key, { workspaceId }) ||
-      hasSecret(definition.provider, key);
+    const hasLocalCred = definition.provider === 'google'
+      ? Boolean(findGoogleOAuthRecord(workspaceId))
+      : hasSecret(definition.provider, key, { workspaceId }) || hasSecret(definition.provider, key);
     const hasEnvCred = Boolean(readEnvCredential(definition.provider));
     if (hasLocalCred || hasEnvCred) {
       enableIntegrationCapabilities(workspaceId, definition);

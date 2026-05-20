@@ -24,6 +24,8 @@ murph credentials list
 
 You can re-run setup when credentials, channels, schedules, or policy choices change.
 
+The schedule timezone is used when starting a session from Home. Murph computes the session stop time on the server and expires the session at the configured workday start in that timezone.
+
 ## AI providers
 
 Murph supports OpenAI and Anthropic. At least one provider key is required:
@@ -48,6 +50,13 @@ MURPH_AGENT_MODEL=claude-opus-4-7
 ```
 
 Command flags such as `murph agent --provider openai --model gpt-5.5` still override them for one run.
+
+Murph also runs a small no-tool policy execution classifier after the main runtime agent drafts. It uses the default runtime model unless you set an optional classifier override:
+
+```text
+MURPH_POLICY_PROVIDER=openai
+MURPH_POLICY_MODEL=gpt-5.4-mini
+```
 
 ## Storage
 
@@ -88,7 +97,7 @@ These are defaults, not a closed provider model. Additional search providers can
 
 ## Policy
 
-Policy controls how much autonomy Murph has.
+Policy controls whether Murph sends, queues, or abstains from a drafted action. Runtime grounding is separate: it checks whether required read/context tools were attempted before Murph answers.
 
 Built-in profiles include:
 
@@ -98,14 +107,17 @@ Built-in profiles include:
 - `sales`
 - `marketing`
 - `leadership`
+- `yolo`
 
-Built-in profiles are conservative by default and keep auto-send off. Use:
+Role profiles are conservative by default and keep auto-send off. `yolo` is an explicit maximum-autonomy preset for trusted local runs; grounding still runs as a runtime obligation outside the policy gate. Use:
 
 ```bash
 murph policy profiles
 murph policy get
 murph policy set --profile engineering
 ```
+
+Use [Policy](/docs/policy) for custom profiles. Murph Agent is the preferred path for creating or changing custom policy; profile files are the fallback when you want to edit directly.
 
 ## Local health
 

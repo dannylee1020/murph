@@ -44,6 +44,9 @@ async function setup(options: { githubPat?: string } = {}) {
     process.env.GITHUB_PAT = '';
   }
   process.env.NOTION_API_KEY = '';
+  process.env.GOOGLE_ACCESS_TOKEN = '';
+  process.env.GOOGLE_CLIENT_ID = '';
+  process.env.GOOGLE_CLIENT_SECRET = '';
 
   const { getStore } = await import('#lib/server/persistence/store');
   const store = getStore();
@@ -164,5 +167,85 @@ describe('integration routes', () => {
         canDisconnect: false
       })
     );
+  });
+
+  it('reports Google as connected when an OAuth bundle is stored for the workspace', async () => {
+    const { request, store, workspace } = await setup();
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const metadata = {
+      account: 'person@example.com',
+      validatedAt: new Date().toISOString()
+    };
+    writeSecret('google', 'oauth_bundle', JSON.stringify({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_at: Date.now() + 3600_000,
+      scope: 'gmail calendar'
+    }), {
+      workspaceId: workspace.id,
+      metadata
+    });
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'google',
+      credentialKind: 'oauth_bundle',
+      metadata
+    });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const google = response.body.integrations.find((integration: any) => integration.provider === 'google');
+
+    expect(response.status).toBe(200);
+    expect(google).toEqual(expect.objectContaining({
+      provider: 'google',
+      status: 'connected',
+      source: 'credentials'
+    }));
+    expect(google.metadata).toEqual(expect.objectContaining({
+      account: 'person@example.com'
+    }));
+  });
+
+  it('reports Google as connected when OAuth was stored for another channel workspace', async () => {
+    const { request, store, workspace } = await setup();
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Guild',
+      botUserId: 'DBOT'
+    });
+    const metadata = {
+      account: 'person@example.com',
+      validatedAt: new Date().toISOString()
+    };
+    writeSecret('google', 'oauth_bundle', JSON.stringify({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_at: Date.now() + 3600_000,
+      scope: 'gmail calendar'
+    }), {
+      workspaceId: workspace.id,
+      metadata
+    });
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'google',
+      credentialKind: 'oauth_bundle',
+      metadata
+    });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${discordWorkspace.id}`);
+    const google = response.body.integrations.find((integration: any) => integration.provider === 'google');
+
+    expect(response.status).toBe(200);
+    expect(google).toEqual(expect.objectContaining({
+      provider: 'google',
+      status: 'connected',
+      source: 'credentials'
+    }));
+    expect(google.metadata).toEqual(expect.objectContaining({
+      account: 'person@example.com'
+    }));
   });
 });

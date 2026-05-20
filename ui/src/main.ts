@@ -43,6 +43,7 @@ type SummaryPayload = {
     }>;
     sessions: Array<{
         id: string;
+        workspaceId: string;
         title: string;
         ownerUserId: string;
         mode: string;
@@ -123,11 +124,14 @@ type SetupStatusPayload = {
         signingSecretConfigured: boolean;
         eventsMode: 'socket' | 'http';
         socketConfigured: boolean;
+        workspace?: ChannelWorkspace;
     };
     discord: {
         installed: boolean;
-        oauthConfigured: boolean;
+        clientIdConfigured: boolean;
+        oauthConfigured?: boolean;
         botTokenConfigured: boolean;
+        workspace?: ChannelWorkspace;
     };
     provider: {
         configured: boolean;
@@ -142,8 +146,18 @@ type SetupStatusPayload = {
         configured: boolean;
         version: string;
     };
+    channelWorkspaces?: ChannelWorkspace[];
     userConfigured: boolean;
     channelsConfigured: boolean;
+};
+
+type ChannelWorkspace = {
+    id: string;
+    provider: string;
+    externalWorkspaceId: string;
+    name: string;
+    botUserId?: string;
+    installedAt?: string;
 };
 
 type SetupDefaultsPayload = {
@@ -180,7 +194,7 @@ type IntegrationStatusPayload = {
         credentialLabel: string;
         installPath?: string;
         status: 'connected' | 'disconnected' | 'reconnect_required';
-        source?: 'database' | 'env';
+        source?: 'credentials' | 'env';
         envKey: string;
         tools: string[];
         contextSources: string[];
@@ -191,6 +205,7 @@ type IntegrationStatusPayload = {
             validatedAt?: string;
             repositories?: string[];
             needsRepoScope?: boolean;
+            oauthConfigured?: boolean;
         };
         errorMessage?: string;
     }>;
@@ -206,6 +221,31 @@ type GitHubRepositoriesPayload = {
         name: string;
     }>;
     selectedRepositories: string[];
+};
+
+type SetupChannelsPayload = {
+    ok: boolean;
+    error?: string;
+    workspaceId?: string;
+    provider?: string;
+    channels: ChannelChoice[];
+};
+
+type ChannelChoice = {
+    id: string;
+    name?: string;
+    displayName: string;
+    isMember?: boolean;
+    isPrivate?: boolean;
+};
+
+type HomeWorkspaceChannelState = {
+    workspace: ChannelWorkspace;
+    enabled: boolean;
+    mode: 'selected' | 'all_accessible';
+    selectedChannels: Array<{ id: string; displayName: string }>;
+    availableChannels: ChannelChoice[];
+    error?: string;
 };
 
 type QueuePayload = {
@@ -337,6 +377,9 @@ type ChannelActionItem = {
 type SessionCreateResponse = {
     ok: boolean;
     session?: { id: string };
+    sessions?: Array<{ id: string }>;
+    workspace?: { id: string; provider: string; name: string };
+    targets?: SessionCreateResponse[];
     autoJoined?: ChannelActionItem[];
     error?: string;
     requiresInvitation?: ChannelActionItem[];
@@ -371,6 +414,12 @@ if (!root) {
 const app = root;
 let dashboardNotice = '';
 let dashboardError = '';
+let sidebarActiveSessionCount: number | undefined;
+const ADMIN_WORKSPACE_STORAGE_KEY = 'murph_admin_workspace_id';
+const HOME_WORKSPACE_STORAGE_KEY = 'murph_home_workspace_id';
+const HOME_WORKSPACE_ENABLED_KEY_PREFIX = 'murph_home_workspace_enabled';
+const HOME_CHANNEL_SCOPE_MODE_KEY_PREFIX = 'murph_home_channel_scope_mode';
+const HOME_SELECTED_CHANNELS_KEY_PREFIX = 'murph_home_selected_channels';
 const DEFAULT_AGENT_MODELS: Record<string, string> = {
     openai: 'gpt-5.5',
     anthropic: 'claude-opus-4-7',
@@ -460,6 +509,10 @@ function routeSlug(pathname: string): string {
     return pathname.replace(/^\//, '').replace(/[^a-z0-9-]/gi, '-') || 'home';
 }
 
+function setSidebarWatchingCount(count: number): void {
+    sidebarActiveSessionCount = count;
+}
+
 type SlackMembersPayload = {
     ok: boolean;
     error?: string;
@@ -469,13 +522,7 @@ type SlackMembersPayload = {
 type SlackChannelsPayload = {
     ok: boolean;
     error?: string;
-    channels: Array<{
-        id: string;
-        name?: string;
-        displayName: string;
-        isMember: boolean;
-        isPrivate: boolean;
-    }>;
+    channels: ChannelChoice[];
 };
 
 type SetupWizardState = {
@@ -623,13 +670,83 @@ function applySetupDefaults(payload: SetupDefaultsPayload): void {
         setupWizardState.workdayStartHour;
 }
 
-function effectiveSelectedChannels(
+function storageKey(prefix: string, workspaceId: string): string {
+    return `${prefix}:${workspaceId}`;
+}
+
+function getHomeWorkspaceEnabled(
+    workspaceId: string,
+    defaultEnabled: boolean,
+): boolean {
+    const stored = localStorage.getItem(
+        storageKey(HOME_WORKSPACE_ENABLED_KEY_PREFIX, workspaceId),
+    );
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+    return defaultEnabled;
+}
+
+function setHomeWorkspaceEnabled(workspaceId: string, enabled: boolean): void {
+    localStorage.setItem(
+        storageKey(HOME_WORKSPACE_ENABLED_KEY_PREFIX, workspaceId),
+        String(enabled),
+    );
+}
+
+function getHomeChannelMode(
+    workspaceId: string,
+    defaults?: SetupDefaultsPayload['defaults'],
+): 'selected' | 'all_accessible' {
+    const stored = localStorage.getItem(
+        storageKey(HOME_CHANNEL_SCOPE_MODE_KEY_PREFIX, workspaceId),
+    );
+    if (stored === 'selected' || stored === 'all_accessible') {
+        return stored;
+    }
+    return defaults?.channelScopeMode === 'all_accessible'
+        ? 'all_accessible'
+        : 'selected';
+}
+
+function getHomeSelectedChannels(
+    workspaceId: string,
     defaults?: SetupDefaultsPayload['defaults'],
 ): Array<{ id: string; displayName: string }> {
-    if (defaults?.channelScopeMode === 'selected') {
-        return defaults.selectedChannels ?? [];
+    const raw = localStorage.getItem(
+        storageKey(HOME_SELECTED_CHANNELS_KEY_PREFIX, workspaceId),
+    );
+    if (raw) {
+        try {
+            const parsed = JSON.parse(raw) as Array<{
+                id: string;
+                displayName: string;
+            }>;
+            return parsed.filter(
+                (entry) =>
+                    entry &&
+                    typeof entry.id === 'string' &&
+                    typeof entry.displayName === 'string',
+            );
+        } catch {}
     }
-    return getSelectedChannels();
+    return defaults?.channelScopeMode === 'selected'
+        ? (defaults.selectedChannels ?? [])
+        : [];
+}
+
+function setHomeChannelSelection(
+    workspaceId: string,
+    mode: 'selected' | 'all_accessible',
+    channels: Array<{ id: string; displayName: string }>,
+): void {
+    localStorage.setItem(
+        storageKey(HOME_CHANNEL_SCOPE_MODE_KEY_PREFIX, workspaceId),
+        mode,
+    );
+    localStorage.setItem(
+        storageKey(HOME_SELECTED_CHANNELS_KEY_PREFIX, workspaceId),
+        JSON.stringify(channels),
+    );
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -967,18 +1084,24 @@ function sessionModeLabel(mode: string): string {
 function policyProfileOptions(
     profiles: PolicyProfilesPayload['profiles'],
     selected: string | undefined,
-    fallbackLabel: string,
 ): string {
-    return [
-        `<option value="" ${selected ? '' : 'selected'}>${escapeHtml(fallbackLabel)}</option>`,
-        ...profiles.map(
+    if (profiles.length === 0) {
+        return '<option value="" disabled selected>No profiles found</option>';
+    }
+
+    const selectedProfile = selected && profiles.some((profile) => profile.name === selected)
+        ? selected
+        : profiles[0]?.name;
+
+    return profiles
+        .map(
             (profile) => `
-      <option value="${escapeHtml(profile.name)}" ${profile.name === selected ? 'selected' : ''}>
+      <option value="${escapeHtml(profile.name)}" ${profile.name === selectedProfile ? 'selected' : ''}>
         ${escapeHtml(profile.name)}
       </option>
     `,
-        ),
-    ].join('');
+        )
+        .join('');
 }
 
 function policySummary(
@@ -1013,6 +1136,7 @@ function policySummary(
 
 function policyProfileList(
     profiles: PolicyProfilesPayload['profiles'],
+    selectedProfileName: string,
 ): string {
     if (profiles.length === 0) {
         return '<p class="empty">No policy profiles were found in <code>policies/</code>.</p>';
@@ -1022,17 +1146,71 @@ function policyProfileList(
     <ul class="list policy-profile-list">
       ${profiles
           .map(
-              (profile) => `
+              (profile) => {
+                  const selected = profile.name === selectedProfileName;
+                  return `
         <li>
-          <div class="list-row policy-profile-row">
-            <strong>${escapeHtml(profile.name)}</strong>
+          <div class="list-row policy-profile-row" ${selected ? 'aria-current="true"' : ''}>
+            <strong>${escapeHtml(profile.name)}${selected ? '<span class="policy-current-label">Current</span>' : ''}</strong>
             <span>${escapeHtml(profile.description)}</span>
           </div>
         </li>
-      `,
+      `;
+              },
           )
           .join('')}
     </ul>
+  `;
+}
+
+function policyProfileDialog(
+    profiles: PolicyProfilesPayload['profiles'],
+    selectedProfileName: string,
+): string {
+    return `
+    <dialog class="modal" id="policy-profile-dialog">
+      <div class="modal-panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Policy</p>
+            <h2>Policy profiles</h2>
+          </div>
+          <button type="button" class="ghost close-policy-profiles" aria-label="Close policy profiles">Close</button>
+        </div>
+        <p class="modal-intro">Review the shipped policy profiles available for new sessions.</p>
+        ${policyProfileList(profiles, selectedProfileName)}
+        <div class="actions">
+          <button type="button" class="secondary close-policy-profiles">Close</button>
+        </div>
+      </div>
+    </dialog>
+  `;
+}
+
+function consoleStateHtml(label: string, status: 'ok' | 'off' | 'warn'): string {
+    return `<span class="console-state"><span class="status-dot ${status}" aria-hidden="true"></span>${escapeHtml(label)}</span>`;
+}
+
+function sidebarWatchingStatusHtml(): string {
+    const count = sidebarActiveSessionCount;
+    const active = (count ?? 0) > 0;
+    const label = count === undefined
+        ? 'Checking'
+        : active
+          ? 'Watching'
+          : 'Idle';
+    const detail = count === undefined
+        ? 'Session status'
+        : count === 1
+          ? '1 active session'
+          : `${count} active sessions`;
+
+    return `
+    <div class="sidebar-watch-status" aria-label="${escapeHtml(`Watching status: ${label}`)}">
+      <span class="status-dot ${active ? 'ok' : count === undefined ? 'warn' : 'off'}" aria-hidden="true"></span>
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(detail)}</strong>
+    </div>
   `;
 }
 
@@ -1047,7 +1225,6 @@ function shell(content: string): void {
         <a class="brand" href="/" data-link>
           <span class="brand-mark" aria-hidden="true"><img src="/img/murph-logo.svg" alt="" /></span>
           <span class="brand-wordmark">Murph</span>
-          <span class="brand-tag">Local-first handoff</span>
         </a>
         <nav>
           ${navItems
@@ -1060,6 +1237,7 @@ function shell(content: string): void {
               )
               .join('')}
         </nav>
+        ${sidebarWatchingStatusHtml()}
         <div class="sidebar-foot">
           ${themeControlHtml(themePreference)}
           <span>Local console</span>
@@ -1133,6 +1311,24 @@ function sessionErrorHtml(): string {
 }
 
 function sessionCreateErrorHtml(payload: SessionCreateResponse): string {
+    if (payload.targets?.length) {
+        return `
+      <div class="notice danger">
+        <strong>Channel access required</strong>
+        ${payload.targets
+            .map(
+                (target) => `
+          <div class="target-error-block">
+            <p>${escapeHtml(target.workspace ? `${providerLabel(target.workspace.provider)} · ${target.workspace.name}` : 'Workspace')}</p>
+            ${sessionCreateErrorDetails(target)}
+          </div>
+        `,
+            )
+            .join('')}
+      </div>
+    `;
+    }
+
     if (payload.error === 'slack_reconnect_required') {
         return `
       <div class="notice danger">
@@ -1147,6 +1343,15 @@ function sessionCreateErrorHtml(payload: SessionCreateResponse): string {
         return `<div class="notice danger">${escapeHtml(payload.error ?? 'Session could not be started.')}</div>`;
     }
 
+    return `
+    <div class="notice danger">
+      <strong>Channel access required</strong>
+      ${sessionCreateErrorDetails(payload)}
+    </div>
+  `;
+}
+
+function sessionCreateErrorDetails(payload: SessionCreateResponse): string {
     const inviteRows = (payload.requiresInvitation ?? [])
         .map(
             (item) => `
@@ -1170,21 +1375,221 @@ function sessionCreateErrorHtml(payload: SessionCreateResponse): string {
         .join('');
 
     return `
-    <div class="notice danger">
-      <strong>Channel access required</strong>
-      ${
-          payload.reinstallRequired
-              ? '<p>The Slack app needs the latest channel scopes before this session can start.</p><a class="button" href="/api/slack/install">Reinstall Slack app</a>'
-              : ''
-      }
-      ${inviteRows ? `<div class="action-list">${inviteRows}</div>` : ''}
-      ${errorRows ? `<div class="action-list">${errorRows}</div>` : ''}
-    </div>
+    ${
+        payload.reinstallRequired
+            ? '<p>The Slack app needs the latest channel scopes before this session can start.</p><a class="button" href="/api/slack/install">Reinstall Slack app</a>'
+            : ''
+    }
+    ${inviteRows ? `<div class="action-list">${inviteRows}</div>` : ''}
+    ${errorRows ? `<div class="action-list">${errorRows}</div>` : ''}
   `;
 }
 
 function metric(label: string, value: string | number): string {
     return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+}
+
+function providerLabel(provider: string): string {
+    if (provider === 'slack') return 'Slack';
+    if (provider === 'discord') return 'Discord';
+    return titleCase(provider);
+}
+
+function adminChannelWorkspaces(setup: SetupStatusPayload): ChannelWorkspace[] {
+    if (setup.channelWorkspaces?.length) {
+        return setup.channelWorkspaces;
+    }
+    return [setup.slack.workspace, setup.discord.workspace].filter(
+        (workspace): workspace is ChannelWorkspace => Boolean(workspace),
+    );
+}
+
+function workspaceOptionLabel(workspace: ChannelWorkspace): string {
+    return `${providerLabel(workspace.provider)} · ${workspace.name}`;
+}
+
+type SavedHomeWorkspaceTarget = {
+    workspace: ChannelWorkspace;
+    mode: 'selected' | 'all_accessible';
+    selectedChannels: Array<{ id: string; displayName: string }>;
+};
+
+function savedHomeWorkspaceTargets(
+    workspaces: ChannelWorkspace[],
+): SavedHomeWorkspaceTarget[] {
+    return workspaces
+        .map((workspace) => ({
+            workspace,
+            enabled: getHomeWorkspaceEnabled(workspace.id, true),
+            mode: getHomeChannelMode(workspace.id),
+            selectedChannels: getHomeSelectedChannels(workspace.id),
+        }))
+        .filter((target) => target.enabled)
+        .map(({ workspace, mode, selectedChannels }) => ({
+            workspace,
+            mode,
+            selectedChannels,
+        }));
+}
+
+function resolveAdminWorkspaceId(workspaces: ChannelWorkspace[]): string {
+    const first =
+        savedHomeWorkspaceTargets(workspaces)[0]?.workspace.id ??
+        workspaces[0]?.id ??
+        '';
+    if (first) {
+        localStorage.setItem(ADMIN_WORKSPACE_STORAGE_KEY, first);
+    } else {
+        localStorage.removeItem(ADMIN_WORKSPACE_STORAGE_KEY);
+    }
+    return first;
+}
+
+function workspaceMetric(workspaces: ChannelWorkspace[]): string {
+    if (workspaces.length === 0) {
+        return metric('Workspace', 'Not installed');
+    }
+    const targets = savedHomeWorkspaceTargets(workspaces);
+    if (targets.length === 0) {
+        return metric('Workspace', 'No workspace selected');
+    }
+
+    return `
+    <div class="workspace-kpi workspace-kpi-static">
+      <dt>Workspace</dt>
+      <dd>
+        ${targets
+            .map(
+                (target) => `
+          <span class="workspace-target-line">
+            <strong>${escapeHtml(workspaceOptionLabel(target.workspace))}</strong>
+            <small>${escapeHtml(channelSummaryLabel(target.mode, target.selectedChannels))}</small>
+          </span>
+        `,
+            )
+            .join('')}
+      </dd>
+    </div>
+  `;
+}
+
+function channelSummaryLabel(
+    mode: 'selected' | 'all_accessible',
+    channels: Array<{ id: string; displayName: string }>,
+): string {
+    if (mode === 'all_accessible' || channels.length === 0) {
+        return 'All accessible channels';
+    }
+    if (channels.length === 1) {
+        return channels[0].displayName;
+    }
+    return `${channels.length} channels`;
+}
+
+function channelBadge(channel: ChannelChoice): string {
+    if (channel.isPrivate) return 'Private';
+    if (channel.isMember) return 'Joined';
+    return 'Public';
+}
+
+function combinedChannelSummary(states: HomeWorkspaceChannelState[]): string {
+    const enabled = states.filter((state) => state.enabled);
+    if (enabled.length === 0) {
+        return 'No channels selected';
+    }
+    if (enabled.length === 1) {
+        return `${providerLabel(enabled[0].workspace.provider)} · ${channelSummaryLabel(enabled[0].mode, enabled[0].selectedChannels)}`;
+    }
+    const providerNames = enabled.map((state) =>
+        providerLabel(state.workspace.provider),
+    );
+    if (enabled.every((state) => state.mode === 'all_accessible')) {
+        return `${providerNames.join(' + ')} · all accessible`;
+    }
+    const selectedCount = enabled.reduce(
+        (count, state) =>
+            count +
+            (state.mode === 'selected' ? state.selectedChannels.length : 0),
+        0,
+    );
+    return selectedCount > 0
+        ? `${providerNames.join(' + ')} · ${selectedCount} selected`
+        : `${providerNames.join(' + ')} · all accessible`;
+}
+
+function homeChannelGroup(state: HomeWorkspaceChannelState): string {
+    const selected = new Set(
+        state.selectedChannels.map((channel) => channel.id),
+    );
+    const label = channelSummaryLabel(state.mode, state.selectedChannels);
+    const allSelected = state.mode === 'all_accessible';
+    const workspaceId = state.workspace.id;
+    return `
+    <section class="workspace-channel-group ${state.enabled ? '' : 'disabled'}" data-workspace-id="${escapeHtml(workspaceId)}">
+      <div class="workspace-channel-header">
+        <label class="workspace-channel-toggle">
+          <input type="checkbox" name="workspaceTarget" value="${escapeHtml(workspaceId)}" ${state.enabled ? 'checked' : ''} />
+          <span>
+            <strong>${escapeHtml(workspaceOptionLabel(state.workspace))}</strong>
+            <small class="workspace-channel-scope">${escapeHtml(state.enabled ? label : 'Not watched')}</small>
+          </span>
+        </label>
+      </div>
+      <div class="channel-selector-body">
+        <div class="channel-mode-row" role="group" aria-label="${escapeHtml(`${workspaceOptionLabel(state.workspace)} channel scope`)}">
+          <label class="scope-choice ${allSelected ? 'selected' : ''}">
+            <input type="radio" name="channelScopeMode:${escapeHtml(workspaceId)}" value="all_accessible" ${allSelected ? 'checked' : ''} />
+            <span class="channel-copy">
+              <strong>All accessible channels</strong>
+              <small>Use every readable channel</small>
+            </span>
+          </label>
+          <label class="scope-choice ${!allSelected ? 'selected' : ''}">
+            <input type="radio" name="channelScopeMode:${escapeHtml(workspaceId)}" value="selected" ${allSelected ? '' : 'checked'} />
+            <span class="channel-copy">
+              <strong>Selected channels</strong>
+              <small>Limit this workspace</small>
+            </span>
+          </label>
+        </div>
+        ${state.error ? `<p class="field-hint">${escapeHtml(state.error)}</p>` : ''}
+        <div class="home-channel-list" aria-label="${escapeHtml(`${workspaceOptionLabel(state.workspace)} channels`)}">
+          ${
+              state.availableChannels.length > 0
+                  ? state.availableChannels
+                        .map(
+                            (channel) => `
+              <label class="channel-choice channel-option ${!allSelected && selected.has(channel.id) ? 'selected' : ''}">
+                <input type="checkbox" name="channelScope:${escapeHtml(workspaceId)}" value="${escapeHtml(channel.id)}" data-display-name="${escapeHtml(channel.displayName)}" ${!allSelected && selected.has(channel.id) ? 'checked' : ''} ${allSelected ? 'disabled' : ''} />
+                <span class="channel-copy">
+                  <strong>${escapeHtml(channel.displayName)}</strong>
+                  <small>${escapeHtml(channelBadge(channel))}</small>
+                </span>
+              </label>
+            `,
+                        )
+                        .join('')
+                  : '<p class="empty">No channels are available yet.</p>'
+          }
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function homeChannelGroups(states: HomeWorkspaceChannelState[]): string {
+    return `
+    <fieldset class="customize-fieldset home-channel-fieldset">
+      <legend>Channels</legend>
+      <div class="home-workspace-groups">
+        ${
+            states.length > 0
+                ? states.map((state) => homeChannelGroup(state)).join('')
+                : '<p class="empty">Connect Slack or Discord to choose channels.</p>'
+        }
+      </div>
+    </fieldset>
+  `;
 }
 
 function list(items: string[], emptyText: string): string {
@@ -1197,17 +1602,27 @@ function list(items: string[], emptyText: string): string {
 function sessionScopeLabel(
     session: SummaryPayload['sessions'][number],
     channelNames: Map<string, string>,
+    workspaceNames: Map<string, string>,
 ): string {
-    return session.channelScope.length > 0
-        ? session.channelScope
-              .map((id) => channelNames.get(id) ?? id)
-              .join(', ')
-        : 'All accessible channels';
+    const scope =
+        session.channelScope.length > 0
+            ? session.channelScope
+                  .map(
+                      (id) =>
+                          channelNames.get(`${session.workspaceId}:${id}`) ??
+                          channelNames.get(id) ??
+                          id,
+                  )
+                  .join(', ')
+            : 'All accessible channels';
+    const workspace = workspaceNames.get(session.workspaceId);
+    return workspace ? `${workspace}: ${scope}` : scope;
 }
 
 function activeSessionRows(
     sessions: SummaryPayload['sessions'],
     channelNames: Map<string, string>,
+    workspaceNames: Map<string, string>,
 ): string {
     if (sessions.length === 0) {
         return '<p class="empty">Murph is not watching right now.</p>';
@@ -1221,7 +1636,7 @@ function activeSessionRows(
             <strong>${escapeHtml(session.title)}</strong>
             <span>${escapeHtml(plainLanguageModeLabel(session.mode))}</span>
             <span title="${escapeHtml(formatExactIso(session.endsAt))}">Until ${escapeHtml(formatDateTime(session.endsAt))}</span>
-            <span>${escapeHtml(sessionScopeLabel(session, channelNames))}</span>
+            <span>${escapeHtml(sessionScopeLabel(session, channelNames, workspaceNames))}</span>
             <button class="secondary stop-session" data-session-id="${escapeHtml(session.id)}">Stop</button>
           </div>
         </li>
@@ -1261,6 +1676,72 @@ function githubRepositoryDialog(workspaceId: string): string {
             <button type="button" class="save-github-repos" disabled>Save repositories</button>
           </div>
         </div>
+      </div>
+    </dialog>
+  `;
+}
+
+function integrationCredentialDialog(workspaceId: string): string {
+    return `
+    <dialog class="modal" id="integration-credential-dialog">
+      <div class="modal-panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow" id="integration-credential-provider">Integration</p>
+            <h2 id="integration-credential-title">Connect source</h2>
+          </div>
+          <button type="button" class="ghost close-integration-credential" aria-label="Close credential form">Close</button>
+        </div>
+        <p class="modal-intro" id="integration-credential-description"></p>
+        <form class="form" id="integration-credential-form" data-workspace-id="${escapeHtml(workspaceId)}">
+          <input type="hidden" name="provider" />
+          <label>
+            <span id="integration-credential-label">API key</span>
+            <input type="password" name="credential" autocomplete="off" required />
+          </label>
+          <p class="field-hint" id="integration-credential-hint"></p>
+          <p class="modal-error" id="integration-credential-error" hidden></p>
+          <div class="actions">
+            <button type="button" class="secondary close-integration-credential">Cancel</button>
+            <button type="submit">Connect</button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+  `;
+}
+
+function googleOAuthDialog(workspaceId: string): string {
+    const redirectUri = `${window.location.origin}/api/google/oauth/callback`;
+    return `
+    <dialog class="modal" id="google-oauth-dialog">
+      <div class="modal-panel">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Google</p>
+            <h2>OAuth setup</h2>
+          </div>
+          <button type="button" class="ghost close-google-oauth" aria-label="Close Google setup">Close</button>
+        </div>
+        <p class="modal-intro">Add the OAuth client values before connecting Gmail and Calendar.</p>
+        <dl class="details modal-details">
+          <div><dt>Redirect URI</dt><dd><code>${escapeHtml(redirectUri)}</code></dd></div>
+        </dl>
+        <form class="form" id="google-oauth-form" data-workspace-id="${escapeHtml(workspaceId)}">
+          <label>
+            <span>Client ID</span>
+            <input name="clientId" autocomplete="off" required />
+          </label>
+          <label>
+            <span>Client secret</span>
+            <input type="password" name="clientSecret" autocomplete="off" required />
+          </label>
+          <p class="modal-error" id="google-oauth-error" hidden></p>
+          <div class="actions">
+            <button type="button" class="secondary close-google-oauth">Cancel</button>
+            <button type="submit">Save and connect</button>
+          </div>
+        </form>
       </div>
     </dialog>
   `;
@@ -1330,7 +1811,10 @@ function integrationCard(
           : 'Connect';
     const primaryCta =
         integration.authType === 'oauth' && installHref
-            ? `<a class="button" href="${escapeHtml(installHref)}">${connected || integration.status === 'reconnect_required' ? 'Reconnect' : 'Connect with Google'}</a>`
+            ? integration.provider === 'google' &&
+              !integration.metadata.oauthConfigured
+                ? `<button type="button" class="configure-google-oauth" data-install-href="${escapeHtml(installHref)}">${connected || integration.status === 'reconnect_required' ? 'Reconnect' : 'Connect with Google'}</button>`
+                : `<a class="button" href="${escapeHtml(installHref)}">${connected || integration.status === 'reconnect_required' ? 'Reconnect' : 'Connect with Google'}</a>`
             : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${primaryLabel}</button>`;
 
     return `
@@ -2088,19 +2572,104 @@ async function renderDashboard(): Promise<void> {
         getJson<SetupStatusPayload>('/api/setup/status'),
         getJson<SetupDefaultsPayload>('/api/setup/defaults'),
     ]);
+    setSidebarWatchingCount(data.summary.activeSessionCount);
 
     const currentUserId =
         setupDefaults.defaults.ownerUserId ?? getCurrentUserId();
     const currentUser = data.users.find(
         (u) => u.externalUserId === currentUserId,
     );
-    const selectedChannels = effectiveSelectedChannels(setupDefaults.defaults);
-    const selectedChannelIds =
-        setupDefaults.defaults.channelScopeMode === 'all_accessible'
-            ? []
-            : selectedChannels.map((channel) => channel.id);
+    const workspaces = adminChannelWorkspaces(setupStatus);
+    const channelStates = await Promise.all(
+        workspaces.map(
+            async (workspace): Promise<HomeWorkspaceChannelState> => {
+                let availableChannels: ChannelChoice[] = [];
+                let channelLoadError = '';
+                try {
+                    const payload = await getJson<SetupChannelsPayload>(
+                        `/api/setup/channels?workspaceId=${encodeURIComponent(workspace.id)}`,
+                    );
+                    availableChannels = payload.channels ?? [];
+                } catch (error) {
+                    channelLoadError =
+                        error instanceof Error
+                            ? error.message
+                            : 'Murph could not load channels right now.';
+                }
+
+                const defaults =
+                    workspace.id === setupDefaults.workspaceId
+                        ? setupDefaults.defaults
+                        : undefined;
+                let mode = getHomeChannelMode(workspace.id, defaults);
+                let selectedChannels = getHomeSelectedChannels(
+                    workspace.id,
+                    defaults,
+                );
+                if (channelLoadError || availableChannels.length === 0) {
+                    mode = 'all_accessible';
+                    selectedChannels = [];
+                }
+                if (mode === 'selected' && selectedChannels.length === 0) {
+                    mode = 'all_accessible';
+                }
+                if (
+                    availableChannels.length > 0 &&
+                    selectedChannels.length > 0
+                ) {
+                    const byId = new Map(
+                        availableChannels.map((channel) => [
+                            channel.id,
+                            channel,
+                        ]),
+                    );
+                    selectedChannels = selectedChannels
+                        .filter((channel) => byId.has(channel.id))
+                        .map((channel) => ({
+                            id: channel.id,
+                            displayName:
+                                byId.get(channel.id)?.displayName ??
+                                channel.displayName,
+                        }));
+                    if (mode === 'selected' && selectedChannels.length === 0) {
+                        mode = 'all_accessible';
+                    }
+                }
+
+                return {
+                    workspace,
+                    enabled: getHomeWorkspaceEnabled(workspace.id, true),
+                    mode,
+                    selectedChannels,
+                    availableChannels,
+                    error: channelLoadError,
+                };
+            },
+        ),
+    );
     const selectedChannelNames = new Map(
-        selectedChannels.map((channel) => [channel.id, channel.displayName]),
+        channelStates.flatMap((state) => [
+            ...state.availableChannels.map(
+                (channel) =>
+                    [
+                        `${state.workspace.id}:${channel.id}`,
+                        channel.displayName,
+                    ] as const,
+            ),
+            ...state.selectedChannels.map(
+                (channel) =>
+                    [
+                        `${state.workspace.id}:${channel.id}`,
+                        channel.displayName,
+                    ] as const,
+            ),
+        ]),
+    );
+    const workspaceNames = new Map(
+        workspaces.map(
+            (workspace) =>
+                [workspace.id, workspaceOptionLabel(workspace)] as const,
+        ),
     );
     const userTz = currentUser?.schedule?.timezone ?? setupWizardState.timezone;
     const userStartHour =
@@ -2120,7 +2689,7 @@ async function renderDashboard(): Promise<void> {
         <p class="eyebrow">${escapeHtml(formatToday())} · ${escapeHtml(formatSessionStatus(data.summary.activeSessionCount))}</p>
         <h1>Home</h1>
       </div>
-      <span class="console-state">${escapeHtml(setupStatus.provider.configured ? 'Ready' : 'Setup needed')}</span>
+      ${consoleStateHtml(setupStatus.provider.configured ? 'Ready' : 'Setup needed', setupStatus.provider.configured ? 'ok' : 'off')}
     </section>
 
     ${providerBanner}
@@ -2135,7 +2704,7 @@ async function renderDashboard(): Promise<void> {
           <dl class="go-to-sleep-summary">
             <div class="summary-cell">
               <dt>Watching</dt>
-              <dd>${setupDefaults.defaults.channelScopeMode === 'all_accessible' ? 'All accessible channels' : selectedChannels.map((channel) => escapeHtml(channel.displayName)).join(', ')}</dd>
+              <dd>${escapeHtml(combinedChannelSummary(channelStates))}</dd>
             </div>
             <div class="summary-cell">
               <dt>Until</dt>
@@ -2150,6 +2719,7 @@ async function renderDashboard(): Promise<void> {
 
           <details class="customize-section">
             <summary>Customize</summary>
+            ${homeChannelGroups(channelStates)}
             <fieldset class="customize-fieldset">
               <legend>Review mode</legend>
               <div class="mode-selector">
@@ -2190,6 +2760,10 @@ async function renderDashboard(): Promise<void> {
                 </label>
               </div>
             </fieldset>
+            <div class="customize-actions">
+              <button type="button" class="secondary save-customize">Save</button>
+              <span class="field-hint customize-save-status" aria-live="polite"></span>
+            </div>
           </details>
         </form>
 
@@ -2198,11 +2772,167 @@ async function renderDashboard(): Promise<void> {
             <h2>Currently watching</h2>
             <span class="section-meta">${escapeHtml(formatSessionStatus(data.summary.activeSessionCount))}</span>
           </div>
-          ${activeSessionRows(data.sessions, selectedChannelNames)}
+          ${activeSessionRows(data.sessions, selectedChannelNames, workspaceNames)}
         </section>
       </article>
     </section>
   `);
+
+    const syncHomeChannelSelection = () => {
+        const form = app.querySelector<HTMLFormElement>('#go-to-sleep-form');
+        if (!form) return;
+        const nextStates = channelStates.map((state) => {
+            const group = form.querySelector<HTMLElement>(
+                `.workspace-channel-group[data-workspace-id="${state.workspace.id}"]`,
+            );
+            const enabled = Boolean(
+                group?.querySelector<HTMLInputElement>(
+                    'input[name="workspaceTarget"]',
+                )?.checked,
+            );
+            const mode: 'selected' | 'all_accessible' =
+                group?.querySelector<HTMLInputElement>(
+                    `input[name="channelScopeMode:${state.workspace.id}"]:checked`,
+                )?.value === 'all_accessible'
+                    ? 'all_accessible'
+                    : 'selected';
+            const checkboxes = Array.from(
+                group?.querySelectorAll<HTMLInputElement>(
+                    `input[name="channelScope:${state.workspace.id}"]`,
+                ) ?? [],
+            );
+            checkboxes.forEach((checkbox) => {
+                checkbox.disabled = !enabled || mode === 'all_accessible';
+            });
+            const currentChannels =
+                mode === 'all_accessible'
+                    ? []
+                    : checkboxes
+                          .filter((checkbox) => checkbox.checked)
+                          .map((checkbox) => ({
+                              id: checkbox.value,
+                              displayName:
+                                  checkbox.dataset.displayName ??
+                                  checkbox.value,
+                          }));
+            const label = channelSummaryLabel(mode, currentChannels);
+            const toggleLabel = group?.querySelector<HTMLElement>(
+                '.workspace-channel-scope',
+            );
+            if (toggleLabel)
+                toggleLabel.textContent = enabled ? label : 'Not watched';
+            group?.classList.toggle('disabled', !enabled);
+            group
+                ?.querySelectorAll<HTMLLabelElement>(
+                    '.channel-choice, .scope-choice',
+                )
+                .forEach((choice) => {
+                    const input =
+                        choice.querySelector<HTMLInputElement>('input');
+                    choice.classList.toggle(
+                        'selected',
+                        Boolean(input?.checked),
+                    );
+                });
+            return {
+                ...state,
+                enabled,
+                mode,
+                selectedChannels: currentChannels,
+            };
+        });
+        const summaryCell = form.querySelector<HTMLElement>(
+            '.go-to-sleep-summary .summary-cell:first-child dd',
+        );
+        if (summaryCell)
+            summaryCell.textContent = combinedChannelSummary(nextStates);
+        const submitButton = form.querySelector<HTMLButtonElement>(
+            'button[type="submit"]',
+        );
+        if (submitButton) {
+            const enabledStates = nextStates.filter((state) => state.enabled);
+            submitButton.disabled =
+                enabledStates.length === 0 ||
+                enabledStates.some(
+                    (state) =>
+                        state.mode === 'selected' &&
+                        state.selectedChannels.length === 0,
+                );
+        }
+    };
+
+    app.querySelectorAll<HTMLInputElement>(
+        'input[name="workspaceTarget"], input[name^="channelScopeMode:"], input[name^="channelScope:"]',
+    ).forEach((input) => {
+        input.addEventListener('change', syncHomeChannelSelection);
+    });
+    syncHomeChannelSelection();
+
+    function homeTargetsFromForm(form: HTMLFormElement, persist: boolean) {
+        const formData = new FormData(form);
+        const enabledWorkspaceIds = new Set(
+            formData.getAll('workspaceTarget').map((value) => String(value)),
+        );
+        return channelStates
+            .map((state) => {
+                const enabled = enabledWorkspaceIds.has(state.workspace.id);
+                const channelMode: 'selected' | 'all_accessible' =
+                    String(
+                        formData.get(
+                            `channelScopeMode:${state.workspace.id}`,
+                        ) ?? state.mode,
+                    ) === 'all_accessible'
+                        ? 'all_accessible'
+                        : 'selected';
+                const checkedChannelIds = new Set(
+                    formData
+                        .getAll(`channelScope:${state.workspace.id}`)
+                        .map((value) => String(value)),
+                );
+                const submittedChannels = state.availableChannels
+                    .filter((channel) => checkedChannelIds.has(channel.id))
+                    .map((channel) => ({
+                        id: channel.id,
+                        displayName: channel.displayName,
+                    }));
+                if (persist) {
+                    setHomeWorkspaceEnabled(state.workspace.id, enabled);
+                    setHomeChannelSelection(
+                        state.workspace.id,
+                        channelMode,
+                        submittedChannels,
+                    );
+                }
+                return {
+                    workspace: state.workspace,
+                    enabled,
+                    workspaceId: state.workspace.id,
+                    channelScope:
+                        channelMode === 'all_accessible'
+                            ? []
+                            : submittedChannels.map((channel) => channel.id),
+                };
+            })
+            .filter((target) => target.enabled);
+    }
+
+    app.querySelector<HTMLButtonElement>('.save-customize')?.addEventListener(
+        'click',
+        (event) => {
+            const form = (event.currentTarget as HTMLElement).closest(
+                'form',
+            ) as HTMLFormElement | null;
+            if (!form) return;
+            syncHomeChannelSelection();
+            homeTargetsFromForm(form, true);
+            const status = form.querySelector<HTMLElement>(
+                '.customize-save-status',
+            );
+            if (status) {
+                status.textContent = 'Saved';
+            }
+        },
+    );
 
     app.querySelector<HTMLFormElement>('#go-to-sleep-form')?.addEventListener(
         'submit',
@@ -2216,22 +2946,29 @@ async function renderDashboard(): Promise<void> {
                 formData.get('endTime') ??
                     `${String(userStartHour).padStart(2, '0')}:00`,
             );
-            const endHour = Number(endTimeVal.split(':')[0]);
             const tz = String(formData.get('timezone') ?? userTz);
+            const targets = homeTargetsFromForm(form, true);
 
             try {
-                const response = await postJson<SessionCreateResponse>(
-                    '/api/gateway/sessions',
+                await postJson<SessionCreateResponse>(
+                    '/api/gateway/sessions/bulk',
                     {
                         ownerUserId: currentUserId,
                         title: 'Watching overnight',
                         mode,
-                        channelScope: selectedChannelIds,
-                        durationHours: calculateDurationHours(endHour, tz),
+                        stopLocalTime: endTimeVal,
+                        timezone: tz,
+                        targets: targets.map((target) => ({
+                            workspaceId: target.workspaceId,
+                            channelScope: target.channelScope,
+                        })),
                     },
                 );
                 dashboardError = '';
-                dashboardNotice = 'Murph is watching.';
+                dashboardNotice =
+                    targets.length > 1
+                        ? `Murph is watching ${targets.map((target) => providerLabel(target.workspace.provider)).join(' and ')}.`
+                        : 'Murph is watching.';
                 await renderDashboard();
             } catch (error) {
                 if (error instanceof ApiError) {
@@ -2268,7 +3005,9 @@ async function renderSettings(): Promise<void> {
     let settingsNotice = '';
     if (params.get('error') === 'google_not_configured') {
         settingsNotice =
-            '<div class="notice danger">Google OAuth is not configured. Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> environment variables.</div>';
+            '<div class="notice danger">Google OAuth is not configured. Open the Google card and add the client ID and client secret.</div>';
+    } else if (params.get('error')) {
+        settingsNotice = `<div class="notice danger">${escapeHtml(params.get('error'))}</div>`;
     } else if (params.get('google') === 'connected') {
         settingsNotice =
             '<div class="notice success">Google account connected.</div>';
@@ -2277,13 +3016,31 @@ async function renderSettings(): Promise<void> {
         history.replaceState(null, '', '/settings');
     }
 
-    const [summary, setup, integrationsPayload, policyConfig] =
-        await Promise.all([
-            getJson<SummaryPayload>('/api/gateway/summary'),
-            getJson<SetupStatusPayload>('/api/setup/status'),
-            getJson<IntegrationStatusPayload>('/api/integrations/status'),
-            getJson<PolicyConfigPayload>('/api/gateway/policy/config'),
-        ]);
+    const [setup, policyConfig, summaryPayload] = await Promise.all([
+        getJson<SetupStatusPayload>('/api/setup/status'),
+        getJson<PolicyConfigPayload>('/api/gateway/policy/config'),
+        getJson<SummaryPayload>('/api/gateway/summary'),
+    ]);
+    setSidebarWatchingCount(summaryPayload.summary.activeSessionCount);
+    const workspaces = adminChannelWorkspaces(setup);
+    const returnedWorkspaceId = params.get('workspaceId');
+    if (
+        returnedWorkspaceId &&
+        workspaces.some((workspace) => workspace.id === returnedWorkspaceId)
+    ) {
+        localStorage.setItem(ADMIN_WORKSPACE_STORAGE_KEY, returnedWorkspaceId);
+        localStorage.setItem(HOME_WORKSPACE_STORAGE_KEY, returnedWorkspaceId);
+    }
+    const selectedWorkspaceId = resolveAdminWorkspaceId(workspaces);
+    const integrationsPayload: IntegrationStatusPayload = selectedWorkspaceId
+        ? await getJson<IntegrationStatusPayload>(
+              `/api/integrations/status?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`,
+          )
+        : { ok: false, workspaceId: '', integrations: [] };
+    const channelConnected = workspaces.length > 0;
+    const discordClientConfigured =
+        setup.discord.clientIdConfigured ||
+        setup.discord.oauthConfigured === true;
 
     shell(`
     ${settingsNotice}
@@ -2294,11 +3051,11 @@ async function renderSettings(): Promise<void> {
         <h1>Admin</h1>
         <p>Connect the services Murph needs to watch messages and draft useful replies.</p>
       </div>
-      <span class="console-state">${escapeHtml(setup.provider.configured && setup.slack.installed ? 'Operational' : 'Needs setup')}</span>
+      ${consoleStateHtml(setup.provider.configured && channelConnected ? 'Operational' : 'Needs setup', setup.provider.configured && channelConnected ? 'ok' : 'off')}
     </section>
 
     <dl class="kpis">
-      ${metric('Workspace', summary.summary.workspace?.name ?? 'Not installed')}
+      ${workspaceMetric(workspaces)}
       ${metric('AI provider', setup.provider.configured ? `${setup.provider.defaultProvider}` : 'Not configured')}
       ${metric('Slack', setup.slack.installed ? 'Connected' : 'Not connected')}
       ${metric('Discord', setup.discord.installed ? 'Connected' : 'Not connected')}
@@ -2322,15 +3079,15 @@ async function renderSettings(): Promise<void> {
         </div>
       </article>
       <article class="panel panel-status">
-        <h2><span class="status-dot ${setup.discord.installed && setup.discord.oauthConfigured && setup.discord.botTokenConfigured ? 'ok' : 'off'}" aria-hidden="true"></span>Discord</h2>
+        <h2><span class="status-dot ${setup.discord.installed && setup.discord.botTokenConfigured ? 'ok' : 'off'}" aria-hidden="true"></span>Discord</h2>
         <p>Connect Discord if this workspace also needs async coverage there.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.discord.installed ? 'Connected' : 'Not connected'}</dd></div>
-          <div><dt>Setup</dt><dd>${setup.discord.oauthConfigured && setup.discord.botTokenConfigured ? 'Ready to install' : 'Missing server settings'}</dd></div>
+          <div><dt>Setup</dt><dd>${discordClientConfigured && setup.discord.botTokenConfigured ? 'Ready to install' : 'Missing server settings'}</dd></div>
         </dl>
         <div class="actions">
           ${
-              setup.discord.oauthConfigured && setup.discord.botTokenConfigured
+              discordClientConfigured && setup.discord.botTokenConfigured
                   ? `<a class="button" href="/api/discord/install">${setup.discord.installed ? 'Reconnect Discord' : 'Connect Discord'}</a>`
                   : '<span class="empty">Discord OAuth or bot token is not configured.</span>'
           }
@@ -2348,33 +3105,31 @@ async function renderSettings(): Promise<void> {
     </section>
 
     <section class="policy-section">
-      <div class="policy-assignment">
-        <article class="policy-editor-panel">
-          <h2>Policy</h2>
-          <p class="section-copy">Choose the policy Murph uses for new sessions. Edit profiles in YAML; CLI and agent-managed editing can come later.</p>
-          <form class="form compact-form" id="policy-form">
-            <label>
-              Policy profile
-              <select name="profileName">
-                ${policyProfileOptions(policyConfig.profiles, policyConfig.policyProfileName, 'Built-in mode default')}
-              </select>
-            </label>
-            <div class="actions">
-              <button type="submit">Save policy</button>
-            </div>
-          </form>
-        </article>
-
-        <article class="policy-preview">
-          <h2>Effective policy</h2>
-          ${policySummary(policyConfig.selectedProfileName, policyConfig.selectedProfile.description, policyConfig.compiled)}
-        </article>
-
-        <article class="policy-preview policy-library">
-          <h2>Available profiles</h2>
-          ${policyProfileList(policyConfig.profiles)}
-        </article>
-      </div>
+      <article class="policy-editor-panel">
+        <h2>Policy</h2>
+        <div class="policy-card-content">
+          <div class="policy-controls">
+            <p class="section-copy">Choose the policy Murph uses for new sessions.</p>
+            <form class="form compact-form" id="policy-form">
+              <label>
+                Policy profile
+                <select name="profileName">
+                  ${policyProfileOptions(policyConfig.profiles, policyConfig.policyProfileName)}
+                </select>
+              </label>
+              <p class="policy-help">Need a custom policy? <a href="https://murph-agent.com/docs/policy" target="_blank" rel="noreferrer">Use Murph Agent to generate one</a>.</p>
+              <div class="actions">
+                <button type="button" class="secondary open-policy-profiles">Profiles</button>
+                <button type="submit">Save policy</button>
+              </div>
+            </form>
+          </div>
+          <div class="policy-effective">
+            <p class="eyebrow">Effective policy</p>
+            ${policySummary(policyConfig.selectedProfileName, policyConfig.selectedProfile.description, policyConfig.compiled)}
+          </div>
+        </div>
+      </article>
     </section>
 
     <section class="integration-section">
@@ -2383,12 +3138,19 @@ async function renderSettings(): Promise<void> {
         <span class="section-meta">${integrationsPayload.integrations.length} sources</span>
       </div>
       <p class="section-copy">Connect optional sources Murph can use for more grounded replies.</p>
-      <div class="grid two">
-        ${integrationsPayload.integrations.map((i) => integrationCard(i, integrationsPayload.workspaceId)).join('')}
-      </div>
+      ${
+          selectedWorkspaceId
+              ? `<div class="grid two">
+            ${integrationsPayload.integrations.map((i) => integrationCard(i, integrationsPayload.workspaceId)).join('')}
+          </div>`
+              : '<p class="empty">Connect a Slack workspace or Discord server before adding sources.</p>'
+      }
     </section>
 
     ${githubRepositoryDialog(integrationsPayload.workspaceId)}
+    ${integrationCredentialDialog(integrationsPayload.workspaceId)}
+    ${googleOAuthDialog(integrationsPayload.workspaceId)}
+    ${policyProfileDialog(policyConfig.profiles, policyConfig.selectedProfileName)}
   `);
 
     const integrationsByProvider = new Map(
@@ -2410,6 +3172,25 @@ async function renderSettings(): Promise<void> {
             });
             dashboardNotice = 'Policy saved.';
             await renderSettings();
+        },
+    );
+
+    app.querySelector<HTMLButtonElement>('.open-policy-profiles')?.addEventListener(
+        'click',
+        () => {
+            app.querySelector<HTMLDialogElement>(
+                '#policy-profile-dialog',
+            )?.showModal();
+        },
+    );
+
+    app.querySelectorAll<HTMLButtonElement>('.close-policy-profiles').forEach(
+        (button) => {
+            button.addEventListener('click', () => {
+                app.querySelector<HTMLDialogElement>(
+                    '#policy-profile-dialog',
+                )?.close();
+            });
         },
     );
 
@@ -2551,38 +3332,241 @@ async function renderSettings(): Promise<void> {
         },
     );
 
+    app.querySelectorAll<HTMLButtonElement>(
+        '.close-integration-credential',
+    ).forEach((button) => {
+        button.addEventListener('click', () => {
+            app.querySelector<HTMLDialogElement>(
+                '#integration-credential-dialog',
+            )?.close();
+        });
+    });
+
+    app.querySelector<HTMLDialogElement>(
+        '#integration-credential-dialog',
+    )?.addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) {
+            (event.currentTarget as HTMLDialogElement).close();
+        }
+    });
+
     app.querySelectorAll<HTMLButtonElement>('.connect-integration').forEach(
         (button) => {
-            button.addEventListener('click', async () => {
+            button.addEventListener('click', () => {
                 const provider = button.dataset.provider ?? '';
                 const integration = integrationsByProvider.get(provider);
-                const name = integration?.name ?? provider;
-                const label = integration?.credentialLabel ?? 'API key';
-                const credential = window.prompt(
-                    `Enter your ${name} ${label.toLowerCase()}`,
-                );
-                if (!credential) {
+                if (!integration) {
                     return;
                 }
-
-                try {
-                    await postJson(
-                        `/api/integrations/${encodeURIComponent(provider)}/connect`,
-                        {
-                            workspaceId: integrationsPayload.workspaceId,
-                            credential,
-                        },
-                    );
-                    dashboardNotice = `Connected ${name}.`;
-                    await renderSettings();
-                } catch (error) {
-                    window.alert(
-                        error instanceof Error
-                            ? error.message
-                            : 'Integration could not be connected.',
-                    );
+                const dialog = app.querySelector<HTMLDialogElement>(
+                    '#integration-credential-dialog',
+                );
+                const form = app.querySelector<HTMLFormElement>(
+                    '#integration-credential-form',
+                );
+                if (!dialog || !form) {
+                    return;
                 }
+                const name = integration?.name ?? provider;
+                form.reset();
+                form.dataset.workspaceId = integrationsPayload.workspaceId;
+                const providerInput = form.querySelector<HTMLInputElement>(
+                    'input[name="provider"]',
+                );
+                const credentialInput = form.querySelector<HTMLInputElement>(
+                    'input[name="credential"]',
+                );
+                const error = form.querySelector<HTMLElement>(
+                    '#integration-credential-error',
+                );
+                if (providerInput) providerInput.value = provider;
+                if (credentialInput) credentialInput.value = '';
+                if (error) {
+                    error.hidden = true;
+                    error.textContent = '';
+                }
+                const providerEl = app.querySelector<HTMLElement>(
+                    '#integration-credential-provider',
+                );
+                const titleEl = app.querySelector<HTMLElement>(
+                    '#integration-credential-title',
+                );
+                const descriptionEl = app.querySelector<HTMLElement>(
+                    '#integration-credential-description',
+                );
+                const labelEl = app.querySelector<HTMLElement>(
+                    '#integration-credential-label',
+                );
+                const hintEl = app.querySelector<HTMLElement>(
+                    '#integration-credential-hint',
+                );
+                if (providerEl) providerEl.textContent = name;
+                if (titleEl)
+                    titleEl.textContent = `${integration.status === 'connected' ? 'Update' : 'Connect'} ${name}`;
+                if (descriptionEl)
+                    descriptionEl.textContent = integration.description;
+                if (labelEl)
+                    labelEl.textContent =
+                        integration.credentialLabel ?? 'API key';
+                const targetWorkspace = workspaces.find(
+                    (workspace) =>
+                        workspace.id === integrationsPayload.workspaceId,
+                );
+                if (hintEl) {
+                    hintEl.textContent = targetWorkspace
+                        ? `Stored locally for ${workspaceOptionLabel(targetWorkspace)}. ${integration.envKey} still works as a server env override.`
+                        : `${integration.envKey} still works as a server env override.`;
+                }
+                dialog.showModal();
+                credentialInput?.focus();
             });
+        },
+    );
+
+    app.querySelector<HTMLFormElement>(
+        '#integration-credential-form',
+    )?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget as HTMLFormElement;
+        const formData = new FormData(form);
+        const provider = String(formData.get('provider') ?? '');
+        const credential = String(formData.get('credential') ?? '').trim();
+        const integration = integrationsByProvider.get(provider);
+        const error = form.querySelector<HTMLElement>(
+            '#integration-credential-error',
+        );
+        const submitButton = form.querySelector<HTMLButtonElement>(
+            'button[type="submit"]',
+        );
+        if (!integration || !credential) {
+            return;
+        }
+
+        if (error) {
+            error.hidden = true;
+            error.textContent = '';
+        }
+        if (submitButton) submitButton.disabled = true;
+
+        try {
+            await postJson(
+                `/api/integrations/${encodeURIComponent(provider)}/connect`,
+                {
+                    workspaceId:
+                        form.dataset.workspaceId ??
+                        integrationsPayload.workspaceId,
+                    credential,
+                },
+            );
+            dashboardNotice = `Connected ${integration.name}.`;
+            app.querySelector<HTMLDialogElement>(
+                '#integration-credential-dialog',
+            )?.close();
+            await renderSettings();
+        } catch (errorValue) {
+            if (error) {
+                error.textContent =
+                    errorValue instanceof Error
+                        ? errorValue.message
+                        : 'Integration could not be connected.';
+                error.hidden = false;
+            }
+            if (submitButton) submitButton.disabled = false;
+        }
+    });
+
+    app.querySelectorAll<HTMLButtonElement>('.close-google-oauth').forEach(
+        (button) => {
+            button.addEventListener('click', () => {
+                app.querySelector<HTMLDialogElement>(
+                    '#google-oauth-dialog',
+                )?.close();
+            });
+        },
+    );
+
+    app.querySelector<HTMLDialogElement>(
+        '#google-oauth-dialog',
+    )?.addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) {
+            (event.currentTarget as HTMLDialogElement).close();
+        }
+    });
+
+    app.querySelectorAll<HTMLButtonElement>('.configure-google-oauth').forEach(
+        (button) => {
+            button.addEventListener('click', () => {
+                const form =
+                    app.querySelector<HTMLFormElement>('#google-oauth-form');
+                const dialog = app.querySelector<HTMLDialogElement>(
+                    '#google-oauth-dialog',
+                );
+                const error = form?.querySelector<HTMLElement>(
+                    '#google-oauth-error',
+                );
+                if (!form || !dialog) {
+                    return;
+                }
+                form.reset();
+                form.dataset.workspaceId = integrationsPayload.workspaceId;
+                form.dataset.installHref =
+                    button.dataset.installHref ??
+                    `/api/google/install?workspaceId=${encodeURIComponent(integrationsPayload.workspaceId)}`;
+                if (error) {
+                    error.hidden = true;
+                    error.textContent = '';
+                }
+                dialog.showModal();
+                form.querySelector<HTMLInputElement>(
+                    'input[name="clientId"]',
+                )?.focus();
+            });
+        },
+    );
+
+    app.querySelector<HTMLFormElement>('#google-oauth-form')?.addEventListener(
+        'submit',
+        async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget as HTMLFormElement;
+            const formData = new FormData(form);
+            const clientId = String(formData.get('clientId') ?? '').trim();
+            const clientSecret = String(
+                formData.get('clientSecret') ?? '',
+            ).trim();
+            const error = form.querySelector<HTMLElement>(
+                '#google-oauth-error',
+            );
+            const submitButton = form.querySelector<HTMLButtonElement>(
+                'button[type="submit"]',
+            );
+            if (!clientId || !clientSecret) {
+                return;
+            }
+            if (error) {
+                error.hidden = true;
+                error.textContent = '';
+            }
+            if (submitButton) submitButton.disabled = true;
+
+            try {
+                await postJson('/api/setup/config', {
+                    GOOGLE_CLIENT_ID: clientId,
+                    GOOGLE_CLIENT_SECRET: clientSecret,
+                });
+                window.location.href =
+                    form.dataset.installHref ??
+                    `/api/google/install?workspaceId=${encodeURIComponent(form.dataset.workspaceId ?? integrationsPayload.workspaceId)}`;
+            } catch (errorValue) {
+                if (error) {
+                    error.textContent =
+                        errorValue instanceof Error
+                            ? errorValue.message
+                            : 'Google OAuth settings could not be saved.';
+                    error.hidden = false;
+                }
+                if (submitButton) submitButton.disabled = false;
+            }
         },
     );
 
@@ -3117,7 +4101,7 @@ async function render(): Promise<void> {
         const setupStatus =
             await getJson<SetupStatusPayload>('/api/setup/status');
         if (
-            !setupStatus.slack.installed ||
+            adminChannelWorkspaces(setupStatus).length === 0 ||
             !setupStatus.userConfigured ||
             !setupStatus.channelsConfigured
         ) {

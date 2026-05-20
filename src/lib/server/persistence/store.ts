@@ -120,8 +120,8 @@ export class Store {
   stopSession(id: string, status: SessionStatus = 'stopped'): void {
     session.stopSession(this.db, id, status);
   }
-  expireDueSessions(nowIso: string): void {
-    session.expireDueSessions(this.db, nowIso);
+  expireDueSessions(nowIso: string): AutopilotSession[] {
+    return session.expireDueSessions(this.db, nowIso);
   }
   findMatchingSession(
     workspaceId: string,

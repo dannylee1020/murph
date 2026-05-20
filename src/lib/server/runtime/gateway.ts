@@ -9,6 +9,7 @@ import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { evaluatePolicy } from '#lib/server/runtime/policy';
+import { classifyPolicyExecution } from '#lib/server/runtime/policy-classifier';
 import { outputSummary } from '#lib/server/runtime/tool-output';
 import type {
   ActionContextSnapshot,
@@ -30,13 +31,35 @@ function failedToolNames(results: AgentToolResult[]): string[] {
   return results.filter((result) => !result.ok).map((result) => result.name);
 }
 
-function evidenceStatusFromToolResults(results: AgentToolResult[]): ThreadEvidenceStatus {
-  const successfulTools = results
-    .filter((result) => result.ok)
-    .map((result) => ({
-      name: result.name,
-      summary: outputSummary(result.output)
+function evidenceStatusFromToolResults(
+  results: AgentToolResult[],
+  artifacts: ContextAssembly['artifacts'] = []
+): ThreadEvidenceStatus {
+  const attemptedTools = [...new Set(results.map((result) => result.name))];
+  const successfulByName = new Map<string, { name: string; summary?: Record<string, unknown> }>();
+  const artifactEvidence = artifacts
+    .filter((artifact) => artifact.source !== 'memory.linked_artifacts')
+    .map((artifact) => ({
+      name: artifact.source,
+      summary: {
+        type: artifact.type,
+        title: artifact.title
+      }
     }));
+  for (const tool of [
+    ...artifactEvidence,
+    ...results
+      .filter((result) => result.ok)
+      .map((result) => ({
+        name: result.name,
+        summary: outputSummary(result.output)
+      }))
+  ]) {
+    if (!successfulByName.has(tool.name)) {
+      successfulByName.set(tool.name, tool);
+    }
+  }
+  const successfulTools = [...successfulByName.values()];
   const failedTools = results
     .filter((result) => !result.ok)
     .map((result) => ({
@@ -45,7 +68,8 @@ function evidenceStatusFromToolResults(results: AgentToolResult[]): ThreadEviden
     }));
 
   return {
-    status: failedTools.length === 0 ? 'complete' : successfulTools.length > 0 ? 'partial' : 'none',
+    status: successfulTools.length === 0 ? 'none' : failedTools.length === 0 ? 'complete' : 'partial',
+    attemptedTools: attemptedTools.length > 0 ? attemptedTools : undefined,
     successfulTools,
     failedTools,
     updatedAt: new Date().toISOString()
@@ -86,6 +110,7 @@ export class Gateway {
 
     const { heartbeatIntervalMs } = getRuntimeEnv();
     this.heartbeatHandle = this.startHeartbeat(heartbeatIntervalMs);
+    this.reconcileSessionExpirations();
   }
 
   startHeartbeat(intervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS): NodeJS.Timeout {
@@ -99,7 +124,7 @@ export class Gateway {
     const { runEventRetentionDays } = getRuntimeEnv();
     const cutoff = new Date(Date.now() - Math.max(1, runEventRetentionDays) * 24 * 60 * 60 * 1000).toISOString();
     this.store.pruneOldRunEvents(cutoff);
-    this.store.expireDueSessions(nowIso);
+    this.expireDueSessions(nowIso);
     const reminders = this.store.listDueReminders(nowIso);
 
     for (const reminder of reminders) {
@@ -137,6 +162,19 @@ export class Gateway {
       await this.runRecurringJob(job);
       this.store.updateRecurringJobNextRun(job.id, nextDailyRun(job.localTime, job.timezone, new Date(nowIso)).toISOString());
     }
+  }
+
+  reconcileSessionExpirations(nowIso = new Date().toISOString()): void {
+    this.expireDueSessions(nowIso);
+  }
+
+  private expireDueSessions(nowIso: string): AutopilotSession[] {
+    const expired = this.store.expireDueSessions(nowIso);
+    for (const session of expired) {
+      emitControlPlaneEvent({ type: 'session.updated', session });
+      emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
+    }
+    return expired;
   }
 
   async runRecurringJob(job: RecurringJobRecord): Promise<void> {
@@ -381,7 +419,18 @@ export class Gateway {
       throw error;
     }
 
-    const context = runResult.context;
+    const evidenceStatus = evidenceStatusFromToolResults(runResult.toolResults, runResult.context.artifacts);
+    const failedTools = failedToolNames(runResult.toolResults);
+    const context: ContextAssembly = {
+      ...runResult.context,
+      memory: {
+        ...runResult.context.memory,
+        thread: {
+          ...runResult.context.memory.thread,
+          evidenceStatus
+        }
+      }
+    };
     const proposedAction = runResult.proposedAction;
     this.emitRunEvent(run.id, 'agent.context.built', {
       summary: context.summary,
@@ -395,7 +444,12 @@ export class Gateway {
     for (const event of runResult.runtimeEvents) {
       this.emitRunEvent(run.id, event.type, event.payload);
     }
-    const decision = evaluatePolicy(proposedAction, context, session);
+    const policyExecution = await classifyPolicyExecution(context, session, proposedAction, evidenceStatus);
+    this.emitRunEvent(run.id, 'agent.policy.decided', {
+      phase: 'execution_classifier',
+      ...policyExecution
+    });
+    const decision = evaluatePolicy(proposedAction, context, session, policyExecution);
     this.emitRunEvent(run.id, 'agent.policy.decided', decision);
     const finalAction = decision.downgradedTo ?? proposedAction.type;
     const toolsUsed = [
@@ -415,12 +469,10 @@ export class Gateway {
       lastMessageTs: context.thread.recentMessages.at(-1)?.ts ?? task.thread.threadTs,
       continuityCase: context.continuityCase,
       summary: context.summary,
-      status: decision.disposition === 'auto_sent' ? 'active' : decision.disposition,
+      status: decision.execution === 'send' ? 'active' : decision.disposition,
       nextHeartbeatAt: proposedAction.followUpAt
     });
 
-    const evidenceStatus = evidenceStatusFromToolResults(runResult.toolResults);
-    const failedTools = failedToolNames(runResult.toolResults);
     const contextSnapshot = await this.buildActionContextSnapshot({
       context,
       task,
@@ -482,7 +534,7 @@ export class Gateway {
     let executionResult = 'No outbound action taken.';
 
     try {
-      if (decision.disposition === 'auto_sent' && proposedAction.message) {
+      if (decision.execution === 'send' && proposedAction.message) {
         await this.tools.execute<{ channelId: string; threadTs: string; text: string }, { ok: true }>(
           'channel.post_reply',
           {
@@ -495,34 +547,9 @@ export class Gateway {
         toolsUsed.push('channel.post_reply');
         executionResult = 'Posted channel reply automatically.';
         this.emitRunEvent(run.id, 'agent.action.sent', { action: finalAction });
-      } else if (decision.disposition === 'scheduled' && proposedAction.followUpAt) {
-        await this.tools.execute<
-          {
-            workspaceId: string;
-            sessionId?: string;
-            channelId: string;
-            threadTs: string;
-            targetUserId: string;
-            dueAt: string;
-          },
-          unknown
-        >(
-          'reminder.schedule',
-          {
-            workspaceId: workspace.id,
-            sessionId: session.id,
-            channelId: task.thread.channelId,
-            threadTs: task.thread.threadTs,
-            targetUserId: task.targetUserId,
-            dueAt: proposedAction.followUpAt
-          },
-          { workspace, session, task, workspaceMemory }
-        );
-        toolsUsed.push('reminder.schedule');
-        executionResult = `Scheduled reminder for ${proposedAction.followUpAt}.`;
-      } else if (decision.disposition === 'queued') {
+      } else if (decision.execution === 'queue') {
         executionResult = 'Queued for operator review.';
-      } else if (decision.disposition === 'abstained') {
+      } else if (decision.execution === 'abstain') {
         executionResult = 'Recorded as abstain for briefing and audit.';
       }
     } catch (error) {
@@ -567,7 +594,7 @@ export class Gateway {
     }
 
     const reviewItem: ReviewItem =
-      decision.disposition === 'queued'
+      decision.execution === 'queue'
         ? await this.tools.execute<
             {
               workspaceId: string;
@@ -593,7 +620,7 @@ export class Gateway {
               threadTs: task.thread.threadTs,
               targetUserId: task.targetUserId,
               actionType: finalAction,
-              disposition: decision.disposition,
+              disposition: 'queued',
               message: proposedAction.message,
               reason: proposedAction.reason,
               confidence: proposedAction.confidence,
@@ -616,7 +643,7 @@ export class Gateway {
             provider: this.store.getProviderSettings(workspace.id)?.provider,
             contextSnapshot
           });
-    if (decision.disposition === 'queued') {
+    if (decision.execution === 'queue') {
       toolsUsed.push('queue.enqueue');
       this.emitRunEvent(run.id, 'agent.action.queued', { itemId: reviewItem.id, action: finalAction });
     }

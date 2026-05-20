@@ -1,5 +1,4 @@
 import type { IncomingMessage } from 'node:http';
-import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getIntegration } from '#lib/server/integrations/registry';
@@ -57,6 +56,12 @@ export const googleRoutes: Route[] = [
     redirect(res, installUrl);
   }),
   route('GET', '/api/google/oauth/callback', async ({ req, res, url }) => {
+    const oauthError = url.searchParams.get('error');
+    if (oauthError) {
+      redirect(res, `/settings?error=${encodeURIComponent(url.searchParams.get('error_description') ?? oauthError)}`);
+      return;
+    }
+
     const code = url.searchParams.get('code');
     const workspaceId = url.searchParams.get('state');
 
@@ -71,20 +76,17 @@ export const googleRoutes: Route[] = [
       return;
     }
 
-    const encryptionKey = getRuntimeEnv().encryptionKey;
-    if (!encryptionKey) {
-      redirect(res, '/settings?error=encryption_key_required');
-      return;
-    }
-
     try {
       const base = publicAppUrl(req, url);
       const redirectUri = `${base}/api/google/oauth/callback`;
       await exchangeGoogleCode(code, redirectUri, workspace.id);
 
+      const store = getStore();
       const definition = getIntegration('google')!;
-      enableIntegrationCapabilities(workspace.id, definition);
-      redirect(res, '/settings?google=connected');
+      for (const installedWorkspace of store.listWorkspaces()) {
+        enableIntegrationCapabilities(installedWorkspace.id, definition);
+      }
+      redirect(res, `/settings?google=connected&workspaceId=${encodeURIComponent(workspace.id)}`);
     } catch (error) {
       console.error('[google] OAuth callback failed:', error);
       redirect(res, `/settings?error=${encodeURIComponent(error instanceof Error ? error.message : 'google_oauth_failed')}`);
@@ -99,9 +101,11 @@ export const googleRoutes: Route[] = [
 
     await revokeGoogleToken(workspace.id);
     const store = getStore();
-    store.deleteIntegrationConnection(workspace.id, 'google');
     const definition = getIntegration('google')!;
-    disableIntegrationCapabilities(workspace.id, definition);
+    for (const installedWorkspace of store.listWorkspaces()) {
+      store.deleteIntegrationConnection(installedWorkspace.id, 'google');
+      disableIntegrationCapabilities(installedWorkspace.id, definition);
+    }
     sendJson(res, { ok: true });
   })
 ];

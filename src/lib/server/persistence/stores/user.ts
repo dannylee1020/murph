@@ -43,11 +43,12 @@ export function upsertUser(db: Db, input: UpsertUserInput): AgentUser {
   if (!externalUserId) {
     throw new Error('externalUserId is required');
   }
-  const existing = db
-    .prepare(`SELECT id FROM users WHERE workspace_id = ? AND external_user_id = ?`)
-    .get(input.workspaceId, externalUserId) as { id: string } | undefined;
+  const existing = getUser(db, input.workspaceId, externalUserId);
 
   const id = existing?.id ?? randomUUID();
+  const timezone = input.timezone ?? existing?.schedule.timezone ?? 'America/Los_Angeles';
+  const workdayStartHour = input.workdayStartHour ?? existing?.schedule.workdayStartHour ?? 9;
+  const workdayEndHour = input.workdayEndHour ?? existing?.schedule.workdayEndHour ?? 17;
 
   db.prepare(
     `INSERT INTO users (
@@ -65,10 +66,10 @@ export function upsertUser(db: Db, input: UpsertUserInput): AgentUser {
     input.workspaceId,
     externalUserId,
     input.displayName,
-    input.fallbackExternalUserId ?? null,
-    input.timezone ?? 'America/Los_Angeles',
-    input.workdayStartHour ?? 9,
-    input.workdayEndHour ?? 17
+    input.fallbackExternalUserId ?? existing?.fallbackExternalUserId ?? null,
+    timezone,
+    workdayStartHour,
+    workdayEndHour
   );
 
   return getUser(db, input.workspaceId, externalUserId)!;

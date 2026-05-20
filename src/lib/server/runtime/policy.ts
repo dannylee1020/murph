@@ -6,6 +6,7 @@ import type {
   ContinuityActionType,
   PolicyControls,
   PolicyDecision,
+  PolicyExecutionDecision,
   ProposedAction
 } from '#lib/types';
 import { builtinPolicyProfile } from '#lib/server/runtime/policy-compiler';
@@ -68,10 +69,35 @@ function resolveRuntimePolicy(
     });
 }
 
+export function resolvePolicyForRequest(context: ContextAssembly, session: AutopilotSession): CompiledPolicy {
+  return resolveRuntimePolicy(
+    session.policy?.compiled ?? builtinPolicyProfile(session.mode).compiled,
+    {
+      type: 'abstain',
+      message: '',
+      reason: 'Policy request evaluation',
+      confidence: 1
+    },
+    context
+  ) ?? builtinPolicyProfile(session.mode).compiled;
+}
+
+function topicMatches(text: string, topic: string): boolean {
+  const normalized = topic.trim().toLowerCase();
+  if (!normalized) return false;
+  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  return new RegExp(`(^|\\b)${escaped}(\\b|$)`, 'i').test(text);
+}
+
+function forbiddenTopicsFor(context: ContextAssembly, policy: CompiledPolicy): string[] {
+  return Array.from(new Set([...(context.memory.user?.forbiddenTopics ?? []), ...policy.blockedTopics]));
+}
+
 export function evaluatePolicy(
   action: ProposedAction,
   context: ContextAssembly,
-  session: AutopilotSession
+  session: AutopilotSession,
+  classifierDecision?: PolicyExecutionDecision
 ): PolicyDecision {
   const latestMessage = context.thread.latestMessage.trim().toLowerCase();
   const compiledPolicy = resolveRuntimePolicy(
@@ -79,18 +105,15 @@ export function evaluatePolicy(
     action,
     context
   );
-  const forbiddenTopics = Array.from(
-    new Set([...(context.memory.user?.forbiddenTopics ?? []), ...(compiledPolicy?.blockedTopics ?? [])])
-  );
+  const forbiddenTopics = forbiddenTopicsFor(context, compiledPolicy ?? builtinPolicyProfile(session.mode).compiled);
   const hasHighRiskSkill = context.skills.some((skill) => skill.riskLevel === 'high');
-  const hasGroundingArtifacts = context.artifacts.length > 0 || context.linkedArtifacts.length > 0;
-  const queueDisposition = action.type === 'remind' ? 'scheduled' : 'queued';
 
   if (context.thread.latestMessage.trim().length === 0) {
     return {
       allowed: false,
       downgradedTo: 'abstain',
       disposition: 'abstained',
+      execution: 'abstain',
       reason: 'Empty thread context'
     };
   }
@@ -100,15 +123,17 @@ export function evaluatePolicy(
       allowed: false,
       downgradedTo: 'abstain',
       disposition: 'abstained',
+      execution: 'abstain',
       reason: 'Thread is out of scope for v0 continuity'
     };
   }
 
-  if (forbiddenTopics.some((topic) => latestMessage.includes(topic.toLowerCase()))) {
+  if (forbiddenTopics.some((topic) => topicMatches(latestMessage, topic))) {
     return {
       allowed: false,
       downgradedTo: 'abstain',
       disposition: 'abstained',
+      execution: 'abstain',
       reason: 'Thread touches a user-forbidden topic'
     };
   }
@@ -117,6 +142,7 @@ export function evaluatePolicy(
     return {
       allowed: true,
       disposition: 'abstained',
+      execution: 'abstain',
       reason: 'Dry-run mode records the decision without side effects'
     };
   }
@@ -126,42 +152,27 @@ export function evaluatePolicy(
       allowed: false,
       downgradedTo: 'abstain',
       disposition: 'abstained',
+      execution: 'abstain',
       reason: `Policy blocks ${action.type} actions`
     };
   }
 
-  if (compiledPolicy?.alwaysQueueTopics.some((topic) => latestMessage.includes(topic.toLowerCase()))) {
-    return {
-      allowed: true,
-      disposition: queueDisposition,
-      reason: 'Policy requires operator review for this topic'
-    };
-  }
-
-  if (compiledPolicy?.requireGroundingForFacts && action.type === 'reply' && !hasGroundingArtifacts) {
-    return {
-      allowed: false,
-      downgradedTo: 'ask',
-      disposition: 'queued',
-      reason: 'Policy requires grounded facts before sending a factual reply'
-    };
-  }
-
-  if (compiledPolicy?.preferAskWhenUncertain && action.confidence < 0.75) {
-    return {
-      allowed: false,
-      downgradedTo: 'ask',
-      disposition: 'queued',
-      reason: 'Policy prefers a clarification when confidence is borderline'
-    };
-  }
-
-  if (action.confidence < 0.55) {
+  if (classifierDecision?.execution === 'abstain') {
     return {
       allowed: false,
       downgradedTo: 'abstain',
       disposition: 'abstained',
-      reason: 'Model confidence below v0 threshold'
+      execution: 'abstain',
+      reason: classifierDecision.reason || 'Policy execution classifier chose abstain'
+    };
+  }
+
+  if (compiledPolicy?.alwaysQueueTopics.some((topic) => topicMatches(latestMessage, topic))) {
+    return {
+      allowed: true,
+      disposition: 'queued',
+      execution: 'queue',
+      reason: 'Policy requires operator review for this topic'
     };
   }
 
@@ -170,6 +181,7 @@ export function evaluatePolicy(
       allowed: false,
       downgradedTo: 'abstain',
       disposition: 'abstained',
+      execution: 'abstain',
       reason: 'Auto-send action has no message body'
     };
   }
@@ -179,6 +191,7 @@ export function evaluatePolicy(
       allowed: false,
       downgradedTo: 'ask',
       disposition: 'queued',
+      execution: 'queue',
       reason: 'No obvious participant to redirect to'
     };
   }
@@ -186,7 +199,8 @@ export function evaluatePolicy(
   if (session.mode === 'manual_review') {
     return {
       allowed: true,
-      disposition: queueDisposition,
+      disposition: 'queued',
+      execution: 'queue',
       reason: 'Manual review session queues actions by default'
     };
   }
@@ -194,7 +208,8 @@ export function evaluatePolicy(
   if (compiledPolicy && !compiledPolicy.allowAutoSend) {
     return {
       allowed: true,
-      disposition: queueDisposition,
+      disposition: 'queued',
+      execution: 'queue',
       reason: 'User policy disables auto-send'
     };
   }
@@ -203,6 +218,7 @@ export function evaluatePolicy(
     return {
       allowed: true,
       disposition: 'queued',
+      execution: 'queue',
       reason: 'High-risk skill context requires operator review'
     };
   }
@@ -210,14 +226,25 @@ export function evaluatePolicy(
   if (!AUTO_SEND_ACTIONS.has(action.type)) {
     return {
       allowed: true,
-      disposition: queueDisposition,
+      disposition: 'queued',
+      execution: 'queue',
       reason: 'Action requires queueing or internal scheduling'
+    };
+  }
+
+  if (classifierDecision?.execution === 'queue') {
+    return {
+      allowed: true,
+      disposition: 'queued',
+      execution: 'queue',
+      reason: classifierDecision.reason || 'Policy execution classifier requires operator review'
     };
   }
 
   return {
     allowed: true,
     disposition: 'auto_sent',
+    execution: 'send',
     reason: 'Action allowed under low-risk autopilot policy'
   };
 }

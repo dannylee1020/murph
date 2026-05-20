@@ -23,7 +23,7 @@ import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { readMurphConfig, updateMurphPolicyProfile } from '#lib/server/setup/config-file';
-import type { ChannelEnsureMemberResult, SessionMode, Workspace } from '#lib/types';
+import type { AgentUser, ChannelEnsureMemberResult, SessionMode, Workspace } from '#lib/types';
 
 const gateway = getGateway();
 
@@ -47,6 +47,178 @@ function resolveRequestWorkspace(workspaceId?: string): Workspace | undefined {
   }
 
   return workspace;
+}
+
+type SessionCreateInput = {
+  workspaceId?: string;
+  ownerUserId?: string;
+  title?: string;
+  mode?: SessionMode;
+  channelScope?: string[];
+  durationHours?: number;
+  stopLocalTime?: string;
+  timezone?: string;
+};
+
+type PreparedSessionTarget = {
+  workspace: Workspace;
+  ownerUserId: string;
+  channelScope: string[];
+  autoJoined: Array<{ id: string; name?: string }>;
+  newlyConfirmed: string[];
+};
+
+function workspaceDescriptor(workspace: Workspace) {
+  return {
+    id: workspace.id,
+    provider: workspace.provider,
+    name: workspace.name
+  };
+}
+
+function resolveSessionEndsAt(input: SessionCreateInput, user: AgentUser): string {
+  if (input.stopLocalTime || input.timezone) {
+    const timezone = input.timezone?.trim() || user.schedule.timezone;
+    const stopLocalTime =
+      input.stopLocalTime?.trim() || `${String(user.schedule.workdayStartHour).padStart(2, '0')}:00`;
+    parseLocalTime(stopLocalTime);
+    return nextDailyRun(stopLocalTime, timezone).toISOString();
+  }
+
+  if (input.durationHours !== undefined) {
+    return new Date(Date.now() + Math.max(1, input.durationHours) * 60 * 60 * 1000).toISOString();
+  }
+
+  const stopLocalTime = `${String(user.schedule.workdayStartHour).padStart(2, '0')}:00`;
+  return nextDailyRun(stopLocalTime, user.schedule.timezone).toISOString();
+}
+
+async function prepareSessionTarget(input: SessionCreateInput): Promise<
+  | { ok: true; target: PreparedSessionTarget }
+  | { ok: false; status: number; payload: Record<string, unknown> }
+> {
+  const store = getStore();
+  const workspace = resolveRequestWorkspace(input.workspaceId);
+
+  if (!workspace) {
+    return {
+      ok: false,
+      status: 400,
+      payload: {
+        ok: false,
+        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed',
+        workspaceId: input.workspaceId
+      }
+    };
+  }
+
+  const ownerUserId = input.ownerUserId;
+  if (!ownerUserId) {
+    return { ok: false, status: 400, payload: { ok: false, error: 'owner_required', workspace: workspaceDescriptor(workspace) } };
+  }
+
+  const channelScope = input.channelScope ?? [];
+  const workspaceMemory = store.getOrCreateWorkspaceMemory(workspace.id);
+  const confirmed = new Set(workspaceMemory.confirmedChannels ?? []);
+  const uncheckedChannels = channelScope.filter((id) => !confirmed.has(id));
+  const membershipResults: ChannelEnsureMemberResult[] = [];
+
+  for (const channelId of uncheckedChannels) {
+    membershipResults.push(await getChannelRegistry().ensureMember(workspace, workspace.provider, channelId));
+  }
+
+  const autoJoined = membershipResults
+    .filter((result) => result.status === 'joined')
+    .map((result) => ({ id: result.channelId, name: result.name }));
+  const requiresInvitation = membershipResults
+    .filter((result) => result.status === 'requires_invitation')
+    .map((result) => ({
+      id: result.channelId,
+      name: result.name,
+      action: inviteAction({ id: result.channelId, name: result.name })
+    }));
+  const reinstallRequired = membershipResults.some((result) => result.status === 'reinstall_required');
+  const errors = membershipResults
+    .filter((result) => result.status === 'error')
+    .map((result) => ({
+      id: result.channelId,
+      name: result.name,
+      reason: result.reason ?? 'Channel membership check failed'
+    }));
+
+  if (requiresInvitation.length > 0 || reinstallRequired || errors.length > 0) {
+    return {
+      ok: false,
+      status: 409,
+      payload: {
+        ok: false,
+        error: 'channels_require_action',
+        workspace: workspaceDescriptor(workspace),
+        autoJoined,
+        requiresInvitation,
+        reinstallRequired,
+        errors
+      }
+    };
+  }
+
+  return {
+    ok: true,
+    target: {
+      workspace,
+      ownerUserId,
+      channelScope,
+      autoJoined,
+      newlyConfirmed: membershipResults
+        .filter((result) => result.status === 'already_member' || result.status === 'joined')
+        .map((result) => result.channelId)
+    }
+  };
+}
+
+async function createPreparedSession(target: PreparedSessionTarget, input: SessionCreateInput) {
+  const store = getStore();
+  if (target.newlyConfirmed.length > 0) {
+    const workspaceMemory = store.getOrCreateWorkspaceMemory(target.workspace.id);
+    workspaceMemory.confirmedChannels = [...new Set([
+      ...(workspaceMemory.confirmedChannels ?? []),
+      ...target.newlyConfirmed
+    ])];
+    store.upsertWorkspaceMemory(workspaceMemory);
+  }
+
+  const user = store.upsertUser({
+    workspaceId: target.workspace.id,
+    externalUserId: target.ownerUserId,
+    displayName: target.ownerUserId
+  });
+  const mode = input.mode ?? 'manual_review';
+  const { selectedProfile } = await resolveProfileSelection(mode);
+  const effective = resolveEffectivePolicy({
+    mode,
+    baseProfile: selectedProfile
+  });
+  const policyProfile = buildUserPolicyProfile({
+    mode,
+    profileName: selectedProfile.source === 'builtin' ? undefined : selectedProfile.name,
+    compiled: effective.compiled,
+    source: selectedProfile.source === 'builtin' ? 'default' : 'profile'
+  });
+
+  const session = store.createSession({
+    workspaceId: target.workspace.id,
+    ownerUserId: target.ownerUserId,
+    title: input.title?.trim() || 'Overnight autopilot',
+    mode,
+    channelScope: target.channelScope,
+    policyProfileName: policyProfile.profileName,
+    policyOverrideRaw: policyProfile.overrideRaw,
+    policy: policyProfile,
+    endsAt: resolveSessionEndsAt(input, user)
+  });
+  emitControlPlaneEvent({ type: 'session.updated', session });
+  gateway.reconcileSessionExpirations();
+  return session;
 }
 
 async function resolveProfileSelection(
@@ -113,6 +285,7 @@ async function handleSse(req: IncomingMessage, res: ServerResponse): Promise<voi
 
 export const gatewayRoutes: Route[] = [
   route('GET', '/api/gateway/summary', async ({ res }) => {
+    gateway.reconcileSessionExpirations();
     sendJson(res, await getGatewaySnapshot());
   }),
   route('GET', '/api/gateway/policy-profiles', async ({ res }) => {
@@ -178,6 +351,8 @@ export const gatewayRoutes: Route[] = [
       provider: {
         defaultProvider: env.defaultProvider,
         defaultModel: env.defaultModel,
+        policyProvider: env.policyProvider,
+        policyModel: env.policyModel,
         defaultModels: DEFAULT_PROVIDER_MODEL,
         configured: Boolean(env.openaiApiKey || env.anthropicApiKey)
       },
@@ -428,124 +603,84 @@ export const gatewayRoutes: Route[] = [
     }
   }),
   route('GET', '/api/gateway/sessions', ({ res, url }) => {
+    gateway.reconcileSessionExpirations();
     sendJson(res, {
       sessions: getStore().listActiveSessions(url.searchParams.get('workspaceId') ?? undefined)
     });
   }),
   route('POST', '/api/gateway/sessions', async ({ req, res }) => {
     await ensureRuntimeInitialized();
-    const body = await readJson<{
-      workspaceId?: string;
-      ownerUserId?: string;
-      title?: string;
-      mode?: SessionMode;
-      channelScope?: string[];
-      durationHours?: number;
-    }>(req);
-    const store = getStore();
-    const workspace = resolveRequestWorkspace(body.workspaceId);
+    const body = await readJson<SessionCreateInput>(req);
+    const prepared = await prepareSessionTarget(body);
+    if (!prepared.ok) {
+      sendJson(res, prepared.payload, prepared.status);
+      return;
+    }
 
-    if (!workspace) {
+    let session;
+    try {
+      session = await createPreparedSession(prepared.target, body);
+    } catch (error) {
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'session_create_failed' }, 400);
+      return;
+    }
+    sendJson(res, { ok: true, session, autoJoined: prepared.target.autoJoined }, 201);
+  }),
+  route('POST', '/api/gateway/sessions/bulk', async ({ req, res }) => {
+    await ensureRuntimeInitialized();
+    const body = await readJson<Omit<SessionCreateInput, 'workspaceId' | 'channelScope'> & {
+      targets?: Array<{ workspaceId?: string; channelScope?: string[] }>;
+    }>(req);
+    const targets = Array.isArray(body.targets) ? body.targets : [];
+    if (targets.length === 0) {
+      sendJson(res, { ok: false, error: 'targets_required' }, 400);
+      return;
+    }
+
+    const preparedTargets: PreparedSessionTarget[] = [];
+    const failures: Record<string, unknown>[] = [];
+    for (const target of targets) {
+      const prepared = await prepareSessionTarget({
+        ...body,
+        workspaceId: target.workspaceId,
+        channelScope: target.channelScope
+      });
+      if (prepared.ok) {
+        preparedTargets.push(prepared.target);
+      } else {
+        failures.push(prepared.payload);
+      }
+    }
+
+    if (failures.length > 0) {
       sendJson(res, {
         ok: false,
-        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
-      }, 400);
+        error: failures.some((failure) => failure.error === 'channels_require_action')
+          ? 'channels_require_action'
+          : 'session_targets_failed',
+        targets: failures
+      }, failures.some((failure) => failure.error === 'channels_require_action') ? 409 : 400);
       return;
     }
 
-    const ownerUserId = body.ownerUserId;
-    if (!ownerUserId) {
-      sendJson(res, { ok: false, error: 'owner_required' }, 400);
+    const sessions = [];
+    try {
+      for (const target of preparedTargets) {
+        sessions.push(await createPreparedSession(target, body));
+      }
+    } catch (error) {
+      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'session_create_failed' }, 400);
       return;
     }
 
-    const channelScope = body.channelScope ?? [];
-    const workspaceMemory = store.getOrCreateWorkspaceMemory(workspace.id);
-    const confirmed = new Set(workspaceMemory.confirmedChannels ?? []);
-    const uncheckedChannels = channelScope.filter((id) => !confirmed.has(id));
-    const membershipResults: ChannelEnsureMemberResult[] = [];
-
-    for (const channelId of uncheckedChannels) {
-      membershipResults.push(await getChannelRegistry().ensureMember(workspace, workspace.provider, channelId));
-    }
-
-    const autoJoined = membershipResults
-      .filter((result) => result.status === 'joined')
-      .map((result) => ({ id: result.channelId, name: result.name }));
-    const requiresInvitation = membershipResults
-      .filter((result) => result.status === 'requires_invitation')
-      .map((result) => ({
-        id: result.channelId,
-        name: result.name,
-        action: inviteAction({ id: result.channelId, name: result.name })
-      }));
-    const reinstallRequired = membershipResults.some((result) => result.status === 'reinstall_required');
-    const errors = membershipResults
-      .filter((result) => result.status === 'error')
-      .map((result) => ({
-        id: result.channelId,
-        name: result.name,
-        reason: result.reason ?? 'Channel membership check failed'
-      }));
-
-    if (requiresInvitation.length > 0 || reinstallRequired || errors.length > 0) {
-      sendJson(
-        res,
-        {
-          ok: false,
-          error: 'channels_require_action',
-          autoJoined,
-          requiresInvitation,
-          reinstallRequired,
-          errors
-        },
-        409
-      );
-      return;
-    }
-
-    const newlyConfirmed = membershipResults
-      .filter((result) => result.status === 'already_member' || result.status === 'joined')
-      .map((result) => result.channelId);
-    if (newlyConfirmed.length > 0) {
-      workspaceMemory.confirmedChannels = [...new Set([...confirmed, ...newlyConfirmed])];
-      store.upsertWorkspaceMemory(workspaceMemory);
-    }
-
-    store.upsertUser({
-      workspaceId: workspace.id,
-      externalUserId: ownerUserId,
-      displayName: ownerUserId
-    });
-    const mode = body.mode ?? 'manual_review';
-    const { selectedProfile } = await resolveProfileSelection(
-      mode
-    );
-    const effective = resolveEffectivePolicy({
-      mode,
-      baseProfile: selectedProfile
-    });
-    const policyProfile = buildUserPolicyProfile({
-      mode,
-      profileName: selectedProfile.source === 'builtin' ? undefined : selectedProfile.name,
-      compiled: effective.compiled,
-      source: selectedProfile.source === 'builtin' ? 'default' : 'profile'
-    });
-
-    let session = store.createSession({
-      workspaceId: workspace.id,
-      ownerUserId,
-      title: body.title?.trim() || 'Overnight autopilot',
-      mode,
-      channelScope,
-      policyProfileName: policyProfile.profileName,
-      policyOverrideRaw: policyProfile.overrideRaw,
-      policy: policyProfile,
-      endsAt: new Date(Date.now() + Math.max(1, body.durationHours ?? 10) * 60 * 60 * 1000).toISOString()
-    });
-    emitControlPlaneEvent({ type: 'session.updated', session });
-
-    sendJson(res, { ok: true, session, autoJoined }, 201);
+    sendJson(res, {
+      ok: true,
+      sessions,
+      autoJoined: preparedTargets.map((target) => ({
+        workspace: workspaceDescriptor(target.workspace),
+        channels: target.autoJoined
+      }))
+    }, 201);
   }),
   route('GET', '/api/gateway/sessions/:id', ({ res, params }) => {
     const session = getStore().getSessionById(params.id);
@@ -574,6 +709,7 @@ export const gatewayRoutes: Route[] = [
     if (session) {
       emitControlPlaneEvent({ type: 'session.updated', session });
       emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
+      gateway.reconcileSessionExpirations();
     }
 
     sendJson(res, {

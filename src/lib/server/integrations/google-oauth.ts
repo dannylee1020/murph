@@ -1,6 +1,6 @@
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
-import { deleteSecret, readSecretRecord, writeSecret } from '#lib/server/credentials/local-store';
+import { deleteSecret, listSecrets, readSecretRecord, writeSecret, type CredentialRecord } from '#lib/server/credentials/local-store';
 import { readEnvCredential } from './registry.js';
 
 const SCOPES = [
@@ -22,6 +22,26 @@ interface TokenResponse {
   expires_in: number;
   scope: string;
   token_type: string;
+}
+
+function googleCredentialRecords(): CredentialRecord[] {
+  return listSecrets()
+    .filter((record) => record.provider === 'google' && record.key === 'oauth_bundle')
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function secretRef(record: CredentialRecord) {
+  return {
+    workspaceId: record.workspaceId,
+    externalWorkspaceId: record.externalWorkspaceId,
+    userId: record.userId
+  };
+}
+
+export function findGoogleOAuthRecord(workspaceId?: string): CredentialRecord | undefined {
+  return readSecretRecord('google', 'oauth_bundle') ??
+    (workspaceId ? readSecretRecord('google', 'oauth_bundle', { workspaceId }) : undefined) ??
+    googleCredentialRecords()[0];
 }
 
 export function isGoogleOAuthConfigured(): boolean {
@@ -77,7 +97,7 @@ export async function exchangeGoogleCode(
 
   const store = getStore();
   let existingBundle: Partial<OAuthBundle> = {};
-  const existingLocal = readSecretRecord('google', 'oauth_bundle', { workspaceId });
+  const existingLocal = findGoogleOAuthRecord(workspaceId);
   if (existingLocal) {
     try {
       existingBundle = JSON.parse(existingLocal.value);
@@ -108,16 +128,15 @@ export async function exchangeGoogleCode(
     account: email,
     validatedAt: new Date().toISOString()
   };
-  writeSecret('google', 'oauth_bundle', JSON.stringify(bundle), {
-    workspaceId,
-    metadata
-  });
-  store.saveIntegrationConnection({
-    workspaceId,
-    provider: 'google',
-    credentialKind: 'oauth_bundle',
-    metadata
-  });
+  writeSecret('google', 'oauth_bundle', JSON.stringify(bundle), { metadata });
+  for (const workspace of store.listWorkspaces()) {
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'google',
+      credentialKind: 'oauth_bundle',
+      metadata
+    });
+  }
 
   return { email };
 }
@@ -155,7 +174,7 @@ async function refreshAccessToken(bundle: OAuthBundle): Promise<OAuthBundle> {
 export async function getValidGoogleAccessToken(workspaceId: string): Promise<string> {
   const store = getStore();
   const stored = store.getIntegrationConnection(workspaceId, 'google');
-  const local = readSecretRecord('google', 'oauth_bundle', { workspaceId });
+  const local = findGoogleOAuthRecord(workspaceId);
 
   if (local) {
     let bundle: OAuthBundle;
@@ -168,7 +187,7 @@ export async function getValidGoogleAccessToken(workspaceId: string): Promise<st
     if (bundle.refresh_token && bundle.expires_at < Date.now() + 60_000) {
       const refreshed = await refreshAccessToken(bundle);
       writeSecret('google', 'oauth_bundle', JSON.stringify(refreshed), {
-        workspaceId,
+        ...secretRef(local),
         metadata: local.metadata
       });
       store.saveIntegrationConnection({
@@ -192,7 +211,8 @@ export async function getValidGoogleAccessToken(workspaceId: string): Promise<st
 }
 
 export async function revokeGoogleToken(workspaceId: string): Promise<void> {
-  const local = readSecretRecord('google', 'oauth_bundle', { workspaceId });
+  const records = googleCredentialRecords();
+  const local = findGoogleOAuthRecord(workspaceId);
 
   if (local) {
     try {
@@ -203,6 +223,9 @@ export async function revokeGoogleToken(workspaceId: string): Promise<void> {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
     } catch {}
-    deleteSecret('google', 'oauth_bundle', { workspaceId });
+  }
+
+  for (const record of records) {
+    deleteSecret('google', 'oauth_bundle', secretRef(record));
   }
 }

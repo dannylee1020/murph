@@ -62,9 +62,10 @@ murph policy profiles
 murph policy get
 murph policy preview --profile engineering
 murph policy set --profile engineering
+murph policy set --profile yolo
 ```
 
-Use policy commands to inspect or switch the local autonomy profile.
+Use policy commands to inspect or switch the local autonomy profile. For custom profiles, prefer `murph agent`; direct file editing lives in `policies/*.md`.
 
 ## Maintenance commands
 

@@ -121,13 +121,18 @@ export function getSessionById(db: Db, id: string): AutopilotSession | undefined
 }
 
 export function listActiveSessions(db: Db, workspaceId?: string): AutopilotSession[] {
+  const nowIso = new Date().toISOString();
   const rows = db
     .prepare(
       workspaceId
-        ? `SELECT * FROM autopilot_sessions WHERE workspace_id = ? AND status = 'active' ORDER BY started_at DESC`
-        : `SELECT * FROM autopilot_sessions WHERE status = 'active' ORDER BY started_at DESC`
+        ? `SELECT * FROM autopilot_sessions
+           WHERE workspace_id = ? AND status = 'active' AND ends_at > ?
+           ORDER BY started_at DESC`
+        : `SELECT * FROM autopilot_sessions
+           WHERE status = 'active' AND ends_at > ?
+           ORDER BY started_at DESC`
     )
-    .all(...(workspaceId ? [workspaceId] : [])) as SessionRow[];
+    .all(...(workspaceId ? [workspaceId, nowIso] : [nowIso])) as SessionRow[];
   return rows.map(mapSession);
 }
 
@@ -156,12 +161,20 @@ export function stopSession(db: Db, id: string, status: SessionStatus = 'stopped
   );
 }
 
-export function expireDueSessions(db: Db, nowIso: string): void {
+export function expireDueSessions(db: Db, nowIso: string): AutopilotSession[] {
+  const due = db
+    .prepare(`SELECT * FROM autopilot_sessions WHERE status = 'active' AND ends_at <= ? ORDER BY ends_at ASC`)
+    .all(nowIso) as SessionRow[];
   db.prepare(
     `UPDATE autopilot_sessions
      SET status = 'expired', stopped_at = COALESCE(stopped_at, ?)
      WHERE status = 'active' AND ends_at <= ?`
   ).run(nowIso, nowIso);
+  return due.map((row) => ({
+    ...mapSession(row),
+    status: 'expired' as const,
+    stoppedAt: row.stopped_at ?? nowIso
+  }));
 }
 
 export function findMatchingSession(

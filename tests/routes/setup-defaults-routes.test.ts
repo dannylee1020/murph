@@ -40,6 +40,10 @@ async function setup() {
   process.env.SLACK_APP_TOKEN = 'xapp-test';
   process.env.SLACK_CLIENT_ID = 'client-id';
   process.env.SLACK_CLIENT_SECRET = 'client-secret';
+  delete process.env.DISCORD_BOT_TOKEN;
+  delete process.env.DISCORD_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
 
   vi.doMock('#lib/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
@@ -170,5 +174,49 @@ describe('setup defaults routes', () => {
       externalWorkspaceId: 'T1',
       name: 'Test Workspace'
     }));
+  });
+
+  it('returns all channel workspaces and Discord setup metadata in setup status', async () => {
+    const { request, store } = await setup();
+    store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Server',
+      botUserId: 'bot-user-1'
+    });
+    await request('POST', '/api/setup/config', {
+      DISCORD_CLIENT_ID: 'discord-client-id',
+      DISCORD_BOT_TOKEN: 'discord-token'
+    });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.discord).toEqual(expect.objectContaining({
+      installed: true,
+      botTokenConfigured: true,
+      clientIdConfigured: true,
+      oauthConfigured: true
+    }));
+    expect(response.body.channelWorkspaces).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: 'slack', name: 'Test Workspace' }),
+      expect.objectContaining({ provider: 'discord', name: 'Test Server' })
+    ]));
+  });
+
+  it('stores Google OAuth client settings through setup config', async () => {
+    const { request } = await setup();
+
+    const response = await request('POST', '/api/setup/config', {
+      GOOGLE_CLIENT_ID: 'google-client-id',
+      GOOGLE_CLIENT_SECRET: 'google-client-secret'
+    });
+    const { getRuntimeEnv } = await import('#lib/server/util/env');
+
+    expect(response.status).toBe(200);
+    expect(response.body.updated).toEqual(expect.arrayContaining(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']));
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('clientId: google-client-id');
+    expect(getRuntimeEnv().googleClientId).toBe('google-client-id');
+    expect(getRuntimeEnv().googleClientSecret).toBe('google-client-secret');
   });
 });

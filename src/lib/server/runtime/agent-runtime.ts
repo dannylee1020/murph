@@ -76,7 +76,7 @@ function inferCaseFromText(text: string): ContinuityCase {
 }
 
 function toolResultsToArtifacts(toolResults: AgentToolResult[]): ContextArtifact[] {
-  return toolResults.map((result) => ({
+  return toolResults.filter((result) => result.ok).map((result) => ({
     id: `tool:${result.id}`,
     source: result.name,
     type: 'other',
@@ -160,7 +160,7 @@ export class AgentRuntime {
 
   async run(task: ContinuityTask, session: AutopilotSession, workspace: Workspace): Promise<AgentRunResult> {
     const context = await this.buildContext(task, session, workspace);
-    const { proposedAction, toolsUsed, toolResults, draft, runtimeEvents, postLoopEvidence } = await this.proposeAction(context, workspace);
+    const { proposedAction, toolsUsed, toolResults, draft, runtimeEvents, postLoopEvidence } = await this.proposeAction(context, session, workspace);
     const enrichedContext: ContextAssembly = {
       ...context,
       artifacts: mergeArtifacts(context.artifacts, [
@@ -298,6 +298,7 @@ export class AgentRuntime {
 
   private async proposeAction(
     context: ContextAssembly,
+    session: AutopilotSession,
     workspace: Workspace
   ): Promise<{
     draft: ProviderDraftResult;
@@ -311,7 +312,9 @@ export class AgentRuntime {
     const provider = getModelProvider(providerSettings);
     const toolCallingPlan = buildRuntimeToolCallingPlan({
       context,
-      allTools: this.tools.list()
+      allTools: this.tools.list(),
+      sessionMode: session.mode,
+      policy: session.policy?.compiled
     });
     const postLoopEvidence: PostLoopEvidence = {
       artifacts: [],
@@ -336,7 +339,7 @@ export class AgentRuntime {
     };
 
     try {
-      const result = await runGroundingLoop({
+      let result = await runGroundingLoop({
         context: {
           workspaceId: contextWithDeterministicRetrieval.workspaceId,
           task: contextWithDeterministicRetrieval.task,
@@ -370,9 +373,60 @@ export class AgentRuntime {
           postLoopEvidence.linkedArtifacts.push(url);
         }
       });
-      const retrievalAttempted = deterministicRetrieval.toolResults.some((toolResult) =>
+      const deterministicRetrievalAttempted = deterministicRetrieval.toolResults.some((toolResult) =>
         toolCallingPlan.retrievalToolNames.includes(toolResult.name)
-      ) || result.retrievalAttempted;
+      );
+      let retrievalAttempted = deterministicRetrievalAttempted || result.retrievalAttempted;
+      if (
+        toolCallingPlan.groundingDirective.required &&
+        toolCallingPlan.retrievalToolNames.length > 0 &&
+        !retrievalAttempted
+      ) {
+        const retry = await runGroundingLoop({
+          context: {
+            workspaceId: contextWithDeterministicRetrieval.workspaceId,
+            task: contextWithDeterministicRetrieval.task,
+            targetUserId: contextWithDeterministicRetrieval.targetUserId,
+            thread: contextWithDeterministicRetrieval.thread,
+            memory: contextWithDeterministicRetrieval.memory,
+            skills: contextWithDeterministicRetrieval.skills,
+            availableTools: toolCallingPlan.availableTools,
+            linkedArtifacts: contextWithDeterministicRetrieval.linkedArtifacts,
+            artifacts: contextWithDeterministicRetrieval.artifacts
+          },
+          workspace,
+          provider: provider.name,
+          model: providerSettings?.model,
+          maxToolCallsPerRun: MAX_TOOL_CALLS_PER_RUN,
+          groundingDirective: {
+            required: true,
+            reason: `${toolCallingPlan.groundingDirective.reason} Retry once because no required retrieval tool was attempted.`
+          },
+          retrievalToolNames: toolCallingPlan.retrievalToolNames,
+          defaultToolInput: (name, input) => this.defaultToolInput(name, input, context),
+          enrichToolOutput: async (name, output, toolsUsed, runtimeEvents) =>
+            await this.enrichSearchResultForGrounding(
+              name,
+              output,
+              context,
+              workspace,
+              toolsUsed,
+              runtimeEvents,
+              postLoopEvidence
+            ),
+          linkThreadArtifact: (url) => {
+            this.memory.linkThreadArtifact(workspace, context.thread.ref.channelId, context.thread.ref.threadTs, url);
+            postLoopEvidence.linkedArtifacts.push(url);
+          }
+        });
+        result = {
+          ...retry,
+          toolsUsed: mergeLinkedArtifacts(result.toolsUsed, retry.toolsUsed),
+          toolResults: [...result.toolResults, ...retry.toolResults],
+          runtimeEvents: [...result.runtimeEvents, ...retry.runtimeEvents]
+        };
+        retrievalAttempted = deterministicRetrievalAttempted || result.retrievalAttempted;
+      }
       const draft = toolCallingPlan.groundingDirective.required && toolCallingPlan.retrievalToolNames.length > 0 && !retrievalAttempted
         ? {
             continuityCase: result.draft.continuityCase,

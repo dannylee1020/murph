@@ -131,6 +131,20 @@ export const systemRoutes: Route[] = [
         externalWorkspaceId: workspace.externalWorkspaceId
       })))
     ));
+    const connectedWorkspaceIds = new Set([slackWorkspace?.id, discordWorkspace?.id].filter(Boolean));
+    const channelWorkspaces = workspaces
+      .filter((workspace) => (
+        connectedWorkspaceIds.has(workspace.id) ||
+        (workspace.provider !== 'slack' && workspace.provider !== 'discord')
+      ))
+      .map((workspace) => ({
+        id: workspace.id,
+        provider: workspace.provider,
+        externalWorkspaceId: workspace.externalWorkspaceId,
+        name: workspace.name,
+        botUserId: workspace.botUserId,
+        installedAt: workspace.installedAt
+      }));
     const config = readMurphConfig();
     const agentInheritsRuntime = process.env.MURPH_AGENT_PROVIDER === undefined &&
       process.env.MURPH_AGENT_MODEL === undefined &&
@@ -156,8 +170,9 @@ export const systemRoutes: Route[] = [
       },
       discord: {
         installed: Boolean(discordWorkspace),
-        botTokenConfigured: Boolean(env.discordBotToken || readSecret('discord', 'bot_token')),
+        botTokenConfigured: Boolean(env.discordBotToken || discordWorkspace),
         clientIdConfigured: Boolean(env.discordClientId),
+        oauthConfigured: Boolean(env.discordClientId),
         workspace: discordWorkspace
           ? {
               id: discordWorkspace.id,
@@ -181,6 +196,7 @@ export const systemRoutes: Route[] = [
         configured: murphConfigExists(),
         envOverrides: envOverrides()
       },
+      channelWorkspaces,
       notion: getNotionStatus(),
       userConfigured: summary.userCount > 0 && Boolean(setupDefaults?.ownerUserId),
       channelsConfigured: setupDefaults?.channelScopeMode === 'all_accessible' ||

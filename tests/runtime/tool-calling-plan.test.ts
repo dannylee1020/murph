@@ -3,7 +3,7 @@ import {
   buildRuntimeToolCallingPlan,
   listAvailableTools
 } from '../../src/lib/server/runtime/tool-calling-plan';
-import type { ContextAssembly, SkillManifest, ToolInventoryItem, WorkspaceMemory } from '../../src/lib/types';
+import type { CompiledPolicy, ContextAssembly, SkillManifest, ToolInventoryItem, WorkspaceMemory } from '../../src/lib/types';
 
 const workspaceMemory: WorkspaceMemory = {
   workspaceId: 'workspace',
@@ -33,6 +33,19 @@ function tool(input: Partial<ToolInventoryItem> & Pick<ToolInventoryItem, 'name'
     optional: false,
     source: 'test',
     ...input
+  };
+}
+
+function policy(overrides: Partial<CompiledPolicy> = {}): CompiledPolicy {
+  return {
+    blockedTopics: [],
+    alwaysQueueTopics: [],
+    blockedActions: [],
+    requireGroundingForFacts: true,
+    preferAskWhenUncertain: false,
+    allowAutoSend: true,
+    notesForAgent: [],
+    ...overrides
   };
 }
 
@@ -177,6 +190,30 @@ describe('buildRuntimeToolCallingPlan', () => {
     });
 
     expect(plan.groundingDirective.required).toBe(true);
+  });
+
+  it('marks grounding required when selected policy requires factual grounding', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context(),
+      allTools,
+      policy: policy()
+    });
+
+    expect(plan.groundingDirective.required).toBe(true);
+    expect(plan.groundingDirective.reason).toMatch(/Runtime grounding configuration/);
+    expect(plan.retrievalToolNames).toEqual(['notion.search']);
+  });
+
+  it('does not require policy grounding when source artifacts already exist', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Checkout', text: 'ready' }]
+      }),
+      allTools,
+      policy: policy()
+    });
+
+    expect(plan.groundingDirective.required).toBe(false);
   });
 
 });

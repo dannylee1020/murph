@@ -103,7 +103,12 @@ function runResult(
     },
     selectedSkillNames: ['channel-continuity'],
     toolsUsed: [],
-    toolResults: overrides.toolResults ?? [],
+    toolResults: overrides.toolResults ?? [{
+      id: 'call-1',
+      name: 'channel.fetch_thread',
+      ok: true,
+      output: { messages: 1 }
+    }],
     runtimeEvents: []
   };
 }
@@ -116,6 +121,7 @@ async function setup(
     toolResults?: AgentToolResult[];
     recentMessages?: ContextAssembly['thread']['recentMessages'];
     sessionMode?: 'manual_review' | 'auto_send_low_risk';
+    policyExecution?: { execution: 'send' | 'queue' | 'abstain'; reason?: string; confidence?: number };
   } = {}
 ) {
   vi.resetModules();
@@ -140,6 +146,17 @@ async function setup(
       postReply: vi.fn(),
       postMessage: vi.fn()
     })
+  }));
+  const classifyPolicyExecution = vi.fn().mockResolvedValue({
+    execution: overrides.policyExecution?.execution ?? 'send',
+    matchedTopics: [],
+    matchedRuleIds: [],
+    reason: overrides.policyExecution?.reason ?? 'Policy execution allows sending.',
+    confidence: overrides.policyExecution?.confidence ?? 0.95
+  });
+
+  vi.doMock('#lib/server/runtime/policy-classifier', () => ({
+    classifyPolicyExecution
   }));
 
   const { getStore } = await import('#lib/server/persistence/store');
@@ -184,7 +201,7 @@ async function setup(
   });
   const runSpy = vi.spyOn(AgentRuntime.prototype, 'run').mockImplementation(async (input) => runResult(input, workspace.id, overrides));
 
-  return { store, gateway: getGateway(), workspace, runSpy };
+  return { store, gateway: getGateway(), workspace, runSpy, classifyPolicyExecution };
 }
 
 describe('Gateway session-first policy', () => {
@@ -200,6 +217,7 @@ describe('Gateway session-first policy', () => {
     const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222');
     expect(memory.summary).toBe('Owner was asked to confirm status.');
     expect(memory.evidenceStatus?.status).toBe('complete');
+    expect(memory.evidenceStatus?.attemptedTools).toEqual(['channel.fetch_thread']);
   });
 
   it('does not persist thread summary when all tool calls failed', async () => {
@@ -284,6 +302,43 @@ describe('Gateway session-first policy', () => {
     expect(runSpy).not.toHaveBeenCalled();
     expect(audit.disposition).toBe('abstained');
     expect(audit.policyReason).toBe('Event actor is the session owner');
+  });
+
+  it('runs the main agent before policy execution abstains', async () => {
+    const { gateway, runSpy } = await setup({
+      policyExecution: {
+        execution: 'abstain',
+        reason: 'Request matches a blocked policy topic.',
+        confidence: 0.91
+      }
+    });
+
+    const audit = await gateway.handleTask(task());
+
+    expect(runSpy).toHaveBeenCalledOnce();
+    expect(audit.disposition).toBe('abstained');
+    expect(audit.policyReason).toBe('Request matches a blocked policy topic.');
+  });
+
+  it('queues the main agent draft when policy execution requires review', async () => {
+    const { gateway, store, workspace, runSpy } = await setup({
+      policyExecution: {
+        execution: 'queue',
+        reason: 'Request is policy-sensitive and needs operator review.',
+        confidence: 0.7
+      }
+    });
+
+    const audit = await gateway.handleTask(task());
+
+    expect(runSpy).toHaveBeenCalledOnce();
+    expect(audit.disposition).toBe('queued');
+    const queue = store.listReviewQueue(workspace.id);
+    expect(queue[0]).toEqual(expect.objectContaining({
+      action: 'reply',
+      message: 'The owner is away; this is queued for review.',
+      reason: 'Session is active and context is sufficient.'
+    }));
   });
 
 });

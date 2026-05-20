@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluatePolicy } from '../src/lib/server/runtime/policy';
-import type { AutopilotSession, ContextAssembly, ProposedAction } from '../src/lib/types';
+import type { AutopilotSession, CompiledPolicy, ContextAssembly, ProposedAction } from '../src/lib/types';
 
 function context(overrides: Partial<ContextAssembly> = {}): ContextAssembly {
   return {
@@ -95,6 +95,34 @@ function sessionWithPolicy(policy: NonNullable<AutopilotSession['policy']>['comp
   };
 }
 
+function sessionWithModeAndPolicy(
+  mode: AutopilotSession['mode'],
+  policy: CompiledPolicy
+): AutopilotSession {
+  return {
+    ...session(mode),
+    policy: {
+      raw: '',
+      compiled: policy,
+      compiledAt: new Date().toISOString(),
+      source: 'profile',
+      version: 2
+    }
+  };
+}
+
+function yoloPolicy(): CompiledPolicy {
+  return {
+    blockedTopics: [],
+    alwaysQueueTopics: [],
+    blockedActions: [],
+    requireGroundingForFacts: true,
+    preferAskWhenUncertain: false,
+    allowAutoSend: true,
+    notesForAgent: ['use every materially relevant read-only retrieval and context tool before answering factual questions']
+  };
+}
+
 function action(overrides: Partial<ProposedAction> = {}): ProposedAction {
   return {
     type: 'reply',
@@ -111,10 +139,9 @@ describe('evaluatePolicy', () => {
     expect(decision.disposition).toBe('abstained');
   });
 
-  it('abstains for empty or unknown context and low confidence', () => {
+  it('abstains for empty or unknown context', () => {
     expect(evaluatePolicy(action(), context({ thread: { ...context().thread, latestMessage: '' } }), session('manual_review')).reason).toMatch(/Empty/);
     expect(evaluatePolicy(action(), context({ continuityCase: 'unknown' }), session('manual_review')).reason).toMatch(/out of scope/);
-    expect(evaluatePolicy(action({ confidence: 0.4 }), context(), session('manual_review')).reason).toMatch(/confidence/);
   });
 
   it('requires message bodies and redirect participants', () => {
@@ -124,8 +151,10 @@ describe('evaluatePolicy', () => {
 
   it('maps session modes and risk to dispositions', () => {
     expect(evaluatePolicy(action(), context(), session('dry_run')).disposition).toBe('abstained');
+    expect(evaluatePolicy(action(), context(), session('dry_run')).execution).toBe('abstain');
     expect(evaluatePolicy(action(), context(), session('manual_review')).disposition).toBe('queued');
-    expect(evaluatePolicy(action({ type: 'remind' }), context(), session('manual_review')).disposition).toBe('scheduled');
+    expect(evaluatePolicy(action(), context(), session('manual_review')).execution).toBe('queue');
+    expect(evaluatePolicy(action({ type: 'remind' }), context(), session('manual_review')).disposition).toBe('queued');
     expect(
       evaluatePolicy(
         action(),
@@ -134,6 +163,7 @@ describe('evaluatePolicy', () => {
     ).disposition
     ).toBe('queued');
     expect(evaluatePolicy(action(), context(), session('auto_send_low_risk')).disposition).toBe('auto_sent');
+    expect(evaluatePolicy(action(), context(), session('auto_send_low_risk')).execution).toBe('send');
   });
 
   it('applies compiled policy rules before auto-send', () => {
@@ -151,26 +181,7 @@ describe('evaluatePolicy', () => {
     });
 
     expect(evaluatePolicy(action(), compiledPolicyContext, policySession).disposition).toBe('queued');
-    expect(
-      evaluatePolicy(
-        action({ confidence: 0.7 }),
-        context({
-          thread: { ...context().thread, latestMessage: 'Simple continuity question' },
-          artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Doc', text: 'Ready' }]
-        }),
-        policySession
-      ).downgradedTo
-    ).toBe('ask');
-    expect(
-      evaluatePolicy(
-        action(),
-        context({
-          thread: { ...context().thread, latestMessage: 'Simple continuity question' },
-          artifacts: []
-        }),
-        policySession
-      ).reason
-    ).toMatch(/grounded facts/);
+    expect(evaluatePolicy(action({ confidence: 0.7 }), context(), policySession).reason).toMatch(/disables auto-send/);
   });
 
   it('applies channel-scoped rules before auto-send', () => {
@@ -198,6 +209,118 @@ describe('evaluatePolicy', () => {
 
     expect(decision.disposition).toBe('queued');
     expect(decision.reason).toMatch(/disables auto-send/);
+  });
+
+  it('does not evaluate yolo grounding in policy', () => {
+    const decision = evaluatePolicy(
+      action({ confidence: 0.9 }),
+      context({ artifacts: [] }),
+      sessionWithModeAndPolicy('auto_send_low_risk', yoloPolicy())
+    );
+
+    expect(decision.disposition).toBe('auto_sent');
+    expect(decision.execution).toBe('send');
+  });
+
+  it('uses the post-agent policy classifier for the final send queue abstain decision', () => {
+    const autoSession = session('auto_send_low_risk');
+
+    expect(
+      evaluatePolicy(action(), context(), autoSession, {
+        execution: 'queue',
+        matchedTopics: [],
+        matchedRuleIds: [],
+        reason: 'Policy wants operator review.',
+        confidence: 0.93
+      })
+    ).toEqual(expect.objectContaining({
+      disposition: 'queued',
+      execution: 'queue',
+      reason: 'Policy wants operator review.'
+    }));
+
+    expect(
+      evaluatePolicy(action(), context(), autoSession, {
+        execution: 'abstain',
+        matchedTopics: ['payroll'],
+        matchedRuleIds: [],
+        reason: 'Policy blocks this request.',
+        confidence: 0.93
+      })
+    ).toEqual(expect.objectContaining({
+      disposition: 'abstained',
+      execution: 'abstain',
+      reason: 'Policy blocks this request.'
+    }));
+
+    expect(
+      evaluatePolicy(action(), context(), autoSession, {
+        execution: 'send',
+        matchedTopics: [],
+        matchedRuleIds: [],
+        reason: 'Policy allows sending.',
+        confidence: 0.93
+      }).execution
+    ).toBe('send');
+  });
+
+  it('keeps deterministic gates authoritative over classifier send decisions', () => {
+    const classifierSend = {
+      execution: 'send' as const,
+      matchedTopics: [],
+      matchedRuleIds: [],
+      reason: 'Policy allows sending.',
+      confidence: 0.93
+    };
+
+    expect(evaluatePolicy(action(), context(), session('manual_review'), classifierSend).execution).toBe('queue');
+    expect(evaluatePolicy(action(), context(), session('dry_run'), classifierSend).execution).toBe('abstain');
+    expect(
+      evaluatePolicy(
+        action(),
+        context({ thread: { ...context().thread, latestMessage: 'Can you review payroll details?' } }),
+        sessionWithPolicy({
+          blockedTopics: ['payroll'],
+          alwaysQueueTopics: [],
+          blockedActions: [],
+          requireGroundingForFacts: true,
+          preferAskWhenUncertain: true,
+          allowAutoSend: true,
+          notesForAgent: []
+        }),
+        classifierSend
+      ).execution
+    ).toBe('abstain');
+  });
+
+  it('allows grounded yolo auto-send only when session mode allows it', () => {
+    const groundedContext = context({
+      artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Status', text: 'Ready' }]
+    });
+
+    expect(
+      evaluatePolicy(
+        action({ confidence: 0.7 }),
+        groundedContext,
+        sessionWithModeAndPolicy('auto_send_low_risk', yoloPolicy())
+      ).disposition
+    ).toBe('auto_sent');
+
+    expect(
+      evaluatePolicy(
+        action({ confidence: 0.7 }),
+        groundedContext,
+        sessionWithModeAndPolicy('manual_review', yoloPolicy())
+      ).disposition
+    ).toBe('queued');
+
+    expect(
+      evaluatePolicy(
+        action({ confidence: 0.7 }),
+        groundedContext,
+        sessionWithModeAndPolicy('dry_run', yoloPolicy())
+      ).disposition
+    ).toBe('abstained');
   });
 
 });

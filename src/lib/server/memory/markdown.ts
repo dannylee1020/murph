@@ -28,6 +28,9 @@ export async function writeThreadMemory(context: ContextAssembly): Promise<strin
     '## Evidence',
     '',
     `- Grounding: ${context.memory.thread.evidenceStatus?.status ?? 'unknown'}`,
+    ...(context.memory.thread.evidenceStatus?.attemptedTools?.length
+      ? [`- Attempted: ${context.memory.thread.evidenceStatus.attemptedTools.join(', ')}`]
+      : []),
     ...(context.memory.thread.evidenceStatus?.successfulTools ?? []).map((tool) => (
       `- Succeeded: ${tool.name}${tool.summary ? ` ${JSON.stringify(tool.summary)}` : ''}`
     )),

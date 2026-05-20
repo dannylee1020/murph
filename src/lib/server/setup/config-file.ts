@@ -22,6 +22,10 @@ export interface MurphConfig {
       provider?: ProviderName;
       model?: string;
     };
+    policy?: {
+      provider?: ProviderName;
+      model?: string;
+    };
   };
   channels?: {
     slack?: {
@@ -46,6 +50,7 @@ export interface MurphConfig {
       repositories?: string[];
     };
     google?: {
+      clientId?: string;
       calendarId?: string;
     };
     obsidian?: {
@@ -75,6 +80,8 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   MURPH_DEFAULT_MODEL: (config, value) => setPath(config, ['ai', 'defaultModel'], value),
   MURPH_AGENT_PROVIDER: (config, value) => setPath(config, ['ai', 'agent', 'provider'], providerFromString(value)),
   MURPH_AGENT_MODEL: (config, value) => setPath(config, ['ai', 'agent', 'model'], value),
+  MURPH_POLICY_PROVIDER: (config, value) => setPath(config, ['ai', 'policy', 'provider'], providerFromString(value)),
+  MURPH_POLICY_MODEL: (config, value) => setPath(config, ['ai', 'policy', 'model'], value),
   SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
   SLACK_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'clientId'], value),
   SLACK_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'appId'], value),
@@ -85,6 +92,7 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   NOTION_VERSION: (config, value) => setPath(config, ['integrations', 'notion', 'version'], value),
   NOTION_MAX_RESULTS: (config, value) => setPath(config, ['integrations', 'notion', 'maxResults'], numberFromString(value)),
   GITHUB_REPOSITORIES: (config, value) => setPath(config, ['integrations', 'github', 'repositories'], csvFromString(value)),
+  GOOGLE_CLIENT_ID: (config, value) => setPath(config, ['integrations', 'google', 'clientId'], value),
   GOOGLE_CALENDAR_ID: (config, value) => setPath(config, ['integrations', 'google', 'calendarId'], value),
   OBSIDIAN_VAULT_PATH: (config, value) => setPath(config, ['integrations', 'obsidian', 'vaultPath'], value),
   MURPH_WEB_SEARCH_BACKEND: (config, value) => setPath(config, ['integrations', 'webSearch', 'backend'], value === 'brave' ? 'brave' : 'tavily'),
@@ -96,7 +104,9 @@ export const SETUP_CONFIG_KEYS = new Set(Object.keys(CONFIG_KEY_SETTERS));
 
 const CONFIG_KEY_CLEARERS: Record<string, (config: Record<string, unknown>) => void> = {
   MURPH_AGENT_PROVIDER: (config) => deletePath(config, ['ai', 'agent', 'provider']),
-  MURPH_AGENT_MODEL: (config) => deletePath(config, ['ai', 'agent', 'model'])
+  MURPH_AGENT_MODEL: (config) => deletePath(config, ['ai', 'agent', 'model']),
+  MURPH_POLICY_PROVIDER: (config) => deletePath(config, ['ai', 'policy', 'provider']),
+  MURPH_POLICY_MODEL: (config) => deletePath(config, ['ai', 'policy', 'model'])
 };
 
 function murphHome(): string {
@@ -227,6 +237,7 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
   const app = isRecord(raw.app) ? raw.app : {};
   const ai = isRecord(raw.ai) ? raw.ai : {};
   const agent = isRecord(ai.agent) ? ai.agent : {};
+  const policyAi = isRecord(ai.policy) ? ai.policy : {};
   const channels = isRecord(raw.channels) ? raw.channels : {};
   const slack = isRecord(channels.slack) ? channels.slack : {};
   const discord = isRecord(channels.discord) ? channels.discord : {};
@@ -254,6 +265,10 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
       agent: {
         provider: providerValue(agent.provider),
         model: stringValue(agent.model)
+      },
+      policy: {
+        provider: providerValue(policyAi.provider),
+        model: stringValue(policyAi.model)
       }
     },
     channels: {
@@ -279,6 +294,7 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
         repositories: stringArray(github.repositories)
       },
       google: {
+        clientId: stringValue(google.clientId),
         calendarId: stringValue(google.calendarId)
       },
       obsidian: {

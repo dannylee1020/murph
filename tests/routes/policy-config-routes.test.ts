@@ -111,7 +111,8 @@ describe('policy configuration routes', () => {
       'leadership',
       'marketing',
       'product',
-      'sales'
+      'sales',
+      'yolo'
     ]);
     expect(response.body.selectedProfileName).toBe('builtin-manual_review');
     expect(response.body.compiled.requireGroundingForFacts).toBe(true);
@@ -129,6 +130,23 @@ describe('policy configuration routes', () => {
     expect(response.body.selectedProfileName).toBe('product');
     expect(store.getAppSettings().policyProfileName).toBeUndefined();
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('profile: product');
+  });
+
+  it('accepts the shipped yolo profile selection', async () => {
+    const { request } = await setup();
+
+    const response = await request('PUT', '/api/gateway/policy/config', {
+      profileName: 'yolo'
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.policyProfileName).toBe('yolo');
+    expect(response.body.selectedProfileName).toBe('yolo');
+    expect(response.body.compiled).toEqual(expect.objectContaining({
+      allowAutoSend: true,
+      requireGroundingForFacts: true,
+      preferAskWhenUncertain: false
+    }));
   });
 
   it('rejects unknown local policy profile selection', async () => {

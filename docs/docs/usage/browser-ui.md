@@ -36,6 +36,8 @@ Use status views to confirm provider setup, channel connection state, and runtim
 
 Use sessions when you want Murph to watch selected channels during a bounded offline window.
 
+The stop time is interpreted in the selected timezone and enforced by the local runtime. Murph expires the session at that workday start time, with heartbeat reconciliation as a backup if the process sleeps or restarts.
+
 ## Triage
 
 Use triage after a session to review what Murph sent, queued, skipped, or failed.

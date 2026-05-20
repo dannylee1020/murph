@@ -23,6 +23,8 @@ murph doctor
 
 Keep auto-send off until you have reviewed how Murph drafts, grounds, queues, and skips replies in your workspace.
 
+Use `yolo` only after setup and early sessions behave the way you expect. It is intentionally permissive for action autonomy, but factual replies still need source grounding and relevant read-only tool use.
+
 ## Review triage
 
 Check triage after each early session. Triage shows the message, context, tool calls, policy decision, and final action.

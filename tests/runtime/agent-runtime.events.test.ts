@@ -28,6 +28,15 @@ const runAgentLoopMock = vi.fn();
 
 const provider: ModelProvider = {
   name: 'openai',
+  async classifyPolicyExecution() {
+    return {
+      execution: 'send',
+      matchedTopics: [],
+      matchedRuleIds: [],
+      reason: 'test execution classification',
+      confidence: 1
+    };
+  },
   async summarizeAndPropose(): Promise<ProviderDraftResult> {
     return fallbackDraft;
   }

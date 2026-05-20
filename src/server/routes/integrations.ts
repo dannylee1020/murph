@@ -6,6 +6,7 @@ import { getIntegration, listIntegrations, readEnvCredential } from '#lib/server
 import { loadIntegrationAdapters } from '#lib/server/integrations/adapter-loader';
 import { registerBuiltInIntegrationAdapters } from '#lib/server/integrations/register-builtins';
 import { maskCredential } from '#lib/server/integrations/credentials';
+import { findGoogleOAuthRecord } from '#lib/server/integrations/google-oauth';
 import {
   enableIntegrationCapabilities,
   disableIntegrationCapabilities
@@ -97,10 +98,16 @@ function statusFor(provider: string, workspaceId: string) {
   const definition = getIntegration(provider)!;
   const stored = getStore().getIntegrationConnection(workspaceId, provider);
   const envValue = readEnvCredential(provider);
+  const env = getRuntimeEnv();
   const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
-  const local = readSecretRecord(provider, key, { workspaceId }) ?? readSecretRecord(provider, key);
+  const local = provider === 'google'
+    ? findGoogleOAuthRecord(workspaceId)
+    : readSecretRecord(provider, key, { workspaceId }) ?? readSecretRecord(provider, key);
   const reconnectRequired = !envValue && !local && stored?.status === 'connected';
   const source = envValue ? 'env' : local ? 'credentials' : undefined;
+  const oauthConfigured = provider === 'google'
+    ? Boolean(env.googleClientId && env.googleClientSecret)
+    : undefined;
   const metadata = source === 'credentials'
     ? local?.metadata ?? {}
     : envValue
@@ -131,7 +138,9 @@ function statusFor(provider: string, workspaceId: string) {
     canDisconnect: source === 'credentials' || reconnectRequired,
     metadata: provider === 'github'
       ? { ...metadata, repositories: githubRepositories, needsRepoScope: source ? (githubRepositories ?? []).length === 0 : false }
-      : metadata,
+      : oauthConfigured === undefined
+        ? metadata
+        : { ...metadata, oauthConfigured },
     errorMessage: reconnectRequired
       ? 'Local credential is missing. Reconnect this integration.'
       : stored?.errorMessage

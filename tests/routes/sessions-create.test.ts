@@ -2,7 +2,7 @@ import { Readable } from 'node:stream';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type JsonResponse = {
   status: number;
@@ -61,34 +61,46 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
     name: 'Test Workspace',
     botUserId: 'UTZBOT'
   });
+  const discordWorkspace = store.saveInstall({
+    provider: 'discord',
+    externalWorkspaceId: 'G1',
+    name: 'Test Guild',
+    botUserId: 'DBOT'
+  });
   writeSecret('slack', 'bot_token', 'xoxb-test', {
     workspaceId: workspace.id,
     externalWorkspaceId: workspace.externalWorkspaceId
   });
   const { gatewayRoutes } = await import('../../src/server/routes/gateway');
   const { dispatchRoute } = await import('../../src/server/router');
+  const { getGateway } = await import('../../src/lib/server/runtime/gateway');
 
-  async function post(body: unknown) {
+  async function post(body: unknown, path = '/api/gateway/sessions') {
     const req = jsonRequest(body);
     const res = jsonResponse();
     await dispatchRoute(gatewayRoutes, {
       req,
       res,
-      url: new URL('/api/gateway/sessions', 'http://localhost')
+      url: new URL(path, 'http://localhost')
     });
     return res.result();
   }
 
-  return { post, store, workspace };
+  return { post, store, workspace, discordWorkspace, gateway: getGateway() };
 }
 
 describe('POST /api/gateway/sessions channel membership gating', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('creates a session and reports auto-joined public channels', async () => {
-    const { post, store, workspace } = await setup([
+    const { post, store, workspace, gateway } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' },
       { channelId: 'C2', name: 'launch', status: 'joined' }
     ]);
@@ -105,7 +117,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
   });
 
   it('blocks session creation when a scoped private channel requires invitation', async () => {
-    const { post, store, workspace } = await setup([
+    const { post, store, workspace, gateway } = await setup([
       { channelId: 'G1', name: 'launch-war-room', status: 'requires_invitation' }
     ]);
 
@@ -132,7 +144,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
   });
 
   it('blocks session creation when Slack app reinstall is required', async () => {
-    const { post, store, workspace } = await setup([
+    const { post, store, workspace, gateway } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'reinstall_required', reason: 'missing_scope' }
     ]);
 
@@ -167,5 +179,95 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(session.policyProfileName).toBe('leadership');
     expect(session.policy?.compiled.alwaysQueueTopics).toContain('company commitments');
     expect(session.policy?.compiled.allowAutoSend).toBe(false);
+  });
+
+  it('computes timezone-aware session stop time on the server', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-19T07:30:00.000Z'));
+    const { post, store, workspace, gateway } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
+    ]);
+
+    store.upsertUser({
+      workspaceId: workspace.id,
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      timezone: 'America/Los_Angeles',
+      workdayStartHour: 9,
+      workdayEndHour: 17
+    });
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1'],
+      mode: 'manual_review',
+      stopLocalTime: '09:00',
+      timezone: 'America/Los_Angeles'
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.session.endsAt).toBe('2026-05-19T16:00:00.000Z');
+    expect(store.getSessionById(response.body.session.id)?.status).toBe('active');
+    await vi.advanceTimersByTimeAsync(8.5 * 60 * 60 * 1000);
+    gateway.reconcileSessionExpirations();
+    expect(store.getSessionById(response.body.session.id)?.status).toBe('expired');
+    expect(store.getUser(workspace.id, 'UOWNER')?.schedule).toEqual({
+      timezone: 'America/Los_Angeles',
+      workdayStartHour: 9,
+      workdayEndHour: 17
+    });
+  });
+
+  it('creates coordinated sessions across Slack and Discord workspaces', async () => {
+    const { post, store, workspace, discordWorkspace } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' },
+      { channelId: 'D1', name: 'support', status: 'already_member' }
+    ]);
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      mode: 'manual_review',
+      targets: [
+        { workspaceId: workspace.id, channelScope: ['C1'] },
+        { workspaceId: discordWorkspace.id, channelScope: ['D1'] }
+      ]
+    }, '/api/gateway/sessions/bulk');
+
+    expect(response.status).toBe(201);
+    expect(response.body.sessions).toHaveLength(2);
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
+    expect(store.listActiveSessions(discordWorkspace.id)).toHaveLength(1);
+  });
+
+  it('returns workspace-specific failures for bulk session channel checks', async () => {
+    const { post, store, workspace, discordWorkspace } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' },
+      { channelId: 'D1', name: 'private-support', status: 'requires_invitation' }
+    ]);
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      mode: 'manual_review',
+      targets: [
+        { workspaceId: workspace.id, channelScope: ['C1'] },
+        { workspaceId: discordWorkspace.id, channelScope: ['D1'] }
+      ]
+    }, '/api/gateway/sessions/bulk');
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'channels_require_action',
+      targets: [
+        {
+          workspace: expect.objectContaining({ provider: 'discord', name: 'Test Guild' }),
+          requiresInvitation: [
+            expect.objectContaining({ id: 'D1', name: 'private-support' })
+          ]
+        }
+      ]
+    });
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
+    expect(store.listActiveSessions(discordWorkspace.id)).toHaveLength(0);
   });
 });

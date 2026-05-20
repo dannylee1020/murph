@@ -55,6 +55,7 @@ murph uninstall
 | [Quickstart](https://murph-agent.com/docs/quickstart) | Install Murph, run setup, start the local server, and check health. |
 | [Installation](https://murph-agent.com/docs/installation) | Installer behavior, local setup, and manual install paths. |
 | [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and local runtime settings. |
+| [Policy](https://murph-agent.com/docs/policy) | Create custom policy profiles with Murph Agent or local profile files. |
 | [Usage](https://murph-agent.com/docs/usage) | Use `murph`, the browser UI, and `murph agent` for setup, sessions, review, and daily operation. |
 | [Plugins](https://murph-agent.com/docs/plugins) | Create scoped plugins with skills, connectors, and read-only tools. |
 | [Channels](https://murph-agent.com/docs/channels) | Connect Slack or Discord, choose watched channels, and use the Slack manifest at `/slack-manifest.yaml`. |

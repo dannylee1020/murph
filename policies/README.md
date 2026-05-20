@@ -1,6 +1,6 @@
 # Policy Profiles
 
-Policy profiles in this directory define the reusable rules Murph applies before it sends, queues, or abstains on a continuity action.
+Policy profiles in this directory define the reusable rules Murph uses to decide whether it may send, queue, or abstain from a drafted continuity action.
 
 These files are profile inputs, not a separate policy engine. The runtime loads `policies/*.md`, parses the metadata header plus the body, and compiles the result into the same `CompiledPolicy` shape used everywhere else.
 
@@ -37,7 +37,7 @@ Queue anything that commits the operator or changes priorities.
 - `alwaysQueueTopics`: Comma-separated topics that force operator review instead of direct send.
 - `blockedActions`: Comma-separated action verbs from `reply, ask, redirect, defer, remind, abstain`.
 - `allowAutoSend`: `yes/no` or `true/false`. Only matters when the session mode would otherwise allow direct send.
-- `requireGroundingForFacts`: `yes/no` or `true/false`.
+- `requireGroundingForFacts`: `yes/no` or `true/false`. This is consumed by runtime grounding, not by the policy authorization gate.
 - `preferAskWhenUncertain`: `yes/no` or `true/false`.
 - `notes`: Comma-separated short instructions appended to agent notes.
 - `scopedRules`: Optional JSON array of channel/intent/action scoped rules.
@@ -52,7 +52,7 @@ Effective policy precedence is:
 2. The local policy profile selected in Admin or `murph policy set`
 3. Built-in fallback for the session mode
 
-Admin only selects an existing local profile. More advanced editing belongs in profile files, CLI flows, or future agent-managed configuration.
+Admin only selects an existing local profile. For custom policy, use `murph agent` first; direct profile-file editing is the fallback when you want to manage `policies/*.md` yourself.
 
 ## Scoped Rules
 
@@ -79,11 +79,21 @@ Example rules file:
 
 Rule matching is deterministic: global policy is applied first, then every matching scoped rule from less specific to more specific. List fields are additive, boolean fields use the most specific matching value, and hard blocks remain conservative.
 
+## Runtime Flow
+
+Murph keeps operational hard stops before the main agent: no active matching session, unknown target user, owner-authored events, expired sessions, and similar runtime conditions stop immediately.
+
+If those checks pass, the main agent drafts first. A small no-tool policy execution classifier then reviews the request, selected policy, grounding status, and proposed action and returns `send`, `queue`, or `abstain`. This keeps queued work useful because the queue can include the agent's proposed message.
+
+After classification, Murph applies deterministic blocked-action/topic/rule checks before execution. Those deterministic checks are authoritative over the classifier.
+
+Grounding is a separate runtime obligation. It checks whether required read/context tools were attempted; it does not verify factual correctness claim by claim.
+
 ## Important Limits
 
-- Matching is intentionally simple. Topic checks use lowercase substring matching against the latest message text.
+- Deterministic topic matching is intentionally simple. Nuanced execution routing is handled by the no-tool policy execution classifier after the main agent drafts.
 - Profiles do not assign themselves automatically. Select the local policy profile in Admin or with `murph policy set --profile NAME`.
-- Shipped profiles keep `allowAutoSend: no` by default. Opt into auto-send only from an explicitly custom profile.
+- Shipped role profiles keep `allowAutoSend: no` by default. `yolo` is the explicit maximum-autonomy shipped profile for trusted local runs, but runtime grounding still expects materially relevant read-only tools before factual answers.
 - `allowAutoSend: yes` does not bypass session mode. `manual_review` still queues by default, and `dry_run` still records without side effects.
 - High-risk skill contexts can still force review even when a profile allows low-risk auto-send.
 - Active sessions keep the compiled policy snapshot they started with. Policy edits apply to new sessions unless the session is restarted.

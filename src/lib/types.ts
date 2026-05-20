@@ -20,8 +20,9 @@ export type ActionDisposition =
     | 'auto_sent'
     | 'queued'
     | 'abstained'
-    | 'scheduled'
     | 'failed';
+
+export type ExecutionOutcome = 'send' | 'queue' | 'abstain';
 
 export type ProviderName = 'openai' | 'anthropic';
 
@@ -202,6 +203,7 @@ export interface ThreadMemory {
 
 export interface ThreadEvidenceStatus {
     status: 'complete' | 'partial' | 'none';
+    attemptedTools?: string[];
     successfulTools: Array<{
         name: string;
         summary?: Record<string, unknown>;
@@ -444,7 +446,16 @@ export interface PolicyDecision {
     allowed: boolean;
     downgradedTo?: ContinuityActionType;
     disposition: ActionDisposition;
+    execution: ExecutionOutcome;
     reason: string;
+}
+
+export interface PolicyExecutionDecision {
+    execution: ExecutionOutcome;
+    matchedTopics: string[];
+    matchedRuleIds: string[];
+    reason: string;
+    confidence: number;
 }
 
 export interface AuditRecord {
@@ -550,6 +561,14 @@ export interface ProviderDraftResult {
     proposedAction: ProposedAction;
 }
 
+export interface PolicyExecutionInput {
+    context: ContextAssembly;
+    proposedAction: ProposedAction;
+    policy: CompiledPolicy;
+    sessionMode: SessionMode;
+    evidenceStatus?: ThreadEvidenceStatus;
+}
+
 export interface AgentToolRequest {
     id: string;
     name: string;
@@ -577,6 +596,7 @@ export interface AgentToolInventoryItem {
 
 export interface ModelProvider {
     readonly name: ProviderName;
+    classifyPolicyExecution(input: PolicyExecutionInput): Promise<PolicyExecutionDecision>;
     summarizeAndPropose(
         context: Omit<
             ContextAssembly,

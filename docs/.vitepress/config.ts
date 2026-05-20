@@ -58,6 +58,7 @@ export default defineConfig({
           text: 'Operate',
           items: [
             { text: 'Configuration', link: '/docs/configuration' },
+            { text: 'Policy', link: '/docs/policy' },
             { text: 'Core Concepts', link: '/docs/core-concepts' },
             { text: 'Integrations', link: '/docs/integrations' },
             { text: 'Contributing', link: '/docs/contributing' }

@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { DEFAULT_PROVIDER_MODEL } from '#lib/config';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { JsonPromptProvider } from '#lib/server/providers/base';
-import type { ContextAssembly, ProviderDraftResult } from '#lib/types';
+import type { ContextAssembly, PolicyExecutionDecision, PolicyExecutionInput, ProviderDraftResult } from '#lib/types';
 
 const DRAFT_RESPONSE_FORMAT = {
   type: 'json_schema',
@@ -36,6 +36,26 @@ const DRAFT_RESPONSE_FORMAT = {
   }
 } as const;
 
+const POLICY_EXECUTION_RESPONSE_FORMAT = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'classify_policy_execution',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['execution', 'matchedTopics', 'matchedRuleIds', 'reason', 'confidence'],
+      properties: {
+        execution: { type: 'string', enum: ['send', 'queue', 'abstain'] },
+        matchedTopics: { type: 'array', items: { type: 'string' } },
+        matchedRuleIds: { type: 'array', items: { type: 'string' } },
+        reason: { type: 'string' },
+        confidence: { type: 'number' }
+      }
+    }
+  }
+} as const;
+
 export class OpenAIProvider extends JsonPromptProvider {
   readonly name = 'openai' as const;
   private readonly client: OpenAI;
@@ -49,6 +69,17 @@ export class OpenAIProvider extends JsonPromptProvider {
     }
 
     this.client = new OpenAI({ apiKey: env.openaiApiKey });
+  }
+
+  async classifyPolicyExecution(input: PolicyExecutionInput): Promise<PolicyExecutionDecision> {
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages: [{ role: 'user', content: this.buildPolicyExecutionPrompt(input) }],
+      response_format: POLICY_EXECUTION_RESPONSE_FORMAT as any
+    } as any);
+    const text = response.choices[0]?.message?.content ?? '';
+
+    return this.parsePolicyExecution(text);
   }
 
   async summarizeAndPropose(

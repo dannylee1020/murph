@@ -1,5 +1,6 @@
 import { DEFAULT_PROVIDER_MODEL } from '#lib/config';
 import { getRegisteredProviderFactory } from '#lib/server/capabilities/plugins';
+import { getRuntimeEnv } from '#lib/server/util/env';
 import { AnthropicProvider } from '#lib/server/providers/anthropic';
 import { OpenAIProvider } from '#lib/server/providers/openai';
 import type { ModelProvider, ProviderName, ProviderSettings } from '#lib/types';
@@ -18,4 +19,13 @@ export function getModelProvider(settings?: ProviderSettings): ModelProvider {
   }
 
   return new OpenAIProvider(model);
+}
+
+export function getPolicyModelProvider(): ModelProvider {
+  const env = getRuntimeEnv();
+  return getModelProvider({
+    workspaceId: 'policy',
+    provider: env.policyProvider,
+    model: env.policyModel
+  });
 }
