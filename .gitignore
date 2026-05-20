@@ -40,4 +40,5 @@ pnpm-debug.log*
 *.html
 scripts/*
 !scripts/install-deps.sh
+!scripts/prune-install.sh
 images/

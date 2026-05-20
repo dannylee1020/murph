@@ -469,6 +469,17 @@ build_app() {
   run_logged npm run build || fail "npm run build failed."
 }
 
+prune_install_payload() {
+  section "Pruning install payload"
+
+  if [[ ! -f scripts/prune-install.sh ]]; then
+    printf 'scripts/prune-install.sh is missing. Skipping install pruning.\n'
+    return
+  fi
+
+  run_logged bash scripts/prune-install.sh "$(pwd)" || fail "install pruning failed."
+}
+
 install_cli() {
   section "Installing CLI"
 
@@ -577,6 +588,7 @@ fi
 configure_config
 install_dependencies
 build_app
+prune_install_payload
 install_cli
 install_dependency_phase req
 print_next_steps

@@ -519,6 +519,16 @@ build_app() {
   npm run build
 }
 
+prune_install_payload() {
+  require_app
+  cd "$MURPH_APP_DIR"
+  if [[ -f scripts/prune-install.sh ]]; then
+    bash scripts/prune-install.sh "$MURPH_APP_DIR"
+  else
+    printf 'scripts/prune-install.sh is missing. Skipping install pruning.\n'
+  fi
+}
+
 update_app() {
   require_app
   local was_running=false
@@ -567,6 +577,7 @@ update_app() {
   cd "$MURPH_APP_DIR"
   npm install
   npm run build
+  prune_install_payload
 
   if [[ "$was_running" == true ]]; then
     start_background

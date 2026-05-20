@@ -22,6 +22,8 @@ curl -fsSL https://murph-agent.com/install.sh | bash
 
 By default, Murph installs into `~/.murph/app`, places the CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`.
 
+After building, the installer removes development-only payload such as CI workflows, tests, and docs-site source from `~/.murph/app`. It keeps the app source, UI source, policy profiles, skills, themes, and setup assets so `murph build`, `murph update`, setup, and local extension work still function.
+
 If you want to inspect the installer first:
 
 ```bash
@@ -58,6 +60,8 @@ murph update
 ```
 
 The updater preserves local state such as `~/.murph/config.yaml`, `~/.murph/.credentials`, and `data/`.
+
+After rebuilding, `murph update` applies the same install-payload pruning as the initial installer.
 
 ## Uninstall
 
