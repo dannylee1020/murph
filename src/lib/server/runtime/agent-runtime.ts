@@ -15,6 +15,7 @@ import {
 } from '#lib/server/runtime/retrieval-request';
 import type {
   AgentToolResult,
+  AgentToolInventoryItem,
   AutopilotSession,
   ChannelMessage,
   ContextAssembly,
@@ -91,10 +92,6 @@ function objectInput(input: unknown): Record<string, unknown> {
 
 function requiresGrounding(context: ContextAssembly): boolean {
   return context.artifacts.length === 0 && context.skills.some((skill) => skill.groundingPolicy === 'required_when_no_artifacts');
-}
-
-function hasRequiredGroundingSkill(context: Pick<ContextAssembly, 'skills'>): boolean {
-  return context.skills.some((skill) => skill.groundingPolicy === 'required_when_no_artifacts');
 }
 
 function mergeArtifacts(base: ContextArtifact[], updates: ContextArtifact[]): ContextArtifact[] {
@@ -241,7 +238,7 @@ export class AgentRuntime {
       : task.triggerMessage
         ? [task.triggerMessage]
         : [];
-    const latestMessage = resolvedMessages.at(-1)?.text ?? '';
+    const latestMessage = task.triggerMessage?.text ?? resolvedMessages.at(-1)?.text ?? '';
     const selectedSkills = selectSkills({
       skills: allSkills,
       channel: task.thread.provider ?? 'slack',
@@ -292,7 +289,7 @@ export class AgentRuntime {
       task,
       context: baseContext,
       enabledContextSources: workspaceMemory.enabledContextSources,
-      maxOptionalSources: hasRequiredGroundingSkill(baseContext) ? Number.MAX_SAFE_INTEGER : undefined
+      maxOptionalSources: 0
     });
     return {
       ...baseContext,
@@ -328,36 +325,24 @@ export class AgentRuntime {
       artifacts: [],
       linkedArtifacts: []
     };
-    const deterministicRetrieval = await this.runDeterministicRetrieval(
-      context,
-      workspace,
-      toolCallingPlan.retrievalToolNames,
-      postLoopEvidence
-    );
-    const contextWithDeterministicRetrieval: ContextAssembly = {
-      ...context,
-      artifacts: mergeArtifacts(
-        context.artifacts,
-        [
-          ...toolResultsToArtifacts(deterministicRetrieval.toolResults),
-          ...postLoopEvidence.artifacts
-        ]
-      ),
-      linkedArtifacts: mergeLinkedArtifacts(context.linkedArtifacts, postLoopEvidence.linkedArtifacts)
+    const deterministicRetrieval = {
+      toolsUsed: [] as string[],
+      toolResults: [] as AgentToolResult[],
+      runtimeEvents: [] as Array<{ type: RuntimeEventType; payload: unknown }>
     };
 
     try {
       let result = await runGroundingLoop({
         context: {
-          workspaceId: contextWithDeterministicRetrieval.workspaceId,
-          task: contextWithDeterministicRetrieval.task,
-          targetUserId: contextWithDeterministicRetrieval.targetUserId,
-          thread: contextWithDeterministicRetrieval.thread,
-          memory: contextWithDeterministicRetrieval.memory,
-          skills: contextWithDeterministicRetrieval.skills,
+          workspaceId: context.workspaceId,
+          task: context.task,
+          targetUserId: context.targetUserId,
+          thread: context.thread,
+          memory: context.memory,
+          skills: context.skills,
           availableTools: toolCallingPlan.availableTools,
-          linkedArtifacts: contextWithDeterministicRetrieval.linkedArtifacts,
-          artifacts: contextWithDeterministicRetrieval.artifacts
+          linkedArtifacts: context.linkedArtifacts,
+          artifacts: context.artifacts
         },
         workspace,
         provider: provider.name,
@@ -379,63 +364,43 @@ export class AgentRuntime {
         linkThreadArtifact: (url) => {
           this.memory.linkThreadArtifact(workspace, context.thread.ref.channelId, context.thread.ref.threadTs, url);
           postLoopEvidence.linkedArtifacts.push(url);
+        },
+        retrieveAll: async (input, toolsUsed, runtimeEvents) => {
+          const requestFocus = input && typeof input === 'object' && !Array.isArray(input) &&
+            'requestFocus' in input && typeof (input as { requestFocus?: unknown }).requestFocus === 'string'
+            ? (input as { requestFocus: string }).requestFocus
+            : undefined;
+          const retrieval = await this.runDeterministicRetrieval(
+            context,
+            workspace,
+            toolCallingPlan.fanoutTools,
+            postLoopEvidence,
+            requestFocus
+          );
+          for (const tool of retrieval.toolsUsed) {
+            toolsUsed.push(tool);
+          }
+          runtimeEvents.push(...retrieval.runtimeEvents);
+          return {
+            toolResults: retrieval.toolResults,
+            output: {
+              requestFocus: requestFocus ?? context.thread.latestMessage,
+              results: retrieval.toolResults
+            }
+          };
         }
       });
-      const deterministicRetrievalAttempted = deterministicRetrieval.toolResults.some((toolResult) =>
-        toolCallingPlan.retrievalToolNames.includes(toolResult.name)
-      );
-      let retrievalAttempted = deterministicRetrievalAttempted || result.retrievalAttempted;
+      let retrievalAttempted = result.retrievalAttempted;
       if (
         toolCallingPlan.groundingDirective.required &&
         toolCallingPlan.retrievalToolNames.length > 0 &&
-        !retrievalAttempted
+        !retrievalAttempted &&
+        result.draft.proposedAction.type === 'reply'
       ) {
-        const retry = await runGroundingLoop({
-          context: {
-            workspaceId: contextWithDeterministicRetrieval.workspaceId,
-            task: contextWithDeterministicRetrieval.task,
-            targetUserId: contextWithDeterministicRetrieval.targetUserId,
-            thread: contextWithDeterministicRetrieval.thread,
-            memory: contextWithDeterministicRetrieval.memory,
-            skills: contextWithDeterministicRetrieval.skills,
-            availableTools: toolCallingPlan.availableTools,
-            linkedArtifacts: contextWithDeterministicRetrieval.linkedArtifacts,
-            artifacts: contextWithDeterministicRetrieval.artifacts
-          },
-          workspace,
-          provider: provider.name,
-          model: providerSettings?.model,
-          maxToolCallsPerRun: MAX_TOOL_CALLS_PER_RUN,
-          groundingDirective: {
-            required: true,
-            reason: `${toolCallingPlan.groundingDirective.reason} Retry once because no required retrieval tool was attempted.`
-          },
-          retrievalToolNames: toolCallingPlan.retrievalToolNames,
-          defaultToolInput: (name, input) => this.defaultToolInput(name, input, context),
-          enrichToolOutput: async (name, output, toolsUsed, runtimeEvents) =>
-            await this.enrichSearchResultForGrounding(
-              name,
-              output,
-              context,
-              workspace,
-              toolsUsed,
-              runtimeEvents,
-              postLoopEvidence
-            ),
-          linkThreadArtifact: (url) => {
-            this.memory.linkThreadArtifact(workspace, context.thread.ref.channelId, context.thread.ref.threadTs, url);
-            postLoopEvidence.linkedArtifacts.push(url);
-          }
-        });
-        result = {
-          ...retry,
-          toolsUsed: mergeLinkedArtifacts(result.toolsUsed, retry.toolsUsed),
-          toolResults: [...result.toolResults, ...retry.toolResults],
-          runtimeEvents: [...result.runtimeEvents, ...retry.runtimeEvents]
-        };
-        retrievalAttempted = deterministicRetrievalAttempted || result.retrievalAttempted;
+        retrievalAttempted = false;
       }
       const draft = toolCallingPlan.groundingDirective.required && toolCallingPlan.retrievalToolNames.length > 0 && !retrievalAttempted
+        && result.draft.proposedAction.type === 'reply'
         ? {
             continuityCase: result.draft.continuityCase,
             summary: result.draft.summary,
@@ -550,19 +515,26 @@ export class AgentRuntime {
   private async runDeterministicRetrieval(
     context: ContextAssembly,
     workspace: Workspace,
-    retrievalToolNames: string[],
-    postLoopEvidence: PostLoopEvidence
+    retrievalTools: AgentToolInventoryItem[],
+    postLoopEvidence: PostLoopEvidence,
+    requestFocus?: string
   ): Promise<{
     toolsUsed: string[];
     toolResults: AgentToolResult[];
     runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>;
   }> {
-    const retrievalNames = new Set(retrievalToolNames);
-    const retrievalRequest = buildNormalizedRetrievalRequest(context);
-    const retrievalTasks = context.availableTools.flatMap((tool) => {
-      if (!retrievalNames.has(tool.name)) {
-        return [];
-      }
+    const retrievalContext = requestFocus
+      ? {
+          ...context,
+          thread: {
+            ...context.thread,
+            latestMessage: requestFocus,
+            recentMessages: []
+          }
+        }
+      : context;
+    const retrievalRequest = buildNormalizedRetrievalRequest(retrievalContext);
+    const retrievalTasks = retrievalTools.flatMap((tool) => {
       const input = deterministicRetrievalInputForTool(tool, retrievalRequest);
       return input ? [{ tool, input }] : [];
     });
@@ -667,6 +639,7 @@ export class AgentRuntime {
 
     if (name === 'channel.fetch_thread') {
       return {
+        ...context.thread.ref,
         ...current,
         provider: context.thread.ref.provider,
         channelId: context.thread.ref.channelId,

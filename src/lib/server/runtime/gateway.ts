@@ -17,6 +17,7 @@ import type {
   AuditRecord,
   AutopilotSession,
   ChannelMessage,
+  ChannelThreadRef,
   ContextAssembly,
   ContinuityTask,
   RecurringJobRecord,
@@ -94,6 +95,17 @@ function snapshotMessages(messages: ChannelMessage[]): ActionContextSnapshot['th
     authorId: message.authorId ?? message.userId,
     text: compactSnapshotText(message.text)
   }));
+}
+
+function actionThreadSnapshot(thread: ChannelThreadRef, messages: ChannelMessage[]): ActionContextSnapshot['thread'] {
+  return {
+    provider: thread.provider,
+    channelId: thread.channelId,
+    threadTs: thread.threadTs,
+    threadChannelId: thread.threadChannelId,
+    rootMessageId: thread.rootMessageId,
+    messages: snapshotMessages(messages)
+  };
 }
 
 export class Gateway {
@@ -222,6 +234,7 @@ export class Gateway {
         summary: 'Scheduled morning digest.',
         continuityCase: 'unknown' as const,
         thread: {
+          provider: workspace.provider,
           channelId: job.payload.channelId,
           threadTs,
           messages: []
@@ -305,10 +318,7 @@ export class Gateway {
       try {
         messages = await this.tools.execute<{ channelId: string; threadTs: string }, ChannelMessage[]>(
           'channel.fetch_thread',
-          {
-            channelId: input.task.thread.channelId,
-            threadTs: input.task.thread.threadTs
-          },
+          input.task.thread,
           {
             workspace: input.workspace,
             session: input.session,
@@ -325,11 +335,7 @@ export class Gateway {
       summary: input.context.summary ?? input.context.thread.latestMessage,
       continuityCase: input.context.continuityCase,
       evidenceStatus: input.evidenceStatus,
-      thread: {
-        channelId: input.task.thread.channelId,
-        threadTs: input.task.thread.threadTs,
-        messages: snapshotMessages(messages)
-      }
+      thread: actionThreadSnapshot(input.task.thread, messages)
     };
   }
 
@@ -535,11 +541,10 @@ export class Gateway {
 
     try {
       if (decision.execution === 'send' && proposedAction.message) {
-        await this.tools.execute<{ channelId: string; threadTs: string; text: string }, { ok: true }>(
+        await this.tools.execute<ChannelThreadRef & { text: string }, { ok: true }>(
           'channel.post_reply',
           {
-            channelId: task.thread.channelId,
-            threadTs: task.thread.threadTs,
+            ...task.thread,
             text: proposedAction.message
           },
           { workspace, session, task, workspaceMemory }
@@ -689,6 +694,55 @@ export class Gateway {
     return session;
   }
 
+  private reviewThreadRef(item: ReviewItem, workspace: Workspace): ChannelThreadRef {
+    const snapshotThread = item.contextSnapshot?.thread;
+    return {
+      provider: snapshotThread?.provider ?? workspace.provider,
+      channelId: snapshotThread?.channelId ?? item.channelId,
+      threadTs: snapshotThread?.threadTs ?? item.threadTs,
+      threadChannelId: snapshotThread?.threadChannelId,
+      rootMessageId: snapshotThread?.rootMessageId
+    };
+  }
+
+  private async postReviewReply(
+    item: ReviewItem,
+    workspace: Workspace,
+    session: AutopilotSession | undefined,
+    workspaceMemory: WorkspaceMemory,
+    text: string
+  ): Promise<void> {
+    const thread = this.reviewThreadRef(item, workspace);
+    const isLegacyDiscordThread =
+      workspace.provider === 'discord' &&
+      thread.provider === 'discord' &&
+      !thread.threadChannelId &&
+      !thread.rootMessageId;
+
+    if (!isLegacyDiscordThread) {
+      await this.tools.execute<ChannelThreadRef & { text: string }, { ok: true }>(
+        'channel.post_reply',
+        { ...thread, text },
+        { workspace, session, workspaceMemory }
+      );
+      return;
+    }
+
+    try {
+      await this.tools.execute<ChannelThreadRef & { text: string }, { ok: true }>(
+        'channel.post_reply',
+        { ...thread, threadChannelId: item.threadTs, text },
+        { workspace, session, workspaceMemory }
+      );
+    } catch {
+      await this.tools.execute<ChannelThreadRef & { text: string }, { ok: true }>(
+        'channel.post_reply',
+        { ...thread, rootMessageId: item.threadTs, text },
+        { workspace, session, workspaceMemory }
+      );
+    }
+  }
+
   async handleReviewAction(
     itemId: string,
     input: {
@@ -727,15 +781,7 @@ export class Gateway {
           { workspace, session, workspaceMemory }
         );
       } else {
-        await this.tools.execute<{ channelId: string; threadTs: string; text: string }, { ok: true }>(
-          'channel.post_reply',
-          {
-            channelId: item.channelId,
-            threadTs: item.threadTs,
-            text: nextMessage
-          },
-          { workspace, session, workspaceMemory }
-        );
+        await this.postReviewReply(item, workspace, session, workspaceMemory, nextMessage);
       }
 
       const updated = await this.tools.execute<
@@ -773,7 +819,7 @@ export class Gateway {
           source: 'review_queue',
           workspaceId: workspace.id,
           sessionId: item.sessionId,
-          thread: { channelId: item.channelId, threadTs: item.threadTs },
+          thread: this.reviewThreadRef(item, workspace),
           targetUserId: item.targetUserId ?? session?.ownerUserId ?? 'unknown',
           receivedAt: new Date().toISOString()
         },
@@ -828,7 +874,7 @@ export class Gateway {
         source: 'review_queue',
         workspaceId: workspace.id,
         sessionId: item.sessionId,
-        thread: { channelId: item.channelId, threadTs: item.threadTs },
+        thread: this.reviewThreadRef(item, workspace),
         targetUserId: item.targetUserId ?? session?.ownerUserId ?? 'unknown',
         receivedAt: new Date().toISOString()
       },

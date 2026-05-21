@@ -158,8 +158,9 @@ describe('buildRuntimeToolCallingPlan', () => {
     });
 
     expect(plan.groundingDirective.required).toBe(true);
-    expect(plan.availableTools.map((t) => t.name)).toContain('notion.search');
-    expect(plan.retrievalToolNames).toEqual(['notion.search']);
+    expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.retrieve_all']);
+    expect(plan.retrievalToolNames).toEqual(['runtime.retrieve_all']);
+    expect(plan.fanoutTools.map((t) => t.name)).toEqual(['notion.search']);
   });
 
   it('does not require grounding when source artifacts already exist in the current run', () => {
@@ -201,7 +202,8 @@ describe('buildRuntimeToolCallingPlan', () => {
 
     expect(plan.groundingDirective.required).toBe(true);
     expect(plan.groundingDirective.reason).toMatch(/Runtime grounding configuration/);
-    expect(plan.retrievalToolNames).toEqual(['notion.search']);
+    expect(plan.retrievalToolNames).toEqual(['runtime.retrieve_all']);
+    expect(plan.fanoutTools.map((t) => t.name)).toEqual(['notion.search']);
   });
 
   it('does not require policy grounding when source artifacts already exist', () => {

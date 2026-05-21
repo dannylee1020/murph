@@ -86,11 +86,11 @@ export class ChannelRegistry {
   }
 
   async fetchThread(workspace: Workspace, thread: ChannelThreadRef): Promise<ChannelMessage[]> {
-    return await this.get(thread.provider ?? 'slack').fetchThread(workspace, thread);
+    return await this.get(thread.provider ?? workspace.provider).fetchThread(workspace, thread);
   }
 
   async postReply(workspace: Workspace, thread: ChannelThreadRef, text: string): Promise<void> {
-    await this.get(thread.provider ?? 'slack').postReply(workspace, thread, text);
+    await this.get(thread.provider ?? workspace.provider).postReply(workspace, thread, text);
   }
 
   async postMessage(workspace: Workspace, provider: ChannelProvider, channelId: string, text: string): Promise<{ ts?: string }> {

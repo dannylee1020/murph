@@ -100,6 +100,18 @@ describe('GitHubService', () => {
     expect(result.diagnostics.searchQueries).toContain('checkout launch repo:acme/app');
   });
 
+  it('requires repository scope before runtime search', async () => {
+    process.env.GITHUB_REPOSITORIES = '';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { getGitHubService } = await import('#lib/server/context-sources/github');
+    const github = getGitHubService();
+
+    await expect(github.search('dark mode status', 3)).rejects.toThrow('GitHub repository scope is required');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('uses resilient GitHub search for thread grounding and returns issues and pull requests', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const parsed = new URL(url);

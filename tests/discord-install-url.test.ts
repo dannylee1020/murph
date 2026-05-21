@@ -135,4 +135,49 @@ describe('Discord install URL', () => {
       name: 'Guild'
     }, 'channel-1')).rejects.toThrow('Discord channel is not a supported text channel');
   });
+
+  it('posts Discord replies into thread channels when thread metadata is available', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      calls.push({ url: String(url), body: JSON.parse(String(options.body)) });
+      return Response.json({ id: 'message-1' });
+    });
+    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+
+    await new DiscordService().postReply({
+      id: 'ws-discord',
+      provider: 'discord',
+      externalWorkspaceId: 'guild-1',
+      name: 'Guild'
+    }, { provider: 'discord', channelId: 'parent-1', threadTs: 'thread-1', threadChannelId: 'thread-1' }, 'hello');
+
+    expect(calls[0]).toEqual({
+      url: 'https://discord.com/api/v10/channels/thread-1/messages',
+      body: { content: 'hello' }
+    });
+  });
+
+  it('posts Discord replies with a message reference when root message metadata is available', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      calls.push({ url: String(url), body: JSON.parse(String(options.body)) });
+      return Response.json({ id: 'message-1' });
+    });
+    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+
+    await new DiscordService().postReply({
+      id: 'ws-discord',
+      provider: 'discord',
+      externalWorkspaceId: 'guild-1',
+      name: 'Guild'
+    }, { provider: 'discord', channelId: 'channel-1', threadTs: 'message-1', rootMessageId: 'message-1' }, 'hello');
+
+    expect(calls[0]).toEqual({
+      url: 'https://discord.com/api/v10/channels/channel-1/messages',
+      body: {
+        content: 'hello',
+        message_reference: { message_id: 'message-1', channel_id: 'channel-1' }
+      }
+    });
+  });
 });

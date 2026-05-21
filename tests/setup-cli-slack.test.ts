@@ -47,10 +47,11 @@ const setupStatusPayloads = JSON.parse(readFileSync(process.env.MOCK_SETUP_STATU
 let setupStatusIndex = 0;
 
 globalThis.fetch = async (url, options = {}) => {
+  const body = options.body ? JSON.parse(String(options.body)) : undefined;
   appendFileSync(callsPath, JSON.stringify({
     url: String(url),
     method: options.method || 'GET',
-    body: options.body ? JSON.parse(String(options.body)) : undefined
+    body
   }) + '\\n');
   if (String(url).includes('/api/health')) {
     return Response.json({ ok: true });
@@ -76,6 +77,12 @@ globalThis.fetch = async (url, options = {}) => {
   }
   if (String(url).includes('/api/setup/defaults')) {
     return Response.json({ ok: true, defaults: {} });
+  }
+  if (String(url).includes('/apps.manifest.export')) {
+    if (process.env.MOCK_SLACK_EXPORT_ERROR) {
+      return Response.json({ ok: false, error: process.env.MOCK_SLACK_EXPORT_ERROR });
+    }
+    return Response.json({ ok: true, app_id: body?.app_id || 'A123', manifest: {} });
   }
   if (String(url).includes('/apps.manifest.create') || String(url).includes('/apps.manifest.update')) {
     return Response.json(slackPayload);
@@ -215,6 +222,132 @@ describe('setup CLI Slack app setup', () => {
     expect(result.stdout).toContain('Create or copy the app-level token');
     expect(result.stdout).not.toContain('Slack CLI could not open app settings');
     expect(existsSync(path.join(appDir, 'slack-app-settings-called'))).toBe(false);
+  });
+
+  it('updates a saved Slack app instead of creating a duplicate', async () => {
+    const appDir = createAppDir();
+    writeFileSync(path.join(appDir, 'config.yaml'), [
+      'channels:',
+      '  slack:',
+      '    appId: A123',
+      '    teamId: T123',
+      '    teamName: Murph Test Workspace',
+      ''
+    ].join('\n'));
+    const { result, calls } = runSetupSlack(appDir, '', {
+      ok: true,
+      app_id: 'A123',
+      credentials: {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        signing_secret: 'signing-secret',
+        app_token: 'xapp-returned'
+      }
+    }, {
+      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config' }
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.export'))).toBe(true);
+    const updateCall = calls.find((call) => call.url.includes('/apps.manifest.update'));
+    expect(updateCall).toBeTruthy();
+    expect(updateCall?.body).toEqual(expect.objectContaining({
+      app_id: 'A123',
+      manifest: expect.any(String)
+    }));
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(false);
+    expect(result.stdout).toContain('Found existing Slack app A123');
+  });
+
+  it('prompts for missing credentials when an existing Slack app is reusable', async () => {
+    const appDir = createAppDir();
+    writeFileSync(path.join(appDir, 'config.yaml'), [
+      'channels:',
+      '  slack:',
+      '    appId: A123',
+      '    clientId: client-id',
+      '    teamId: T123',
+      '    teamName: Murph Test Workspace',
+      ''
+    ].join('\n'));
+    const { result, calls } = runSetupSlack(appDir, 'client-secret\n', {
+      ok: true,
+      app_id: 'A123'
+    }, {
+      env: {
+        MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config',
+        SLACK_APP_TOKEN: 'xapp-existing',
+        SLACK_SIGNING_SECRET: 'signing-existing'
+      }
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.export'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.update'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(false);
+    expect(result.stdout).toContain('https://api.slack.com/apps/A123/general');
+    const config = readFileSync(path.join(appDir, 'config.yaml'), 'utf8');
+    expect(config).toContain('clientId: client-id');
+    const credentials = JSON.parse(readFileSync(path.join(appDir, '.credentials'), 'utf8'));
+    expect(credentials.credentials).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: 'slack', key: 'client_secret', value: 'client-secret' })
+    ]));
+  });
+
+  it('creates a fresh Slack app when the saved app ID is not found', async () => {
+    const appDir = createAppDir();
+    writeFileSync(path.join(appDir, 'config.yaml'), [
+      'channels:',
+      '  slack:',
+      '    appId: AOLD',
+      '    teamId: T123',
+      ''
+    ].join('\n'));
+    const { result, calls } = runSetupSlack(appDir, '', {
+      ok: true,
+      app_id: 'ANEW',
+      credentials: {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        app_token: 'xapp-returned'
+      }
+    }, {
+      env: {
+        MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config',
+        MOCK_SLACK_EXPORT_ERROR: 'invalid_app'
+      }
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.export'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(true);
+    expect(readFileSync(path.join(appDir, 'config.yaml'), 'utf8')).toContain('appId: ANEW');
+  });
+
+  it('does not create a new Slack app when existing-app lookup is uncertain', async () => {
+    const appDir = createAppDir();
+    writeFileSync(path.join(appDir, 'config.yaml'), [
+      'channels:',
+      '  slack:',
+      '    appId: A123',
+      '    teamId: T123',
+      ''
+    ].join('\n'));
+    const { result, calls } = runSetupSlack(appDir, '', {
+      ok: true,
+      app_id: 'ANEW'
+    }, {
+      args: ['slack', '--non-interactive'],
+      env: {
+        MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config',
+        MOCK_SLACK_EXPORT_ERROR: 'ratelimited'
+      }
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain('ratelimited');
+    expect(calls.some((call) => call.url.includes('/apps.manifest.export'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(false);
   });
 
   it('opens and prints a CLI-sourced Slack install URL before returning to the CLI', async () => {

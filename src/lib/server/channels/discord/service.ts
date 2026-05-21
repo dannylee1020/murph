@@ -568,7 +568,7 @@ export class DiscordService {
       body: JSON.stringify(body)
     });
     if (!response.ok) {
-      throw new Error('Failed to post Discord message');
+      throw new Error(await discordErrorMessage(response, 'Failed to post Discord message'));
     }
     return (await response.json()) as { id?: string };
   }

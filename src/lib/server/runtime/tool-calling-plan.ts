@@ -16,8 +16,29 @@ export interface GroundingDirective {
 export interface RuntimeToolCallingPlan {
   availableTools: AgentToolInventoryItem[];
   retrievalToolNames: string[];
+  fanoutTools: AgentToolInventoryItem[];
   groundingDirective: GroundingDirective;
 }
+
+export const RUNTIME_RETRIEVE_ALL_TOOL_NAME = 'runtime.retrieve_all';
+
+const RUNTIME_RETRIEVE_ALL_TOOL: AgentToolInventoryItem = {
+  name: RUNTIME_RETRIEVE_ALL_TOOL_NAME,
+  description: 'Evaluate the current trigger as relevant, then run all enabled retrieval/search tools in parallel for grounding.',
+  sideEffectClass: 'read',
+  retrievalEligible: true,
+  inputSchema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['requestFocus'],
+    properties: {
+      requestFocus: {
+        type: 'string',
+        description: 'A concise search query for the current request, excluding mentions and unrelated history.'
+      }
+    }
+  }
+};
 
 function dedupeTools(tools: Array<AgentToolInventoryItem | ToolInventoryItem>): AgentToolInventoryItem[] {
   const byName = new Map<string, AgentToolInventoryItem>();
@@ -100,6 +121,8 @@ export function buildRuntimeToolCallingPlan(input: {
     workspaceMemory: input.context.memory.workspace,
     sessionMode: input.sessionMode
   });
+  const fanoutTools = availableTools.filter((tool) => retrievalToolNames.includes(tool.name));
+  const modelTools = fanoutTools.length > 0 ? [RUNTIME_RETRIEVE_ALL_TOOL] : [];
   const hasSourceArtifacts = input.context.artifacts.some(isSourceArtifact);
   const groundingDirective = input.policy?.requireGroundingForFacts && !hasSourceArtifacts
     ? {
@@ -112,8 +135,9 @@ export function buildRuntimeToolCallingPlan(input: {
       });
 
   return {
-    availableTools,
-    retrievalToolNames,
+    availableTools: modelTools,
+    retrievalToolNames: modelTools.map((tool) => tool.name),
+    fanoutTools,
     groundingDirective
   };
 }

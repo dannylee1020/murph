@@ -520,18 +520,52 @@ describe('AgentRuntime model failure events', () => {
     expect(result.context.thread.recentMessages).toEqual([triggerMessage]);
   });
 
-  it('auto-reads the first Notion search result for required grounding', async () => {
+  it('does not run retrieval when the model abstains from an irrelevant trigger', async () => {
     testSkills = [documentationSkill(), channelSkill()];
-    enabledOptionalTools = ['notion.search', 'notion.read_page'];
+    enabledOptionalTools = ['notion.search', 'notion.read_page', 'github.search'];
+    const draft: ProviderDraftResult = {
+      continuityCase: 'unknown',
+      summary: '<@UOWNER> unrelated token-shaped text',
+      unresolvedQuestions: [],
+      proposedAction: {
+        type: 'abstain',
+        message: '',
+        reason: 'The trigger message is random text and does not contain a continuity request.',
+        confidence: 0.95
+      }
+    };
+    runAgentLoopMock.mockResolvedValueOnce([finalAssistantMessage(draft)]);
+
+    const runtime = await setupRuntime();
+    const result = await runtime.run(task({
+      triggerMessage: {
+        provider: 'slack',
+        userId: 'UASKER',
+        authorId: 'UASKER',
+        text: '<@UOWNER> unrelated token-shaped text',
+        ts: '111.222',
+        messageId: '111.222'
+      }
+    }), session(), workspace());
+
+    expect(result.proposedAction.type).toBe('abstain');
+    expect(result.context.thread.latestMessage).toBe('<@UOWNER> unrelated token-shaped text');
+    expect(result.runtimeEvents.filter((event) => event.type === 'agent.tool.requested')).toEqual([]);
+    expect(deterministicRetrievalLog).toEqual([]);
+  });
+
+  it('fans out all enabled retrieval tools when the model calls runtime.retrieve_all', async () => {
+    testSkills = [documentationSkill(), channelSkill()];
+    enabledOptionalTools = ['notion.search', 'notion.read_page', 'github.search'];
     runAgentLoopMock.mockImplementation(async (prompts, agentContext, config, emit) => {
       emit({ type: 'turn_start' });
       await executeToolCall(
         agentContext,
         config,
         emit,
-        'notion.search',
-        { query: 'checkout launch readiness', limit: 3 },
-        'call-search'
+        'runtime.retrieve_all',
+        { requestFocus: 'checkout launch readiness' },
+        'call-retrieve-all'
       );
       return [finalAssistantMessage(fallbackDraft)];
     });
@@ -552,8 +586,21 @@ describe('AgentRuntime model failure events', () => {
       autoReadPageTitle: 'Checkout launch readiness',
       keys: ['results', 'strategy', 'autoReadPage']
     });
+    expect(deterministicRetrievalLog).toEqual([
+      'notion.search:start',
+      'notion.search:end',
+      'github.search:start',
+      'github.search:end'
+    ]);
     expect(result.runtimeEvents).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          type: 'agent.tool.requested',
+          payload: expect.objectContaining({
+            name: 'runtime.retrieve_all',
+            reason: 'Model requested tool call'
+          })
+        }),
         expect.objectContaining({
           type: 'agent.tool.completed',
           payload: expect.objectContaining({

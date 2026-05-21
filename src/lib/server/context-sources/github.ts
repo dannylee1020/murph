@@ -1,4 +1,5 @@
 import { resolveCredential } from '#lib/server/integrations/credentials';
+import { getStore } from '#lib/server/persistence/store';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import type { ContextArtifact } from '#lib/types';
 
@@ -81,7 +82,6 @@ export interface GitHubSearchDiagnostics {
   repositories: string[];
 }
 
-const AUTO_DISCOVER_REPOSITORY_LIMIT = 10;
 const DEEP_READ_LIMIT = 3;
 const SEARCH_VARIANT_LIMIT = 4;
 const RANKING_ONLY_TERMS = new Set([
@@ -298,22 +298,27 @@ export class GitHubService {
 
   repositories(workspaceId?: string): string[] {
     const credential = resolveCredential(workspaceId, 'github');
+    const storedRepositories = normalizeRepositories(credential?.metadata?.repositories);
+    if (storedRepositories.length > 0) {
+      return storedRepositories;
+    }
+
+    const connectionRepositories = workspaceId
+      ? normalizeRepositories(getStore().getIntegrationConnection(workspaceId, 'github')?.metadata?.repositories)
+      : [];
+    if (connectionRepositories.length > 0) {
+      return connectionRepositories;
+    }
+
     if (!credential) {
       return [];
     }
 
-    const storedRepositories = normalizeRepositories(credential.metadata?.repositories);
-    return storedRepositories.length > 0 ? storedRepositories : getRuntimeEnv().githubRepositories;
+    return getRuntimeEnv().githubRepositories;
   }
 
-  private async retrievalRepositories(workspaceId?: string): Promise<string[]> {
-    const configured = this.repositories(workspaceId);
-    if (configured.length > 0) {
-      return configured;
-    }
-
-    const { repositories } = await this.listRepositories(workspaceId, AUTO_DISCOVER_REPOSITORY_LIMIT);
-    return repositories.map((repository) => repository.fullName);
+  private retrievalRepositories(workspaceId?: string): string[] {
+    return this.repositories(workspaceId);
   }
 
   async listRepositories(workspaceId?: string, limit = 100): Promise<{ repositories: GitHubRepository[] }> {
@@ -346,7 +351,7 @@ export class GitHubService {
       throw new Error('GITHUB_PAT is not configured');
     }
 
-    const repositories = await this.retrievalRepositories(workspaceId);
+    const repositories = this.retrievalRepositories(workspaceId);
     if (repositories.length === 0) {
       throw new Error('GitHub repository scope is required');
     }

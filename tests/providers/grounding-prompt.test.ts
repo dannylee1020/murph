@@ -83,14 +83,14 @@ describe('buildGroundingPrompt', () => {
 
   it('lists each available tool with its description', () => {
     const prompt = buildGroundingPrompt(context());
-    expect(prompt).toContain('avoid unrelated sources even when they are available');
+    expect(prompt).toContain('Retrieval is all-or-nothing');
     expect(prompt).toContain('- notion.search (documentation): Search documentation');
   });
 
   it('inserts a strict directive when grounding is required', () => {
     const prompt = buildGroundingPrompt(context(), requiredDirective);
-    expect(prompt).toContain('You MUST call the relevant retrieval/search tools before drafting');
-    expect(prompt).toContain('do not call unrelated tools');
+    expect(prompt).toContain('First decide whether the triggerMessage is a real Murph request');
+    expect(prompt).toContain('call runtime.retrieve_all exactly once before drafting');
   });
 
   it('describes thread memory as context rather than source evidence', () => {
@@ -105,6 +105,7 @@ describe('buildGroundingPrompt', () => {
     }));
 
     expect(prompt).toContain('Thread memory is conversation context, not source-of-truth evidence.');
+    expect(prompt).toContain('The triggerMessage in the task is the current request and the primary authority.');
     expect(prompt).toContain('Current-run artifacts may include broad fanout results from connected read-only sources');
     expect(prompt).toContain('If sources conflict, say which source says what instead of guessing.');
     expect(prompt).toContain('do not answer factual or current-state questions from thread memory alone');

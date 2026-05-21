@@ -159,7 +159,10 @@ export function registerBuiltInTools(): void {
       description: 'Fetch recent channel thread messages for the active thread.',
       sideEffectClass: 'read',
       supportsDryRun: true,
-      async execute(input: { provider?: string; channelId: string; threadTs: string }, context): Promise<ChannelMessage[]> {
+      async execute(
+        input: { provider?: string; channelId: string; threadTs: string; threadChannelId?: string; rootMessageId?: string },
+        context
+      ): Promise<ChannelMessage[]> {
         return await channels.fetchThread(context.workspace, input);
       }
     },
@@ -199,7 +202,10 @@ export function registerBuiltInTools(): void {
       sideEffectClass: 'external_write',
       sessionModes: ['manual_review', 'auto_send_low_risk'],
       supportsDryRun: false,
-      async execute(input: { provider?: string; channelId: string; threadTs: string; text: string }, context): Promise<{ ok: true }> {
+      async execute(
+        input: { provider?: string; channelId: string; threadTs: string; threadChannelId?: string; rootMessageId?: string; text: string },
+        context
+      ): Promise<{ ok: true }> {
         await channels.postReply(context.workspace, input, input.text);
         return { ok: true };
       }

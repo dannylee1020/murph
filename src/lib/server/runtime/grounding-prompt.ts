@@ -12,7 +12,10 @@ function describeAvailableTools(context: Pick<ContextAssembly, 'availableTools'>
     const domains = tool.knowledgeDomains?.length ? ` (${tool.knowledgeDomains.join(', ')})` : '';
     return `- ${tool.name}${domains}: ${tool.description}`;
   });
-  return ['Tools you may call. Call the retrieval tools that are relevant to the request; avoid unrelated sources even when they are available:', ...lines].join('\n');
+  return [
+    'Tools you may call. Retrieval is all-or-nothing: either call runtime.retrieve_all once for the current request, or call no tools and abstain.',
+    ...lines
+  ].join('\n');
 }
 
 function describeGroundingDirective(directive?: GroundingDirective): string {
@@ -20,14 +23,16 @@ function describeGroundingDirective(directive?: GroundingDirective): string {
     return 'If the provided context is already sufficient, answer without calling tools.';
   }
   if (directive.required) {
-    return `Grounding required: ${directive.reason} You MUST call the relevant retrieval/search tools before drafting. Use every source that is materially relevant to this request, but do not call unrelated tools. If results are weak or empty, explain what you searched and queue the thread for review.`;
+    return `Grounding required for factual replies: ${directive.reason} First decide whether the triggerMessage is a real Murph request. If it is unrelated, random, or out of scope, return abstain without tools. If it is relevant and needs factual/current-state evidence, call runtime.retrieve_all exactly once before drafting. If results are weak or empty, explain what is missing and defer or ask.`;
   }
-  return `${directive.reason} Call a retrieval tool only when it materially improves the answer.`;
+  return `${directive.reason} First decide whether the triggerMessage is a real Murph request. If it is unrelated, random, or out of scope, return abstain without tools. If retrieval would materially improve a relevant answer, call runtime.retrieve_all exactly once.`;
 }
 
 function describeMemoryBoundary(): string {
   return [
     'Thread memory is conversation context, not source-of-truth evidence.',
+    'The triggerMessage in the task is the current request and the primary authority.',
+    'Use recentMessages only when the trigger clearly continues that same thread; do not let old thread history override an unrelated current trigger.',
     'Current-run artifacts may include broad fanout results from connected read-only sources; compare all relevant artifacts before drafting.',
     'If sources conflict, say which source says what instead of guessing.',
     'Use it to understand what the thread has been discussing, but do not answer factual or current-state questions from thread memory alone.',

@@ -66,7 +66,7 @@ describe('integration capability wiring', () => {
     }
   });
 
-  it('reconcileIntegrationCapabilitiesForWorkspace enables GitHub from global credentials even before repositories are selected', async () => {
+  it('reconcileIntegrationCapabilitiesForWorkspace waits for GitHub repositories before enabling retrieval', async () => {
     const { store, workspace } = await setup();
     const { writeSecret } = await import('#lib/server/credentials/local-store');
     writeSecret('github', 'api_key', 'github-token', {
@@ -77,6 +77,29 @@ describe('integration capability wiring', () => {
       provider: 'github',
       credentialKind: 'api_key',
       metadata: { account: 'octo-user', repositories: [] }
+    });
+    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
+      '#lib/server/integrations/capabilities'
+    );
+
+    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
+
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).not.toContain('github.search');
+    expect(memory.enabledContextSources).not.toContain('github.thread_search');
+  });
+
+  it('reconcileIntegrationCapabilitiesForWorkspace enables GitHub when repositories are selected', async () => {
+    const { store, workspace } = await setup();
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('github', 'api_key', 'github-token', {
+      metadata: { account: 'octo-user', repositories: ['octo/app'] }
+    });
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'github',
+      credentialKind: 'api_key',
+      metadata: { account: 'octo-user', repositories: ['octo/app'] }
     });
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
       '#lib/server/integrations/capabilities'

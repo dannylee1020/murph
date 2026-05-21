@@ -2032,30 +2032,6 @@ function githubRepositorySummary(
         : 'No repositories selected';
 }
 
-function githubRepositoryDialog(workspaceId: string): string {
-    return `
-    <dialog class="modal" id="github-repo-dialog">
-      <div class="modal-panel">
-        <div class="modal-head">
-          <div>
-            <p class="eyebrow">GitHub</p>
-            <h2>Repository scope</h2>
-          </div>
-          <button type="button" class="ghost close-github-repos" aria-label="Close repository picker">Close</button>
-        </div>
-        <p class="modal-intro">Choose the repositories Murph can use when grounding replies with GitHub context.</p>
-        <div class="github-repo-picker" data-workspace-id="${escapeHtml(workspaceId)}">
-          <div class="github-repo-list"><p class="empty">Open this panel to load repositories.</p></div>
-          <div class="actions">
-            <button type="button" class="secondary close-github-repos">Cancel</button>
-            <button type="button" class="save-github-repos" disabled>Save repositories</button>
-          </div>
-        </div>
-      </div>
-    </dialog>
-  `;
-}
-
 function integrationCredentialDialog(workspaceId: string): string {
     return `
     <dialog class="modal" id="integration-credential-dialog">
@@ -2081,6 +2057,21 @@ function integrationCredentialDialog(workspaceId: string): string {
             <button type="submit">Connect</button>
           </div>
         </form>
+        <div class="github-repo-step" id="integration-github-repo-step" hidden>
+          <p class="modal-intro">Choose the repositories Murph can search when grounding replies with GitHub context.</p>
+          <div class="github-repo-picker" data-workspace-id="${escapeHtml(workspaceId)}">
+            <label class="github-repo-filter-label">
+              <span>Filter repositories</span>
+              <input type="search" class="github-repo-filter" placeholder="Search owner/repo" autocomplete="off" />
+            </label>
+            <div class="github-repo-list"><p class="empty">Repositories load after GitHub connects.</p></div>
+            <p class="modal-error" id="github-repo-error" hidden></p>
+            <div class="actions">
+              <button type="button" class="secondary close-integration-credential">Cancel</button>
+              <button type="button" class="save-github-repos" disabled>Save repositories</button>
+            </div>
+          </div>
+        </div>
       </div>
     </dialog>
   `;
@@ -2197,10 +2188,10 @@ function integrationCard(
       <h2><span class="status-dot ${connected ? 'ok' : 'off'}" aria-hidden="true"></span>${escapeHtml(integration.name)}</h2>
       <p>${escapeHtml(integration.description)}</p>
       <dl class="details">${detailRows.join('')}</dl>
-      <div class="actions">
+      <div class="actions integration-actions">
         ${primaryCta}
-        ${connected && integration.provider === 'github' ? '<button type="button" class="secondary manage-github-repos">Manage repositories</button>' : ''}
-        ${integration.canDisconnect ? `<button type="button" class="ghost disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
+        ${integration.canDisconnect ? `<button type="button" class="secondary disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
+        ${connected && integration.provider === 'github' ? '<button type="button" class="secondary manage-github-repos" aria-label="Manage GitHub repositories">Manage repositories</button>' : ''}
       </div>
     </article>
   `;
@@ -3656,6 +3647,8 @@ async function renderSettings(): Promise<void> {
         : discordRuntimeConfigured
             ? 'Configured by CLI'
             : 'Missing CLI settings';
+    const discordCanInstall =
+        setup.discord.oauthConfigured && setup.discord.botTokenConfigured;
 
     shell(`
     ${settingsNotice}
@@ -3701,7 +3694,11 @@ async function renderSettings(): Promise<void> {
           <div><dt>Setup</dt><dd>${discordSetupDetail}</dd></div>
         </dl>
         <div class="actions">
-          <span class="empty">Use <code>murph setup discord</code> to connect or update Discord.</span>
+          ${
+              discordCanInstall
+                  ? `<a class="button" href="/api/discord/install?source=settings">${setup.discord.installed ? 'Reconnect Discord' : 'Connect Discord'}</a>`
+                  : '<span class="empty">Use <code>murph setup discord</code> to connect or update Discord.</span>'
+          }
         </div>
       </article>
       <article class="panel panel-status">
@@ -3758,7 +3755,6 @@ async function renderSettings(): Promise<void> {
       }
     </section>
 
-    ${githubRepositoryDialog(integrationsPayload.workspaceId)}
     ${integrationCredentialDialog(integrationsPayload.workspaceId)}
     ${googleOAuthDialog(integrationsPayload.workspaceId)}
     ${policyProfileDialog(policyConfig.profiles, policyConfig.selectedProfileName)}
@@ -3813,10 +3809,19 @@ async function renderSettings(): Promise<void> {
             picker?.querySelector<HTMLDivElement>('.github-repo-list');
         const saveButton =
             picker?.querySelector<HTMLButtonElement>('.save-github-repos');
+        const filterInput =
+            picker?.querySelector<HTMLInputElement>('.github-repo-filter');
+        const error =
+            picker?.querySelector<HTMLElement>('#github-repo-error');
         if (!picker || !listEl || !saveButton) return;
 
         listEl.innerHTML = '<p class="empty">Loading repositories...</p>';
         saveButton.disabled = true;
+        if (filterInput) filterInput.value = '';
+        if (error) {
+            error.hidden = true;
+            error.textContent = '';
+        }
         try {
             const payload = await getJson<GitHubRepositoriesPayload>(
                 `/api/integrations/github/repositories?workspaceId=${encodeURIComponent(workspaceId)}`,
@@ -3848,7 +3853,10 @@ async function renderSettings(): Promise<void> {
                     : '<p class="empty">No GitHub repositories were visible to this token.</p>';
 
             const sync = () => {
-                saveButton.disabled = false;
+                const selectedCount = listEl.querySelectorAll<HTMLInputElement>(
+                    'input[name="githubRepository"]:checked',
+                ).length;
+                saveButton.disabled = selectedCount === 0;
                 listEl
                     .querySelectorAll<HTMLLabelElement>('.channel-item')
                     .forEach((item) => {
@@ -3860,6 +3868,16 @@ async function renderSettings(): Promise<void> {
                         );
                     });
             };
+            const filter = () => {
+                const query = filterInput?.value.trim().toLowerCase() ?? '';
+                listEl
+                    .querySelectorAll<HTMLLabelElement>('.channel-item')
+                    .forEach((item) => {
+                        item.hidden =
+                            query.length > 0 &&
+                            !item.textContent?.toLowerCase().includes(query);
+                    });
+            };
             listEl
                 .querySelectorAll<HTMLInputElement>(
                     'input[name="githubRepository"]',
@@ -3867,6 +3885,8 @@ async function renderSettings(): Promise<void> {
                 .forEach((input) => {
                     input.addEventListener('change', sync);
                 });
+            filterInput?.addEventListener('input', filter);
+            sync();
         } catch (error) {
             listEl.innerHTML = `<p class="empty">${escapeHtml(error instanceof Error ? error.message : 'Could not load GitHub repositories.')}</p>`;
         }
@@ -3876,28 +3896,32 @@ async function renderSettings(): Promise<void> {
         '.manage-github-repos',
     )?.addEventListener('click', async () => {
         const dialog = app.querySelector<HTMLDialogElement>(
-            '#github-repo-dialog',
+            '#integration-credential-dialog',
         );
+        const form = app.querySelector<HTMLFormElement>(
+            '#integration-credential-form',
+        );
+        const repoStep = app.querySelector<HTMLElement>(
+            '#integration-github-repo-step',
+        );
+        const providerEl = app.querySelector<HTMLElement>(
+            '#integration-credential-provider',
+        );
+        const titleEl = app.querySelector<HTMLElement>(
+            '#integration-credential-title',
+        );
+        const descriptionEl = app.querySelector<HTMLElement>(
+            '#integration-credential-description',
+        );
+        if (form) form.hidden = true;
+        if (repoStep) repoStep.hidden = false;
+        if (providerEl) providerEl.textContent = 'GitHub';
+        if (titleEl) titleEl.textContent = 'Choose repositories';
+        if (descriptionEl)
+            descriptionEl.textContent =
+                'Choose the repositories Murph can search when grounding replies with GitHub context.';
         dialog?.showModal();
         await loadGithubRepositories();
-    });
-
-    app.querySelectorAll<HTMLButtonElement>('.close-github-repos').forEach(
-        (button) => {
-            button.addEventListener('click', () => {
-                app.querySelector<HTMLDialogElement>(
-                    '#github-repo-dialog',
-                )?.close();
-            });
-        },
-    );
-
-    app.querySelector<HTMLDialogElement>(
-        '#github-repo-dialog',
-    )?.addEventListener('click', (event) => {
-        if (event.target === event.currentTarget) {
-            (event.currentTarget as HTMLDialogElement).close();
-        }
     });
 
     app.querySelectorAll<HTMLButtonElement>('.save-github-repos').forEach(
@@ -3917,6 +3941,21 @@ async function renderSettings(): Promise<void> {
                         'input[name="githubRepository"]:checked',
                     ),
                 ).map((input) => input.value);
+                const error = picker.querySelector<HTMLElement>(
+                    '#github-repo-error',
+                );
+                if (repositories.length === 0) {
+                    if (error) {
+                        error.textContent =
+                            'Choose at least one repository before enabling GitHub retrieval.';
+                        error.hidden = false;
+                    }
+                    return;
+                }
+                if (error) {
+                    error.hidden = true;
+                    error.textContent = '';
+                }
                 button.disabled = true;
                 try {
                     await putJson('/api/integrations/github/repositories', {
@@ -3924,19 +3963,21 @@ async function renderSettings(): Promise<void> {
                         repositories,
                     });
                     dashboardNotice =
-                        repositories.length > 0
-                            ? 'GitHub repositories saved.'
-                            : 'GitHub retrieval disabled until repositories are selected.';
+                        repositories.length === 1
+                            ? 'GitHub connected with 1 repository.'
+                            : `GitHub connected with ${repositories.length} repositories.`;
                     app.querySelector<HTMLDialogElement>(
-                        '#github-repo-dialog',
+                        '#integration-credential-dialog',
                     )?.close();
                     await renderSettings();
-                } catch (error) {
-                    window.alert(
-                        error instanceof Error
-                            ? error.message
-                            : 'Could not save GitHub repositories.',
-                    );
+                } catch (errorValue) {
+                    if (error) {
+                        error.textContent =
+                            errorValue instanceof Error
+                                ? errorValue.message
+                                : 'Could not save GitHub repositories.';
+                        error.hidden = false;
+                    }
                     button.disabled = false;
                 }
             });
@@ -3990,8 +4031,13 @@ async function renderSettings(): Promise<void> {
                 const error = form.querySelector<HTMLElement>(
                     '#integration-credential-error',
                 );
+                const repoStep = app.querySelector<HTMLElement>(
+                    '#integration-github-repo-step',
+                );
                 if (providerInput) providerInput.value = provider;
                 if (credentialInput) credentialInput.value = '';
+                form.hidden = false;
+                if (repoStep) repoStep.hidden = true;
                 if (error) {
                     error.hidden = true;
                     error.textContent = '';
@@ -4063,6 +4109,27 @@ async function renderSettings(): Promise<void> {
                     credential,
                 },
             );
+            if (provider === 'github') {
+                const titleEl = app.querySelector<HTMLElement>(
+                    '#integration-credential-title',
+                );
+                const descriptionEl = app.querySelector<HTMLElement>(
+                    '#integration-credential-description',
+                );
+                const repoStep = app.querySelector<HTMLElement>(
+                    '#integration-github-repo-step',
+                );
+                if (titleEl) titleEl.textContent = 'Choose repositories';
+                if (descriptionEl) {
+                    descriptionEl.textContent =
+                        'Choose at least one repository so Murph can ground GitHub answers without broad search fanout.';
+                }
+                form.hidden = true;
+                if (repoStep) repoStep.hidden = false;
+                if (submitButton) submitButton.disabled = false;
+                await loadGithubRepositories();
+                return;
+            }
             dashboardNotice = `Connected ${integration.name}.`;
             app.querySelector<HTMLDialogElement>(
                 '#integration-credential-dialog',

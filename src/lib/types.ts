@@ -493,6 +493,7 @@ export interface ReviewItem {
     reason: string;
     confidence?: number;
     provider?: ProviderName;
+    contextSnapshot?: ActionContextSnapshot;
     createdAt: string;
 }
 
@@ -501,8 +502,11 @@ export interface ActionContextSnapshot {
     continuityCase: ContinuityCase;
     evidenceStatus?: ThreadEvidenceStatus;
     thread: {
+        provider?: ChannelProvider;
         channelId: string;
         threadTs: string;
+        threadChannelId?: string;
+        rootMessageId?: string;
         messages: Array<{
             ts: string;
             authorId?: string;

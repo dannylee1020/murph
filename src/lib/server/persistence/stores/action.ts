@@ -56,6 +56,7 @@ function mapAction(row: ActionRow): ReviewItem {
     reason: row.reason,
     confidence: row.confidence,
     provider: row.provider,
+    contextSnapshot: parseContextSnapshot(row.context_snapshot_json),
     createdAt: row.created_at
   };
 }
@@ -184,37 +185,15 @@ export function listReviewQueue(db: Db, workspaceId?: string, sessionId?: string
 
   const rows = db
     .prepare(
-      `SELECT id, workspace_id, session_id, thread_ts, channel_id, target_user_id, action_type, message, reason, created_at
+      `SELECT id, workspace_id, session_id, thread_ts, channel_id, target_user_id, action_type,
+              disposition, message, reason, confidence, provider, context_snapshot_json, created_at
        FROM continuity_actions
        WHERE ${where.join(' AND ')}
        ORDER BY created_at DESC`
     )
-    .all(...args) as Array<{
-    id: string;
-    workspace_id: string;
-    session_id?: string;
-    thread_ts: string;
-    channel_id: string;
-    target_user_id: string;
-    action_type: ContinuityActionType;
-    message: string;
-    reason: string;
-    created_at: string;
-  }>;
+    .all(...args) as ActionRow[];
 
-  return rows.map((row) => ({
-    id: row.id,
-    workspaceId: row.workspace_id,
-    sessionId: row.session_id,
-    threadTs: row.thread_ts,
-    channelId: row.channel_id,
-    targetUserId: row.target_user_id,
-    action: row.action_type,
-    disposition: 'queued',
-    message: row.message,
-    reason: row.reason,
-    createdAt: row.created_at
-  }));
+  return rows.map(mapAction);
 }
 
 export function listTriageItems(db: Db, workspaceId?: string, sessionId?: string): TriageItem[] {

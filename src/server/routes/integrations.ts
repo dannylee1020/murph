@@ -202,7 +202,11 @@ export const integrationRoutes: Route[] = [
         credentialKind: definition.credentialKind,
         metadata
       });
-      enableIntegrationCapabilitiesForAllWorkspaces(definition);
+      if (definition.provider === 'github') {
+        disableIntegrationCapabilitiesForAllWorkspaces(definition);
+      } else {
+        enableIntegrationCapabilitiesForAllWorkspaces(definition);
+      }
       sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
     } catch (error) {
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
@@ -217,18 +221,18 @@ export const integrationRoutes: Route[] = [
     }
 
     try {
-      const result = await getGitHubService().listRepositories();
+      const result = await getGitHubService().listRepositories(workspace.id);
       sendJson(res, {
         ok: true,
         repositories: result.repositories,
-        selectedRepositories: getGitHubService().repositories()
+        selectedRepositories: getGitHubService().repositories(workspace.id)
       });
     } catch (error) {
       sendJson(res, {
         ok: false,
         error: error instanceof Error ? error.message : 'repository_list_failed',
         repositories: [],
-        selectedRepositories: getGitHubService().repositories()
+        selectedRepositories: getGitHubService().repositories(workspace.id)
       }, 400);
     }
   }),
@@ -269,7 +273,11 @@ export const integrationRoutes: Route[] = [
       errorMessage: stored?.errorMessage
     });
 
-    enableIntegrationCapabilitiesForAllWorkspaces(definition);
+    if (repositories.length > 0) {
+      enableIntegrationCapabilitiesForAllWorkspaces(definition);
+    } else {
+      disableIntegrationCapabilitiesForAllWorkspaces(definition);
+    }
 
     sendJson(res, { ok: true, integration: statusFor('github', workspace.id) });
   }),

@@ -118,11 +118,11 @@ describe('integration routes', () => {
     const { readSecret } = await import('#lib/server/credentials/local-store');
     expect(readSecret('github', 'api_key')).toBe('ghp_test_token');
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    expect(memory.enabledOptionalTools).toContain('github.search');
-    expect(memory.enabledContextSources).toContain('github.thread_search');
+    expect(memory.enabledOptionalTools).not.toContain('github.search');
+    expect(memory.enabledContextSources).not.toContain('github.thread_search');
     const discordMemory = store.getOrCreateWorkspaceMemory(discordWorkspace.id);
-    expect(discordMemory.enabledOptionalTools).toContain('github.search');
-    expect(discordMemory.enabledContextSources).toContain('github.thread_search');
+    expect(discordMemory.enabledOptionalTools).not.toContain('github.search');
+    expect(discordMemory.enabledContextSources).not.toContain('github.thread_search');
 
     const discordStatus = await request('GET', `/api/integrations/status?workspaceId=${discordWorkspace.id}`);
     const discordGithub = discordStatus.body.integrations.find((integration: any) => integration.provider === 'github');

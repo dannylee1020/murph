@@ -1,4 +1,5 @@
 import { getStore } from '#lib/server/persistence/store';
+import { getRuntimeEnv } from '#lib/server/util/env';
 import type { IntegrationDefinition } from './registry.js';
 import { listIntegrations, readEnvCredential } from './registry.js';
 import { findGoogleOAuthRecord } from './google-oauth.js';
@@ -25,6 +26,29 @@ function unionUnique(existing: string[], additions: string[]): string[] {
 function difference(existing: string[], removals: string[]): string[] {
   const remove = new Set(removals);
   return existing.filter((value) => !remove.has(value));
+}
+
+function normalizeRepositories(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => typeof entry === 'string' ? entry.trim() : '')
+    .filter((entry) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(entry));
+}
+
+function githubHasRepositoryScope(workspaceId: string): boolean {
+  const key = integrationCredentialKey({ credentialKind: 'api_key' });
+  const localRepositories = normalizeRepositories(globalIntegrationCredential('github', key)?.metadata?.repositories);
+  if (localRepositories.length > 0) {
+    return true;
+  }
+
+  const connectionRepositories = normalizeRepositories(
+    getStore().getIntegrationConnection(workspaceId, 'github')?.metadata?.repositories
+  );
+  return connectionRepositories.length > 0 || getRuntimeEnv().githubRepositories.length > 0;
 }
 
 export function enableIntegrationCapabilities(
@@ -100,6 +124,10 @@ export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string
       ? Boolean(findGoogleOAuthRecord(workspaceId) || globalIntegrationCredential('google', 'access_token'))
       : Boolean(globalIntegrationCredential(definition.provider, key));
     const hasEnvCred = Boolean(readEnvCredential(definition.provider));
+    if (definition.provider === 'github' && (hasLocalCred || hasEnvCred) && !githubHasRepositoryScope(workspaceId)) {
+      disableIntegrationCapabilities(workspaceId, definition);
+      continue;
+    }
     if (hasLocalCred || hasEnvCred) {
       enableIntegrationCapabilities(workspaceId, definition);
     }

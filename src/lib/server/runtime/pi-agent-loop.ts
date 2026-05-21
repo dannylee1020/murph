@@ -4,6 +4,7 @@ import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { DEFAULT_PROVIDER_MODEL } from '#lib/config';
 import { readSecret } from '#lib/server/credentials/local-store';
 import { buildGroundingPrompt } from '#lib/server/runtime/grounding-prompt';
+import { RUNTIME_RETRIEVE_ALL_TOOL_NAME } from '#lib/server/runtime/tool-calling-plan';
 import { toTypeBoxSchema } from '#lib/server/runtime/pi-tool-schema';
 import { outputSummary, truncateToolOutput } from '#lib/server/runtime/tool-output';
 import type { GroundingDirective } from '#lib/server/runtime/tool-calling-plan';
@@ -166,6 +167,11 @@ export interface GroundingLoopInput {
     toolsUsed: string[],
     runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>
   ): Promise<unknown>;
+  retrieveAll?(
+    input: unknown,
+    toolsUsed: string[],
+    runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>
+  ): Promise<{ output: unknown; toolResults: AgentToolResult[] }>;
   linkThreadArtifact(url: string): void;
 }
 
@@ -192,6 +198,21 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
     parameters: toTypeBoxSchema(tool.inputSchema),
     executionMode: 'parallel',
     execute: async (toolCallId, params) => {
+      if (tool.name === RUNTIME_RETRIEVE_ALL_TOOL_NAME) {
+        if (!input.retrieveAll) {
+          throw new Error('Runtime retrieve-all handler is not configured');
+        }
+        const result = await input.retrieveAll(params, toolsUsed, runtimeEvents);
+        toolResults.push(...result.toolResults);
+        toolsUsed.push(tool.name);
+        retrievalAttempted = true;
+
+        return {
+          content: textContent(serializeForModel(result.output)),
+          details: result.output
+        };
+      }
+
       const normalizedInput = input.defaultToolInput(tool.name, params);
       const output = await registry.execute(tool.name, normalizedInput, {
         workspace: input.workspace,
@@ -235,13 +256,21 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
         const rawName = rawToolName(toolCall.name, aliasToRaw);
         let definition;
 
-        try {
-          definition = registry.get(rawName);
-        } catch {
-          return { block: true, reason: 'Tool is not registered' };
+        if (rawName === RUNTIME_RETRIEVE_ALL_TOOL_NAME) {
+          definition = input.context.availableTools.find((available) => available.name === rawName);
+        } else {
+          try {
+            definition = registry.get(rawName);
+          } catch {
+            return { block: true, reason: 'Tool is not registered' };
+          }
         }
 
-        if (!input.context.availableTools.some((available) => available.name === rawName) || definition.sideEffectClass !== 'read') {
+        if (
+          !definition ||
+          !input.context.availableTools.some((available) => available.name === rawName) ||
+          definition.sideEffectClass !== 'read'
+        ) {
           return { block: true, reason: 'Tool is not available for model-directed read-only use' };
         }
 
@@ -258,6 +287,10 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
         }
 
         const rawName = rawToolName(toolCall.name, aliasToRaw);
+
+        if (rawName === RUNTIME_RETRIEVE_ALL_TOOL_NAME) {
+          return undefined;
+        }
 
         const enrichedOutput = await input.enrichToolOutput(rawName, result.details, toolsUsed, runtimeEvents);
 

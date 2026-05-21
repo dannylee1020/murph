@@ -136,6 +136,8 @@ async function setup(
       messageId: 'm2'
     }
   ]);
+  const postReply = vi.fn();
+  const postMessage = vi.fn();
 
   vi.doMock('#lib/server/capabilities/channel-registry', () => ({
     getChannelRegistry: () => ({
@@ -143,8 +145,8 @@ async function setup(
       registerPlugin: vi.fn(),
       startIngress: vi.fn(),
       fetchThread,
-      postReply: vi.fn(),
-      postMessage: vi.fn()
+      postReply,
+      postMessage
     })
   }));
   const classifyPolicyExecution = vi.fn().mockResolvedValue({
@@ -201,7 +203,7 @@ async function setup(
   });
   const runSpy = vi.spyOn(AgentRuntime.prototype, 'run').mockImplementation(async (input) => runResult(input, workspace.id, overrides));
 
-  return { store, gateway: getGateway(), workspace, runSpy, classifyPolicyExecution };
+  return { store, gateway: getGateway(), workspace, runSpy, classifyPolicyExecution, postReply, postMessage };
 }
 
 describe('Gateway session-first policy', () => {
@@ -339,6 +341,100 @@ describe('Gateway session-first policy', () => {
       message: 'The owner is away; this is queued for review.',
       reason: 'Session is active and context is sufficient.'
     }));
+  });
+
+  it('approves queued Discord replies with provider-specific thread metadata', async () => {
+    const { gateway, store, postReply } = await setup();
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Discord Guild',
+      botUserId: 'DBOT'
+    });
+    const item = store.insertAction({
+      workspaceId: discordWorkspace.id,
+      sessionId: undefined,
+      channelId: 'PARENT1',
+      threadTs: 'THREAD1',
+      targetUserId: 'UOWNER',
+      actionType: 'reply',
+      disposition: 'queued',
+      message: 'Approved Discord reply',
+      reason: 'Needs operator approval',
+      confidence: 0.8,
+      contextSnapshot: {
+        summary: 'Discord thread summary',
+        continuityCase: 'clarification',
+        thread: {
+          provider: 'discord',
+          channelId: 'PARENT1',
+          threadTs: 'THREAD1',
+          threadChannelId: 'THREAD1',
+          messages: []
+        }
+      }
+    });
+
+    await gateway.handleReviewAction(item.id, { action: 'approve_send' });
+
+    expect(postReply).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'discord' }),
+      expect.objectContaining({
+        provider: 'discord',
+        channelId: 'PARENT1',
+        threadTs: 'THREAD1',
+        threadChannelId: 'THREAD1'
+      }),
+      'Approved Discord reply'
+    );
+  });
+
+  it('falls back for legacy queued Discord replies without thread metadata', async () => {
+    const { gateway, store, postReply } = await setup();
+    postReply.mockRejectedValueOnce(new Error('Failed to post Discord message: Unknown Channel'));
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Discord Guild',
+      botUserId: 'DBOT'
+    });
+    const item = store.insertAction({
+      workspaceId: discordWorkspace.id,
+      sessionId: undefined,
+      channelId: 'CHAN1',
+      threadTs: 'MSG1',
+      targetUserId: 'UOWNER',
+      actionType: 'reply',
+      disposition: 'queued',
+      message: 'Approved legacy Discord reply',
+      reason: 'Needs operator approval',
+      confidence: 0.8
+    });
+
+    await gateway.handleReviewAction(item.id, { action: 'approve_send' });
+
+    expect(postReply).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ provider: 'discord' }),
+      expect.objectContaining({
+        provider: 'discord',
+        channelId: 'CHAN1',
+        threadTs: 'MSG1',
+        threadChannelId: 'MSG1'
+      }),
+      'Approved legacy Discord reply'
+    );
+    expect(postReply).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ provider: 'discord' }),
+      expect.objectContaining({
+        provider: 'discord',
+        channelId: 'CHAN1',
+        threadTs: 'MSG1',
+        rootMessageId: 'MSG1'
+      }),
+      'Approved legacy Discord reply'
+    );
   });
 
 });

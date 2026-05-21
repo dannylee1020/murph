@@ -703,6 +703,16 @@ function slackCredentialsFromPayload(payload) {
   };
 }
 
+class SlackManifestApiError extends Error {
+  constructor(method, error, details = '') {
+    super(details ? `${error}: ${details}` : error);
+    this.name = 'SlackManifestApiError';
+    this.method = method;
+    this.error = error;
+    this.details = details;
+  }
+}
+
 async function slackManifestApi(method, token, body) {
   const response = await fetch(`${slackApiBase}/${method}`, {
     method: 'POST',
@@ -721,9 +731,43 @@ async function slackManifestApi(method, token, body) {
           .join('; ')
       : '';
     const error = payload.error || `Slack ${method} failed`;
-    fail(details ? `${error}: ${details}` : error);
+    throw new SlackManifestApiError(method, error, details);
   }
   return payload;
+}
+
+function slackManifestAppMissing(error) {
+  if (!(error instanceof SlackManifestApiError)) return false;
+  const message = `${error.error} ${error.details}`.toLowerCase();
+  return [
+    'invalid_app',
+    'app_not_found',
+    'not_found',
+    'notfound',
+    'no_app',
+    'unknown_app'
+  ].some((marker) => message.includes(marker));
+}
+
+async function tryUpdateExistingSlackApp(appId, token, manifestBody) {
+  if (!appId) return null;
+
+  try {
+    await slackManifestApi('apps.manifest.export', token, { app_id: appId });
+  } catch (error) {
+    if (slackManifestAppMissing(error)) {
+      warn(`Saved Slack app ID ${appId} was not found for this token. Creating a fresh Slack app.`);
+      return null;
+    }
+    throw error;
+  }
+
+  info(`Found existing Slack app ${appId}. Updating it from the Murph manifest.`);
+  const payload = await slackManifestApi('apps.manifest.update', token, {
+    app_id: appId,
+    manifest: manifestBody
+  });
+  return slackCredentialsFromPayload({ ...payload, app_id: appId });
 }
 
 function printSlackAppSettingsUrl(appId) {
@@ -772,15 +816,19 @@ async function trySlackManifestAutomation(workspace = null) {
     fail('Saved it as SLACK_APP_TOKEN. Slack app OAuth credentials are still missing.');
   }
 
-  const staleAppId = readSetupValue('SLACK_APP_ID');
-  if (staleAppId && !slackAppConfigured()) {
-    warn(`Saved Slack app ID ${staleAppId} is incomplete without OAuth credentials. Creating a fresh Slack app.`);
-  }
   const manifest = renderSlackManifest();
   const manifestBody = JSON.stringify(manifest);
-  const payload = await slackManifestApi('apps.manifest.create', token.trim(), { manifest: manifestBody });
-  const credentials = slackCredentialsFromPayload(payload);
+  const existingAppId = readSetupValue('SLACK_APP_ID');
+  const credentials = await tryUpdateExistingSlackApp(existingAppId, token.trim(), manifestBody) ?? slackCredentialsFromPayload(
+    await slackManifestApi('apps.manifest.create', token.trim(), { manifest: manifestBody })
+  );
   if (!credentials.clientId || !credentials.clientSecret) {
+    if (existingAppId && credentials.appId === existingAppId) {
+      warn(`Slack app ${existingAppId} exists, but setup is missing OAuth credentials.`);
+      printSlackAppSettingsUrl(existingAppId);
+      await promptManualSlackConfig();
+      return true;
+    }
     fail('Slack manifest response did not include client credentials.');
   }
 
@@ -820,8 +868,10 @@ async function promptManualSlackConfig() {
   if (!readSetupValue('SLACK_CLIENT_SECRET')) {
     values.SLACK_CLIENT_SECRET = await askRequired('Slack client secret');
   }
-  const signingSecret = await askSecret('Slack signing secret (optional)', readSetupValue('SLACK_SIGNING_SECRET'));
-  if (signingSecret.trim()) values.SLACK_SIGNING_SECRET = signingSecret.trim();
+  if (!readSetupValue('SLACK_SIGNING_SECRET')) {
+    const signingSecret = await askSecret('Slack signing secret (optional)');
+    if (signingSecret.trim()) values.SLACK_SIGNING_SECRET = signingSecret.trim();
+  }
   writeSetupValues(values);
   await postSetupConfig(values);
 }
