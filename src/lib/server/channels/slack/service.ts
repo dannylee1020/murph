@@ -158,7 +158,7 @@ export class SlackService {
     const params = new URLSearchParams({
       client_id: this.env.slackClientId,
       scope:
-        'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read,im:history,mpim:history,users:read',
+        'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read,im:history,mpim:history',
       user_scope: 'search:read',
       redirect_uri: redirectUri
     });

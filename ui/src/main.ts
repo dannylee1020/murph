@@ -124,6 +124,7 @@ type SetupStatusPayload = {
         signingSecretConfigured: boolean;
         eventsMode: 'socket' | 'http';
         socketConfigured: boolean;
+        ownerConfigured?: boolean;
         workspace?: ChannelWorkspace;
     };
     discord: {
@@ -258,14 +259,6 @@ type SetupChannelsPayload = {
     workspaceId?: string;
     provider?: string;
     channels: ChannelChoice[];
-};
-
-type SetupMembersPayload = {
-    ok: boolean;
-    error?: string;
-    workspaceId?: string;
-    provider?: string;
-    members: MemberChoice[];
 };
 
 type ChannelChoice = {
@@ -591,7 +584,6 @@ type SetupStepKey =
     | 'providers'
     | 'schedule'
     | `connect:${SetupChannelProvider}`
-    | `identity:${SetupChannelProvider}`
     | `channels:${SetupChannelProvider}`;
 
 const SETUP_CHANNEL_PROVIDERS: SetupChannelProvider[] = ['slack', 'discord'];
@@ -751,6 +743,17 @@ function setupProviderWorkspace(
     return setup.discord.workspace;
 }
 
+function setupProviderOwnerConfigured(
+    setup: SetupStatusPayload,
+    provider: SetupChannelProvider,
+): boolean {
+    const selection = setupWizardState.providerSelections[provider];
+    if (selection?.ownerUserId) return true;
+    return provider === 'slack'
+        ? setup.slack.ownerConfigured !== false
+        : setup.discord.ownerConfigured !== false;
+}
+
 function inferSetupProviders(
     setup: SetupStatusPayload,
     defaults: SetupDefaultsPayload,
@@ -842,9 +845,6 @@ function setupStepKeys(): SetupStepKey[] {
             const selection = setupWizardState.providerSelections[provider];
             return [
                 `connect:${provider}` as const,
-                ...(selection?.ownerUserId
-                    ? []
-                    : [`identity:${provider}` as const]),
                 `channels:${provider}` as const,
             ];
         }),
@@ -887,7 +887,7 @@ function splitSetupStep(
     }
     if (stepKey.startsWith('identity:')) {
         return {
-            kind: 'identity:slack',
+            kind: 'connect:slack',
             provider: stepKey.split(':')[1] as SetupChannelProvider,
         };
     }
@@ -1680,10 +1680,10 @@ function discordPreparationDetails(
               : `<div class="notice"><strong>Murph could not verify Discord OAuth redirect URIs from the Discord API.</strong><p>Confirm this URI is registered in Discord Developer Portal > OAuth2 > General > Redirects before authorizing Murph.</p></div>`;
     const configurationNotice = preparation.permissionsConfigured
         ? ''
-        : `<div class="notice danger"><strong>Discord app configuration automation failed.</strong><p>${escapeHtml(preparation.configurationError ?? 'Open Developer Portal > Bot, enable Server Members Intent and Message Content Intent, and approve the requested bot permissions.')}</p></div>`;
+        : `<div class="notice danger"><strong>Discord app configuration automation failed.</strong><p>${escapeHtml(preparation.configurationError ?? 'Open Developer Portal > Bot, enable Message Content Intent, and approve the requested bot permissions.')}</p></div>`;
     const intentNotice =
         preparation.permissionsConfigured && !preparation.intentsConfigured
-            ? '<div class="notice"><strong>Discord privileged intents may still need manual review.</strong><p>Open Developer Portal > Bot and confirm Server Members Intent and Message Content Intent are enabled.</p></div>'
+            ? '<div class="notice"><strong>Discord privileged intents may still need manual review.</strong><p>Open Developer Portal > Bot and confirm Message Content Intent is enabled.</p></div>'
             : '';
     const confirmation =
         preparation.redirectUriRegistered === true
@@ -1894,9 +1894,6 @@ function homeChannelGroup(state: HomeWorkspaceChannelState): string {
     const label = channelSummaryLabel(state.mode, state.selectedChannels);
     const allSelected = state.mode === 'all_accessible';
     const workspaceId = state.workspace.id;
-    const selectedOwnerMissingFromMembers =
-        state.selectedOwnerId &&
-        !state.availableMembers.some((member) => member.id === state.selectedOwnerId);
     return `
     <section class="workspace-channel-group ${state.enabled ? '' : 'disabled'}" data-workspace-id="${escapeHtml(workspaceId)}">
       <div class="workspace-channel-header">
@@ -1911,20 +1908,8 @@ function homeChannelGroup(state: HomeWorkspaceChannelState): string {
       <div class="channel-selector-body">
         <label class="workspace-owner-select">
           <span>Owner</span>
-          <select name="workspaceOwner:${escapeHtml(workspaceId)}" ${state.enabled ? '' : 'disabled'} required>
-            <option value="">Select ${escapeHtml(providerLabel(state.workspace.provider))} user</option>
-            ${
-                selectedOwnerMissingFromMembers
-                    ? `<option value="${escapeHtml(state.selectedOwnerId)}" selected>${escapeHtml(state.selectedOwnerName || state.selectedOwnerId)}</option>`
-                    : ''
-            }
-            ${state.availableMembers
-                .map(
-                    (member) =>
-                        `<option value="${escapeHtml(member.id)}" ${member.id === state.selectedOwnerId ? 'selected' : ''}>${escapeHtml(member.displayName)}</option>`,
-                )
-                .join('')}
-          </select>
+          <input type="hidden" name="workspaceOwner:${escapeHtml(workspaceId)}" value="${escapeHtml(state.selectedOwnerId)}" />
+          <span class="readonly-value">${escapeHtml(state.selectedOwnerName || state.selectedOwnerId || 'Reconnect to identify your account')}</span>
         </label>
         <div class="channel-mode-row" role="group" aria-label="${escapeHtml(`${workspaceOptionLabel(state.workspace)} channel scope`)}">
           <label class="scope-choice ${allSelected ? 'selected' : ''}">
@@ -2503,6 +2488,7 @@ async function renderSetup(): Promise<void> {
     } else if (stepProvider && stepKey.startsWith('connect:')) {
         if (stepProvider === 'slack') {
             const slackConfigured = setup.slack.socketConfigured && setup.slack.oauthConfigured;
+            const slackOwnerMissing = setup.slack.installed && !setupProviderOwnerConfigured(setup, 'slack');
             stepContent = `
       <div class="wizard-step">
         <h1>Create the Slack app</h1>
@@ -2526,10 +2512,17 @@ async function renderSetup(): Promise<void> {
              </form>`
         }
         ${setup.slack.installed ? '<div class="setup-success">Slack connected</div>' : ''}
+        ${
+            slackOwnerMissing
+                ? '<div class="notice danger">Slack is connected, but Murph does not know your OAuth identity yet. Reconnect Slack from this setup flow so Murph can lock sessions to your Slack account.</div>'
+                : ''
+        }
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
           ${
-              setup.slack.installed
+              slackOwnerMissing
+                  ? '<a class="button" href="/api/slack/install">Reconnect Slack</a>'
+                  : setup.slack.installed
                   ? '<button type="button" id="wizard-next">Continue</button>'
                   : slackConfigured
                     ? '<a class="button" href="/api/slack/install">Connect Slack workspace</a>'
@@ -2552,6 +2545,7 @@ async function renderSetup(): Promise<void> {
             const canRecheckDiscord =
                 prepared?.redirectUriRegistered === false &&
                 setupWizardState.discordRedirectConfirmed;
+            const discordOwnerMissing = setup.discord.installed && !setupProviderOwnerConfigured(setup, 'discord');
             stepContent = `
       <div class="wizard-step">
         <h1>Connect Discord</h1>
@@ -2575,10 +2569,17 @@ async function renderSetup(): Promise<void> {
                </label>
              </form>`
         }
+        ${
+            discordOwnerMissing
+                ? '<div class="notice danger">Discord is connected, but Murph does not know your OAuth identity yet. Reconnect Discord from this setup flow so Murph can lock sessions to your Discord account.</div>'
+                : ''
+        }
         <div class="wizard-actions">
                <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
                ${
-                   setup.discord.installed
+                   discordOwnerMissing
+                       ? '<a class="button" href="/api/discord/install?source=setup">Reconnect Discord server</a>'
+                       : setup.discord.installed
                        ? '<button type="button" id="wizard-next">Continue</button>'
                        : prepared
                          ? canInstallDiscord
@@ -2592,23 +2593,17 @@ async function renderSetup(): Promise<void> {
       </div>
     `;
         }
-    } else if (stepProvider && stepKey.startsWith('identity:')) {
-        stepContent = `
-      <div class="wizard-step">
-        <h1>Which one are you?</h1>
-        <p>Pick yourself from ${escapeHtml(providerLabel(stepProvider))} so Murph knows who to watch for there.</p>
-        <div id="member-list-container"><p class="empty">Loading team members...</p></div>
-        <div class="wizard-actions">
-          <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
-          <button type="button" id="wizard-next" disabled>Continue</button>
-        </div>
-      </div>
-    `;
     } else if (stepProvider && stepKey.startsWith('channels:')) {
+        const ownerConfigured = setupProviderOwnerConfigured(setup, stepProvider);
         stepContent = `
       <div class="wizard-step">
         <h1>Which channels should Murph watch?</h1>
         <p>Pick the ${escapeHtml(providerLabel(stepProvider))} channels you want covered overnight.</p>
+        ${
+            ownerConfigured
+                ? ''
+                : `<div class="notice danger">Reconnect ${escapeHtml(providerLabel(stepProvider))} so Murph can identify your account before saving channel defaults.</div>`
+        }
         <div id="channel-list-container"><p class="empty">Loading channels...</p></div>
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
@@ -2693,85 +2688,6 @@ async function renderSetup(): Promise<void> {
             .forEach((input) => input.addEventListener('change', syncProviderSelection));
     }
 
-    if (stepProvider && stepKey.startsWith('identity:')) {
-        const container = app.querySelector<HTMLDivElement>(
-            '#member-list-container',
-        );
-        const selection = setupWizardState.providerSelections[stepProvider];
-        const workspace = setupProviderWorkspace(setup, stepProvider);
-        const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
-        try {
-            if (!workspace) {
-                throw new Error(`${providerLabel(stepProvider)} is not connected yet.`);
-            }
-            const membersPayload = await getJson<SetupMembersPayload>(
-                `/api/setup/members?provider=${encodeURIComponent(stepProvider)}&workspaceId=${encodeURIComponent(workspace.id)}`,
-            );
-            if (membersPayload.members.length > 0) {
-                container!.innerHTML = `
-          <div class="member-list">
-            ${membersPayload.members
-                .map(
-                    (m) => `
-              <div class="member-item ${selection.ownerUserId === m.id ? 'selected' : ''}" data-user-id="${escapeHtml(m.id)}" data-user-name="${escapeHtml(m.displayName)}">
-                <span class="member-avatar-placeholder">${escapeHtml(m.displayName.charAt(0).toUpperCase())}</span>
-                <span>${escapeHtml(m.displayName)}</span>
-              </div>
-            `,
-                )
-                .join('')}
-          </div>
-        `;
-                container!
-                    .querySelectorAll<HTMLDivElement>('.member-item')
-                    .forEach((item) => {
-                        item.addEventListener('click', () => {
-                            container!
-                                .querySelectorAll('.member-item')
-                                .forEach((el) =>
-                                    el.classList.remove('selected'),
-                                );
-                            item.classList.add('selected');
-                            selection.ownerUserId =
-                                item.dataset.userId ?? '';
-                            selection.ownerDisplayName =
-                                item.dataset.userName ?? '';
-                            if (nextBtn) nextBtn.disabled = false;
-                        });
-                    });
-                if (selection.ownerUserId && nextBtn) nextBtn.disabled = false;
-            } else {
-                throw new Error(`No ${providerLabel(stepProvider)} members were available.`);
-            }
-        } catch (error) {
-            if (!workspace) {
-                container!.innerHTML = `
-          <div class="notice danger">${escapeHtml(setupErrorMessage(error, `Connect ${providerLabel(stepProvider)} before choosing yourself.`))}</div>
-        `;
-                if (nextBtn) nextBtn.disabled = true;
-                return;
-            }
-                container!.innerHTML = `
-          <div class="notice danger">${escapeHtml(setupErrorMessage(error, `Murph could not load ${providerLabel(stepProvider)} members.`))}</div>
-          <form class="form" id="manual-name-form">
-            <label><span>Your ${escapeHtml(providerLabel(stepProvider))} name</span><input name="displayName" placeholder="e.g. Danny" value="${escapeHtml(selection.ownerDisplayName)}" required /></label>
-          </form>
-        `;
-                if (nextBtn) nextBtn.disabled = !selection.ownerUserId;
-                const nameInput = container!.querySelector<HTMLInputElement>(
-                    'input[name="displayName"]',
-                );
-                nameInput?.addEventListener('input', () => {
-                    selection.ownerDisplayName = nameInput.value.trim();
-                    selection.ownerUserId = nameInput.value
-                        .trim()
-                        .toLowerCase()
-                        .replace(/\s+/g, '_');
-                    if (nextBtn) nextBtn.disabled = !selection.ownerUserId;
-                });
-        }
-    }
-
     if (stepProvider && stepKey.startsWith('channels:')) {
         const container = app.querySelector<HTMLDivElement>(
             '#channel-list-container',
@@ -2779,6 +2695,7 @@ async function renderSetup(): Promise<void> {
         const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
         const selection = setupWizardState.providerSelections[stepProvider];
         const workspace = setupProviderWorkspace(setup, stepProvider);
+        const ownerConfigured = setupProviderOwnerConfigured(setup, stepProvider);
         try {
             if (!workspace) {
                 throw new Error(`${providerLabel(stepProvider)} is not connected yet.`);
@@ -2852,8 +2769,9 @@ async function renderSetup(): Promise<void> {
                     );
                     if (nextBtn)
                         nextBtn.disabled =
-                            mode === 'selected' &&
-                            selectedChannels.length === 0;
+                            !ownerConfigured ||
+                            (mode === 'selected' &&
+                                selectedChannels.length === 0);
                     container!
                         .querySelectorAll<HTMLInputElement>(
                             'input[name="setupChannelScope"]',
@@ -2913,7 +2831,7 @@ async function renderSetup(): Promise<void> {
             selection.channelScopeMode = 'all_accessible';
             selection.selectedChannels = [];
             selection.selectedChannelIds = [];
-            if (nextBtn) nextBtn.disabled = false;
+            if (nextBtn) nextBtn.disabled = !ownerConfigured;
         }
     }
 
@@ -3044,21 +2962,6 @@ async function renderSetup(): Promise<void> {
                 return;
             }
 
-            if (stepProvider && stepKey.startsWith('identity:')) {
-                const selection = setupWizardState.providerSelections[stepProvider];
-                if (!selection.ownerUserId) return;
-                await putJson('/api/setup/defaults', {
-                    channelProvider: setupPrimaryProvider(),
-                    workspaceId: selection.workspaceId,
-                    ownerUserId: selection.ownerUserId,
-                    ownerDisplayName: selection.ownerDisplayName,
-                    workspaceOwners: selectedWorkspaceOwnersPayload(),
-                    workspaceChannels: selectedWorkspaceChannelsPayload(),
-                    timezone: setupWizardState.timezone,
-                    workdayStartHour: setupWizardState.workdayStartHour,
-                    workdayEndHour: setupWizardState.workdayStartHour + 8,
-                });
-            }
             if (
                 stepProvider &&
                 stepKey.startsWith('channels:') &&
@@ -3201,19 +3104,12 @@ async function renderDashboard(): Promise<void> {
         workspaces.map(
             async (workspace): Promise<HomeWorkspaceChannelState> => {
                 let availableChannels: ChannelChoice[] = [];
-                let availableMembers: MemberChoice[] = [];
                 let channelLoadError = '';
                 try {
-                    const [channelsPayload, membersPayload] = await Promise.all([
-                        getJson<SetupChannelsPayload>(
-                            `/api/setup/channels?workspaceId=${encodeURIComponent(workspace.id)}`,
-                        ),
-                        getJson<SetupMembersPayload>(
-                            `/api/setup/members?workspaceId=${encodeURIComponent(workspace.id)}`,
-                        ),
-                    ]);
+                    const channelsPayload = await getJson<SetupChannelsPayload>(
+                        `/api/setup/channels?workspaceId=${encodeURIComponent(workspace.id)}`,
+                    );
                     availableChannels = channelsPayload.channels ?? [];
-                    availableMembers = membersPayload.members ?? [];
                 } catch (error) {
                     channelLoadError =
                         error instanceof Error
@@ -3233,6 +3129,9 @@ async function renderDashboard(): Promise<void> {
                     workspaces.length,
                 );
                 const selectedOwnerId = defaultOwner.id;
+                const availableMembers = selectedOwnerId
+                    ? [{ id: selectedOwnerId, displayName: defaultOwner.name || selectedOwnerId }]
+                    : [];
                 if (channelLoadError || availableChannels.length === 0) {
                     mode = 'all_accessible';
                     selectedChannels = [];
@@ -3435,13 +3334,13 @@ async function renderDashboard(): Promise<void> {
                     `input[name="channelScope:${state.workspace.id}"]`,
                 ) ?? [],
             );
-            const ownerSelect = group?.querySelector<HTMLSelectElement>(
-                `select[name="workspaceOwner:${state.workspace.id}"]`,
+            const ownerInput = group?.querySelector<HTMLInputElement>(
+                `input[name="workspaceOwner:${state.workspace.id}"]`,
             );
-            if (ownerSelect) {
-                ownerSelect.disabled = !enabled;
+            if (ownerInput) {
+                ownerInput.disabled = !enabled;
             }
-            const selectedOwnerId = enabled ? (ownerSelect?.value ?? '') : '';
+            const selectedOwnerId = enabled ? (ownerInput?.value ?? '') : '';
             checkboxes.forEach((checkbox) => {
                 checkbox.disabled = !enabled || mode === 'all_accessible';
             });
@@ -3508,7 +3407,7 @@ async function renderDashboard(): Promise<void> {
     };
 
     app.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
-        'input[name="workspaceTarget"], input[name^="channelScopeMode:"], input[name^="channelScope:"], select[name^="workspaceOwner:"]',
+        'input[name="workspaceTarget"], input[name^="channelScopeMode:"], input[name^="channelScope:"]',
     ).forEach((input) => {
         input.addEventListener('change', syncHomeChannelSelection);
     });

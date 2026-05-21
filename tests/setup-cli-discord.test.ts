@@ -228,7 +228,7 @@ describe('setup CLI Discord setup', () => {
           }
         }
       },
-      flags: 557056
+      flags: 524288
     }));
   });
 
@@ -257,7 +257,7 @@ describe('setup CLI Discord setup', () => {
 
     expect(result.status, result.stderr + result.stdout).toBe(0);
     expect(result.stdout).toContain('Discord app configuration automation failed');
-    expect(result.stdout).toContain('Server Members Intent and Message Content Intent');
+    expect(result.stdout).toContain('Message Content Intent');
     expect(result.stdout).toContain('Murph Guild is connected.');
   });
 
@@ -577,7 +577,7 @@ describe('setup CLI Discord setup', () => {
     expect(calls.some((call) => call.url.includes('/api/discord/guild'))).toBe(false);
   });
 
-  it('validates a manual Discord user ID when member listing is unavailable', () => {
+  it('does not allow manual Discord owner selection when identity is missing', () => {
     const appDir = createAppDir();
     writeFileSync(path.join(appDir, 'config.yaml'), [
       'setup:',
@@ -588,7 +588,7 @@ describe('setup CLI Discord setup', () => {
     const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'identity'], {
       cwd: repoRoot,
-      input: 'user-123\n',
+      input: '',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -603,17 +603,13 @@ describe('setup CLI Discord setup', () => {
       encoding: 'utf8'
     });
 
-    expect(result.status, result.stderr + result.stdout).toBe(0);
-    expect(result.stdout).toContain('Server Members Intent');
+    expect(result.status, result.stderr + result.stdout).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain('Missing owner identity');
 
     const calls = readCalls(callsPath);
-    expect(calls.some((call) => call.url.includes('/api/setup/members'))).toBe(true);
-    expect(calls.some((call) => call.url.includes('/api/setup/member') && call.url.includes('user-123'))).toBe(true);
-    const saveCall = calls.find((call) => call.url.includes('/api/setup/defaults') && call.method === 'PUT');
-    expect(saveCall?.body).toEqual(expect.objectContaining({
-      ownerUserId: 'user-123',
-      ownerDisplayName: 'Daniel Lee'
-    }));
+    expect(calls.some((call) => call.url.includes('/api/setup/members'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/api/setup/member'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/api/setup/defaults') && call.method === 'PUT')).toBe(false);
   });
 
   it('falls back to validated Discord channel IDs when channel listing is unavailable', () => {

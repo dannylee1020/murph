@@ -23,7 +23,7 @@ murph setup discord
 murph setup channels
 ```
 
-Slack setup is mostly automated through the Slack manifest and OAuth flow. Discord setup requires a few manual Developer Portal steps first: create the bot, copy the bot token and client secret, add the exact OAuth redirect URI, and enable required bot intents. Use [Discord](/docs/channels/discord) for the step-by-step checklist.
+Slack setup is mostly automated through the Slack manifest and OAuth flow. Discord setup requires a few manual Developer Portal steps first: create the bot, copy the bot token and client secret, add the exact OAuth redirect URI, and enable Message Content intent. Use [Discord](/docs/channels/discord) for the step-by-step checklist.
 
 ## Browser setup
 
@@ -34,7 +34,7 @@ murph start
 murph open
 ```
 
-Use the setup wizard to connect Slack, choose owner identity, and choose watched channels. For Discord, use the CLI setup flow first because the Discord Developer Portal requires manual bot, client secret, redirect URI, and intent steps.
+Use the setup wizard to connect Slack or Discord, authorize your own account through OAuth, and choose watched channels. Owner identity is captured from the OAuth callback; Murph does not list workspace members or let you choose another user.
 
 ## Local storage
 

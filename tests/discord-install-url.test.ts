@@ -71,7 +71,7 @@ describe('Discord install URL', () => {
           }
         }
       },
-      flags: 557060
+      flags: 524292
     }));
   });
 

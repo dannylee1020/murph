@@ -1,6 +1,7 @@
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import { getStore } from '#lib/server/persistence/store';
+import { providerLocksOwnerIdentity, requireMatchingSetupOwner } from '#lib/server/setup/owner-identity';
 import { readBody, readJson, redirect, sendJson, toHeaders } from '../http.js';
 import { route, type Route } from '../router.js';
 import type { Workspace } from '#lib/types';
@@ -42,6 +43,10 @@ export const channelRoutes: Route[] = [
       sendJson(res, { ok: false, error: 'workspace_required' }, 400);
       return;
     }
+    if (providerLocksOwnerIdentity(workspace.provider)) {
+      sendJson(res, { ok: false, error: 'owner_identity_locked', members: [] }, 410);
+      return;
+    }
     sendJson(res, {
       ok: true,
       workspaceId: workspace.id,
@@ -54,6 +59,17 @@ export const channelRoutes: Route[] = [
     const workspace = getProviderWorkspace(params.provider, url.searchParams.get('workspaceId') ?? undefined);
     if (!workspace) {
       sendJson(res, { ok: false, error: 'workspace_required' }, 400);
+      return;
+    }
+    const ownerCheck = requireMatchingSetupOwner(workspace, params.userId);
+    if (!ownerCheck.ok) {
+      sendJson(res, {
+        ok: false,
+        error: ownerCheck.error,
+        workspaceId: workspace.id,
+        provider: workspace.provider,
+        owner: ownerCheck.owner
+      }, 400);
       return;
     }
     sendJson(res, {

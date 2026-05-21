@@ -35,9 +35,6 @@ export function createSlackChannelPlugin(): ChannelPlugin {
             : undefined
         };
       },
-      listMembers(workspace) {
-        return slack.listMembers(workspace);
-      },
       getMember(workspace, userId) {
         return slack.getMember(workspace, userId);
       },

@@ -75,6 +75,17 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
     workspaceId: workspace.id,
     externalWorkspaceId: workspace.externalWorkspaceId
   });
+  const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
+  updateMurphSetupDefaults({
+    channelProvider: 'slack',
+    workspaceId: workspace.id,
+    ownerUserId: 'UOWNER',
+    ownerDisplayName: 'Owner',
+    workspaceOwners: [
+      { workspaceId: workspace.id, ownerUserId: 'UOWNER', ownerDisplayName: 'Owner' },
+      { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Owner' }
+    ]
+  });
   const { gatewayRoutes } = await import('../../src/server/routes/gateway');
   const { dispatchRoute } = await import('../../src/server/router');
   const { getGateway } = await import('../../src/lib/server/runtime/gateway');
@@ -276,34 +287,28 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     ]);
 
     const response = await post({
-      ownerUserId: 'USLACK',
+      ownerUserId: 'UOWNER',
       mode: 'manual_review',
       targets: [
-        { workspaceId: workspace.id, ownerUserId: 'USLACK', channelScope: ['C1'] },
+        { workspaceId: workspace.id, ownerUserId: 'UOWNER', channelScope: ['C1'] },
         { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', channelScope: ['D1'] }
       ]
     }, '/api/gateway/sessions/bulk');
 
     expect(response.status).toBe(201);
-    expect(store.listActiveSessions(workspace.id)[0].ownerUserId).toBe('USLACK');
+    expect(store.listActiveSessions(workspace.id)[0].ownerUserId).toBe('UOWNER');
     expect(store.listActiveSessions(discordWorkspace.id)[0].ownerUserId).toBe('1234567890');
   });
 
-  it('rejects an owner ID that is not valid for the target workspace', async () => {
-    const { post, store, workspace, discordWorkspace, getMember } = await setup([
+  it('rejects an owner ID that does not match the OAuth owner for the target workspace', async () => {
+    const { post, store, workspace, discordWorkspace } = await setup([
       { channelId: 'D1', name: 'support', status: 'already_member' }
     ]);
-    getMember.mockImplementation(async (targetWorkspace, userId: string) => {
-      if ((targetWorkspace as { id: string }).id === discordWorkspace.id && userId === 'USLACK') {
-        throw new Error('Discord member not found');
-      }
-      return { id: userId, displayName: userId };
-    });
 
     const response = await post({
       mode: 'manual_review',
       targets: [
-        { workspaceId: discordWorkspace.id, ownerUserId: 'USLACK', channelScope: ['D1'] }
+        { workspaceId: discordWorkspace.id, ownerUserId: 'UOWNER', channelScope: ['D1'] }
       ]
     }, '/api/gateway/sessions/bulk');
 
@@ -313,9 +318,10 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
       error: 'session_targets_failed',
       targets: [
         expect.objectContaining({
-          error: 'owner_not_found',
+          error: 'owner_identity_mismatch',
           workspace: expect.objectContaining({ provider: 'discord' }),
-          ownerUserId: 'USLACK'
+          ownerUserId: 'UOWNER',
+          owner: expect.objectContaining({ ownerUserId: '1234567890' })
         })
       ]
     });

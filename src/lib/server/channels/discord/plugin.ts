@@ -22,7 +22,7 @@ export function createDiscordChannelPlugin(): ChannelPlugin {
         { key: 'DISCORD_REDIRECT_URI', label: 'OAuth redirect URI', kind: 'config', required: false },
         {
           key: 'discord_privileged_intents',
-          label: 'Server Members and Message Content intents',
+          label: 'Message Content intent',
           kind: 'manual',
           required: true
         }
@@ -47,9 +47,6 @@ export function createDiscordChannelPlugin(): ChannelPlugin {
               }
             : undefined
         };
-      },
-      listMembers(workspace) {
-        return discord.listMembers(workspace);
       },
       getMember(workspace, userId) {
         return discord.getMember(workspace, userId);

@@ -80,6 +80,27 @@ async function setup() {
   return { request, store, workspace };
 }
 
+async function seedWorkspaceOwner(
+  workspace: { id: string; provider: string },
+  ownerUserId = 'U1',
+  ownerDisplayName = 'Daniel'
+) {
+  const { getStore } = await import('#lib/server/persistence/store');
+  const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
+  getStore().upsertUser({
+    workspaceId: workspace.id,
+    externalUserId: ownerUserId,
+    displayName: ownerDisplayName
+  });
+  updateMurphSetupDefaults({
+    channelProvider: workspace.provider,
+    workspaceId: workspace.id,
+    ownerUserId,
+    ownerDisplayName,
+    workspaceOwners: [{ workspaceId: workspace.id, ownerUserId, ownerDisplayName }]
+  });
+}
+
 describe('setup defaults routes', () => {
   const originalCwd = process.cwd();
   const originalAppDir = process.env.MURPH_APP_DIR;
@@ -117,6 +138,7 @@ describe('setup defaults routes', () => {
 
   it('saves owner, selected channels, and schedule as shared setup defaults', async () => {
     const { request, store, workspace } = await setup();
+    await seedWorkspaceOwner(workspace);
 
     const response = await request('PUT', '/api/setup/defaults', {
       ownerUserId: 'U1',
@@ -146,11 +168,16 @@ describe('setup defaults routes', () => {
   });
 
   it('marks setup ready only after identity and channels are configured', async () => {
-    const { request } = await setup();
+    const { request, workspace } = await setup();
 
     const before = await request('GET', '/api/setup/doctor');
     expect(before.body.ready).toBe(false);
     expect(before.body.nextStep).toBe('identity');
+
+    await seedWorkspaceOwner(workspace);
+    const afterIdentity = await request('GET', '/api/setup/doctor');
+    expect(afterIdentity.body.ready).toBe(false);
+    expect(afterIdentity.body.nextStep).toBe('channels');
 
     await request('PUT', '/api/setup/defaults', {
       ownerUserId: 'U1',
@@ -173,6 +200,17 @@ describe('setup defaults routes', () => {
       externalWorkspaceId: 'G1',
       name: 'Test Server',
       botUserId: 'DBOT'
+    });
+    const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
+    updateMurphSetupDefaults({
+      ownerUserId: 'USLACK',
+      ownerDisplayName: 'Slack Daniel',
+      workspaceId: workspace.id,
+      channelProvider: 'slack',
+      workspaceOwners: [
+        { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
+        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
+      ]
     });
 
     const response = await request('PUT', '/api/setup/defaults', {
@@ -254,8 +292,9 @@ describe('setup defaults routes', () => {
   });
 
   it('marks setup not ready when event ingress has a blocking error', async () => {
-    const { request } = await setup();
+    const { request, workspace } = await setup();
     const { markIngressError } = await import('#lib/server/channels/ingress-health');
+    await seedWorkspaceOwner(workspace);
     await request('PUT', '/api/setup/defaults', {
       ownerUserId: 'U1',
       ownerDisplayName: 'Daniel',
@@ -360,13 +399,39 @@ describe('setup defaults routes', () => {
     const patch = calls.find((call) => call.url.includes('/applications/@me') && call.method === 'PATCH');
     expect(patch?.body).toEqual(expect.objectContaining({
       install_params: expect.objectContaining({ scopes: ['bot'] }),
-      flags: 557060
+      flags: 524292
     }));
     const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
     expect(config).toContain('clientId: app-123');
     const { readSecret } = await import('../../src/lib/server/credentials/local-store');
     expect(readSecret('discord', 'bot_token')).toBe('discord-bot-token');
     expect(readSecret('discord', 'client_secret')).toBe('discord-client-secret');
+  });
+
+  it('rejects manual owner changes for OAuth-owned channel workspaces', async () => {
+    const { request, workspace } = await setup();
+    await seedWorkspaceOwner(workspace, 'U1', 'Daniel');
+
+    const response = await request('PUT', '/api/setup/defaults', {
+      ownerUserId: 'U2',
+      ownerDisplayName: 'Someone Else'
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual(expect.objectContaining({
+      ok: false,
+      error: 'owner_identity_mismatch',
+      owner: expect.objectContaining({ ownerUserId: 'U1' })
+    }));
+  });
+
+  it('does not expose member enumeration for OAuth-owned channel workspaces', async () => {
+    const { request, workspace } = await setup();
+
+    const response = await request('GET', `/api/setup/members?workspaceId=${workspace.id}`);
+
+    expect(response.status).toBe(410);
+    expect(response.body).toEqual({ ok: false, error: 'owner_identity_locked', members: [] });
   });
 
   it('reports Discord redirect URI and app automation failures without blocking preparation', async () => {

@@ -20,6 +20,11 @@ import { getSlackService } from '#lib/server/channels/slack/service';
 import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getIngressHealth } from '#lib/server/channels/ingress-health';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
+import {
+  providerLocksOwnerIdentity,
+  requireMatchingSetupOwner,
+  setupOwnerForWorkspace
+} from '#lib/server/setup/owner-identity';
 import type { SetupDefaults, Workspace } from '#lib/types';
 
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
@@ -184,6 +189,80 @@ function workspaceChannelsConfigured(defaults: SetupDefaults): boolean {
   return defaults.channelScopeMode === 'all_accessible' || (defaults.selectedChannels?.length ?? 0) > 0;
 }
 
+function sendOwnerIdentityError(
+  res: Parameters<typeof sendJson>[0],
+  check: Exclude<ReturnType<typeof requireMatchingSetupOwner>, { ok: true }>
+): void {
+  sendJson(res, {
+    ok: false,
+    error: check.error,
+    owner: check.owner
+      ? {
+          workspaceId: check.owner.workspaceId,
+          ownerUserId: check.owner.ownerUserId,
+          ownerDisplayName: check.owner.ownerDisplayName
+        }
+      : undefined
+  }, 400);
+}
+
+function validateOwnerUpdates(
+  body: Partial<SetupDefaults> & { workspaceId?: string },
+  workspace: Workspace,
+  currentDefaults: SetupDefaults
+): ReturnType<typeof requireMatchingSetupOwner> {
+  const ownerUserId = body.ownerUserId?.trim();
+  const ownerTouched = body.ownerUserId !== undefined ||
+    body.ownerDisplayName !== undefined ||
+    body.workspaceOwners !== undefined;
+
+  if (!ownerTouched) {
+    const owner = setupOwnerForWorkspace(workspace, currentDefaults);
+    return {
+      ok: true,
+      owner: {
+        workspaceId: workspace.id,
+        ownerUserId: owner?.ownerUserId ?? '',
+        ownerDisplayName: owner?.ownerDisplayName
+      }
+    };
+  }
+
+  if (body.ownerUserId !== undefined) {
+    const check = requireMatchingSetupOwner(workspace, ownerUserId, currentDefaults);
+    if (!check.ok) return check;
+  }
+
+  if (body.workspaceOwners !== undefined) {
+    const requestedOwners = new Map(
+      (body.workspaceOwners ?? [])
+        .map((owner) => [owner.workspaceId?.trim(), owner.ownerUserId?.trim()] as const)
+        .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1]))
+    );
+
+    for (const owner of body.workspaceOwners ?? []) {
+      const ownerWorkspace = owner.workspaceId ? getStore().getWorkspaceById(owner.workspaceId) : undefined;
+      if (!ownerWorkspace) continue;
+      const check = requireMatchingSetupOwner(ownerWorkspace, owner.ownerUserId?.trim(), currentDefaults);
+      if (!check.ok) return check;
+    }
+
+    for (const lockedWorkspace of getStore().listWorkspaces().filter((entry) => providerLocksOwnerIdentity(entry.provider))) {
+      const existingOwner = setupOwnerForWorkspace(lockedWorkspace, currentDefaults);
+      if (!existingOwner) continue;
+      const requestedOwner = requestedOwners.get(lockedWorkspace.id);
+      if (requestedOwner === undefined) {
+        return { ok: false, error: 'owner_identity_required', owner: existingOwner };
+      }
+      if (requestedOwner !== existingOwner.ownerUserId) {
+        return { ok: false, error: 'owner_identity_mismatch', owner: existingOwner };
+      }
+    }
+  }
+
+  return requireMatchingSetupOwner(workspace, ownerUserId, currentDefaults);
+}
+
 function getProviderWorkspace(provider?: string, workspaceId?: string): Workspace | undefined {
   const store = getStore();
   if (workspaceId) {
@@ -237,6 +316,9 @@ export const systemRoutes: Route[] = [
     const setupDefaults = effectiveSetupDefaults();
     const workspaces = getStore().listWorkspaces();
     const slackWorkspace = getSlackService().getUsableWorkspace();
+    const slackOwnerConfigured = Boolean(
+      slackWorkspace && resolveSetupDefaultsForWorkspace(slackWorkspace, setupDefaults).ownerUserId
+    );
     const discordConfigured = getDiscordService().isConfigured();
     const discordWorkspace = workspaces.find((workspace) => (
       workspace.provider === 'discord' &&
@@ -275,6 +357,7 @@ export const systemRoutes: Route[] = [
         socketConfigured: Boolean(env.slackAppToken),
         ingress: getIngressHealth('slack'),
         userSearchConfigured: Boolean(slackWorkspace && getSlackService().getUserSearchToken(slackWorkspace)),
+        ownerConfigured: slackOwnerConfigured,
         workspace: slackWorkspace
           ? {
               id: slackWorkspace.id,
@@ -334,6 +417,10 @@ export const systemRoutes: Route[] = [
       sendJson(res, { ok: false, error: 'workspace_required' }, 400);
       return;
     }
+    if (providerLocksOwnerIdentity(workspace.provider)) {
+      sendJson(res, { ok: false, error: 'owner_identity_locked', members: [] }, 410);
+      return;
+    }
     sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, members: await getChannelRegistry().listMembers(workspace) });
   }),
   route('GET', '/api/setup/member', async ({ res, url }) => {
@@ -347,6 +434,11 @@ export const systemRoutes: Route[] = [
     }
     if (!userId) {
       sendJson(res, { ok: false, error: 'user_id_required' }, 400);
+      return;
+    }
+    const ownerCheck = requireMatchingSetupOwner(workspace, userId, effectiveSetupDefaults());
+    if (!ownerCheck.ok) {
+      sendOwnerIdentityError(res, ownerCheck);
       return;
     }
     sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, member: await getChannelRegistry().getMember(workspace, userId) });
@@ -386,8 +478,15 @@ export const systemRoutes: Route[] = [
       return;
     }
 
+    const currentDefaults = effectiveSetupDefaults();
+    const ownerCheck = validateOwnerUpdates(body, workspace, currentDefaults);
+    if (!ownerCheck.ok) {
+      sendOwnerIdentityError(res, ownerCheck);
+      return;
+    }
+
     const defaults = normalizeSetupDefaults({
-      ...effectiveSetupDefaults(),
+      ...currentDefaults,
       ...body
     });
 

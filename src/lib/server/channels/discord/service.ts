@@ -6,7 +6,6 @@ import type { ChannelMessage, ChannelThreadRef, Workspace } from '#lib/types';
 
 export const DISCORD_BOT_PERMISSIONS = '274877991936';
 export const DISCORD_REQUIRED_LIMITED_INTENT_FLAGS = {
-  GUILD_MEMBERS: 1 << 15,
   MESSAGE_CONTENT: 1 << 19
 } as const;
 
@@ -167,7 +166,6 @@ export class DiscordService {
     const application = await this.fetchCurrentApplication(botToken).catch(() => undefined);
     const flags = typeof application?.flags === 'number'
       ? application.flags |
-        DISCORD_REQUIRED_LIMITED_INTENT_FLAGS.GUILD_MEMBERS |
         DISCORD_REQUIRED_LIMITED_INTENT_FLAGS.MESSAGE_CONTENT
       : undefined;
 

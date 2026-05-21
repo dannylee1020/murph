@@ -1518,6 +1518,20 @@ button.primary-large:hover {
   padding: 12px 0 16px;
 }
 
+.workspace-owner-select {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.workspace-owner-select .readonly-value {
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .channel-mode-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

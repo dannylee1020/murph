@@ -136,12 +136,7 @@ export const slackRoutes: Route[] = [
       return;
     }
 
-    try {
-      const members = await getSlackService().listMembers(workspace);
-      sendJson(res, { ok: true, members });
-    } catch (error) {
-      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'Failed to list members', members: [] }, 500);
-    }
+    sendJson(res, { ok: false, error: 'owner_identity_locked', members: [] }, 410);
   }),
   route('GET', '/api/slack/channels', async ({ res }) => {
     const workspace = getSlackWorkspace();

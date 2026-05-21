@@ -18,7 +18,6 @@ oauth_config:
       - groups:read
       - im:history
       - mpim:history
-      - users:read
     user:
       - search:read
 settings:

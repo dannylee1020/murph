@@ -17,10 +17,9 @@ const slackApiBase = process.env.MURPH_SLACK_API_BASE || 'https://slack.com/api'
 const discordApiBase = process.env.MURPH_DISCORD_API_BASE || 'https://discord.com/api/v10';
 const discordBotPermissions = '274877991936';
 const discordLimitedIntentFlags = {
-  guildMembers: 1 << 15,
   messageContent: 1 << 19
 };
-const discordRequiredLimitedIntentFlags = discordLimitedIntentFlags.guildMembers | discordLimitedIntentFlags.messageContent;
+const discordRequiredLimitedIntentFlags = discordLimitedIntentFlags.messageContent;
 const discordPermissionLabels = [
   'View Channels',
   'Send Messages',
@@ -1013,7 +1012,7 @@ async function configureDiscordApplication(token, applicationFlags) {
     return true;
   } catch (error) {
     warn(`Discord app configuration automation failed: ${error instanceof Error ? error.message : String(error)}`);
-    warn('If Discord blocks the API update, open Developer Portal > Bot and enable Server Members Intent and Message Content Intent.');
+    warn('If Discord blocks the API update, open Developer Portal > Bot and enable Message Content Intent.');
     warn(`Set bot install permissions to: ${discordPermissionLabels.join(', ')}.`);
     return false;
   }
@@ -1414,7 +1413,7 @@ async function setupDiscord() {
   callout('Discord install URL', installUrl);
   info(`Murph requests these bot permissions: ${discordPermissionLabels.join(', ')}.`);
   if (!configuredApp) {
-    info('In the Discord Developer Portal, enable Server Members Intent and Message Content Intent before continuing.');
+    info('In the Discord Developer Portal, enable Message Content Intent before continuing.');
   }
   openBrowserUrl(installUrl);
   if (options.nonInteractive) {
@@ -1475,65 +1474,20 @@ function numberedList(items, formatter) {
 
 async function setupIdentity() {
   sectionTitle('Identity');
-  const provider = currentChannelProvider();
-  const workspaceId = currentWorkspaceId();
   const current = await getDefaults();
   if (options.quick && current.defaults?.ownerUserId) {
     success(`Owner is configured: ${current.defaults.ownerDisplayName || current.defaults.ownerUserId}`);
     return current.defaults;
   }
   if (options.nonInteractive && !current.defaults?.ownerUserId) {
-    fail('Missing owner identity. Run murph setup identity.');
+    fail('Missing owner identity. Reconnect Slack or Discord through OAuth so Murph can identify your account.');
   }
   if (section !== 'identity' && current.defaults?.ownerUserId) {
     success(`Owner is configured: ${current.defaults.ownerDisplayName || current.defaults.ownerUserId}`);
     return current.defaults;
   }
 
-  let membersPayload = { members: [] };
-  try {
-    const params = new URLSearchParams({ provider });
-    if (workspaceId) params.set('workspaceId', workspaceId);
-    membersPayload = await request(`/api/setup/members?${params.toString()}`);
-  } catch (error) {
-    if (provider !== 'discord') throw error;
-    warn(`Discord member list is unavailable: ${error instanceof Error ? error.message : String(error)}`);
-    warn('Enable Server Members Intent in the Discord Developer Portal to use the member picker.');
-  }
-  const members = membersPayload.members || [];
-  if (!members.length) {
-    if (provider === 'discord') {
-      const id = await askRequired('Discord user ID');
-      try {
-        const member = await fetchSetupMember(provider, workspaceId, id);
-        if (member?.displayName) {
-          return (await saveDefaults({ ...current.defaults, ownerUserId: member.id || id, ownerDisplayName: member.displayName })).defaults;
-        }
-      } catch (error) {
-        warn(`Could not fetch that Discord user: ${error instanceof Error ? error.message : String(error)}`);
-        warn('Continuing with manual display name. No separate Discord API key is needed.');
-      }
-      const displayName = await askRequired('Display name', id);
-      return (await saveDefaults({ ...current.defaults, ownerUserId: id, ownerDisplayName: displayName })).defaults;
-    }
-    const displayName = await askRequired('Display name');
-    const defaultId = displayName.toLowerCase().replace(/\s+/g, '_');
-    const id = await askRequired('User ID', defaultId);
-    return (await saveDefaults({ ...current.defaults, ownerUserId: id, ownerDisplayName: displayName })).defaults;
-  }
-
-  info(`Choose the ${provider === 'discord' ? 'Discord' : 'Slack'} user Murph should watch for.`);
-  numberedList(members, (member) => member.displayName);
-  const defaultIndex = Math.max(1, members.findIndex((member) => member.id === current.defaults?.ownerUserId) + 1);
-  const selectedMember = members[await askIndex('Choose yourself', members, defaultIndex || 1)];
-  const next = {
-    ...current.defaults,
-    ownerUserId: selectedMember.id,
-    ownerDisplayName: selectedMember.displayName
-  };
-  await saveDefaults(next);
-  success(`Saved owner: ${selectedMember.displayName}`);
-  return next;
+  fail('Missing owner identity. Reconnect Slack or Discord through OAuth so Murph can identify your account.');
 }
 
 async function setupChannels() {

@@ -26,7 +26,7 @@ If `5173` is occupied, stop the other process or choose a port intentionally wit
 
 ## Setup wizard
 
-Use the setup wizard to configure the AI provider, Slack connection, owner identity, watched channels, schedule, and policy profile.
+Use the setup wizard to configure the AI provider, Slack or Discord connection, OAuth owner identity, watched channels, schedule, and policy profile.
 
 ## Status
 

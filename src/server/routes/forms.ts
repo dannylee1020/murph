@@ -1,5 +1,6 @@
 import { emitControlPlaneEvent } from '#lib/server/runtime/control-plane';
 import { getStore } from '#lib/server/persistence/store';
+import { requireMatchingSetupOwner } from '#lib/server/setup/owner-identity';
 import type { SessionMode } from '#lib/types';
 import { readForm, redirect } from '../http.js';
 import { route, type Route } from '../router.js';
@@ -15,6 +16,11 @@ async function createSessionFromInput(input: {
   const workspace = store.getFirstWorkspace();
 
   if (!workspace) {
+    return { ok: false };
+  }
+
+  const ownerCheck = requireMatchingSetupOwner(workspace, input.ownerUserId);
+  if (!ownerCheck.ok) {
     return { ok: false };
   }
 

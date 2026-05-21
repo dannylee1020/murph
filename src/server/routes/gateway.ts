@@ -21,6 +21,7 @@ import {
 import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
+import { requireMatchingSetupOwner } from '#lib/server/setup/owner-identity';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { readMurphConfig, updateMurphPolicyProfile } from '#lib/server/setup/config-file';
 import type { AgentUser, ChannelEnsureMemberResult, ChannelSetupMember, SessionMode, Workspace } from '#lib/types';
@@ -138,6 +139,21 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
   const ownerUserId = input.ownerUserId;
   if (!ownerUserId) {
     return { ok: false, status: 400, payload: { ok: false, error: 'owner_required', workspace: workspaceDescriptor(workspace) } };
+  }
+
+  const ownerCheck = requireMatchingSetupOwner(workspace, ownerUserId);
+  if (!ownerCheck.ok) {
+    return {
+      ok: false,
+      status: 400,
+      payload: {
+        ok: false,
+        error: ownerCheck.error,
+        workspace: workspaceDescriptor(workspace),
+        ownerUserId,
+        owner: ownerCheck.owner
+      }
+    };
   }
 
   let ownerMember: ChannelSetupMember;
@@ -536,6 +552,18 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
+    const ownerCheck = requireMatchingSetupOwner(workspace, params.userId);
+    if (!ownerCheck.ok) {
+      sendJson(res, {
+        ok: false,
+        error: ownerCheck.error,
+        workspace: workspaceDescriptor(workspace),
+        ownerUserId: params.userId,
+        owner: ownerCheck.owner
+      }, 400);
+      return;
+    }
+
     const user = store.upsertUser({
       workspaceId: workspace.id,
       externalUserId: params.userId,
@@ -578,6 +606,18 @@ export const gatewayRoutes: Route[] = [
     const ownerUserId = body.ownerUserId;
     if (!body.channelId || !ownerUserId) {
       sendJson(res, { ok: false, error: 'channel_and_owner_required' }, 400);
+      return;
+    }
+
+    const ownerCheck = requireMatchingSetupOwner(workspace, ownerUserId);
+    if (!ownerCheck.ok) {
+      sendJson(res, {
+        ok: false,
+        error: ownerCheck.error,
+        workspace: workspaceDescriptor(workspace),
+        ownerUserId,
+        owner: ownerCheck.owner
+      }, 400);
       return;
     }
 

@@ -5,7 +5,7 @@ description: Connect Discord as a Murph channel.
 
 # Discord
 
-Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup discord` validate the app, open the authorization flow, and save the server, owner, and watched channels.
+Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup discord` validate the app, open the authorization flow, and save the server, your OAuth identity, and watched channels.
 
 ## What You Need
 
@@ -56,12 +56,11 @@ This step is manual. Discord requires redirect URIs to be registered in the Deve
 
 ## Step 5: Enable Required Bot Settings
 
-On the **Bot** page, enable these privileged gateway intents:
+On the **Bot** page, enable this privileged gateway intent:
 
-- **Server Members Intent**: lets Murph fetch server members for owner lookup.
 - **Message Content Intent**: lets Murph read Discord message text at runtime.
 
-Murph tries to configure limited intent flags and default install permissions through Discord's API. If Discord rejects that update, enable the intents manually and continue.
+Murph tries to configure the required intent flag and default install permissions through Discord's API. If Discord rejects that update, enable Message Content manually and continue.
 
 ## Step 6: Run Discord Setup
 
@@ -160,9 +159,8 @@ http://localhost:5173/api/discord/oauth/callback
 Discord rejected Murph's best-effort application update. Continue with manual setup:
 
 1. Open the **Bot** page.
-2. Enable **Server Members Intent**.
-3. Enable **Message Content Intent**.
-4. Re-run `murph setup discord` if needed.
+2. Enable **Message Content Intent**.
+3. Re-run `murph setup discord` if needed.
 
 ### Missing Access Or Channel Listing Fails
 
@@ -181,6 +179,6 @@ Then rerun:
 murph setup channels
 ```
 
-### Member Listing Fails
+### Owner Identity Is Missing
 
-Enable **Server Members Intent** in the Developer Portal. If listing still fails, setup can fall back to a manual Discord user ID.
+Reconnect Discord through Murph's OAuth flow. Murph uses Discord OAuth `identify` to save only the authorizing user as the owner; setup no longer lists server members or accepts a manual user ID.
