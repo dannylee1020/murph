@@ -1,14 +1,14 @@
 import { getGmailService, toArtifact as gmailToArtifact } from '#lib/server/context-sources/gmail';
 import { getGoogleCalendarService, toArtifact as calendarToArtifact } from '#lib/server/context-sources/google-calendar';
 import { getStore } from '#lib/server/persistence/store';
+import { getRuntimeEnv } from '#lib/server/util/env';
 import { findGoogleOAuthRecord, getValidGoogleAccessToken } from '../google-oauth.js';
-import { readEnvCredential } from '../registry.js';
 import type { IntegrationAdapter } from '../adapter.js';
 import { compactCalendarEvents, queryFromThread, workdayWindowForDate } from '../shared.js';
 
 function googleConfigured(workspaceId?: string): boolean {
   try {
-    return Boolean(readEnvCredential('google') || findGoogleOAuthRecord(workspaceId));
+    return Boolean(findGoogleOAuthRecord(workspaceId) || getRuntimeEnv().googleAccessToken);
   } catch {
     return false;
   }

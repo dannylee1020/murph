@@ -15,16 +15,8 @@ export function maskCredential(value: string): string {
   return `****${trimmed.slice(-4)}`;
 }
 
-export function resolveCredential(workspaceId: string | undefined, provider: string): ResolvedCredential | undefined {
-  const envValue = readEnvCredential(provider);
-
-  if (envValue) {
-    return { source: 'env', value: envValue };
-  }
-
-  const localRecord = readSecretRecord(provider, 'api_key', { workspaceId }) ??
-    readSecretRecord(provider, 'oauth_bundle', { workspaceId }) ??
-    readSecretRecord(provider, 'api_key') ??
+export function resolveCredential(_workspaceId: string | undefined, provider: string): ResolvedCredential | undefined {
+  const localRecord = readSecretRecord(provider, 'api_key') ??
     readSecretRecord(provider, 'oauth_bundle');
   if (localRecord) {
     return {
@@ -32,6 +24,11 @@ export function resolveCredential(workspaceId: string | undefined, provider: str
       value: localRecord.value,
       metadata: localRecord.metadata
     };
+  }
+
+  const envValue = readEnvCredential(provider);
+  if (envValue) {
+    return { source: 'env', value: envValue };
   }
 
   return undefined;

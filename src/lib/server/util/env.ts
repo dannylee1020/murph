@@ -60,7 +60,7 @@ function envOrConfigString(envKey: string, configValue: string | undefined, fall
 }
 
 function envOrSecret(envKey: string, provider: string, key: string): string | undefined {
-  return process.env[envKey] ?? readSecret(provider, key);
+  return readSecret(provider, key) ?? process.env[envKey];
 }
 
 function envOrConfigNumber(envKey: string, configValue: number | undefined, fallback: number): number {

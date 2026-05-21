@@ -1,8 +1,11 @@
 import { getStore } from '#lib/server/persistence/store';
-import { hasSecret } from '#lib/server/credentials/local-store';
 import type { IntegrationDefinition } from './registry.js';
 import { listIntegrations, readEnvCredential } from './registry.js';
 import { findGoogleOAuthRecord } from './google-oauth.js';
+import {
+  globalIntegrationCredential,
+  integrationCredentialKey,
+} from './global-scope.js';
 
 const CHANNEL_PROVIDER_CAPABILITIES: Record<string, Pick<IntegrationDefinition, 'tools' | 'contextSources'>> = {
   slack: {
@@ -60,6 +63,24 @@ export function disableIntegrationCapabilities(
   });
 }
 
+export function enableIntegrationCapabilitiesForAllWorkspaces(
+  definition: Pick<IntegrationDefinition, 'tools' | 'contextSources'>
+): void {
+  const store = getStore();
+  for (const workspace of store.listWorkspaces()) {
+    enableIntegrationCapabilities(workspace.id, definition);
+  }
+}
+
+export function disableIntegrationCapabilitiesForAllWorkspaces(
+  definition: Pick<IntegrationDefinition, 'tools' | 'contextSources'>
+): void {
+  const store = getStore();
+  for (const workspace of store.listWorkspaces()) {
+    disableIntegrationCapabilities(workspace.id, definition);
+  }
+}
+
 /**
  * Reconciles workspace memory with currently effective integration credentials.
  * For each integration whose credential is present (local store or env), unions its tools/contextSources
@@ -74,10 +95,10 @@ export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string
   }
 
   for (const definition of listIntegrations()) {
-    const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
+    const key = integrationCredentialKey(definition);
     const hasLocalCred = definition.provider === 'google'
-      ? Boolean(findGoogleOAuthRecord(workspaceId))
-      : hasSecret(definition.provider, key, { workspaceId }) || hasSecret(definition.provider, key);
+      ? Boolean(findGoogleOAuthRecord(workspaceId) || globalIntegrationCredential('google', 'access_token'))
+      : Boolean(globalIntegrationCredential(definition.provider, key));
     const hasEnvCred = Boolean(readEnvCredential(definition.provider));
     if (hasLocalCred || hasEnvCred) {
       enableIntegrationCapabilities(workspaceId, definition);

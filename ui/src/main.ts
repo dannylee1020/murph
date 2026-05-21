@@ -3301,7 +3301,7 @@ async function renderSettings(): Promise<void> {
         <h2>Integrations</h2>
         <span class="section-meta">${integrationsPayload.integrations.length} sources</span>
       </div>
-      <p class="section-copy">Connect optional sources Murph can use for more grounded replies.</p>
+      <p class="section-copy">Connect optional sources Murph can use for grounded replies across all channel workspaces.</p>
       ${
           selectedWorkspaceId
               ? `<div class="grid two">
@@ -3572,14 +3572,8 @@ async function renderSettings(): Promise<void> {
                 if (labelEl)
                     labelEl.textContent =
                         integration.credentialLabel ?? 'API key';
-                const targetWorkspace = workspaces.find(
-                    (workspace) =>
-                        workspace.id === integrationsPayload.workspaceId,
-                );
                 if (hintEl) {
-                    hintEl.textContent = targetWorkspace
-                        ? `Stored locally for ${workspaceOptionLabel(targetWorkspace)}. ${integration.envKey} still works as a server env override.`
-                        : `${integration.envKey} still works as a server env override.`;
+                    hintEl.textContent = `Stored locally for Murph and available to all channel workspaces. ${integration.envKey} still works as a server env override.`;
                 }
                 dialog.showModal();
                 credentialInput?.focus();

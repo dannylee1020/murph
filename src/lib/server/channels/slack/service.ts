@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { readSecret, writeSecret } from '#lib/server/credentials/local-store';
+import { reconcileIntegrationCapabilitiesForWorkspace } from '#lib/server/integrations/capabilities';
 import type { ChannelMessage, ThreadRef, Workspace } from '#lib/types';
 
 interface OAuthExchangeResponse {
@@ -218,6 +219,7 @@ export class SlackService {
         }
       });
     }
+    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
 
     const authedUser = payload.authed_user?.id
       ? await this.getMember(workspace, payload.authed_user.id).catch(() => ({

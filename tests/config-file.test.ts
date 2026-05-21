@@ -7,6 +7,7 @@ const originalCwd = process.cwd();
 const envKeys = [
   'MURPH_APP_DIR',
   'MURPH_CONFIG_PATH',
+  'MURPH_CREDENTIALS_PATH',
   'MURPH_APP_URL',
   'MURPH_DEFAULT_PROVIDER',
   'MURPH_DEFAULT_MODEL',
@@ -29,6 +30,7 @@ describe('murph config file', () => {
       delete process.env[key];
     }
     process.env.MURPH_CONFIG_PATH = path.join(workspace, 'config.yaml');
+    process.env.MURPH_CREDENTIALS_PATH = path.join(workspace, '.credentials');
   });
 
   afterEach(() => {
@@ -97,6 +99,17 @@ describe('murph config file', () => {
     expect(env.appUrl).toBe('https://override.example');
     expect(env.agentProvider).toBe('openai');
     expect(env.agentModel).toBe('gpt-5.5');
+  });
+
+  it('prefers local credentials over environment secrets', async () => {
+    process.env.OPENAI_API_KEY = 'env-key';
+    const { writeSecret } = await import('../src/lib/server/credentials/local-store');
+    writeSecret('openai', 'api_key', 'stored-key');
+
+    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
+    const env = getRuntimeEnv();
+
+    expect(env.openaiApiKey).toBe('stored-key');
   });
 
   it('updates non-secret setup keys without dropping unrelated YAML', async () => {

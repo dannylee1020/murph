@@ -9,8 +9,8 @@ import {
   revokeGoogleToken
 } from '#lib/server/integrations/google-oauth';
 import {
-  enableIntegrationCapabilities,
-  disableIntegrationCapabilities
+  enableIntegrationCapabilitiesForAllWorkspaces,
+  disableIntegrationCapabilitiesForAllWorkspaces
 } from '#lib/server/integrations/capabilities';
 import { redirect, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
@@ -81,11 +81,8 @@ export const googleRoutes: Route[] = [
       const redirectUri = `${base}/api/google/oauth/callback`;
       await exchangeGoogleCode(code, redirectUri, workspace.id);
 
-      const store = getStore();
       const definition = getIntegration('google')!;
-      for (const installedWorkspace of store.listWorkspaces()) {
-        enableIntegrationCapabilities(installedWorkspace.id, definition);
-      }
+      enableIntegrationCapabilitiesForAllWorkspaces(definition);
       redirect(res, `/settings?google=connected&workspaceId=${encodeURIComponent(workspace.id)}`);
     } catch (error) {
       console.error('[google] OAuth callback failed:', error);
@@ -104,8 +101,8 @@ export const googleRoutes: Route[] = [
     const definition = getIntegration('google')!;
     for (const installedWorkspace of store.listWorkspaces()) {
       store.deleteIntegrationConnection(installedWorkspace.id, 'google');
-      disableIntegrationCapabilities(installedWorkspace.id, definition);
     }
+    disableIntegrationCapabilitiesForAllWorkspaces(definition);
     sendJson(res, { ok: true });
   })
 ];

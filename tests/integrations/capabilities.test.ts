@@ -5,10 +5,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 async function setup(options: { notionApiKey?: string } = {}) {
   vi.resetModules();
-  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-capabilities-')), 'murph.sqlite');
+  const root = mkdtempSync(join(tmpdir(), 'murph-capabilities-'));
+  process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
+  process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   // Set explicitly, even to empty string, so this test does not read local credentials.
   process.env.NOTION_API_KEY = options.notionApiKey ?? '';
+  process.env.GITHUB_PAT = '';
+  process.env.GOOGLE_ACCESS_TOKEN = '';
+  process.env.GRANOLA_API_KEY = '';
 
   const { getStore } = await import('#lib/server/persistence/store');
   const store = getStore();
@@ -61,11 +66,10 @@ describe('integration capability wiring', () => {
     }
   });
 
-  it('reconcileIntegrationCapabilitiesForWorkspace enables GitHub even before repositories are selected', async () => {
+  it('reconcileIntegrationCapabilitiesForWorkspace enables GitHub from global credentials even before repositories are selected', async () => {
     const { store, workspace } = await setup();
     const { writeSecret } = await import('#lib/server/credentials/local-store');
     writeSecret('github', 'api_key', 'github-token', {
-      workspaceId: workspace.id,
       metadata: { account: 'octo-user', repositories: [] }
     });
     store.saveIntegrationConnection({
@@ -83,6 +87,52 @@ describe('integration capability wiring', () => {
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toContain('github.search');
     expect(memory.enabledContextSources).toContain('github.thread_search');
+  });
+
+  it('reconcileIntegrationCapabilitiesForWorkspace ignores legacy scoped credentials', async () => {
+    const { store, workspace } = await setup();
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Guild',
+      botUserId: 'DBOT'
+    });
+    const { writeSecret, readSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('notion', 'api_key', 'notion-token', {
+      workspaceId: workspace.id,
+      metadata: { account: 'murph-adapter' }
+    });
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'notion',
+      credentialKind: 'api_key',
+      metadata: { account: 'murph-adapter' }
+    });
+    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
+      '#lib/server/integrations/capabilities'
+    );
+
+    reconcileIntegrationCapabilitiesForWorkspace(discordWorkspace.id);
+
+    expect(readSecret('notion', 'api_key')).toBeUndefined();
+    const memory = store.getOrCreateWorkspaceMemory(discordWorkspace.id);
+    expect(memory.enabledOptionalTools).not.toContain('notion.search');
+    expect(memory.enabledOptionalTools).not.toContain('notion.read_page');
+    expect(memory.enabledContextSources).not.toContain('notion.thread_search');
+  });
+
+  it('reconcileIntegrationCapabilitiesForWorkspace enables tools from env fallback', async () => {
+    const { store, workspace } = await setup({ notionApiKey: 'env-notion-token' });
+    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
+      '#lib/server/integrations/capabilities'
+    );
+
+    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
+
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toContain('notion.search');
+    expect(memory.enabledOptionalTools).toContain('notion.read_page');
+    expect(memory.enabledContextSources).toContain('notion.thread_search');
   });
 
   it('reconcileIntegrationCapabilitiesForWorkspace enables Slack channel tools without integration credentials', async () => {

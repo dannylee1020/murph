@@ -8,10 +8,17 @@ import { registerBuiltInIntegrationAdapters } from '#lib/server/integrations/reg
 import { maskCredential } from '#lib/server/integrations/credentials';
 import { findGoogleOAuthRecord } from '#lib/server/integrations/google-oauth';
 import {
-  enableIntegrationCapabilities,
-  disableIntegrationCapabilities
+  enableIntegrationCapabilitiesForAllWorkspaces,
+  disableIntegrationCapabilitiesForAllWorkspaces
 } from '#lib/server/integrations/capabilities';
-import { deleteSecret, maskSecret, readSecretRecord, writeSecret } from '#lib/server/credentials/local-store';
+import { maskSecret, writeSecret } from '#lib/server/credentials/local-store';
+import {
+  deleteIntegrationConnectionForAllWorkspaces,
+  deleteIntegrationCredentialEverywhere,
+  globalIntegrationCredential,
+  integrationCredentialKey,
+  saveIntegrationConnectionForAllWorkspaces
+} from '#lib/server/integrations/global-scope';
 import { readJson, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 
@@ -99,12 +106,12 @@ function statusFor(provider: string, workspaceId: string) {
   const stored = getStore().getIntegrationConnection(workspaceId, provider);
   const envValue = readEnvCredential(provider);
   const env = getRuntimeEnv();
-  const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
+  const key = integrationCredentialKey(definition);
   const local = provider === 'google'
-    ? findGoogleOAuthRecord(workspaceId)
-    : readSecretRecord(provider, key, { workspaceId }) ?? readSecretRecord(provider, key);
+    ? findGoogleOAuthRecord(workspaceId) ?? globalIntegrationCredential('google', 'access_token')
+    : globalIntegrationCredential(provider, key);
   const reconnectRequired = !envValue && !local && stored?.status === 'connected';
-  const source = envValue ? 'env' : local ? 'credentials' : undefined;
+  const source = local ? 'credentials' : envValue ? 'env' : undefined;
   const oauthConfigured = provider === 'google'
     ? Boolean(env.googleClientId && env.googleClientSecret)
     : undefined;
@@ -116,9 +123,7 @@ function statusFor(provider: string, workspaceId: string) {
       ? stored?.metadata ?? {}
       : {};
   const githubRepositories = provider === 'github'
-    ? source === 'env'
-      ? getRuntimeEnv().githubRepositories
-      : normalizeRepositories(metadata.repositories).length > 0
+    ? source === 'credentials' && normalizeRepositories(metadata.repositories).length > 0
         ? normalizeRepositories(metadata.repositories)
         : getRuntimeEnv().githubRepositories
     : undefined;
@@ -185,24 +190,19 @@ export const integrationRoutes: Route[] = [
 
     try {
       const validationMetadata = await validateCredential(definition.provider, credential);
-      const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
+      const key = integrationCredentialKey(definition);
       const metadata = {
         ...validationMetadata,
         masked: maskSecret(credential),
         validatedAt: new Date().toISOString()
       };
-      writeSecret(definition.provider, key, credential, {
-        workspaceId: workspace.id,
-        externalWorkspaceId: workspace.externalWorkspaceId,
-        metadata
-      });
-      getStore().saveIntegrationConnection({
-        workspaceId: workspace.id,
+      writeSecret(definition.provider, key, credential, { metadata });
+      saveIntegrationConnectionForAllWorkspaces({
         provider: definition.provider,
         credentialKind: definition.credentialKind,
         metadata
       });
-      enableIntegrationCapabilities(workspace.id, definition);
+      enableIntegrationCapabilitiesForAllWorkspaces(definition);
       sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
     } catch (error) {
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
@@ -217,18 +217,18 @@ export const integrationRoutes: Route[] = [
     }
 
     try {
-      const result = await getGitHubService().listRepositories(workspace.id);
+      const result = await getGitHubService().listRepositories();
       sendJson(res, {
         ok: true,
         repositories: result.repositories,
-        selectedRepositories: getGitHubService().repositories(workspace.id)
+        selectedRepositories: getGitHubService().repositories()
       });
     } catch (error) {
       sendJson(res, {
         ok: false,
         error: error instanceof Error ? error.message : 'repository_list_failed',
         repositories: [],
-        selectedRepositories: getGitHubService().repositories(workspace.id)
+        selectedRepositories: getGitHubService().repositories()
       }, 400);
     }
   }),
@@ -243,7 +243,7 @@ export const integrationRoutes: Route[] = [
     }
 
     const stored = getStore().getIntegrationConnection(workspace.id, 'github');
-    const local = readSecretRecord('github', 'api_key', { workspaceId: workspace.id });
+    const local = globalIntegrationCredential('github', 'api_key');
     if (!local && !readEnvCredential('github')) {
       sendJson(res, { ok: false, error: 'github_not_connected' }, 400);
       return;
@@ -252,18 +252,15 @@ export const integrationRoutes: Route[] = [
     const repositories = normalizeRepositories(body.repositories);
     if (local) {
       writeSecret('github', 'api_key', local.value, {
-        workspaceId: workspace.id,
-        externalWorkspaceId: workspace.externalWorkspaceId,
         metadata: {
           ...local.metadata,
           repositories
         }
       });
     }
-    getStore().saveIntegrationConnection({
-      workspaceId: workspace.id,
+    saveIntegrationConnectionForAllWorkspaces({
       provider: 'github',
-      credentialKind: stored?.credentialKind ?? 'api_key',
+      credentialKind: definition.credentialKind,
       metadata: {
         ...(stored?.metadata ?? local?.metadata),
         repositories
@@ -272,7 +269,7 @@ export const integrationRoutes: Route[] = [
       errorMessage: stored?.errorMessage
     });
 
-    enableIntegrationCapabilities(workspace.id, definition);
+    enableIntegrationCapabilitiesForAllWorkspaces(definition);
 
     sendJson(res, { ok: true, integration: statusFor('github', workspace.id) });
   }),
@@ -290,11 +287,11 @@ export const integrationRoutes: Route[] = [
       return;
     }
 
-    const key = definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
-    deleteSecret(definition.provider, key, { workspaceId: workspace.id });
-    getStore().deleteIntegrationConnection(workspace.id, definition.provider);
+    const key = integrationCredentialKey(definition);
+    deleteIntegrationCredentialEverywhere(definition.provider, key);
+    deleteIntegrationConnectionForAllWorkspaces(definition.provider);
     if (!readEnvCredential(definition.provider)) {
-      disableIntegrationCapabilities(workspace.id, definition);
+      disableIntegrationCapabilitiesForAllWorkspaces(definition);
     }
     sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
   })

@@ -84,6 +84,12 @@ describe('integration routes', () => {
       json: async () => ({ login: 'octo-user' })
     }));
     const { request, store, workspace } = await setup();
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Guild',
+      botUserId: 'DBOT'
+    });
 
     const response = await request('POST', '/api/integrations/github/connect', {
       workspaceId: workspace.id,
@@ -110,10 +116,21 @@ describe('integration routes', () => {
       status: 'connected'
     }));
     const { readSecret } = await import('#lib/server/credentials/local-store');
-    expect(readSecret('github', 'api_key', { workspaceId: workspace.id })).toBe('ghp_test_token');
+    expect(readSecret('github', 'api_key')).toBe('ghp_test_token');
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toContain('github.search');
     expect(memory.enabledContextSources).toContain('github.thread_search');
+    const discordMemory = store.getOrCreateWorkspaceMemory(discordWorkspace.id);
+    expect(discordMemory.enabledOptionalTools).toContain('github.search');
+    expect(discordMemory.enabledContextSources).toContain('github.thread_search');
+
+    const discordStatus = await request('GET', `/api/integrations/status?workspaceId=${discordWorkspace.id}`);
+    const discordGithub = discordStatus.body.integrations.find((integration: any) => integration.provider === 'github');
+    expect(discordGithub).toEqual(expect.objectContaining({
+      provider: 'github',
+      status: 'connected',
+      source: 'credentials'
+    }));
   });
 
   it('saves GitHub repositories and enables GitHub retrieval capabilities', async () => {
@@ -141,9 +158,86 @@ describe('integration routes', () => {
     );
     const stored = store.getIntegrationConnection(workspace.id, 'github');
     expect(stored?.metadata.repositories).toEqual(['octo/app']);
+    const { readSecretRecord } = await import('#lib/server/credentials/local-store');
+    expect(readSecretRecord('github', 'api_key')?.metadata?.repositories).toEqual(['octo/app']);
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toContain('github.search');
     expect(memory.enabledContextSources).toContain('github.thread_search');
+  });
+
+  it('makes Notion tools available to another channel workspace after one connect', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: 'murph-adapter' })
+    }));
+    const { request, store, workspace } = await setup();
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Guild',
+      botUserId: 'DBOT'
+    });
+
+    const response = await request('POST', '/api/integrations/notion/connect', {
+      workspaceId: workspace.id,
+      credential: 'secret_notion_token'
+    });
+
+    expect(response.status).toBe(200);
+    const discordStatus = await request('GET', `/api/integrations/status?workspaceId=${discordWorkspace.id}`);
+    const notion = discordStatus.body.integrations.find((integration: any) => integration.provider === 'notion');
+    expect(notion).toEqual(expect.objectContaining({
+      provider: 'notion',
+      status: 'connected',
+      source: 'credentials'
+    }));
+    const memory = store.getOrCreateWorkspaceMemory(discordWorkspace.id);
+    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['notion.search', 'notion.read_page']));
+    expect(memory.enabledContextSources).toContain('notion.thread_search');
+  });
+
+  it('reports global credentials before env fallback when both are present', async () => {
+    const { request, store, workspace } = await setup({ githubPat: 'env-token' });
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('github', 'api_key', 'stored-token', {
+      metadata: { masked: '****oken', repositories: ['octo/app'] }
+    });
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'github',
+      credentialKind: 'api_key',
+      metadata: { masked: '****oken', repositories: ['octo/app'] }
+    });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const github = response.body.integrations.find((integration: any) => integration.provider === 'github');
+
+    expect(response.status).toBe(200);
+    expect(github).toEqual(expect.objectContaining({
+      provider: 'github',
+      status: 'connected',
+      source: 'credentials',
+      metadata: expect.objectContaining({
+        repositories: ['octo/app'],
+        needsRepoScope: false
+      })
+    }));
+  });
+
+  it('ignores legacy scoped credentials in status', async () => {
+    const { request, workspace } = await setup();
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('github', 'api_key', 'scoped-token', { workspaceId: workspace.id });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const github = response.body.integrations.find((integration: any) => integration.provider === 'github');
+
+    expect(response.status).toBe(200);
+    expect(github).toEqual(expect.objectContaining({
+      provider: 'github',
+      status: 'disconnected'
+    }));
+    expect(github.source).toBeUndefined();
   });
 
   it('disconnects stored credentials while keeping env fallback visible', async () => {
@@ -169,6 +263,36 @@ describe('integration routes', () => {
     );
   });
 
+  it('disconnects a global stored credential from all workspaces', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ login: 'octo-user' })
+    }));
+    const { request, store, workspace } = await setup();
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Guild',
+      botUserId: 'DBOT'
+    });
+    await request('POST', '/api/integrations/github/connect', {
+      workspaceId: workspace.id,
+      credential: 'ghp_test_token'
+    });
+
+    const response = await request('DELETE', `/api/integrations/github/disconnect?workspaceId=${discordWorkspace.id}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration).toEqual(expect.objectContaining({
+      provider: 'github',
+      status: 'disconnected'
+    }));
+    expect(store.getIntegrationConnection(workspace.id, 'github')).toBeUndefined();
+    expect(store.getIntegrationConnection(discordWorkspace.id, 'github')).toBeUndefined();
+    expect(store.getOrCreateWorkspaceMemory(workspace.id).enabledOptionalTools).not.toContain('github.search');
+    expect(store.getOrCreateWorkspaceMemory(discordWorkspace.id).enabledOptionalTools).not.toContain('github.search');
+  });
+
   it('reports Google as connected when an OAuth bundle is stored for the workspace', async () => {
     const { request, store, workspace } = await setup();
     const { writeSecret } = await import('#lib/server/credentials/local-store');
@@ -182,7 +306,6 @@ describe('integration routes', () => {
       expires_at: Date.now() + 3600_000,
       scope: 'gmail calendar'
     }), {
-      workspaceId: workspace.id,
       metadata
     });
     store.saveIntegrationConnection({
@@ -206,7 +329,7 @@ describe('integration routes', () => {
     }));
   });
 
-  it('reports Google as connected when OAuth was stored for another channel workspace', async () => {
+  it('reports Google as connected from a global OAuth bundle across channel workspaces', async () => {
     const { request, store, workspace } = await setup();
     const { writeSecret } = await import('#lib/server/credentials/local-store');
     const discordWorkspace = store.saveInstall({
@@ -225,7 +348,6 @@ describe('integration routes', () => {
       expires_at: Date.now() + 3600_000,
       scope: 'gmail calendar'
     }), {
-      workspaceId: workspace.id,
       metadata
     });
     store.saveIntegrationConnection({
@@ -247,5 +369,29 @@ describe('integration routes', () => {
     expect(google.metadata).toEqual(expect.objectContaining({
       account: 'person@example.com'
     }));
+  });
+
+  it('ignores legacy scoped Google OAuth bundles in status', async () => {
+    const { request, workspace } = await setup();
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('google', 'oauth_bundle', JSON.stringify({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_at: Date.now() + 3600_000,
+      scope: 'gmail calendar'
+    }), {
+      workspaceId: workspace.id,
+      metadata: { account: 'person@example.com' }
+    });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const google = response.body.integrations.find((integration: any) => integration.provider === 'google');
+
+    expect(response.status).toBe(200);
+    expect(google).toEqual(expect.objectContaining({
+      provider: 'google',
+      status: 'disconnected'
+    }));
+    expect(google.source).toBeUndefined();
   });
 });

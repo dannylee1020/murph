@@ -29,17 +29,17 @@ describe('integration credential resolution', () => {
     delete process.env.GITHUB_PAT;
   });
 
-  it('prefers process env credentials over local store fallback', async () => {
+  it('prefers global local store credentials over process env fallback', async () => {
     const { workspace } = await setup();
     process.env.GITHUB_PAT = 'env-token';
     const { writeSecret } = await import('#lib/server/credentials/local-store');
-    writeSecret('github', 'api_key', 'stored-token', { workspaceId: workspace.id });
+    writeSecret('github', 'api_key', 'stored-token');
 
     const { resolveCredential } = await import('#lib/server/integrations/credentials');
     expect(resolveCredential(workspace.id, 'github')).toEqual(
       expect.objectContaining({
-        source: 'env',
-        value: 'env-token'
+        source: 'credentials',
+        value: 'stored-token'
       })
     );
   });
@@ -47,7 +47,7 @@ describe('integration credential resolution', () => {
   it('reads local store credentials and ignores connection metadata', async () => {
     const { store, workspace } = await setup();
     const { writeSecret } = await import('#lib/server/credentials/local-store');
-    writeSecret('github', 'api_key', 'stored-token', { workspaceId: workspace.id, metadata: { masked: '****oken' } });
+    writeSecret('github', 'api_key', 'stored-token', { metadata: { masked: '****oken' } });
     store.saveIntegrationConnection({
       workspaceId: workspace.id,
       provider: 'github',
@@ -85,5 +85,14 @@ describe('integration credential resolution', () => {
       source: 'env',
       value: 'env-token'
     });
+  });
+
+  it('ignores legacy workspace-scoped credentials', async () => {
+    const { workspace } = await setup();
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('github', 'api_key', 'scoped-token', { workspaceId: workspace.id });
+
+    const { resolveCredential } = await import('#lib/server/integrations/credentials');
+    expect(resolveCredential(workspace.id, 'github')).toBeUndefined();
   });
 });

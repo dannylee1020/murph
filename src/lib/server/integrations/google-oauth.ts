@@ -1,7 +1,6 @@
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { deleteSecret, listSecrets, readSecretRecord, writeSecret, type CredentialRecord } from '#lib/server/credentials/local-store';
-import { readEnvCredential } from './registry.js';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -38,10 +37,8 @@ function secretRef(record: CredentialRecord) {
   };
 }
 
-export function findGoogleOAuthRecord(workspaceId?: string): CredentialRecord | undefined {
-  return readSecretRecord('google', 'oauth_bundle') ??
-    (workspaceId ? readSecretRecord('google', 'oauth_bundle', { workspaceId }) : undefined) ??
-    googleCredentialRecords()[0];
+export function findGoogleOAuthRecord(_workspaceId?: string): CredentialRecord | undefined {
+  return readSecretRecord('google', 'oauth_bundle');
 }
 
 export function isGoogleOAuthConfigured(): boolean {
@@ -202,9 +199,9 @@ export async function getValidGoogleAccessToken(workspaceId: string): Promise<st
     return bundle.access_token;
   }
 
-  const envToken = readEnvCredential('google');
-  if (envToken) {
-    return envToken;
+  const fallbackToken = getRuntimeEnv().googleAccessToken;
+  if (fallbackToken) {
+    return fallbackToken;
   }
 
   throw new Error('No Google credential available');
