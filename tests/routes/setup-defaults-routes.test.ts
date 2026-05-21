@@ -164,6 +164,63 @@ describe('setup defaults routes', () => {
     expect(after.body.nextStep).toBe('ready');
   });
 
+  it('round-trips workspace-specific owner defaults', async () => {
+    const { request, store, workspace } = await setup();
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Server',
+      botUserId: 'DBOT'
+    });
+
+    const response = await request('PUT', '/api/setup/defaults', {
+      ownerUserId: 'USLACK',
+      ownerDisplayName: 'Slack Daniel',
+      workspaceId: workspace.id,
+      channelScopeMode: 'all_accessible',
+      workspaceOwners: [
+        { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
+        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
+      ]
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.defaults.workspaceOwners).toEqual([
+      { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
+      { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
+    ]);
+
+    const slackDefaults = await request('GET', `/api/setup/defaults?workspaceId=${workspace.id}`);
+    const discordDefaults = await request('GET', `/api/setup/defaults?workspaceId=${discordWorkspace.id}`);
+
+    expect(slackDefaults.body.defaults.ownerUserId).toBe('USLACK');
+    expect(discordDefaults.body.defaults.ownerUserId).toBe('1234567890');
+    expect(store.getUser(discordWorkspace.id, '1234567890')?.displayName).toBe('Discord Daniel');
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('workspaceOwners:');
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('ownerUserId: "1234567890"');
+  });
+
+  it('marks setup not ready when event ingress has a blocking error', async () => {
+    const { request } = await setup();
+    const { markIngressError } = await import('#lib/server/channels/ingress-health');
+    await request('PUT', '/api/setup/defaults', {
+      ownerUserId: 'U1',
+      ownerDisplayName: 'Daniel',
+      channelScopeMode: 'all_accessible',
+      timezone: 'America/Los_Angeles',
+      workdayStartHour: 9,
+      workdayEndHour: 17
+    });
+
+    markIngressError('slack', new Error('An API error occurred: invalid_auth'));
+
+    const response = await request('GET', '/api/setup/doctor');
+    expect(response.body.ready).toBe(false);
+    expect(response.body.checks).toContainEqual(expect.objectContaining({
+      id: 'slack_ingress',
+      status: 'action_required'
+    }));
+  });
+
   it('returns connected Slack workspace metadata in setup status', async () => {
     const { request } = await setup();
 
@@ -196,12 +253,36 @@ describe('setup defaults routes', () => {
       installed: true,
       botTokenConfigured: true,
       clientIdConfigured: true,
-      oauthConfigured: true
+      clientSecretConfigured: false,
+      oauthConfigured: false
     }));
     expect(response.body.channelWorkspaces).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'slack', name: 'Test Workspace' }),
       expect.objectContaining({ provider: 'discord', name: 'Test Server' })
     ]));
+  });
+
+  it('treats workspace-scoped Discord bot credentials as configured', async () => {
+    const { request, store } = await setup();
+    const { writeSecret } = await import('../../src/lib/server/credentials/local-store');
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Server',
+      botUserId: 'bot-user-1'
+    });
+    writeSecret('discord', 'bot_token', 'discord-token', {
+      workspaceId: discordWorkspace.id,
+      externalWorkspaceId: discordWorkspace.externalWorkspaceId
+    });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.discord).toEqual(expect.objectContaining({
+      installed: true,
+      botTokenConfigured: true
+    }));
   });
 
   it('stores Google OAuth client settings through setup config', async () => {

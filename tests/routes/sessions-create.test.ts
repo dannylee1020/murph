@@ -41,6 +41,10 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   const ensureMember = vi.fn();
+  const getMember = vi.fn(async (_workspace: unknown, userId: string) => ({
+    id: userId,
+    displayName: userId
+  }));
   for (const result of results) {
     ensureMember.mockResolvedValueOnce(result);
   }
@@ -49,7 +53,7 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
   }));
   vi.doMock('#lib/server/capabilities/channel-registry', () => ({
-    getChannelRegistry: () => ({ ensureMember })
+    getChannelRegistry: () => ({ ensureMember, getMember })
   }));
 
   const { getStore } = await import('#lib/server/persistence/store');
@@ -86,7 +90,7 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
     return res.result();
   }
 
-  return { post, store, workspace, discordWorkspace, gateway: getGateway() };
+  return { post, store, workspace, discordWorkspace, gateway: getGateway(), ensureMember, getMember };
 }
 
 describe('POST /api/gateway/sessions channel membership gating', () => {
@@ -159,6 +163,26 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
   });
 
+  it('revalidates channels even when stale workspace memory marks them confirmed', async () => {
+    const { post, store, workspace, ensureMember } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'requires_invitation' }
+    ]);
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    memory.confirmedChannels = ['C1'];
+    store.upsertWorkspaceMemory(memory);
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1'],
+      mode: 'manual_review'
+    });
+
+    expect(response.status).toBe(409);
+    expect(ensureMember).toHaveBeenCalledWith(workspace, 'slack', 'C1');
+    expect(store.getOrCreateWorkspaceMemory(workspace.id).confirmedChannels).toEqual([]);
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
+  });
+
   it('uses the local policy setting for new session snapshots', async () => {
     const { post, store, workspace } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' }
@@ -218,7 +242,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     });
   });
 
-  it('creates coordinated sessions across Slack and Discord workspaces', async () => {
+  it('requires target-specific owner IDs for coordinated sessions', async () => {
     const { post, store, workspace, discordWorkspace } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' },
       { channelId: 'D1', name: 'support', status: 'already_member' }
@@ -233,10 +257,70 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
       ]
     }, '/api/gateway/sessions/bulk');
 
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'session_targets_failed',
+      targets: expect.arrayContaining([
+        expect.objectContaining({ error: 'owner_required' })
+      ])
+    });
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
+    expect(store.listActiveSessions(discordWorkspace.id)).toHaveLength(0);
+  });
+
+  it('uses target-specific owner IDs for coordinated sessions', async () => {
+    const { post, store, workspace, discordWorkspace } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' },
+      { channelId: 'D1', name: 'support', status: 'already_member' }
+    ]);
+
+    const response = await post({
+      ownerUserId: 'USLACK',
+      mode: 'manual_review',
+      targets: [
+        { workspaceId: workspace.id, ownerUserId: 'USLACK', channelScope: ['C1'] },
+        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', channelScope: ['D1'] }
+      ]
+    }, '/api/gateway/sessions/bulk');
+
     expect(response.status).toBe(201);
-    expect(response.body.sessions).toHaveLength(2);
-    expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
-    expect(store.listActiveSessions(discordWorkspace.id)).toHaveLength(1);
+    expect(store.listActiveSessions(workspace.id)[0].ownerUserId).toBe('USLACK');
+    expect(store.listActiveSessions(discordWorkspace.id)[0].ownerUserId).toBe('1234567890');
+  });
+
+  it('rejects an owner ID that is not valid for the target workspace', async () => {
+    const { post, store, workspace, discordWorkspace, getMember } = await setup([
+      { channelId: 'D1', name: 'support', status: 'already_member' }
+    ]);
+    getMember.mockImplementation(async (targetWorkspace, userId: string) => {
+      if ((targetWorkspace as { id: string }).id === discordWorkspace.id && userId === 'USLACK') {
+        throw new Error('Discord member not found');
+      }
+      return { id: userId, displayName: userId };
+    });
+
+    const response = await post({
+      mode: 'manual_review',
+      targets: [
+        { workspaceId: discordWorkspace.id, ownerUserId: 'USLACK', channelScope: ['D1'] }
+      ]
+    }, '/api/gateway/sessions/bulk');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'session_targets_failed',
+      targets: [
+        expect.objectContaining({
+          error: 'owner_not_found',
+          workspace: expect.objectContaining({ provider: 'discord' }),
+          ownerUserId: 'USLACK'
+        })
+      ]
+    });
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
+    expect(store.listActiveSessions(discordWorkspace.id)).toHaveLength(0);
   });
 
   it('returns workspace-specific failures for bulk session channel checks', async () => {
@@ -249,8 +333,8 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
       ownerUserId: 'UOWNER',
       mode: 'manual_review',
       targets: [
-        { workspaceId: workspace.id, channelScope: ['C1'] },
-        { workspaceId: discordWorkspace.id, channelScope: ['D1'] }
+        { workspaceId: workspace.id, ownerUserId: 'UOWNER', channelScope: ['C1'] },
+        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', channelScope: ['D1'] }
       ]
     }, '/api/gateway/sessions/bulk');
 

@@ -2,6 +2,7 @@ import { getSlackService } from '#lib/server/channels/slack/service';
 import { normalizeSlackEvent, type SlackIgnoredReason } from '#lib/server/channels/slack/adapter';
 import { getGateway } from '#lib/server/runtime/gateway';
 import { getStore } from '#lib/server/persistence/store';
+import { markIngressIgnored } from '#lib/server/channels/ingress-health';
 
 export interface SlackEnvelopeHandleResult {
   ok: boolean;
@@ -45,6 +46,7 @@ export async function handleSlackEventEnvelope(
   const normalized = normalizeSlackEvent(event, { eventId, teamId });
 
   if (!normalized.task) {
+    markIngressIgnored('slack', normalized.ignoredReason);
     console.info('[slack] ignored event', {
       ...slackLogFields(payload, event),
       source: options.source ?? 'http',
@@ -60,6 +62,7 @@ export async function handleSlackEventEnvelope(
     store.getWorkspaceById(routedTask.workspaceId);
 
   if (!workspace) {
+    markIngressIgnored('slack', 'workspace_not_installed');
     console.info('[slack] ignored event', {
       ...slackLogFields(payload, event),
       source: options.source ?? 'http',
@@ -83,6 +86,7 @@ export async function handleSlackEventEnvelope(
   });
 
   if (!inserted) {
+    markIngressIgnored('slack', 'duplicate_event');
     console.info('[slack] ignored event', {
       ...slackLogFields(payload, event),
       source: options.source ?? 'http',

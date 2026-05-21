@@ -175,6 +175,7 @@ export interface SetupDefaults {
     workspaceId?: string;
     ownerUserId?: string;
     ownerDisplayName?: string;
+    workspaceOwners?: Array<{ workspaceId: string; ownerUserId: string; ownerDisplayName?: string }>;
     channelScopeMode?: 'selected' | 'all_accessible';
     selectedChannels?: Array<{ id: string; displayName: string }>;
     timezone?: string;

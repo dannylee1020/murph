@@ -198,11 +198,23 @@ function setupDefaultsValue(value: unknown): SetupDefaults | undefined {
         }))
         .filter((channel) => channel.id && channel.displayName)
     : undefined;
+  const workspaceOwnersRaw = value.workspaceOwners;
+  const workspaceOwners = Array.isArray(workspaceOwnersRaw)
+    ? workspaceOwnersRaw
+        .filter(isRecord)
+        .map((owner) => ({
+          workspaceId: stringValue(owner.workspaceId) ?? '',
+          ownerUserId: stringValue(owner.ownerUserId) ?? '',
+          ownerDisplayName: stringValue(owner.ownerDisplayName)
+        }))
+        .filter((owner) => owner.workspaceId && owner.ownerUserId)
+    : undefined;
   return {
     channelProvider: stringValue(value.channelProvider),
     workspaceId: stringValue(value.workspaceId),
     ownerUserId: stringValue(value.ownerUserId),
     ownerDisplayName: stringValue(value.ownerDisplayName),
+    workspaceOwners,
     channelScopeMode: value.channelScopeMode === 'all_accessible' ? 'all_accessible' : value.channelScopeMode === 'selected' ? 'selected' : undefined,
     selectedChannels,
     timezone: stringValue(value.timezone),

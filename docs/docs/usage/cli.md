@@ -11,6 +11,7 @@ The `murph` CLI is the terminal control surface for setup, runtime operations, h
 
 ```bash
 murph setup
+murph setup provider
 murph setup ai
 murph setup slack
 murph setup identity
@@ -20,7 +21,7 @@ murph setup policy
 murph setup status
 ```
 
-Use `murph setup` for the full wizard. Use a section command when you only need to update one setup area.
+Use `murph setup` for the full wizard. Use `murph setup provider` to choose the runtime AI provider first, then the Murph Agent model. `murph setup ai` remains as a compatibility alias.
 
 ## Runtime commands
 

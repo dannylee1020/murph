@@ -5,62 +5,109 @@ description: Connect Discord as a Murph channel.
 
 # Discord
 
-Discord uses the same channel-adapter model as Slack: Murph watches selected channels, gathers context, drafts replies, applies policy, and keeps a review trail.
+Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup discord` validate the app, open the authorization flow, and save the server, owner, and watched channels.
 
-## Setup command
+## What You Need
 
-Configure Discord through the guided setup:
+- Access to the [Discord Developer Portal](https://discord.com/developers/applications).
+- Permission to add a bot to the Discord server Murph should watch.
+- Murph running on the same local URL you will register as the OAuth redirect URI. The default is:
+
+```text
+http://localhost:5173/api/discord/oauth/callback
+```
+
+If you use a custom `MURPH_URL`, `MURPH_PORT`, or `DISCORD_REDIRECT_URI`, register the exact callback URL printed by `murph setup discord` instead.
+
+## Step 1: Create Or Open The Discord App
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Create a new application for Murph, or open the existing Murph application.
+3. Keep the application page open. You will need both the **Bot** page and the **OAuth2** page.
+
+## Step 2: Create The Bot And Copy The Bot Token
+
+1. Go to **Bot**.
+2. Add a bot if the application does not already have one.
+3. Generate or reset the bot token.
+4. Keep the bot token ready for `murph setup discord`.
+
+Murph stores the bot token locally in `~/.murph/.credentials`.
+
+## Step 3: Copy The OAuth2 Client Secret
+
+1. Go to **OAuth2**.
+2. Copy the application client secret.
+3. Keep the client secret ready for `murph setup discord`.
+
+Murph uses the client secret only to complete Discord's OAuth2 callback and identify the Discord user who authorized Murph.
+
+## Step 4: Add The Redirect URI
+
+In **OAuth2** -> **General** -> **Redirects**, add the exact Murph callback URL:
+
+```text
+http://localhost:5173/api/discord/oauth/callback
+```
+
+Save the Discord application after adding it.
+
+This step is manual. Discord requires redirect URIs to be registered in the Developer Portal before OAuth2 authorization. Murph can check and print the expected URI, but it cannot reliably add the redirect URI through Discord's API.
+
+## Step 5: Enable Required Bot Settings
+
+On the **Bot** page, enable these privileged gateway intents:
+
+- **Server Members Intent**: lets Murph fetch server members for owner lookup.
+- **Message Content Intent**: lets Murph read Discord message text at runtime.
+
+Murph tries to configure limited intent flags and default install permissions through Discord's API. If Discord rejects that update, enable the intents manually and continue.
+
+## Step 6: Run Discord Setup
+
+Run:
 
 ```bash
 murph setup discord
 ```
 
-You can also choose Discord during the full setup flow:
+Setup will ask for:
+
+1. Discord bot token.
+2. Discord client secret.
+
+Then Murph will:
+
+- validate the bot token;
+- derive and save the Discord client ID;
+- check the OAuth redirect URI when Discord returns it;
+- configure bot install permissions when Discord allows it;
+- print and open the Discord authorization URL.
+
+## Step 7: Approve The Discord Authorization
+
+When the browser opens:
+
+1. Choose the Discord server Murph should use.
+2. Approve the requested bot permissions.
+3. Approve account identification.
+4. Return to the terminal and press Enter when setup asks.
+
+Murph uses the OAuth callback to save the Discord server and identify the Discord user who authorized the app. That user becomes the Discord owner Murph watches for by default.
+
+## Step 8: Choose Channels
+
+If you are running the full `murph setup` wizard, setup continues into channel selection. If you ran only `murph setup discord`, choose channels afterward:
 
 ```bash
-murph setup
+murph setup channels
 ```
 
-Discord bot secrets are stored locally in `~/.murph/.credentials`.
+If channel listing is unavailable, paste Discord channel IDs when prompted. Murph validates pasted IDs through Discord when the bot has access.
 
-## Before you start
-
-You need access to the Discord Developer Portal and permission to add a bot to the target server.
-
-No separate Discord API key is needed. Murph uses the Discord bot token for REST and gateway calls.
-
-## Manual Discord checklist
-
-Create the Discord app and bot first:
-
-1. Open the [Discord Developer Portal](https://discord.com/developers/applications).
-2. Create an application for Murph, or open an existing one.
-3. Go to **Bot**.
-4. Add a bot if the application does not already have one.
-5. Generate or reset the bot token.
-6. Keep the token ready for `murph setup discord`.
-
-Enable privileged intents when needed:
-
-- **Server Members Intent** lets Murph fetch server members for the owner picker.
-- **Message Content Intent** lets Murph read Discord message text at runtime.
-
-Murph tries to enable the limited intent flags automatically through Discord's application API. If Discord rejects that update, enable both intents manually on the Bot page.
-
-Install or re-approve the bot:
-
-1. Run `murph setup discord`.
-2. Paste the bot token when prompted.
-3. Open the Discord install URL printed by Murph.
-4. Choose the server Murph should use.
-5. Approve the requested permissions.
-
-If the bot was installed before Murph configured permissions, open the install URL again and approve the updated permissions.
-
-## Bot permissions
+## Bot Permissions
 
 Murph requests this scoped permission set:
-
 
 - View Channels
 - Send Messages
@@ -70,55 +117,70 @@ Murph requests this scoped permission set:
 
 Do not grant Administrator unless you explicitly want to. Murph only needs access to the channels it should watch and reply in.
 
-## What setup automates
+## Local Storage
 
-`murph setup discord` handles the Murph side of the flow:
+Discord secrets are stored locally:
 
-- validates the bot token
-- detects the application/client ID
-- stores the bot token in `~/.murph/.credentials`
-- generates the Discord install URL
-- tries to configure default install permissions
-- tries to configure limited privileged intent flags
-- discovers servers where the bot is installed
-- validates pasted server, user, and channel IDs when automatic discovery is blocked
+```text
+~/.murph/.credentials
+```
 
-Non-secret setup defaults are stored in `~/.murph/config.yaml`.
+Non-secret Discord setup values are stored locally:
 
-## Identity and channels
+```text
+~/.murph/config.yaml
+```
 
-After the bot is connected, setup asks for:
+## Verify Setup
 
-- the Discord server Murph should use
-- the Discord user Murph should watch for
-- the Discord channels Murph should monitor
+Run:
 
-If automatic discovery fails, setup falls back to manual IDs:
+```bash
+murph doctor
+```
 
-- paste the Discord server ID when server discovery fails
-- paste your Discord user ID when member listing fails
-- paste Discord channel IDs when channel listing fails
-
-Murph validates pasted IDs through Discord before saving them when Discord allows the lookup.
-
-## Gateway behavior
-
-Murph receives Discord messages through the Discord gateway client when the runtime starts.
-
-## Session scope
-
-Murph only acts in selected Discord channels for an active handoff session.
+Then start a short test session and mention Murph in a watched Discord channel.
 
 ## Troubleshooting
 
-`Failed to fetch Discord members` usually means Server Members Intent is not enabled, or Discord has not accepted the app configuration update yet. Enable Server Members Intent in the Developer Portal, then rerun `murph setup identity`.
+### Invalid OAuth Redirect
 
-`Failed to fetch Discord channels` or `Missing Access` usually means the bot lacks View Channels in the selected server or channel. Re-open the install URL and approve the requested permissions, or paste channel IDs when setup asks for them.
+The redirect URI is missing or does not match exactly.
 
-If Murph cannot detect the installed server, paste the Discord server ID. The bot still has to be installed in that server.
+Fix it in Discord Developer Portal -> **OAuth2** -> **General** -> **Redirects**. Add the exact URI printed by setup, including scheme, host, port, and path.
 
-If permissions or intents changed after the bot was installed, the server admin must re-open the install URL and approve the updated permissions.
+Default:
 
-## Current status
+```text
+http://localhost:5173/api/discord/oauth/callback
+```
 
-Slack is the most complete setup path today. Verify Discord channel behavior with `murph doctor` and a short test session before relying on it for production handoffs.
+### Invalid Form Body During App Configuration
+
+Discord rejected Murph's best-effort application update. Continue with manual setup:
+
+1. Open the **Bot** page.
+2. Enable **Server Members Intent**.
+3. Enable **Message Content Intent**.
+4. Re-run `murph setup discord` if needed.
+
+### Missing Access Or Channel Listing Fails
+
+The bot cannot see the selected channel.
+
+Check that the bot is installed in the server and has channel-level access to:
+
+- View Channels
+- Send Messages
+- Read Message History
+- Send Messages in Threads
+
+Then rerun:
+
+```bash
+murph setup channels
+```
+
+### Member Listing Fails
+
+Enable **Server Members Intent** in the Developer Portal. If listing still fails, setup can fall back to a manual Discord user ID.

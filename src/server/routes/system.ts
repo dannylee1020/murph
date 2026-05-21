@@ -17,8 +17,8 @@ import {
 } from '#lib/server/setup/config-file';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getDiscordService } from '#lib/server/channels/discord/service';
+import { getIngressHealth } from '#lib/server/channels/ingress-health';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
-import { readSecret } from '#lib/server/credentials/local-store';
 import { readJson } from '../http.js';
 import type { SetupDefaults, Workspace } from '#lib/types';
 
@@ -30,12 +30,22 @@ function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
       displayName: channel.displayName?.trim() || channel.id?.trim()
     }))
     .filter((channel): channel is { id: string; displayName: string } => Boolean(channel.id && channel.displayName));
+  const workspaceOwners = (value.workspaceOwners ?? [])
+    .map((owner) => ({
+      workspaceId: owner.workspaceId?.trim(),
+      ownerUserId: owner.ownerUserId?.trim(),
+      ownerDisplayName: owner.ownerDisplayName?.trim() || owner.ownerUserId?.trim()
+    }))
+    .filter((owner): owner is { workspaceId: string; ownerUserId: string; ownerDisplayName: string } => (
+      Boolean(owner.workspaceId && owner.ownerUserId)
+    ));
 
   return {
     channelProvider: value.channelProvider?.trim() || undefined,
     workspaceId: value.workspaceId?.trim() || undefined,
     ownerUserId: value.ownerUserId?.trim() || undefined,
     ownerDisplayName: value.ownerDisplayName?.trim() || undefined,
+    workspaceOwners,
     channelScopeMode,
     selectedChannels,
     timezone: value.timezone?.trim() || undefined,
@@ -58,7 +68,7 @@ function getSetupWorkspace(workspaceId?: string): Workspace | undefined {
 }
 
 function setupDefaultsPayload(workspace?: Workspace) {
-  const defaults = effectiveSetupDefaults();
+  const defaults = resolveSetupDefaultsForWorkspace(workspace, effectiveSetupDefaults());
   const user = workspace && defaults.ownerUserId
     ? getStore().getUser(workspace.id, defaults.ownerUserId)
     : undefined;
@@ -69,6 +79,43 @@ function setupDefaultsPayload(workspace?: Workspace) {
     defaults,
     user
   };
+}
+
+function resolveSetupDefaultsForWorkspace(workspace: Workspace | undefined, defaults: SetupDefaults): SetupDefaults {
+  if (!workspace) {
+    return defaults;
+  }
+
+  const workspaceOwner = defaults.workspaceOwners?.find((owner) => owner.workspaceId === workspace.id);
+  if (workspaceOwner) {
+    return {
+      ...defaults,
+      workspaceId: workspace.id,
+      channelProvider: workspace.provider,
+      ownerUserId: workspaceOwner.ownerUserId,
+      ownerDisplayName: workspaceOwner.ownerDisplayName ?? workspaceOwner.ownerUserId
+    };
+  }
+
+  if (!defaults.ownerUserId) {
+    return defaults;
+  }
+
+  const workspaces = getStore().listWorkspaces();
+  const defaultWorkspaceId = defaults.workspaceId;
+  const legacyOwnerApplies = defaultWorkspaceId
+    ? defaultWorkspaceId === workspace.id
+    : workspaces.length <= 1;
+
+  return legacyOwnerApplies
+    ? defaults
+    : {
+        ...defaults,
+        workspaceId: workspace.id,
+        channelProvider: workspace.provider,
+        ownerUserId: undefined,
+        ownerDisplayName: undefined
+      };
 }
 
 function getProviderWorkspace(provider?: string, workspaceId?: string): Workspace | undefined {
@@ -124,13 +171,14 @@ export const systemRoutes: Route[] = [
     const setupDefaults = effectiveSetupDefaults();
     const workspaces = getStore().listWorkspaces();
     const slackWorkspace = getSlackService().getUsableWorkspace();
+    const discordConfigured = getDiscordService().isConfigured();
     const discordWorkspace = workspaces.find((workspace) => (
       workspace.provider === 'discord' &&
-      (Boolean(env.discordBotToken) || Boolean(readSecret('discord', 'bot_token', {
-        workspaceId: workspace.id,
-        externalWorkspaceId: workspace.externalWorkspaceId
-      })))
+      discordConfigured
     ));
+    const discordOwnerConfigured = Boolean(
+      discordWorkspace && resolveSetupDefaultsForWorkspace(discordWorkspace, setupDefaults).ownerUserId
+    );
     const connectedWorkspaceIds = new Set([slackWorkspace?.id, discordWorkspace?.id].filter(Boolean));
     const channelWorkspaces = workspaces
       .filter((workspace) => (
@@ -159,6 +207,7 @@ export const systemRoutes: Route[] = [
         signingSecretConfigured: Boolean(env.slackSigningSecret),
         eventsMode: env.slackEventsMode,
         socketConfigured: Boolean(env.slackAppToken),
+        ingress: getIngressHealth('slack'),
         userSearchConfigured: Boolean(slackWorkspace && getSlackService().getUserSearchToken(slackWorkspace)),
         workspace: slackWorkspace
           ? {
@@ -170,9 +219,12 @@ export const systemRoutes: Route[] = [
       },
       discord: {
         installed: Boolean(discordWorkspace),
-        botTokenConfigured: Boolean(env.discordBotToken || discordWorkspace),
+        botTokenConfigured: discordConfigured,
         clientIdConfigured: Boolean(env.discordClientId),
-        oauthConfigured: Boolean(env.discordClientId),
+        clientSecretConfigured: Boolean(env.discordClientSecret),
+        oauthConfigured: Boolean(env.discordClientId && env.discordClientSecret),
+        ownerConfigured: discordOwnerConfigured,
+        ingress: getIngressHealth('discord'),
         workspace: discordWorkspace
           ? {
               id: discordWorkspace.id,
@@ -198,7 +250,9 @@ export const systemRoutes: Route[] = [
       },
       channelWorkspaces,
       notion: getNotionStatus(),
-      userConfigured: summary.userCount > 0 && Boolean(setupDefaults?.ownerUserId),
+      userConfigured: summary.userCount > 0 && Boolean(
+        setupDefaults?.ownerUserId || (setupDefaults?.workspaceOwners?.length ?? 0) > 0
+      ),
       channelsConfigured: setupDefaults?.channelScopeMode === 'all_accessible' ||
         (setupDefaults?.selectedChannels?.length ?? 0) > 0
     });
@@ -277,6 +331,18 @@ export const systemRoutes: Route[] = [
         workspaceId: workspace.id,
         externalUserId: defaults.ownerUserId,
         displayName: defaults.ownerDisplayName ?? defaults.ownerUserId,
+        timezone: defaults.timezone,
+        workdayStartHour: defaults.workdayStartHour,
+        workdayEndHour: defaults.workdayEndHour
+      });
+    }
+    for (const owner of defaults.workspaceOwners ?? []) {
+      const ownerWorkspace = getStore().getWorkspaceById(owner.workspaceId);
+      if (!ownerWorkspace) continue;
+      getStore().upsertUser({
+        workspaceId: ownerWorkspace.id,
+        externalUserId: owner.ownerUserId,
+        displayName: owner.ownerDisplayName ?? owner.ownerUserId,
         timezone: defaults.timezone,
         workdayStartHour: defaults.workdayStartHour,
         workdayEndHour: defaults.workdayEndHour

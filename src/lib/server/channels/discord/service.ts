@@ -99,6 +99,11 @@ export interface DiscordAppConfigurationResult {
   intentsConfigured: boolean;
 }
 
+export interface DiscordInstallResult {
+  workspace: Workspace;
+  authedUser?: DiscordMemberChoice;
+}
+
 export class DiscordService {
   private readonly store = getStore();
 
@@ -107,19 +112,26 @@ export class DiscordService {
   }
 
   isConfigured(): boolean {
-    return Boolean(this.env.discordBotToken);
+    return Boolean(this.findBotToken());
   }
 
-  buildInstallUrl(clientId = this.env.discordClientId): string | undefined {
+  buildInstallUrl(options: { appUrl?: string; clientId?: string; source?: string } = {}): string | undefined {
+    const clientId = options.clientId ?? this.env.discordClientId;
     if (!clientId) {
       return undefined;
     }
 
+    const redirectUri = this.resolveRedirectUri(options.appUrl);
     const params = new URLSearchParams({
       client_id: clientId,
-      scope: 'bot',
+      scope: 'bot identify',
+      response_type: 'code',
+      redirect_uri: redirectUri,
       permissions: DISCORD_BOT_PERMISSIONS
     });
+    if (options.source) {
+      params.set('state', options.source);
+    }
     return `https://discord.com/oauth2/authorize?${params.toString()}`;
   }
 
@@ -177,8 +189,8 @@ export class DiscordService {
     };
   }
 
-  async exchangeCode(code: string, guildId?: string): Promise<Workspace> {
-    if (!this.env.discordClientId || !this.env.discordClientSecret || !this.env.discordRedirectUri) {
+  async exchangeCode(code: string, guildId: string | undefined, redirectUri = this.resolveRedirectUri()): Promise<DiscordInstallResult> {
+    if (!this.env.discordClientId || !this.env.discordClientSecret) {
       throw new Error('Discord OAuth is not configured');
     }
     if (!guildId) {
@@ -193,7 +205,7 @@ export class DiscordService {
         client_secret: this.env.discordClientSecret,
         grant_type: 'authorization_code',
         code,
-        redirect_uri: this.env.discordRedirectUri
+        redirect_uri: redirectUri
       })
     });
 
@@ -201,7 +213,10 @@ export class DiscordService {
       throw new Error('Discord OAuth exchange failed');
     }
 
-    await tokenResponse.json() as DiscordTokenResponse;
+    const tokenPayload = await tokenResponse.json() as DiscordTokenResponse;
+    if (!tokenPayload.access_token) {
+      throw new Error('Discord OAuth exchange did not return an access token');
+    }
 
     const guildResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
       headers: {
@@ -214,10 +229,29 @@ export class DiscordService {
     }
 
     const guild = (await guildResponse.json()) as DiscordGuild;
-    return this.saveGuildWorkspace(guild);
+    const workspace = await this.saveGuildWorkspace(guild);
+    const oauthUser = await this.fetchCurrentUser(tokenPayload.access_token);
+    const member = await this.getMember(workspace, oauthUser.id).catch(() => ({
+      id: oauthUser.id,
+      displayName: oauthUser.global_name ?? oauthUser.username ?? oauthUser.id
+    }));
+    return { workspace, authedUser: member };
+  }
+
+  private resolveRedirectUri(appUrl = this.env.appUrl): string {
+    return this.env.discordRedirectUri ?? `${appUrl}/api/discord/oauth/callback`;
   }
 
   getBotToken(): string {
+    const token = this.findBotToken();
+    if (token) {
+      return token;
+    }
+
+    throw new Error('Discord bot token is missing from local credentials. Reconnect Discord.');
+  }
+
+  private findBotToken(): string | undefined {
     if (this.env.discordBotToken) {
       return this.env.discordBotToken;
     }
@@ -239,7 +273,7 @@ export class DiscordService {
       return globalToken;
     }
 
-    throw new Error('Discord bot token is missing from local credentials. Reconnect Discord.');
+    return undefined;
   }
 
   async saveGuildWorkspace(guild: DiscordGuild): Promise<Workspace> {
@@ -308,6 +342,18 @@ export class DiscordService {
       throw new Error('Failed to fetch Discord application');
     }
     return (await response.json()) as DiscordApplication;
+  }
+
+  private async fetchCurrentUser(accessToken: string): Promise<DiscordUser> {
+    const response = await fetch('https://discord.com/api/v10/users/@me', {
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch Discord OAuth user');
+    }
+    return (await response.json()) as DiscordUser;
   }
 
   private async fetchBotUserId(): Promise<string | undefined> {

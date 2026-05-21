@@ -17,7 +17,7 @@ Normal runs start the local Murph server automatically so agent tools can call s
 
 ## Model selection
 
-Choose persistent model defaults with `murph setup ai` or the browser setup flow. By default, `murph agent` inherits the runtime provider and model.
+Choose persistent model defaults with `murph setup provider` or the browser setup flow. By default, `murph agent` inherits the runtime provider and model. `murph setup ai` remains as a compatibility alias.
 
 Use flags for a one-run override:
 

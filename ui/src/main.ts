@@ -129,8 +129,10 @@ type SetupStatusPayload = {
     discord: {
         installed: boolean;
         clientIdConfigured: boolean;
+        clientSecretConfigured?: boolean;
         oauthConfigured?: boolean;
         botTokenConfigured: boolean;
+        ownerConfigured?: boolean;
         workspace?: ChannelWorkspace;
     };
     provider: {
@@ -164,8 +166,15 @@ type SetupDefaultsPayload = {
     ok: boolean;
     workspaceId?: string;
     defaults: {
+        workspaceId?: string;
+        channelProvider?: string;
         ownerUserId?: string;
         ownerDisplayName?: string;
+        workspaceOwners?: Array<{
+            workspaceId: string;
+            ownerUserId: string;
+            ownerDisplayName?: string;
+        }>;
         channelScopeMode?: 'selected' | 'all_accessible';
         selectedChannels?: Array<{ id: string; displayName: string }>;
         timezone?: string;
@@ -231,6 +240,14 @@ type SetupChannelsPayload = {
     channels: ChannelChoice[];
 };
 
+type SetupMembersPayload = {
+    ok: boolean;
+    error?: string;
+    workspaceId?: string;
+    provider?: string;
+    members: MemberChoice[];
+};
+
 type ChannelChoice = {
     id: string;
     name?: string;
@@ -239,12 +256,20 @@ type ChannelChoice = {
     isPrivate?: boolean;
 };
 
+type MemberChoice = {
+    id: string;
+    displayName: string;
+};
+
 type HomeWorkspaceChannelState = {
     workspace: ChannelWorkspace;
     enabled: boolean;
     mode: 'selected' | 'all_accessible';
     selectedChannels: Array<{ id: string; displayName: string }>;
     availableChannels: ChannelChoice[];
+    availableMembers: MemberChoice[];
+    selectedOwnerId: string;
+    selectedOwnerName: string;
     error?: string;
 };
 
@@ -1492,6 +1517,39 @@ function channelBadge(channel: ChannelChoice): string {
     return 'Public';
 }
 
+function defaultOwnerForWorkspace(
+    workspace: ChannelWorkspace,
+    defaultsPayload: SetupDefaultsPayload,
+    workspaceCount: number,
+): { id: string; name: string } {
+    const defaults = defaultsPayload.defaults ?? {};
+    const workspaceOwner = defaults.workspaceOwners?.find(
+        (owner) => owner.workspaceId === workspace.id,
+    );
+    if (workspaceOwner?.ownerUserId) {
+        return {
+            id: workspaceOwner.ownerUserId,
+            name: workspaceOwner.ownerDisplayName ?? workspaceOwner.ownerUserId,
+        };
+    }
+
+    const legacyOwnerApplies = defaults.workspaceId
+        ? defaults.workspaceId === workspace.id
+        : workspaceCount <= 1;
+    if (legacyOwnerApplies && defaults.ownerUserId) {
+        return {
+            id: defaults.ownerUserId,
+            name: defaults.ownerDisplayName ?? defaults.ownerUserId,
+        };
+    }
+
+    return { id: '', name: '' };
+}
+
+function ownerDisplayName(ownerId: string, members: MemberChoice[]): string {
+    return members.find((member) => member.id === ownerId)?.displayName ?? ownerId;
+}
+
 function combinedChannelSummary(states: HomeWorkspaceChannelState[]): string {
     const enabled = states.filter((state) => state.enabled);
     if (enabled.length === 0) {
@@ -1517,6 +1575,28 @@ function combinedChannelSummary(states: HomeWorkspaceChannelState[]): string {
         : `${providerNames.join(' + ')} · all accessible`;
 }
 
+function missingOwnerNotice(states: HomeWorkspaceChannelState[]): string {
+    const missing = states.filter((state) => state.enabled && !state.selectedOwnerId);
+    if (missing.length === 0) return '';
+
+    const discordMissing = missing.find((state) => state.workspace.provider === 'discord');
+    if (discordMissing) {
+        return `
+      <div class="notice warning">
+        <strong>Discord owner required</strong>
+        <p>Run <code>murph setup discord</code> to identify the Discord account Murph should watch for ${escapeHtml(discordMissing.workspace.name)}.</p>
+      </div>
+    `;
+    }
+
+    return `
+    <div class="notice warning">
+      <strong>Select owner identities</strong>
+      <p>Choose an owner for ${escapeHtml(missing.map((state) => workspaceOptionLabel(state.workspace)).join(', '))} in Customize.</p>
+    </div>
+  `;
+}
+
 function homeChannelGroup(state: HomeWorkspaceChannelState): string {
     const selected = new Set(
         state.selectedChannels.map((channel) => channel.id),
@@ -1524,6 +1604,9 @@ function homeChannelGroup(state: HomeWorkspaceChannelState): string {
     const label = channelSummaryLabel(state.mode, state.selectedChannels);
     const allSelected = state.mode === 'all_accessible';
     const workspaceId = state.workspace.id;
+    const selectedOwnerMissingFromMembers =
+        state.selectedOwnerId &&
+        !state.availableMembers.some((member) => member.id === state.selectedOwnerId);
     return `
     <section class="workspace-channel-group ${state.enabled ? '' : 'disabled'}" data-workspace-id="${escapeHtml(workspaceId)}">
       <div class="workspace-channel-header">
@@ -1536,6 +1619,23 @@ function homeChannelGroup(state: HomeWorkspaceChannelState): string {
         </label>
       </div>
       <div class="channel-selector-body">
+        <label class="workspace-owner-select">
+          <span>Owner</span>
+          <select name="workspaceOwner:${escapeHtml(workspaceId)}" ${state.enabled ? '' : 'disabled'} required>
+            <option value="">Select ${escapeHtml(providerLabel(state.workspace.provider))} user</option>
+            ${
+                selectedOwnerMissingFromMembers
+                    ? `<option value="${escapeHtml(state.selectedOwnerId)}" selected>${escapeHtml(state.selectedOwnerName || state.selectedOwnerId)}</option>`
+                    : ''
+            }
+            ${state.availableMembers
+                .map(
+                    (member) =>
+                        `<option value="${escapeHtml(member.id)}" ${member.id === state.selectedOwnerId ? 'selected' : ''}>${escapeHtml(member.displayName)}</option>`,
+                )
+                .join('')}
+          </select>
+        </label>
         <div class="channel-mode-row" role="group" aria-label="${escapeHtml(`${workspaceOptionLabel(state.workspace)} channel scope`)}">
           <label class="scope-choice ${allSelected ? 'selected' : ''}">
             <input type="radio" name="channelScopeMode:${escapeHtml(workspaceId)}" value="all_accessible" ${allSelected ? 'checked' : ''} />
@@ -2584,12 +2684,19 @@ async function renderDashboard(): Promise<void> {
         workspaces.map(
             async (workspace): Promise<HomeWorkspaceChannelState> => {
                 let availableChannels: ChannelChoice[] = [];
+                let availableMembers: MemberChoice[] = [];
                 let channelLoadError = '';
                 try {
-                    const payload = await getJson<SetupChannelsPayload>(
-                        `/api/setup/channels?workspaceId=${encodeURIComponent(workspace.id)}`,
-                    );
-                    availableChannels = payload.channels ?? [];
+                    const [channelsPayload, membersPayload] = await Promise.all([
+                        getJson<SetupChannelsPayload>(
+                            `/api/setup/channels?workspaceId=${encodeURIComponent(workspace.id)}`,
+                        ),
+                        getJson<SetupMembersPayload>(
+                            `/api/setup/members?workspaceId=${encodeURIComponent(workspace.id)}`,
+                        ),
+                    ]);
+                    availableChannels = channelsPayload.channels ?? [];
+                    availableMembers = membersPayload.members ?? [];
                 } catch (error) {
                     channelLoadError =
                         error instanceof Error
@@ -2606,6 +2713,12 @@ async function renderDashboard(): Promise<void> {
                     workspace.id,
                     defaults,
                 );
+                const defaultOwner = defaultOwnerForWorkspace(
+                    workspace,
+                    setupDefaults,
+                    workspaces.length,
+                );
+                const selectedOwnerId = defaultOwner.id;
                 if (channelLoadError || availableChannels.length === 0) {
                     mode = 'all_accessible';
                     selectedChannels = [];
@@ -2642,6 +2755,11 @@ async function renderDashboard(): Promise<void> {
                     mode,
                     selectedChannels,
                     availableChannels,
+                    availableMembers,
+                    selectedOwnerId,
+                    selectedOwnerName: selectedOwnerId
+                        ? ownerDisplayName(selectedOwnerId, availableMembers)
+                        : '',
                     error: channelLoadError,
                 };
             },
@@ -2682,6 +2800,7 @@ async function renderDashboard(): Promise<void> {
         <a class="button secondary" href="/admin">Configure</a>
       </div>`
         : '';
+    const ownerNotice = missingOwnerNotice(channelStates);
 
     shell(`
     <section class="page-head console-head">
@@ -2715,6 +2834,7 @@ async function renderDashboard(): Promise<void> {
               <dd>Show me drafts first</dd>
             </div>
           </dl>
+          ${ownerNotice}
           <button type="submit" class="primary-large">Start watching</button>
 
           <details class="customize-section">
@@ -2801,6 +2921,13 @@ async function renderDashboard(): Promise<void> {
                     `input[name="channelScope:${state.workspace.id}"]`,
                 ) ?? [],
             );
+            const ownerSelect = group?.querySelector<HTMLSelectElement>(
+                `select[name="workspaceOwner:${state.workspace.id}"]`,
+            );
+            if (ownerSelect) {
+                ownerSelect.disabled = !enabled;
+            }
+            const selectedOwnerId = enabled ? (ownerSelect?.value ?? '') : '';
             checkboxes.forEach((checkbox) => {
                 checkbox.disabled = !enabled || mode === 'all_accessible';
             });
@@ -2839,6 +2966,10 @@ async function renderDashboard(): Promise<void> {
                 enabled,
                 mode,
                 selectedChannels: currentChannels,
+                selectedOwnerId,
+                selectedOwnerName: selectedOwnerId
+                    ? ownerDisplayName(selectedOwnerId, state.availableMembers)
+                    : '',
             };
         });
         const summaryCell = form.querySelector<HTMLElement>(
@@ -2853,6 +2984,7 @@ async function renderDashboard(): Promise<void> {
             const enabledStates = nextStates.filter((state) => state.enabled);
             submitButton.disabled =
                 enabledStates.length === 0 ||
+                enabledStates.some((state) => !state.selectedOwnerId) ||
                 enabledStates.some(
                     (state) =>
                         state.mode === 'selected' &&
@@ -2861,8 +2993,8 @@ async function renderDashboard(): Promise<void> {
         }
     };
 
-    app.querySelectorAll<HTMLInputElement>(
-        'input[name="workspaceTarget"], input[name^="channelScopeMode:"], input[name^="channelScope:"]',
+    app.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+        'input[name="workspaceTarget"], input[name^="channelScopeMode:"], input[name^="channelScope:"], select[name^="workspaceOwner:"]',
     ).forEach((input) => {
         input.addEventListener('change', syncHomeChannelSelection);
     });
@@ -2889,6 +3021,9 @@ async function renderDashboard(): Promise<void> {
                         .getAll(`channelScope:${state.workspace.id}`)
                         .map((value) => String(value)),
                 );
+                const ownerUserId = String(
+                    formData.get(`workspaceOwner:${state.workspace.id}`) ?? '',
+                );
                 const submittedChannels = state.availableChannels
                     .filter((channel) => checkedChannelIds.has(channel.id))
                     .map((channel) => ({
@@ -2907,6 +3042,10 @@ async function renderDashboard(): Promise<void> {
                     workspace: state.workspace,
                     enabled,
                     workspaceId: state.workspace.id,
+                    ownerUserId,
+                    ownerDisplayName: ownerUserId
+                        ? ownerDisplayName(ownerUserId, state.availableMembers)
+                        : '',
                     channelScope:
                         channelMode === 'all_accessible'
                             ? []
@@ -2916,9 +3055,19 @@ async function renderDashboard(): Promise<void> {
             .filter((target) => target.enabled);
     }
 
+    function workspaceOwnersFromForm(form: HTMLFormElement) {
+        return homeTargetsFromForm(form, false)
+            .filter((target) => target.ownerUserId)
+            .map((target) => ({
+                workspaceId: target.workspaceId,
+                ownerUserId: target.ownerUserId,
+                ownerDisplayName: target.ownerDisplayName,
+            }));
+    }
+
     app.querySelector<HTMLButtonElement>('.save-customize')?.addEventListener(
         'click',
-        (event) => {
+        async (event) => {
             const form = (event.currentTarget as HTMLElement).closest(
                 'form',
             ) as HTMLFormElement | null;
@@ -2928,6 +3077,17 @@ async function renderDashboard(): Promise<void> {
             const status = form.querySelector<HTMLElement>(
                 '.customize-save-status',
             );
+            try {
+                await putJson('/api/setup/defaults', {
+                    workspaceOwners: workspaceOwnersFromForm(form),
+                });
+            } catch (error) {
+                if (status) {
+                    status.textContent =
+                        error instanceof Error ? error.message : 'Could not save';
+                }
+                return;
+            }
             if (status) {
                 status.textContent = 'Saved';
             }
@@ -2950,6 +3110,9 @@ async function renderDashboard(): Promise<void> {
             const targets = homeTargetsFromForm(form, true);
 
             try {
+                await putJson('/api/setup/defaults', {
+                    workspaceOwners: workspaceOwnersFromForm(form),
+                });
                 await postJson<SessionCreateResponse>(
                     '/api/gateway/sessions/bulk',
                     {
@@ -2960,6 +3123,7 @@ async function renderDashboard(): Promise<void> {
                         timezone: tz,
                         targets: targets.map((target) => ({
                             workspaceId: target.workspaceId,
+                            ownerUserId: target.ownerUserId,
                             channelScope: target.channelScope,
                         })),
                     },
@@ -3038,9 +3202,13 @@ async function renderSettings(): Promise<void> {
           )
         : { ok: false, workspaceId: '', integrations: [] };
     const channelConnected = workspaces.length > 0;
-    const discordClientConfigured =
-        setup.discord.clientIdConfigured ||
-        setup.discord.oauthConfigured === true;
+    const discordRuntimeConfigured =
+        setup.discord.botTokenConfigured && setup.discord.clientIdConfigured;
+    const discordSetupDetail = setup.discord.installed && setup.discord.ownerConfigured === false
+        ? 'Run murph setup discord'
+        : discordRuntimeConfigured
+            ? 'Configured by CLI'
+            : 'Missing CLI settings';
 
     shell(`
     ${settingsNotice}
@@ -3083,14 +3251,10 @@ async function renderSettings(): Promise<void> {
         <p>Connect Discord if this workspace also needs async coverage there.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.discord.installed ? 'Connected' : 'Not connected'}</dd></div>
-          <div><dt>Setup</dt><dd>${discordClientConfigured && setup.discord.botTokenConfigured ? 'Ready to install' : 'Missing server settings'}</dd></div>
+          <div><dt>Setup</dt><dd>${discordSetupDetail}</dd></div>
         </dl>
         <div class="actions">
-          ${
-              discordClientConfigured && setup.discord.botTokenConfigured
-                  ? `<a class="button" href="/api/discord/install">${setup.discord.installed ? 'Reconnect Discord' : 'Connect Discord'}</a>`
-                  : '<span class="empty">Discord OAuth or bot token is not configured.</span>'
-          }
+          <span class="empty">Use <code>murph setup discord</code> to connect or update Discord.</span>
         </div>
       </article>
       <article class="panel panel-status">

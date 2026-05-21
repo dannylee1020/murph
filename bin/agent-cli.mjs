@@ -1297,7 +1297,7 @@ function buildPiArgs(prompt, options, passthrough) {
     const apiKey = apiKeyFor(provider);
     if (!apiKey) {
         throw new Error(
-            `Missing API key for ${provider}. Run murph setup ai to choose model defaults or set the provider API key in ~/.murph/.credentials.`,
+            `Missing API key for ${provider}. Run murph setup provider to choose model defaults or set the provider API key in ~/.murph/.credentials.`,
         );
     }
 

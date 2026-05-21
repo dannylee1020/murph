@@ -3,6 +3,8 @@ import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { getNotionStatus } from '#lib/server/context-sources/notion';
 import { getSlackService } from '#lib/server/channels/slack/service';
+import { getDiscordService } from '#lib/server/channels/discord/service';
+import { getIngressHealth } from '#lib/server/channels/ingress-health';
 import { MURPH_CONFIG_FILE, murphConfigExists, murphConfigPath, readMurphConfig } from '#lib/server/setup/config-file';
 import { credentialsPath, listSecrets } from '#lib/server/credentials/local-store';
 
@@ -35,8 +37,13 @@ export function getSetupDoctor(): SetupDoctorPayload {
     ...(store.getAppSettings().setupDefaults ?? {}),
     ...(readMurphConfig().setup ?? {})
   };
+  const configuredOwnerCount = Number(Boolean(setupDefaults?.ownerUserId)) + (setupDefaults?.workspaceOwners?.length ?? 0);
   const slack = getSlackService();
   const slackWorkspace = slack.getUsableWorkspace();
+  const slackIngress = getIngressHealth('slack');
+  const discordIngress = getIngressHealth('discord');
+  const hasDiscordWorkspace = store.listWorkspaces().some((workspace) => workspace.provider === 'discord');
+  const discordConfigured = getDiscordService().isConfigured();
   const slackReconnectRequired = !slackWorkspace && slack.hasUnreadableInstall();
   const hasCredentialsFile = existsSync(credentialsPath());
   const checks: SetupDoctorCheck[] = [];
@@ -92,9 +99,31 @@ export function getSetupDoctor(): SetupDoctorPayload {
       : check('slack_user_search', 'Slack user search', 'warning', 'Slack cross-channel search is not connected yet.', 'Reconnect Slack with user search scopes.')
   );
 
+  if (slackWorkspace && env.slackEventsMode === 'socket' && env.slackAppToken) {
+    checks.push(
+      slackIngress.connected
+        ? check('slack_ingress', 'Slack event ingress', 'ok', 'Slack Socket Mode is connected.')
+        : slackIngress.status === 'error'
+          ? check('slack_ingress', 'Slack event ingress', 'action_required', slackIngress.lastError ?? 'Slack Socket Mode is not connected.', 'Check the Slack app-level token and restart Murph.')
+          : check('slack_ingress', 'Slack event ingress', 'warning', 'Slack Socket Mode has not reported a connected state yet.', 'Restart Murph if this does not clear.')
+    );
+  }
+
+  if (hasDiscordWorkspace) {
+    checks.push(
+      discordIngress.connected
+        ? check('discord_ingress', 'Discord event ingress', 'ok', 'Discord Gateway is connected.')
+        : discordIngress.status === 'error'
+          ? check('discord_ingress', 'Discord event ingress', 'action_required', discordIngress.lastError ?? 'Discord Gateway is not connected.', discordIngress.lastCloseCode === 4014 ? 'Enable Message Content Intent in the Discord Developer Portal, then restart Murph.' : 'Check the Discord bot token and restart Murph.')
+          : !discordConfigured || discordIngress.status === 'not_configured'
+            ? check('discord_ingress', 'Discord event ingress', 'action_required', 'Discord Gateway is not configured.', 'Reconnect Discord or add a Discord bot token, then restart Murph.')
+          : check('discord_ingress', 'Discord event ingress', 'warning', 'Discord Gateway has not reported a ready state yet.', 'Restart Murph if this does not clear.')
+    );
+  }
+
   checks.push(
-    summary.userCount > 0 && setupDefaults?.ownerUserId
-      ? check('identity', 'User identity', 'ok', `${setupDefaults.ownerDisplayName ?? setupDefaults.ownerUserId} is configured.`)
+    summary.userCount > 0 && configuredOwnerCount > 0
+      ? check('identity', 'User identity', 'ok', `${configuredOwnerCount} owner identity${configuredOwnerCount === 1 ? '' : 'ies'} configured.`)
       : check('identity', 'User identity', 'action_required', 'Pick yourself from Slack so Murph knows who to watch for.')
   );
 
@@ -128,10 +157,14 @@ export function getSetupDoctor(): SetupDoctorPayload {
               : checks.find((entry) => entry.id === 'channels')?.status !== 'ok'
                 ? 'channels'
                 : 'ready';
+  const ingressBlocking = checks.some((entry) => (
+    ['slack_ingress', 'discord_ingress'].includes(entry.id) &&
+    (entry.status === 'action_required' || entry.status === 'error')
+  ));
 
   return {
     ok: true,
-    ready: nextStep === 'ready',
+    ready: nextStep === 'ready' && !ingressBlocking,
     checks,
     nextStep
   };

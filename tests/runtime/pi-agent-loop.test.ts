@@ -1,7 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderDraftResult } from '../../src/lib/types';
 
 const runAgentLoopMock = vi.fn();
+const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
+const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
+const originalCredentialsPath = process.env.MURPH_CREDENTIALS_PATH;
 
 vi.mock('@mariozechner/pi-agent-core', async () => {
   const actual = await vi.importActual<typeof import('@mariozechner/pi-agent-core')>('@mariozechner/pi-agent-core');
@@ -104,6 +110,78 @@ describe('runGroundingLoop', () => {
   beforeEach(() => {
     vi.resetModules();
     runAgentLoopMock.mockReset();
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.MURPH_CREDENTIALS_PATH;
+  });
+
+  afterEach(() => {
+    if (originalOpenAiApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAiApiKey;
+    }
+
+    if (originalAnthropicApiKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY;
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey;
+    }
+
+    if (originalCredentialsPath === undefined) {
+      delete process.env.MURPH_CREDENTIALS_PATH;
+    } else {
+      process.env.MURPH_CREDENTIALS_PATH = originalCredentialsPath;
+    }
+  });
+
+  it('passes OpenAI credentials from the local credential store to the Pi agent loop', async () => {
+    process.env.MURPH_CREDENTIALS_PATH = join(mkdtempSync(join(tmpdir(), 'murph-pi-loop-credentials-')), '.credentials');
+
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('openai', 'api_key', 'sk-from-credentials');
+
+    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    runAgentLoopMock.mockImplementation(async (_prompts, _agentContext, config) => {
+      expect(await config.getApiKey?.('openai')).toBe('sk-from-credentials');
+      return [finalAssistantMessage()];
+    });
+
+    await runGroundingLoop({
+      context: baseContext(),
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
+      provider: 'openai',
+      maxToolCallsPerRun: 6,
+      retrievalToolNames: [],
+      defaultToolInput: (_, toolInput) => toolInput,
+      enrichToolOutput: async (_, output) => output,
+      linkThreadArtifact: () => undefined
+    });
+  });
+
+  it('keeps OpenAI environment variables ahead of local credentials', async () => {
+    process.env.MURPH_CREDENTIALS_PATH = join(mkdtempSync(join(tmpdir(), 'murph-pi-loop-credentials-')), '.credentials');
+    process.env.OPENAI_API_KEY = 'sk-from-env';
+
+    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    writeSecret('openai', 'api_key', 'sk-from-credentials');
+
+    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    runAgentLoopMock.mockImplementation(async (_prompts, _agentContext, config) => {
+      expect(await config.getApiKey?.('openai')).toBe('sk-from-env');
+      return [finalAssistantMessage()];
+    });
+
+    await runGroundingLoop({
+      context: baseContext(),
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
+      provider: 'openai',
+      maxToolCallsPerRun: 6,
+      retrievalToolNames: [],
+      defaultToolInput: (_, toolInput) => toolInput,
+      enrichToolOutput: async (_, output) => output,
+      linkThreadArtifact: () => undefined
+    });
   });
 
   it('blocks tools that are not in availableTools', async () => {

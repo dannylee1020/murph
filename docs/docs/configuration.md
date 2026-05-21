@@ -42,7 +42,7 @@ MURPH_DEFAULT_PROVIDER=openai
 MURPH_DEFAULT_MODEL=gpt-5.5
 ```
 
-Use `murph setup ai` or the browser setup flow to change defaults. If you want the local setup/coding agent to use a different model from runtime replies, set an optional agent override:
+Use `murph setup provider` or the browser setup flow to change defaults. The CLI asks for the runtime AI provider first, then the Murph Agent model. `murph setup ai` remains as a compatibility alias. If you want the local setup/coding agent to use a different model from runtime replies, set an optional agent override:
 
 ```text
 MURPH_AGENT_PROVIDER=anthropic

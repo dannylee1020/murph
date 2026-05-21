@@ -2,6 +2,15 @@ import { LogLevel, SocketModeClient } from '@slack/socket-mode';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { handleSlackEventEnvelope } from '#lib/server/channels/slack/events';
 import { getSlackService } from '#lib/server/channels/slack/service';
+import {
+  markIngressConfigured,
+  markIngressConnected,
+  markIngressError,
+  markIngressEvent,
+  markIngressIgnored,
+  markIngressStarting,
+  updateIngressHealth
+} from '#lib/server/channels/ingress-health';
 
 interface SlackSocketEventEnvelope {
   ack?: () => Promise<void>;
@@ -36,18 +45,22 @@ export class SlackSocketModeClient {
     const env = getRuntimeEnv();
 
     if (this.started || env.slackEventsMode === 'http') {
+      markIngressConfigured('slack', env.slackEventsMode !== 'http' && Boolean(env.slackAppToken));
       return;
     }
 
     if (!env.slackAppToken) {
+      markIngressConfigured('slack', false);
       return;
     }
 
     if (!getSlackService().getUsableWorkspace()) {
+      markIngressConfigured('slack', true);
       return;
     }
 
     this.started = true;
+    markIngressStarting('slack');
     this.client = new SocketModeClient({
       appToken: env.slackAppToken,
       logLevel: LogLevel.WARN
@@ -62,23 +75,34 @@ export class SlackSocketModeClient {
         clearTimeout(this.restartTimer);
         this.restartTimer = null;
       }
+      markIngressConnected('slack');
       console.info('[slack] socket mode connected');
     });
     this.client.on('disconnected', (error?: unknown) => {
       this.started = false;
+      updateIngressHealth('slack', {
+        started: false,
+        connected: false,
+        status: error ? 'error' : 'idle',
+        lastError: error ? (error instanceof Error ? error.message : String(error)) : undefined,
+        lastErrorAt: error ? new Date().toISOString() : undefined
+      });
       if (error) {
         console.warn('[slack] socket mode disconnected:', error instanceof Error ? error.message : error);
       }
     });
     this.client.on('error', (error) => {
+      markIngressError('slack', error);
       console.warn('[slack] socket mode error:', error instanceof Error ? error.message : error);
     });
     this.client.on('unable_to_socket_mode_start', (error) => {
+      markIngressError('slack', error);
       console.warn('[slack] socket mode could not start:', error instanceof Error ? error.message : error);
     });
 
     void this.client.start().catch((error) => {
       this.started = false;
+      markIngressError('slack', error);
       console.warn('[slack] socket mode start failed:', error instanceof Error ? error.message : error);
     });
   }
@@ -165,9 +189,11 @@ export class SlackSocketModeClient {
     }
 
     if (envelope.type !== 'events_api' || !envelope.body) {
+      markIngressIgnored('slack', envelope.type ? `unsupported_envelope:${envelope.type}` : 'missing_envelope_body');
       return;
     }
 
+    markIngressEvent('slack');
     await handleSlackEventEnvelope(envelope.body, {
       envelopeId: envelope.envelope_id,
       rawPayload: JSON.stringify(envelope.body),

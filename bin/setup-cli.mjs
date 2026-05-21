@@ -143,7 +143,8 @@ function usage() {
 
 Sections:
   core        Create core local config values and data directory.
-  ai          Configure OpenAI or Anthropic.
+  provider    Configure the runtime AI provider, then Murph Agent.
+  ai          Alias for provider.
   slack       Configure Slack app credentials and OAuth install.
   discord     Configure Discord bot credentials and server install.
   identity    Pick the user Murph watches for.
@@ -886,12 +887,16 @@ function assertSlackWorkspaceMatch(status, workspace = null) {
 
 function discordInstallUrl(clientId = readSetupValue('DISCORD_CLIENT_ID')) {
   if (!clientId) return '';
-  const params = new URLSearchParams({
-    client_id: clientId,
-    scope: 'bot',
-    permissions: discordBotPermissions
-  });
-  return `https://discord.com/oauth2/authorize?${params.toString()}`;
+  const params = new URLSearchParams({ source: 'setup' });
+  return `${murphUrl}/api/discord/install?${params.toString()}`;
+}
+
+function discordRedirectUrl() {
+  return readSetupValue('DISCORD_REDIRECT_URI') || `${murphUrl}/api/discord/oauth/callback`;
+}
+
+function discordDeveloperPortalOAuthUrl(applicationId) {
+  return `https://discord.com/developers/applications/${encodeURIComponent(applicationId)}/oauth2`;
 }
 
 async function discordApi(pathname, token, options = {}) {
@@ -911,16 +916,69 @@ async function discordApi(pathname, token, options = {}) {
   return payload;
 }
 
+async function fetchDiscordApplication(token) {
+  return discordApi('/oauth2/applications/@me', token).catch(() => ({}));
+}
+
+function discordRedirectUris(application) {
+  return Array.isArray(application?.redirect_uris)
+    ? application.redirect_uris.filter((uri) => typeof uri === 'string' && uri.trim()).map((uri) => uri.trim())
+    : undefined;
+}
+
+function discordRedirectUriRegistered(application, redirectUri) {
+  const redirectUris = discordRedirectUris(application);
+  return redirectUris === undefined ? undefined : redirectUris.includes(redirectUri);
+}
+
 async function validateDiscordBotToken(token) {
   const bot = await discordApi('/users/@me', token);
-  const app = await discordApi('/oauth2/applications/@me', token).catch(() => ({}));
+  const app = await fetchDiscordApplication(token);
   return {
     botUserId: bot.id,
     botName: bot.global_name || bot.username || bot.id,
     applicationId: app.id || bot.id,
     applicationName: app.name,
-    applicationFlags: typeof app.flags === 'number' ? app.flags : undefined
+    applicationFlags: typeof app.flags === 'number' ? app.flags : undefined,
+    applicationRedirectUris: discordRedirectUris(app)
   };
+}
+
+async function ensureDiscordRedirectUriConfigured(token, applicationId, redirectUri, knownRedirectUris) {
+  const registered = knownRedirectUris === undefined ? undefined : knownRedirectUris.includes(redirectUri);
+  if (registered === true) {
+    success('Discord OAuth redirect URI is registered.');
+    return true;
+  }
+  if (registered === undefined) {
+    warn('Murph could not verify Discord OAuth redirect URIs from the Discord API.');
+    info('Make sure this redirect URI is registered in Discord Developer Portal > OAuth2 > General > Redirects before authorizing Murph.');
+    callout('Redirect URI', redirectUri);
+    callout('Discord Developer Portal', discordDeveloperPortalOAuthUrl(applicationId));
+    return false;
+  }
+
+  warn('Discord OAuth redirect URI is not registered yet.');
+  info('Add this exact URI in Discord Developer Portal > OAuth2 > General > Redirects, then save changes.');
+  callout('Redirect URI', redirectUri);
+  callout('Discord Developer Portal', discordDeveloperPortalOAuthUrl(applicationId));
+  if (options.nonInteractive) {
+    fail(`Missing Discord OAuth redirect URI. Add ${redirectUri} in Discord Developer Portal before running non-interactively.`);
+  }
+
+  await ask('Press Enter after adding the Discord redirect URI.');
+  const refreshedApp = await fetchDiscordApplication(token);
+  const refreshedRegistered = discordRedirectUriRegistered(refreshedApp, redirectUri);
+  if (refreshedRegistered === true) {
+    success('Discord OAuth redirect URI is registered.');
+    return true;
+  }
+  if (refreshedRegistered === false) {
+    fail(`Discord OAuth redirect URI is still missing: ${redirectUri}`);
+  }
+
+  warn('Murph still could not verify Discord OAuth redirect URIs from the Discord API. Continuing with the URI you confirmed.');
+  return false;
 }
 
 async function configureDiscordApplication(token, applicationFlags) {
@@ -1221,7 +1279,7 @@ async function setupAi() {
     return;
   }
   if (options.nonInteractive && !hasKey) {
-    fail('Missing AI provider key. Set OPENAI_API_KEY or ANTHROPIC_API_KEY, or run murph setup ai.');
+    fail('Missing AI provider key. Set OPENAI_API_KEY or ANTHROPIC_API_KEY, or run murph setup provider.');
   }
   if (options.nonInteractive) {
     await saveAgentModelDefaults(currentProvider);
@@ -1310,11 +1368,21 @@ async function setupDiscord() {
   if (options.nonInteractive && !existingToken) {
     fail('Missing Discord bot token. Set DISCORD_BOT_TOKEN, or run murph setup discord interactively.');
   }
-  const token = await askRequired('Discord bot token', existingToken);
+  const token = process.env.DISCORD_BOT_TOKEN
+    ? process.env.DISCORD_BOT_TOKEN.trim()
+    : await askRequired('Discord bot token', existingToken);
+  const existingClientSecret = readSetupValue('DISCORD_CLIENT_SECRET');
+  if (options.nonInteractive && !existingClientSecret) {
+    fail('Missing Discord client secret. Set DISCORD_CLIENT_SECRET, or run murph setup discord interactively.');
+  }
+  const clientSecret = process.env.DISCORD_CLIENT_SECRET
+    ? process.env.DISCORD_CLIENT_SECRET.trim()
+    : await askRequired('Discord client secret', existingClientSecret);
   const bot = await validateDiscordBotToken(token);
   const values = {
     DISCORD_BOT_TOKEN: token,
-    DISCORD_CLIENT_ID: bot.applicationId
+    DISCORD_CLIENT_ID: bot.applicationId,
+    DISCORD_CLIENT_SECRET: clientSecret
   };
   writeSetupValues(values);
   await postSetupConfig(values);
@@ -1323,7 +1391,7 @@ async function setupDiscord() {
 
   await ensureServer();
   let status = await request('/api/setup/status');
-  if (status.discord?.installed) {
+  if (status.discord?.installed && status.discord?.ownerConfigured !== false) {
     await rememberSetupWorkspace('discord', status.discord.workspace?.id);
     success(`${status.discord.workspace?.name || 'Discord server'} is connected.`);
     if (configuredApp) {
@@ -1340,7 +1408,9 @@ async function setupDiscord() {
   if (!installUrl) {
     fail('Discord application ID is missing.');
   }
-  info('Install Murph in your Discord server with this URL:');
+  const redirectUri = discordRedirectUrl();
+  await ensureDiscordRedirectUriConfigured(token, bot.applicationId, redirectUri, bot.applicationRedirectUris);
+  info('Install Murph in your Discord server and approve account identification with this URL:');
   callout('Discord install URL', installUrl);
   info(`Murph requests these bot permissions: ${discordPermissionLabels.join(', ')}.`);
   if (!configuredApp) {
@@ -1348,12 +1418,27 @@ async function setupDiscord() {
   }
   openBrowserUrl(installUrl);
   if (options.nonInteractive) {
-    fail('Discord bot installation is not complete.');
+    fail('Discord authorization is not complete.');
   }
-  if (process.env.MURPH_DISCORD_SKIP_INSTALL_CONFIRM === '1') {
-    info('Continuing after Discord install prompt was skipped by environment.');
+  const skipInstallConfirm = process.env.MURPH_DISCORD_SKIP_INSTALL_CONFIRM === '1';
+  if (skipInstallConfirm) {
+    info('Continuing after Discord authorization prompt was skipped by environment.');
   } else {
-    await ask('Press Enter after Discord bot installation finishes.');
+    await ask('Press Enter after Discord authorization finishes.');
+  }
+  const pollAttempts = skipInstallConfirm ? 1 : 40;
+  for (let i = 0; i < pollAttempts; i += 1) {
+    status = await request('/api/setup/status');
+    if (status.discord?.installed) {
+      await rememberSetupWorkspace('discord', status.discord.workspace?.id);
+      if (status.discord?.ownerConfigured !== false) {
+        success(`${status.discord.workspace?.name || 'Discord server'} connected and owner identified.`);
+        return;
+      }
+      warn(`${status.discord.workspace?.name || 'Discord server'} connected, but Murph did not receive the Discord user identity.`);
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   info('Checking Discord servers for the installed bot...');
   const discoveredGuilds = await discoverDiscordGuilds(token);
@@ -1677,6 +1762,7 @@ try {
       await setupCore();
       break;
     case 'ai':
+    case 'provider':
       await setupAi();
       break;
     case 'slack':

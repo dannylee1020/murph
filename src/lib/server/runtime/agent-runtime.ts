@@ -192,7 +192,10 @@ export class AgentRuntime {
     const recentMessagesPromise = this.tools.execute<
       { channelId: string; threadTs: string },
       ChannelMessage[]
-    >('channel.fetch_thread', task.thread, { workspace, task });
+    >('channel.fetch_thread', task.thread, { workspace, task }).catch((error) => {
+      console.warn('[runtime] failed to fetch channel thread:', error instanceof Error ? error.message : error);
+      return [];
+    });
     const userMemoryPromise = this.tools.execute<{ workspaceId: string; userId: string }, ContextAssembly['memory']['user']>(
       'user.get_preferences',
       {

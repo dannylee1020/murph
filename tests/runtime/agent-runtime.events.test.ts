@@ -24,6 +24,7 @@ let delayNotionSearch = false;
 let testSkills: SkillManifest[] = [];
 let enabledOptionalTools: string[] = [];
 let enabledContextSources: string[] = [];
+let failInitialFetchThread = false;
 const runAgentLoopMock = vi.fn();
 
 const provider: ModelProvider = {
@@ -204,6 +205,9 @@ async function setupRuntime() {
     description: '',
     sideEffectClass: 'read',
     async execute(): Promise<unknown> {
+      if (failInitialFetchThread) {
+        throw new Error('missing_scope');
+      }
       return [
         {
           provider: 'slack',
@@ -442,6 +446,7 @@ describe('AgentRuntime model failure events', () => {
     capturedSearchResult = undefined;
     deterministicRetrievalLog = [];
     delayNotionSearch = false;
+    failInitialFetchThread = false;
     enabledOptionalTools = [];
     enabledContextSources = [];
     testSkills = [channelSkill()];
@@ -472,6 +477,25 @@ describe('AgentRuntime model failure events', () => {
             round: 'fallback'
           }
         }
+      ])
+    );
+  });
+
+  it('continues when the initial channel thread fetch fails', async () => {
+    failInitialFetchThread = true;
+
+    const runtime = await setupRuntime();
+    const result = await runtime.run(task(), session(), workspace());
+
+    expect(result.proposedAction.type).toBe('ask');
+    expect(result.runtimeEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'agent.model.failed',
+          payload: expect.objectContaining({
+            phase: 'tool_turn'
+          })
+        })
       ])
     );
   });

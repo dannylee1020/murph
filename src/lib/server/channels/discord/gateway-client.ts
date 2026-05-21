@@ -2,7 +2,16 @@ import WebSocket from 'ws';
 import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getGateway } from '#lib/server/runtime/gateway';
 import { getStore } from '#lib/server/persistence/store';
-import { normalizeDiscordEvent } from '#lib/server/channels/discord/adapter';
+import { normalizeDiscordEventWithReason } from '#lib/server/channels/discord/adapter';
+import {
+  markIngressClosed,
+  markIngressConfigured,
+  markIngressConnected,
+  markIngressError,
+  markIngressEvent,
+  markIngressIgnored,
+  markIngressStarting
+} from '#lib/server/channels/ingress-health';
 
 const DISCORD_GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
 const INTENTS = (1 << 0) | (1 << 9) | (1 << 15);
@@ -16,9 +25,11 @@ export class DiscordGatewayClient {
   ensureStarted(): void {
     const hasDiscordWorkspace = getStore().listWorkspaces().some((workspace) => workspace.provider === 'discord');
     if (this.started || !hasDiscordWorkspace || !getDiscordService().isConfigured()) {
+      markIngressConfigured('discord', hasDiscordWorkspace && getDiscordService().isConfigured());
       return;
     }
     this.started = true;
+    markIngressStarting('discord');
     this.connect();
   }
 
@@ -28,17 +39,36 @@ export class DiscordGatewayClient {
       void this.handlePayload(String(data));
     });
     this.socket.on('error', (error) => {
+      markIngressError('discord', error);
       console.warn('[discord] gateway error:', error instanceof Error ? error.message : error);
     });
-    this.socket.on('close', () => {
+    this.socket.on('close', (code, reason) => {
       this.cleanupHeartbeat();
       this.socket = null;
-      setTimeout(() => this.connect(), 3000);
+      this.started = false;
+      markIngressClosed('discord', code, Buffer.isBuffer(reason) ? reason.toString('utf8') : String(reason));
+      if ([4004, 4013, 4014].includes(code)) {
+        return;
+      }
+      setTimeout(() => {
+        if (this.started) {
+          return;
+        }
+        this.started = true;
+        markIngressStarting('discord');
+        this.connect();
+      }, 3000);
     });
   }
 
   private async handlePayload(raw: string): Promise<void> {
-    const payload = JSON.parse(raw) as { op: number; d?: any; s?: number | null; t?: string };
+    let payload: { op: number; d?: any; s?: number | null; t?: string };
+    try {
+      payload = JSON.parse(raw) as { op: number; d?: any; s?: number | null; t?: string };
+    } catch (error) {
+      markIngressError('discord', error);
+      return;
+    }
     if (typeof payload.s === 'number') {
       this.sequence = payload.s;
     }
@@ -65,6 +95,7 @@ export class DiscordGatewayClient {
     }
 
     if (payload.op === 0 && payload.t === 'READY' && payload.d) {
+      markIngressConnected('discord');
       await this.saveReadyGuilds(payload.d as Record<string, unknown>);
       return;
     }
@@ -78,18 +109,29 @@ export class DiscordGatewayClient {
       return;
     }
 
+    markIngressEvent('discord');
     const guildId = typeof payload.d.guild_id === 'string' ? payload.d.guild_id : undefined;
-    const task = normalizeDiscordEvent(payload.d as Record<string, unknown>, {
+    const normalized = normalizeDiscordEventWithReason(payload.d as Record<string, unknown>, {
       eventId: typeof payload.d.id === 'string' ? payload.d.id : undefined,
       teamId: guildId
     });
-    if (!task) {
+    if (!normalized.task) {
+      markIngressIgnored('discord', normalized.ignoredReason);
+      console.info('[discord] ignored event', {
+        eventId: typeof payload.d.id === 'string' ? payload.d.id : undefined,
+        guildId,
+        channelId: typeof payload.d.channel_id === 'string' ? payload.d.channel_id : undefined,
+        userId: typeof payload.d.author?.id === 'string' ? payload.d.author.id : undefined,
+        reason: normalized.ignoredReason
+      });
       return;
     }
+    const task = normalized.task;
 
     const store = getStore();
     const workspace = guildId ? store.getWorkspaceByExternalId('discord', guildId) : undefined;
     if (!workspace) {
+      markIngressIgnored('discord', 'workspace_not_installed');
       return;
     }
 
@@ -101,6 +143,7 @@ export class DiscordGatewayClient {
       payloadJson: raw
     });
     if (!inserted) {
+      markIngressIgnored('discord', 'duplicate_event');
       return;
     }
 

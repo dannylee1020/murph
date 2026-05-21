@@ -29,7 +29,7 @@ printf '%s\\n' "$*" >> "${callsPath}"
 function createFetchMock(
   appDir: string,
   setupStatuses: unknown[] = [
-    { ok: true, discord: { installed: true, botTokenConfigured: true, clientIdConfigured: true, workspace: { id: 'ws-discord', externalWorkspaceId: 'guild-1', name: 'Murph Guild' } } }
+    { ok: true, discord: { installed: true, botTokenConfigured: true, clientIdConfigured: true, clientSecretConfigured: true, ownerConfigured: true, workspace: { id: 'ws-discord', externalWorkspaceId: 'guild-1', name: 'Murph Guild' } } }
   ]
 ): { callsPath: string; mockPath: string; setupStatusesPath: string } {
   const callsPath = path.join(appDir, 'fetch-calls.jsonl');
@@ -43,6 +43,7 @@ const callsPath = process.env.MOCK_FETCH_CALLS;
 const setupStatusPayloads = JSON.parse(readFileSync(process.env.MOCK_SETUP_STATUSES, 'utf8'));
 let setupStatusIndex = 0;
 let discordGuildSaveAttempts = 0;
+let discordApplicationFetches = 0;
 
 globalThis.fetch = async (url, options = {}) => {
   const body = options.body ? JSON.parse(String(options.body)) : undefined;
@@ -76,7 +77,18 @@ globalThis.fetch = async (url, options = {}) => {
     return Response.json({ id: 'bot-user-1', username: 'murph-bot', bot: true });
   }
   if (String(url).includes('/oauth2/applications/@me')) {
-    return Response.json({ id: 'app-123', name: 'Murph', flags: 0 });
+    discordApplicationFetches += 1;
+    const redirectUris = discordApplicationFetches > 1 && process.env.MOCK_DISCORD_REDIRECT_URIS_AFTER_FIRST
+      ? JSON.parse(process.env.MOCK_DISCORD_REDIRECT_URIS_AFTER_FIRST)
+      : process.env.MOCK_DISCORD_REDIRECT_URIS
+        ? JSON.parse(process.env.MOCK_DISCORD_REDIRECT_URIS)
+        : undefined;
+    return Response.json({
+      id: 'app-123',
+      name: 'Murph',
+      flags: 0,
+      ...(redirectUris === undefined ? {} : { redirect_uris: redirectUris })
+    });
   }
   if (String(url).includes('/applications/@me')) {
     if (process.env.MOCK_DISCORD_APP_CONFIG_FAIL === '1') {
@@ -168,7 +180,7 @@ describe('setup CLI Discord setup', () => {
     const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
       cwd: repoRoot,
-      input: '\n',
+      input: '\n\n',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -177,6 +189,7 @@ describe('setup CLI Discord setup', () => {
         MURPH_URL: 'http://murph.test',
         MURPH_DISCORD_API_BASE: 'http://discord.test/api/v10',
         DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
         MOCK_FETCH_CALLS: callsPath,
         MOCK_SETUP_STATUSES: setupStatusesPath,
         PATH: '/usr/bin:/bin'
@@ -186,7 +199,6 @@ describe('setup CLI Discord setup', () => {
 
     expect(result.status, result.stderr + result.stdout).toBe(0);
     expect(result.stdout).toContain('Murph Guild is connected.');
-    expect(result.stdout).not.toContain('client secret');
 
     const config = readFileSync(path.join(appDir, 'config.yaml'), 'utf8');
     expect(config).toContain('clientId: app-123');
@@ -195,7 +207,8 @@ describe('setup CLI Discord setup', () => {
 
     const credentials = JSON.parse(readFileSync(path.join(appDir, '.credentials'), 'utf8'));
     expect(credentials.credentials).toEqual(expect.arrayContaining([
-      expect.objectContaining({ provider: 'discord', key: 'bot_token', value: 'discord-bot-token' })
+      expect.objectContaining({ provider: 'discord', key: 'bot_token', value: 'discord-bot-token' }),
+      expect.objectContaining({ provider: 'discord', key: 'client_secret', value: 'discord-client-secret' })
     ]));
 
     const calls = readCalls(callsPath);
@@ -224,7 +237,7 @@ describe('setup CLI Discord setup', () => {
     const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
       cwd: repoRoot,
-      input: '\n',
+      input: '\n\n',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -233,6 +246,7 @@ describe('setup CLI Discord setup', () => {
         MURPH_URL: 'http://murph.test',
         MURPH_DISCORD_API_BASE: 'http://discord.test/api/v10',
         DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
         MOCK_DISCORD_APP_CONFIG_FAIL: '1',
         MOCK_FETCH_CALLS: callsPath,
         MOCK_SETUP_STATUSES: setupStatusesPath,
@@ -254,7 +268,7 @@ describe('setup CLI Discord setup', () => {
     ]);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
       cwd: repoRoot,
-      input: '\n',
+      input: '\n\n',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -266,6 +280,7 @@ describe('setup CLI Discord setup', () => {
         MURPH_DISCORD_GUILD_ID: 'guild-manual',
         MOCK_DISCORD_GUILDS: '[]',
         DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
         MOCK_FETCH_CALLS: callsPath,
         MOCK_SETUP_STATUSES: setupStatusesPath,
         PATH: '/usr/bin:/bin'
@@ -274,6 +289,7 @@ describe('setup CLI Discord setup', () => {
     });
 
     expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('http://murph.test/api/discord/install?source=setup');
     expect(result.stdout).toContain('Checking Discord servers for the installed bot...');
     expect(result.stdout).toContain('Manual Guild connected.');
     expect(readFileSync(path.join(appDir, 'config.yaml'), 'utf8')).toContain('workspaceId: ws-manual');
@@ -283,6 +299,107 @@ describe('setup CLI Discord setup', () => {
     expect(manualCall?.body).toEqual({ guildId: 'guild-manual' });
   });
 
+  it('continues when the Discord OAuth redirect URI is already registered', () => {
+    const appDir = createAppDir();
+    const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir, [
+      { ok: true, discord: { installed: false, botTokenConfigured: true, clientIdConfigured: true } }
+    ]);
+    const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
+      cwd: repoRoot,
+      input: '\n\n',
+      env: {
+        ...process.env,
+        MURPH_APP_DIR: appDir,
+        MURPH_CONFIG_PATH: path.join(appDir, 'config.yaml'),
+        MURPH_CREDENTIALS_PATH: path.join(appDir, '.credentials'),
+        MURPH_URL: 'http://murph.test',
+        MURPH_DISCORD_API_BASE: 'http://discord.test/api/v10',
+        MURPH_DISCORD_SKIP_INSTALL_CONFIRM: '1',
+        MURPH_DISCORD_GUILD_ID: 'guild-manual',
+        MOCK_DISCORD_GUILDS: '[]',
+        MOCK_DISCORD_REDIRECT_URIS: '["http://murph.test/api/discord/oauth/callback"]',
+        DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
+        MOCK_FETCH_CALLS: callsPath,
+        MOCK_SETUP_STATUSES: setupStatusesPath,
+        PATH: '/usr/bin:/bin'
+      },
+      encoding: 'utf8'
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Discord OAuth redirect URI is registered.');
+    expect(result.stdout).toContain('Manual Guild connected.');
+  });
+
+  it('waits for a missing Discord OAuth redirect URI to be added before opening OAuth', () => {
+    const appDir = createAppDir();
+    const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir, [
+      { ok: true, discord: { installed: false, botTokenConfigured: true, clientIdConfigured: true } }
+    ]);
+    const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
+      cwd: repoRoot,
+      input: '\n\n\n',
+      env: {
+        ...process.env,
+        MURPH_APP_DIR: appDir,
+        MURPH_CONFIG_PATH: path.join(appDir, 'config.yaml'),
+        MURPH_CREDENTIALS_PATH: path.join(appDir, '.credentials'),
+        MURPH_URL: 'http://murph.test',
+        MURPH_DISCORD_API_BASE: 'http://discord.test/api/v10',
+        MURPH_DISCORD_SKIP_INSTALL_CONFIRM: '1',
+        MURPH_DISCORD_GUILD_ID: 'guild-manual',
+        MOCK_DISCORD_GUILDS: '[]',
+        MOCK_DISCORD_REDIRECT_URIS: '[]',
+        MOCK_DISCORD_REDIRECT_URIS_AFTER_FIRST: '["http://murph.test/api/discord/oauth/callback"]',
+        DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
+        MOCK_FETCH_CALLS: callsPath,
+        MOCK_SETUP_STATUSES: setupStatusesPath,
+        PATH: '/usr/bin:/bin'
+      },
+      encoding: 'utf8'
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Discord OAuth redirect URI is not registered yet.');
+    expect(result.stdout).toContain('http://murph.test/api/discord/oauth/callback');
+    expect(result.stdout).toContain('https://discord.com/developers/applications/app-123/oauth2');
+    expect(result.stdout).toContain('Discord OAuth redirect URI is registered.');
+    expect(result.stdout).toContain('Manual Guild connected.');
+  });
+
+  it('fails non-interactively when Discord reports the OAuth redirect URI is missing', () => {
+    const appDir = createAppDir();
+    const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir, [
+      { ok: true, discord: { installed: false, botTokenConfigured: true, clientIdConfigured: true } }
+    ]);
+    const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord', '--non-interactive'], {
+      cwd: repoRoot,
+      input: '',
+      env: {
+        ...process.env,
+        MURPH_APP_DIR: appDir,
+        MURPH_CONFIG_PATH: path.join(appDir, 'config.yaml'),
+        MURPH_CREDENTIALS_PATH: path.join(appDir, '.credentials'),
+        MURPH_URL: 'http://murph.test',
+        MURPH_DISCORD_API_BASE: 'http://discord.test/api/v10',
+        MOCK_DISCORD_REDIRECT_URIS: '[]',
+        DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
+        MOCK_FETCH_CALLS: callsPath,
+        MOCK_SETUP_STATUSES: setupStatusesPath,
+        PATH: '/usr/bin:/bin'
+      },
+      encoding: 'utf8'
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr + result.stdout).toContain('Missing Discord OAuth redirect URI');
+    expect(result.stdout).not.toContain('Discord install URL');
+    expect(readCalls(callsPath).some((call) => call.url.includes('/users/@me/guilds'))).toBe(false);
+  });
+
   it('uses direct Discord REST discovery when one bot guild is available', () => {
     const appDir = createAppDir();
     const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir, [
@@ -290,7 +407,7 @@ describe('setup CLI Discord setup', () => {
     ]);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
       cwd: repoRoot,
-      input: '\n',
+      input: '\n\n',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -301,6 +418,7 @@ describe('setup CLI Discord setup', () => {
         MURPH_DISCORD_SKIP_INSTALL_CONFIRM: '1',
         MOCK_DISCORD_GUILDS: '[{"id":"guild-rest","name":"REST Guild"}]',
         DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
         MOCK_FETCH_CALLS: callsPath,
         MOCK_SETUP_STATUSES: setupStatusesPath,
         PATH: '/usr/bin:/bin'
@@ -324,7 +442,7 @@ describe('setup CLI Discord setup', () => {
     ]);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
       cwd: repoRoot,
-      input: '\n',
+      input: '\n\n',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -336,6 +454,7 @@ describe('setup CLI Discord setup', () => {
         MURPH_DISCORD_GUILD_ID: 'guild-direct',
         MOCK_DISCORD_GUILDS: '[{"id":"guild-one","name":"One"},{"id":"guild-direct","name":"Direct Guild"}]',
         DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
         MOCK_FETCH_CALLS: callsPath,
         MOCK_SETUP_STATUSES: setupStatusesPath,
         PATH: '/usr/bin:/bin'
@@ -360,7 +479,7 @@ describe('setup CLI Discord setup', () => {
     ]);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
       cwd: repoRoot,
-      input: '\n',
+      input: '\n\n',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -372,6 +491,7 @@ describe('setup CLI Discord setup', () => {
         MOCK_DISCORD_GUILDS: '[{"id":"guild-rest","name":"REST Guild"}]',
         MOCK_DISCORD_GUILD_SAVE_NOT_FOUND: 'once',
         DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
         MOCK_FETCH_CALLS: callsPath,
         MOCK_SETUP_STATUSES: setupStatusesPath,
         PATH: '/usr/bin:/bin'
@@ -396,7 +516,7 @@ describe('setup CLI Discord setup', () => {
     ]);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
       cwd: repoRoot,
-      input: '\n',
+      input: '\n\n',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -408,6 +528,7 @@ describe('setup CLI Discord setup', () => {
         MOCK_DISCORD_GUILDS: '[{"id":"guild-rest","name":"REST Guild"}]',
         MOCK_DISCORD_GUILD_SAVE_NOT_FOUND: 'always',
         DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
         MOCK_FETCH_CALLS: callsPath,
         MOCK_SETUP_STATUSES: setupStatusesPath,
         PATH: '/usr/bin:/bin'
@@ -427,7 +548,7 @@ describe('setup CLI Discord setup', () => {
     ]);
     const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'discord'], {
       cwd: repoRoot,
-      input: '\n',
+      input: '\n\n',
       env: {
         ...process.env,
         MURPH_APP_DIR: appDir,
@@ -440,6 +561,7 @@ describe('setup CLI Discord setup', () => {
         MOCK_DISCORD_GUILDS: '[]',
         MOCK_DISCORD_GUILD_FETCH_FAIL: '1',
         DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
         MOCK_FETCH_CALLS: callsPath,
         MOCK_SETUP_STATUSES: setupStatusesPath,
         PATH: '/usr/bin:/bin'

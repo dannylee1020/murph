@@ -2,6 +2,7 @@ import { getModel, type Message, type ToolResultMessage, type UserMessage } from
 import { runAgentLoop, type AgentContext as PiAgentContext, type AgentEvent, type AgentMessage, type AgentTool } from '@mariozechner/pi-agent-core';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { DEFAULT_PROVIDER_MODEL } from '#lib/config';
+import { readSecret } from '#lib/server/credentials/local-store';
 import { buildGroundingPrompt } from '#lib/server/runtime/grounding-prompt';
 import { toTypeBoxSchema } from '#lib/server/runtime/pi-tool-schema';
 import { outputSummary, truncateToolOutput } from '#lib/server/runtime/tool-output';
@@ -115,6 +116,18 @@ function rawToolName(name: string, aliasToRaw: Map<string, string>): string {
   return name.includes('__') ? name.replace(/__/g, '.') : name;
 }
 
+function resolvePiApiKey(provider: string): string | undefined {
+  if (provider === 'openai') {
+    return process.env.OPENAI_API_KEY ?? readSecret('openai', 'api_key');
+  }
+
+  if (provider === 'anthropic') {
+    return process.env.ANTHROPIC_API_KEY ?? readSecret('anthropic', 'api_key');
+  }
+
+  return undefined;
+}
+
 export interface GroundingLoopInput {
   context: Omit<ContextAssembly, 'summary' | 'unresolvedQuestions' | 'continuityCase'>;
   workspace: Workspace;
@@ -192,6 +205,7 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
     {
       model: getModel(input.provider as any, (input.model ?? DEFAULT_PROVIDER_MODEL[input.provider]) as any),
       convertToLlm,
+      getApiKey: resolvePiApiKey,
       toolExecution: 'parallel',
       beforeToolCall: async ({ toolCall }) => {
         const rawName = rawToolName(toolCall.name, aliasToRaw);

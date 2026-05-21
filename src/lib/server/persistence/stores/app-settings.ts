@@ -11,6 +11,15 @@ function normalizeSettings(settings: AppSettings): AppSettings {
         workspaceId: settings.setupDefaults.workspaceId?.trim() || undefined,
         ownerUserId: settings.setupDefaults.ownerUserId?.trim() || undefined,
         ownerDisplayName: settings.setupDefaults.ownerDisplayName?.trim() || undefined,
+        workspaceOwners: (settings.setupDefaults.workspaceOwners ?? [])
+          .map((owner) => ({
+            workspaceId: owner.workspaceId?.trim(),
+            ownerUserId: owner.ownerUserId?.trim(),
+            ownerDisplayName: owner.ownerDisplayName?.trim() || owner.ownerUserId?.trim()
+          }))
+          .filter((owner): owner is { workspaceId: string; ownerUserId: string; ownerDisplayName: string } => (
+            Boolean(owner.workspaceId && owner.ownerUserId)
+          )),
         channelScopeMode: settings.setupDefaults.channelScopeMode === 'all_accessible' ? 'all_accessible' as const : 'selected' as const,
         selectedChannels: (settings.setupDefaults.selectedChannels ?? [])
           .map((channel) => ({

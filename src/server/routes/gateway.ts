@@ -23,7 +23,7 @@ import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { readMurphConfig, updateMurphPolicyProfile } from '#lib/server/setup/config-file';
-import type { AgentUser, ChannelEnsureMemberResult, SessionMode, Workspace } from '#lib/types';
+import type { AgentUser, ChannelEnsureMemberResult, ChannelSetupMember, SessionMode, Workspace } from '#lib/types';
 
 const gateway = getGateway();
 
@@ -63,9 +63,9 @@ type SessionCreateInput = {
 type PreparedSessionTarget = {
   workspace: Workspace;
   ownerUserId: string;
+  ownerMember: ChannelSetupMember;
   channelScope: string[];
   autoJoined: Array<{ id: string; name?: string }>;
-  newlyConfirmed: string[];
 };
 
 function workspaceDescriptor(workspace: Workspace) {
@@ -74,6 +74,30 @@ function workspaceDescriptor(workspace: Workspace) {
     provider: workspace.provider,
     name: workspace.name
   };
+}
+
+function updateConfirmedChannels(
+  workspace: Workspace,
+  channelScope: string[],
+  membershipResults: ChannelEnsureMemberResult[]
+): void {
+  if (channelScope.length === 0 || membershipResults.length === 0) {
+    return;
+  }
+
+  const store = getStore();
+  const scoped = new Set(channelScope);
+  const confirmed = new Set(
+    membershipResults
+      .filter((result) => result.status === 'already_member' || result.status === 'joined')
+      .map((result) => result.channelId)
+  );
+  const workspaceMemory = store.getOrCreateWorkspaceMemory(workspace.id);
+  workspaceMemory.confirmedChannels = [
+    ...(workspaceMemory.confirmedChannels ?? []).filter((channelId) => !scoped.has(channelId)),
+    ...confirmed
+  ];
+  store.upsertWorkspaceMemory(workspaceMemory);
 }
 
 function resolveSessionEndsAt(input: SessionCreateInput, user: AgentUser): string {
@@ -97,7 +121,6 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
   | { ok: true; target: PreparedSessionTarget }
   | { ok: false; status: number; payload: Record<string, unknown> }
 > {
-  const store = getStore();
   const workspace = resolveRequestWorkspace(input.workspaceId);
 
   if (!workspace) {
@@ -117,13 +140,27 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
     return { ok: false, status: 400, payload: { ok: false, error: 'owner_required', workspace: workspaceDescriptor(workspace) } };
   }
 
+  let ownerMember: ChannelSetupMember;
+  try {
+    ownerMember = await getChannelRegistry().getMember(workspace, ownerUserId);
+  } catch (error) {
+    return {
+      ok: false,
+      status: 400,
+      payload: {
+        ok: false,
+        error: 'owner_not_found',
+        workspace: workspaceDescriptor(workspace),
+        ownerUserId,
+        message: error instanceof Error ? error.message : 'Owner user was not found in this workspace'
+      }
+    };
+  }
+
   const channelScope = input.channelScope ?? [];
-  const workspaceMemory = store.getOrCreateWorkspaceMemory(workspace.id);
-  const confirmed = new Set(workspaceMemory.confirmedChannels ?? []);
-  const uncheckedChannels = channelScope.filter((id) => !confirmed.has(id));
   const membershipResults: ChannelEnsureMemberResult[] = [];
 
-  for (const channelId of uncheckedChannels) {
+  for (const channelId of channelScope) {
     membershipResults.push(await getChannelRegistry().ensureMember(workspace, workspace.provider, channelId));
   }
 
@@ -147,6 +184,7 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
     }));
 
   if (requiresInvitation.length > 0 || reinstallRequired || errors.length > 0) {
+    updateConfirmedChannels(workspace, channelScope, membershipResults);
     return {
       ok: false,
       status: 409,
@@ -162,35 +200,26 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
     };
   }
 
+  updateConfirmedChannels(workspace, channelScope, membershipResults);
+
   return {
     ok: true,
     target: {
       workspace,
       ownerUserId,
+      ownerMember,
       channelScope,
-      autoJoined,
-      newlyConfirmed: membershipResults
-        .filter((result) => result.status === 'already_member' || result.status === 'joined')
-        .map((result) => result.channelId)
+      autoJoined
     }
   };
 }
 
 async function createPreparedSession(target: PreparedSessionTarget, input: SessionCreateInput) {
   const store = getStore();
-  if (target.newlyConfirmed.length > 0) {
-    const workspaceMemory = store.getOrCreateWorkspaceMemory(target.workspace.id);
-    workspaceMemory.confirmedChannels = [...new Set([
-      ...(workspaceMemory.confirmedChannels ?? []),
-      ...target.newlyConfirmed
-    ])];
-    store.upsertWorkspaceMemory(workspaceMemory);
-  }
-
   const user = store.upsertUser({
     workspaceId: target.workspace.id,
     externalUserId: target.ownerUserId,
-    displayName: target.ownerUserId
+    displayName: target.ownerMember.displayName || target.ownerUserId
   });
   const mode = input.mode ?? 'manual_review';
   const { selectedProfile } = await resolveProfileSelection(mode);
@@ -629,7 +658,7 @@ export const gatewayRoutes: Route[] = [
   route('POST', '/api/gateway/sessions/bulk', async ({ req, res }) => {
     await ensureRuntimeInitialized();
     const body = await readJson<Omit<SessionCreateInput, 'workspaceId' | 'channelScope'> & {
-      targets?: Array<{ workspaceId?: string; channelScope?: string[] }>;
+      targets?: Array<{ workspaceId?: string; ownerUserId?: string; channelScope?: string[] }>;
     }>(req);
     const targets = Array.isArray(body.targets) ? body.targets : [];
     if (targets.length === 0) {
@@ -640,9 +669,11 @@ export const gatewayRoutes: Route[] = [
     const preparedTargets: PreparedSessionTarget[] = [];
     const failures: Record<string, unknown>[] = [];
     for (const target of targets) {
+      const ownerUserId = target.ownerUserId ?? (targets.length === 1 ? body.ownerUserId : undefined);
       const prepared = await prepareSessionTarget({
         ...body,
         workspaceId: target.workspaceId,
+        ownerUserId,
         channelScope: target.channelScope
       });
       if (prepared.ok) {
