@@ -184,6 +184,66 @@ describe('runGroundingLoop', () => {
     });
   });
 
+  it('adds encrypted reasoning continuity for stateless OpenAI Responses tool turns', async () => {
+    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    runAgentLoopMock.mockImplementation(async (_prompts, _agentContext, config) => {
+      const payload = config.onPayload?.({
+        model: 'gpt-5.5',
+        input: [],
+        stream: true,
+        store: false,
+        include: ['file_search_call.results', 'reasoning.encrypted_content']
+      }, config.model);
+
+      expect(payload).toEqual({
+        model: 'gpt-5.5',
+        input: [],
+        stream: true,
+        store: false,
+        include: ['file_search_call.results', 'reasoning.encrypted_content']
+      });
+      return [finalAssistantMessage()];
+    });
+
+    await runGroundingLoop({
+      context: baseContext(),
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
+      provider: 'openai',
+      model: 'gpt-5.5',
+      maxToolCallsPerRun: 6,
+      retrievalToolNames: [],
+      defaultToolInput: (_, toolInput) => toolInput,
+      enrichToolOutput: async (_, output) => output,
+      linkThreadArtifact: () => undefined
+    });
+  });
+
+  it('does not mutate non-Responses model payloads', async () => {
+    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    runAgentLoopMock.mockImplementation(async (_prompts, _agentContext, config) => {
+      const payload = {
+        model: 'claude-opus-4-7',
+        messages: [],
+        stream: true
+      };
+
+      expect(config.onPayload?.(payload, config.model)).toBeUndefined();
+      return [finalAssistantMessage()];
+    });
+
+    await runGroundingLoop({
+      context: baseContext(),
+      workspace: { id: 'workspace', provider: 'slack' as const, externalWorkspaceId: 'workspace', name: 'Workspace' },
+      provider: 'anthropic',
+      model: 'claude-opus-4-7',
+      maxToolCallsPerRun: 6,
+      retrievalToolNames: [],
+      defaultToolInput: (_, toolInput) => toolInput,
+      enrichToolOutput: async (_, output) => output,
+      linkThreadArtifact: () => undefined
+    });
+  });
+
   it('blocks tools that are not in availableTools', async () => {
     const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
     const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');

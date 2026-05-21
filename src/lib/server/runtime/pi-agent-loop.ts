@@ -1,4 +1,4 @@
-import { getModel, type Message, type ToolResultMessage, type UserMessage } from '@mariozechner/pi-ai';
+import { getModel, type Message, type Model, type ToolResultMessage, type UserMessage } from '@mariozechner/pi-ai';
 import { runAgentLoop, type AgentContext as PiAgentContext, type AgentEvent, type AgentMessage, type AgentTool } from '@mariozechner/pi-agent-core';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { DEFAULT_PROVIDER_MODEL } from '#lib/config';
@@ -128,6 +128,29 @@ function resolvePiApiKey(provider: string): string | undefined {
   return undefined;
 }
 
+const OPENAI_REASONING_INCLUDE = 'reasoning.encrypted_content';
+
+function addOpenAIReasoningContinuity(payload: unknown, model: Model<any>): unknown | undefined {
+  if (model.api !== 'openai-responses' || model.reasoning !== true) {
+    return undefined;
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const existing = Array.isArray(record.include)
+    ? record.include.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+
+  return {
+    ...record,
+    // Stateless Responses tool turns need encrypted reasoning to replay reasoning items with store:false.
+    include: [...new Set([...existing, OPENAI_REASONING_INCLUDE])]
+  };
+}
+
 export interface GroundingLoopInput {
   context: Omit<ContextAssembly, 'summary' | 'unresolvedQuestions' | 'continuityCase'>;
   workspace: Workspace;
@@ -207,6 +230,7 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
       convertToLlm,
       getApiKey: resolvePiApiKey,
       toolExecution: 'parallel',
+      onPayload: addOpenAIReasoningContinuity,
       beforeToolCall: async ({ toolCall }) => {
         const rawName = rawToolName(toolCall.name, aliasToRaw);
         let definition;
