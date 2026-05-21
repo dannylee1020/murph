@@ -58,6 +58,12 @@ describe('normalizeDiscordEventWithReason', () => {
     expect(result.task?.targetUserId).toBe('123');
     expect(result.task?.thread).toMatchObject({ provider: 'discord', channelId: 'C1', threadTs: 'M1' });
     expect(result.task?.actorUserId).toBe('456');
+    expect(result.task?.triggerMessage).toMatchObject({
+      provider: 'discord',
+      userId: '456',
+      text: '',
+      ts: 'M1'
+    });
   });
 
   it('uses the single scoped session fallback for bot-directed messages', async () => {

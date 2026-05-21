@@ -400,7 +400,7 @@ function communicationSkill(): SkillManifest {
   };
 }
 
-function task(): ContinuityTask {
+function task(overrides: Partial<ContinuityTask> = {}): ContinuityTask {
   return {
     id: 'task-1',
     source: 'slack_event',
@@ -408,7 +408,8 @@ function task(): ContinuityTask {
     thread: { provider: 'slack', channelId: 'C1', threadTs: '111.222' },
     targetUserId: 'UOWNER',
     actorUserId: 'UASKER',
-    receivedAt: new Date().toISOString()
+    receivedAt: new Date().toISOString(),
+    ...overrides
   };
 }
 
@@ -498,6 +499,25 @@ describe('AgentRuntime model failure events', () => {
         })
       ])
     );
+  });
+
+  it('uses the triggering event message when the initial channel thread fetch fails', async () => {
+    failInitialFetchThread = true;
+    const triggerMessage = {
+      provider: 'slack' as const,
+      userId: 'UASKER',
+      authorId: 'UASKER',
+      text: '<@UOWNER> is dark mode good now?',
+      ts: '111.222',
+      messageId: '111.222'
+    };
+    runAgentLoopMock.mockResolvedValueOnce([finalAssistantMessage(fallbackDraft)]);
+
+    const runtime = await setupRuntime();
+    const result = await runtime.run(task({ triggerMessage }), session(), workspace());
+
+    expect(result.context.thread.latestMessage).toBe(triggerMessage.text);
+    expect(result.context.thread.recentMessages).toEqual([triggerMessage]);
   });
 
   it('auto-reads the first Notion search result for required grounding', async () => {

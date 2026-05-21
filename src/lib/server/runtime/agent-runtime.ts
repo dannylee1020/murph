@@ -236,7 +236,12 @@ export class AgentRuntime {
       threadMemoryPromise,
       allSkillsPromise
     ]);
-    const latestMessage = recentMessages.at(-1)?.text ?? '';
+    const resolvedMessages = recentMessages.length > 0
+      ? recentMessages
+      : task.triggerMessage
+        ? [task.triggerMessage]
+        : [];
+    const latestMessage = resolvedMessages.at(-1)?.text ?? '';
     const selectedSkills = selectSkills({
       skills: allSkills,
       channel: task.thread.provider ?? 'slack',
@@ -265,8 +270,8 @@ export class AgentRuntime {
       thread: {
         ref: task.thread,
         latestMessage,
-        recentMessages,
-        participants: inferParticipants(recentMessages)
+        recentMessages: resolvedMessages,
+        participants: inferParticipants(resolvedMessages)
       },
       memory: {
         user: userMemory ?? this.memory.getUserMemory(workspace.id, task.targetUserId),

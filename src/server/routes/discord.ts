@@ -49,6 +49,22 @@ function verifyDiscordState(state: string | null): boolean {
   }
 }
 
+function discordStateSource(state: string | null): 'settings' | 'setup' {
+  if (!state) return 'settings';
+  const [body] = state.split('.');
+  if (!body) return 'settings';
+  try {
+    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as { source?: string };
+    return parsed.source === 'setup' ? 'setup' : 'settings';
+  } catch {
+    return 'settings';
+  }
+}
+
+function discordReturnPath(source: 'settings' | 'setup', query: string): string {
+  return source === 'setup' ? `/setup${query}` : `/settings${query}`;
+}
+
 function mergedSetupDefaults(): SetupDefaults {
   const store = getStore();
   return {
@@ -88,15 +104,16 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
 export const discordRoutes: Route[] = [
   route('GET', '/api/discord/install', ({ req, res, url: requestUrl }) => {
     const env = getRuntimeEnv();
+    const source = requestUrl.searchParams.get('source') === 'setup' ? 'setup' : 'settings';
     if (!env.discordClientSecret) {
-      redirect(res, '/settings?error=discord_client_secret_required');
+      redirect(res, discordReturnPath(source, '?error=discord_client_secret_required'));
       return;
     }
     const url = getDiscordService().buildInstallUrl({
       appUrl: publicAppUrl(req, requestUrl),
-      source: encodeDiscordState(requestUrl.searchParams.get('source') ?? 'settings')
+      source: encodeDiscordState(source)
     });
-    redirect(res, url ?? '/settings?error=discord_not_configured');
+    redirect(res, url ?? discordReturnPath(source, '?error=discord_not_configured'));
   }),
   route('GET', '/api/discord/guilds', async ({ res }) => {
     try {
@@ -109,13 +126,14 @@ export const discordRoutes: Route[] = [
     const code = url.searchParams.get('code');
     const guildId = url.searchParams.get('guild_id') ?? undefined;
     const state = url.searchParams.get('state');
+    const source = discordStateSource(state);
 
     if (!code) {
-      redirect(res, '/settings?error=missing_code');
+      redirect(res, discordReturnPath(source, '?error=missing_code'));
       return;
     }
     if (!verifyDiscordState(state)) {
-      redirect(res, '/settings?error=discord_oauth_failed&reason=invalid_state');
+      redirect(res, discordReturnPath(source, '?error=discord_oauth_failed&reason=invalid_state'));
       return;
     }
 
@@ -133,10 +151,12 @@ export const discordRoutes: Route[] = [
       saveAuthedDiscordUserAsWorkspaceOwner(install);
       await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
 
-      redirect(res, `/settings?installed=discord&workspaceId=${encodeURIComponent(workspace.id)}`);
+      redirect(res, source === 'setup'
+        ? `/setup?step=discord&success=1&workspaceId=${encodeURIComponent(workspace.id)}`
+        : `/settings?installed=discord&workspaceId=${encodeURIComponent(workspace.id)}`);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'discord_oauth_failed';
-      redirect(res, `/settings?error=discord_oauth_failed&reason=${encodeURIComponent(reason)}`);
+      redirect(res, discordReturnPath(source, `?step=discord&error=discord_oauth_failed&reason=${encodeURIComponent(reason)}`));
     }
   }),
   route('POST', '/api/discord/guild', async ({ req, res }) => {

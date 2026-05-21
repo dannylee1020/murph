@@ -25,6 +25,7 @@ interface DiscordApplication {
   id: string;
   name?: string;
   flags?: number;
+  redirect_uris?: string[];
 }
 
 interface DiscordUser {
@@ -74,8 +75,11 @@ export interface DiscordSearchResponse {
 export interface DiscordBotConfig {
   botUserId: string;
   botUsername?: string;
+  botName?: string;
   applicationId: string;
   applicationName?: string;
+  applicationFlags?: number;
+  applicationRedirectUris?: string[];
 }
 
 export interface DiscordChannelChoice {
@@ -98,6 +102,7 @@ export interface DiscordGuildChoice {
 export interface DiscordAppConfigurationResult {
   permissionsConfigured: boolean;
   intentsConfigured: boolean;
+  error?: string;
 }
 
 export interface DiscordInstallResult {
@@ -136,16 +141,20 @@ export class DiscordService {
     return `https://discord.com/oauth2/authorize?${params.toString()}`;
   }
 
-  async validateBotToken(): Promise<DiscordBotConfig> {
+  async validateBotToken(botToken?: string): Promise<DiscordBotConfig> {
     const [botUser, application] = await Promise.all([
-      this.fetchBotUser(),
-      this.fetchCurrentApplication().catch(() => undefined)
+      this.fetchBotUser(botToken),
+      this.fetchCurrentApplication(botToken).catch(() => undefined)
     ]);
+    const botName = botUser.global_name ?? botUser.username ?? botUser.id;
     return {
       botUserId: botUser.id,
-      botUsername: botUser.global_name ?? botUser.username,
+      botUsername: botName,
+      botName,
       applicationId: application?.id ?? botUser.id,
-      applicationName: application?.name
+      applicationName: application?.name,
+      applicationFlags: application?.flags,
+      applicationRedirectUris: discordRedirectUris(application)
     };
   }
 
@@ -154,40 +163,49 @@ export class DiscordService {
     return result.permissionsConfigured;
   }
 
-  async configureApplication(): Promise<DiscordAppConfigurationResult> {
-    const application = await this.fetchCurrentApplication().catch(() => undefined);
+  async configureApplication(botToken?: string): Promise<DiscordAppConfigurationResult> {
+    const application = await this.fetchCurrentApplication(botToken).catch(() => undefined);
     const flags = typeof application?.flags === 'number'
       ? application.flags |
         DISCORD_REQUIRED_LIMITED_INTENT_FLAGS.GUILD_MEMBERS |
         DISCORD_REQUIRED_LIMITED_INTENT_FLAGS.MESSAGE_CONTENT
       : undefined;
 
-    const response = await fetch('https://discord.com/api/v10/applications/@me', {
-      method: 'PATCH',
-      headers: {
-        authorization: `Bot ${this.getBotToken()}`,
-        'content-type': 'application/json; charset=utf-8'
-      },
-      body: JSON.stringify({
-        install_params: {
-          scopes: ['bot'],
-          permissions: DISCORD_BOT_PERMISSIONS
+    try {
+      const response = await fetch('https://discord.com/api/v10/applications/@me', {
+        method: 'PATCH',
+        headers: {
+          authorization: `Bot ${botToken ?? this.getBotToken()}`,
+          'content-type': 'application/json; charset=utf-8'
         },
-        integration_types_config: {
-          0: {
-            oauth2_install_params: {
-              scopes: ['bot'],
-              permissions: DISCORD_BOT_PERMISSIONS
+        body: JSON.stringify({
+          install_params: {
+            scopes: ['bot'],
+            permissions: DISCORD_BOT_PERMISSIONS
+          },
+          integration_types_config: {
+            0: {
+              oauth2_install_params: {
+                scopes: ['bot'],
+                permissions: DISCORD_BOT_PERMISSIONS
+              }
             }
-          }
-        },
-        ...(flags === undefined ? {} : { flags })
-      })
-    });
-    return {
-      permissionsConfigured: response.ok,
-      intentsConfigured: response.ok && flags !== undefined
-    };
+          },
+          ...(flags === undefined ? {} : { flags })
+        })
+      });
+      return {
+        permissionsConfigured: response.ok,
+        intentsConfigured: response.ok && flags !== undefined,
+        ...(response.ok ? {} : { error: await discordErrorMessage(response, 'Discord app configuration automation failed') })
+      };
+    } catch (error) {
+      return {
+        permissionsConfigured: false,
+        intentsConfigured: false,
+        error: error instanceof Error ? error.message : 'Discord app configuration automation failed'
+      };
+    }
   }
 
   async exchangeCode(code: string, guildId: string | undefined, redirectUri = this.resolveRedirectUri()): Promise<DiscordInstallResult> {
@@ -326,9 +344,9 @@ export class DiscordService {
       }));
   }
 
-  private async fetchBotUser(): Promise<DiscordUser> {
+  private async fetchBotUser(botToken?: string): Promise<DiscordUser> {
     const response = await fetch('https://discord.com/api/v10/users/@me', {
-      headers: { authorization: `Bot ${this.getBotToken()}` }
+      headers: { authorization: `Bot ${botToken ?? this.getBotToken()}` }
     });
     if (!response.ok) {
       throw new Error('Discord bot token validation failed');
@@ -336,9 +354,9 @@ export class DiscordService {
     return (await response.json()) as DiscordUser;
   }
 
-  private async fetchCurrentApplication(): Promise<DiscordApplication> {
+  private async fetchCurrentApplication(botToken?: string): Promise<DiscordApplication> {
     const response = await fetch('https://discord.com/api/v10/oauth2/applications/@me', {
-      headers: { authorization: `Bot ${this.getBotToken()}` }
+      headers: { authorization: `Bot ${botToken ?? this.getBotToken()}` }
     });
     if (!response.ok) {
       throw new Error('Failed to fetch Discord application');
@@ -571,6 +589,14 @@ async function discordErrorMessage(response: Response, fallback: string): Promis
   const payload = await response.json().catch(() => undefined) as { message?: string; error?: string } | undefined;
   const detail = payload?.message ?? payload?.error;
   return detail ? `${fallback}: ${detail}` : `${fallback} (${response.status})`;
+}
+
+function discordRedirectUris(application?: DiscordApplication): string[] | undefined {
+  return Array.isArray(application?.redirect_uris)
+    ? application.redirect_uris
+        .filter((uri): uri is string => typeof uri === 'string' && Boolean(uri.trim()))
+        .map((uri) => uri.trim())
+    : undefined;
 }
 
 function toMemberChoice(member: DiscordGuildMember): DiscordMemberChoice | undefined {

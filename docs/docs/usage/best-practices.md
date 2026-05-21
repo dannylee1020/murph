@@ -31,7 +31,7 @@ Check triage after each early session. Triage shows the message, context, tool c
 
 ## Reconnect after scope changes
 
-Reconnect Slack after adding app scopes or changing user-search consent. This lets Murph store fresh local credentials.
+Reconnect Slack after adding app scopes or changing user-search consent. Slack search requires the `search:read` user scope, and reconnecting lets Murph store a fresh local user-search token.
 
 ## Keep plugin work scoped
 

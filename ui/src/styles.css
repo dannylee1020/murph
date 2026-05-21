@@ -2309,6 +2309,42 @@ button.primary-large:hover {
   font-size: var(--text-md);
 }
 
+.setup-copy-block {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.setup-copy-block > span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.setup-copy-block code,
+.setup-copy-block a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.setup-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 18px;
+  color: var(--ink);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.setup-confirmation input {
+  margin-top: 3px;
+}
+
 .setup-banner {
   display: flex;
   align-items: center;

@@ -64,6 +64,25 @@ function buildThreadRef(event: Record<string, unknown>): ChannelThreadRef | null
   };
 }
 
+function buildTriggerMessage(
+  thread: ChannelThreadRef,
+  actorUserId: string,
+  text: string,
+  event: Record<string, unknown>
+): ContinuityTask['triggerMessage'] {
+  const messageId = typeof event.id === 'string' ? event.id : thread.threadTs;
+  const timestamp = typeof event.timestamp === 'string' ? event.timestamp : undefined;
+  return {
+    provider: 'discord',
+    userId: actorUserId,
+    authorId: actorUserId,
+    text,
+    ts: messageId,
+    messageId,
+    createdAt: timestamp
+  };
+}
+
 export function normalizeDiscordEvent(
   event: Record<string, unknown>,
   envelope?: { eventId?: string; teamId?: string }
@@ -121,6 +140,7 @@ export function normalizeDiscordEventWithReason(
       source: 'discord_event',
       workspaceId,
       thread,
+      triggerMessage: buildTriggerMessage(thread, actorUserId, text, event),
       targetUserId,
       actorUserId,
       rawEventId: envelope?.eventId,

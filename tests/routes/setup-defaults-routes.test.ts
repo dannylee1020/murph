@@ -42,6 +42,7 @@ async function setup() {
   process.env.SLACK_CLIENT_SECRET = 'client-secret';
   delete process.env.DISCORD_BOT_TOKEN;
   delete process.env.DISCORD_CLIENT_ID;
+  delete process.env.DISCORD_CLIENT_SECRET;
   delete process.env.GOOGLE_CLIENT_ID;
   delete process.env.GOOGLE_CLIENT_SECRET;
 
@@ -100,6 +101,7 @@ describe('setup defaults routes', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     process.chdir(originalCwd);
     if (originalAppDir === undefined) {
       delete process.env.MURPH_APP_DIR;
@@ -199,6 +201,58 @@ describe('setup defaults routes', () => {
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('ownerUserId: "1234567890"');
   });
 
+  it('round-trips workspace-specific channel defaults', async () => {
+    const { request, store, workspace } = await setup();
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Server',
+      botUserId: 'DBOT'
+    });
+
+    const response = await request('PUT', '/api/setup/defaults', {
+      workspaceId: workspace.id,
+      channelProvider: 'slack',
+      channelScopeMode: 'selected',
+      selectedChannels: [{ id: 'C1', displayName: '#product' }],
+      workspaceChannels: [
+        {
+          workspaceId: workspace.id,
+          channelScopeMode: 'selected',
+          selectedChannels: [{ id: 'C1', displayName: '#product' }]
+        },
+        {
+          workspaceId: discordWorkspace.id,
+          channelScopeMode: 'all_accessible',
+          selectedChannels: []
+        }
+      ]
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.defaults.workspaceChannels).toEqual([
+      {
+        workspaceId: workspace.id,
+        channelScopeMode: 'selected',
+        selectedChannels: [{ id: 'C1', displayName: '#product' }]
+      },
+      {
+        workspaceId: discordWorkspace.id,
+        channelScopeMode: 'all_accessible',
+        selectedChannels: []
+      }
+    ]);
+
+    const slackDefaults = await request('GET', `/api/setup/defaults?workspaceId=${workspace.id}`);
+    const discordDefaults = await request('GET', `/api/setup/defaults?workspaceId=${discordWorkspace.id}`);
+
+    expect(slackDefaults.body.defaults.channelScopeMode).toBe('selected');
+    expect(slackDefaults.body.defaults.selectedChannels).toEqual([{ id: 'C1', displayName: '#product' }]);
+    expect(discordDefaults.body.defaults.channelScopeMode).toBe('all_accessible');
+    expect(discordDefaults.body.defaults.selectedChannels).toEqual([]);
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('workspaceChannels:');
+  });
+
   it('marks setup not ready when event ingress has a blocking error', async () => {
     const { request } = await setup();
     const { markIngressError } = await import('#lib/server/channels/ingress-health');
@@ -260,6 +314,92 @@ describe('setup defaults routes', () => {
       expect.objectContaining({ provider: 'slack', name: 'Test Workspace' }),
       expect.objectContaining({ provider: 'discord', name: 'Test Server' })
     ]));
+  });
+
+  it('prepares Discord setup by validating the bot, deriving the client ID, and checking redirect URI', async () => {
+    const { request } = await setup();
+    const calls: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      const body = options.body ? JSON.parse(String(options.body)) : undefined;
+      calls.push({ url: String(url), method: options.method ?? 'GET', body });
+      if (String(url).includes('/users/@me')) {
+        return Response.json({ id: 'bot-123', username: 'murphbot', global_name: 'Murph Bot' });
+      }
+      if (String(url).includes('/oauth2/applications/@me')) {
+        return Response.json({
+          id: 'app-123',
+          name: 'Murph',
+          flags: 4,
+          redirect_uris: ['http://localhost/api/discord/oauth/callback']
+        });
+      }
+      if (String(url).includes('/applications/@me') && options.method === 'PATCH') {
+        return Response.json({ ok: true });
+      }
+      return Response.json({});
+    });
+
+    const response = await request('POST', '/api/setup/discord/prepare', {
+      botToken: 'discord-bot-token',
+      clientSecret: 'discord-client-secret'
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      ok: true,
+      botUserId: 'bot-123',
+      botName: 'Murph Bot',
+      applicationId: 'app-123',
+      redirectUri: 'http://localhost/api/discord/oauth/callback',
+      developerPortalUrl: 'https://discord.com/developers/applications/app-123/oauth2',
+      redirectUriRegistered: true,
+      permissionsConfigured: true,
+      intentsConfigured: true,
+      installUrl: '/api/discord/install?source=setup'
+    }));
+    const patch = calls.find((call) => call.url.includes('/applications/@me') && call.method === 'PATCH');
+    expect(patch?.body).toEqual(expect.objectContaining({
+      install_params: expect.objectContaining({ scopes: ['bot'] }),
+      flags: 557060
+    }));
+    const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
+    expect(config).toContain('clientId: app-123');
+    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    expect(readSecret('discord', 'bot_token')).toBe('discord-bot-token');
+    expect(readSecret('discord', 'client_secret')).toBe('discord-client-secret');
+  });
+
+  it('reports Discord redirect URI and app automation failures without blocking preparation', async () => {
+    const { request } = await setup();
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      if (String(url).includes('/users/@me')) {
+        return Response.json({ id: 'bot-123', username: 'murphbot' });
+      }
+      if (String(url).includes('/oauth2/applications/@me')) {
+        return Response.json({
+          id: 'app-123',
+          redirect_uris: ['http://localhost/other/callback']
+        });
+      }
+      if (String(url).includes('/applications/@me') && options.method === 'PATCH') {
+        return Response.json({ message: 'Missing Access' }, { status: 403 });
+      }
+      return Response.json({});
+    });
+
+    const response = await request('POST', '/api/setup/discord/prepare', {
+      botToken: 'discord-bot-token',
+      clientSecret: 'discord-client-secret'
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      ok: true,
+      redirectUriRegistered: false,
+      permissionsConfigured: false,
+      intentsConfigured: false,
+      configurationError: 'Discord app configuration automation failed: Missing Access'
+    }));
   });
 
   it('treats workspace-scoped Discord bot credentials as configured', async () => {

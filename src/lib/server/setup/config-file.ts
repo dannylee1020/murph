@@ -209,12 +209,37 @@ function setupDefaultsValue(value: unknown): SetupDefaults | undefined {
         }))
         .filter((owner) => owner.workspaceId && owner.ownerUserId)
     : undefined;
+  const workspaceChannelsRaw = value.workspaceChannels;
+  const workspaceChannels = Array.isArray(workspaceChannelsRaw)
+    ? workspaceChannelsRaw
+        .filter(isRecord)
+        .map((entry) => {
+          const entryChannelsRaw = entry.selectedChannels;
+          const entryChannels = Array.isArray(entryChannelsRaw)
+            ? entryChannelsRaw
+                .filter(isRecord)
+                .map((channel) => ({
+                  id: stringValue(channel.id) ?? '',
+                  displayName: stringValue(channel.displayName) ?? stringValue(channel.id) ?? ''
+                }))
+                .filter((channel) => channel.id && channel.displayName)
+            : [];
+          const entryMode = entry.channelScopeMode === 'all_accessible' ? 'all_accessible' as const : 'selected' as const;
+          return {
+            workspaceId: stringValue(entry.workspaceId) ?? '',
+            channelScopeMode: entryMode,
+            selectedChannels: entryMode === 'selected' ? entryChannels : []
+          };
+        })
+        .filter((entry) => entry.workspaceId && (entry.channelScopeMode === 'all_accessible' || entry.selectedChannels.length > 0))
+    : undefined;
   return {
     channelProvider: stringValue(value.channelProvider),
     workspaceId: stringValue(value.workspaceId),
     ownerUserId: stringValue(value.ownerUserId),
     ownerDisplayName: stringValue(value.ownerDisplayName),
     workspaceOwners,
+    workspaceChannels,
     channelScopeMode: value.channelScopeMode === 'all_accessible' ? 'all_accessible' : value.channelScopeMode === 'selected' ? 'selected' : undefined,
     selectedChannels,
     timezone: stringValue(value.timezone),

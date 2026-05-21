@@ -87,10 +87,7 @@ Murph's manifest requests bot scopes for messages, channel listing, channel join
 
 It also requests user scopes for Slack search:
 
-- `search:read.public`
-- `search:read.private`
-- `search:read.im`
-- `search:read.mpim`
+- `search:read`
 
 Reconnect Slack after adding scopes or changing user-search consent:
 

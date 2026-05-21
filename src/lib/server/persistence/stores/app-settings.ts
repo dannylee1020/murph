@@ -20,6 +20,26 @@ function normalizeSettings(settings: AppSettings): AppSettings {
           .filter((owner): owner is { workspaceId: string; ownerUserId: string; ownerDisplayName: string } => (
             Boolean(owner.workspaceId && owner.ownerUserId)
           )),
+        workspaceChannels: (settings.setupDefaults.workspaceChannels ?? [])
+          .map((entry) => {
+            const channelScopeMode = entry.channelScopeMode === 'all_accessible' ? 'all_accessible' as const : 'selected' as const;
+            const selectedChannels = (entry.selectedChannels ?? [])
+              .map((channel) => ({
+                id: channel.id?.trim(),
+                displayName: channel.displayName?.trim() || channel.id?.trim()
+              }))
+              .filter((channel): channel is { id: string; displayName: string } => Boolean(channel.id && channel.displayName));
+            return {
+              workspaceId: entry.workspaceId?.trim(),
+              channelScopeMode,
+              selectedChannels: channelScopeMode === 'selected' ? selectedChannels : []
+            };
+          })
+          .filter((entry): entry is {
+            workspaceId: string;
+            channelScopeMode: 'selected' | 'all_accessible';
+            selectedChannels: Array<{ id: string; displayName: string }>;
+          } => Boolean(entry.workspaceId && (entry.channelScopeMode === 'all_accessible' || entry.selectedChannels.length > 0))),
         channelScopeMode: settings.setupDefaults.channelScopeMode === 'all_accessible' ? 'all_accessible' as const : 'selected' as const,
         selectedChannels: (settings.setupDefaults.selectedChannels ?? [])
           .map((channel) => ({

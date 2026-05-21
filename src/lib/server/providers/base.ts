@@ -56,6 +56,8 @@ export abstract class JsonPromptProvider implements ModelProvider {
       '- queue: the draft is useful but needs operator review before any outbound action.',
       '- abstain: the request or proposed action is blocked, unsafe, or outside policy; do not send or queue it.',
       'Be conservative. If policy relevance is ambiguous, choose queue instead of send.',
+      'A failed read-only tool is not by itself a reason to abstain when at least one grounding source succeeded.',
+      'If the proposed action is factual, non-empty, and policy-safe in that partial-evidence case, choose queue for operator review.',
       '',
       'Policy:',
       JSON.stringify(input.policy),

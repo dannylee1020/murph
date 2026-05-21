@@ -108,11 +108,12 @@ describe('Slack OAuth callback route', () => {
     const config = readFileSync(path.join(root, 'config.yaml'), 'utf8');
     expect(config).toContain('ownerUserId: U1');
     expect(config).toContain('ownerDisplayName: Daniel');
+    expect(config).toContain('workspaceOwners:');
     const workspace = store.getWorkspaceByExternalId('slack', 'T1');
     expect(workspace && store.getUser(workspace.id, 'U1')?.displayName).toBe('Daniel');
   });
 
-  it('does not overwrite an existing setup owner on Slack reconnect', async () => {
+  it('preserves an existing setup owner while saving the Slack workspace owner on reconnect', async () => {
     const { get, root } = await setup({
       ok: true,
       team: { id: 'T1', name: 'Murph Test' },
@@ -141,7 +142,9 @@ describe('Slack OAuth callback route', () => {
     const config = readFileSync(path.join(root, 'config.yaml'), 'utf8');
     expect(config).toContain('ownerUserId: UEXISTING');
     expect(config).toContain('ownerDisplayName: Existing Owner');
-    expect(config).not.toContain('ownerUserId: U1');
+    expect(config).toContain('workspaceOwners:');
+    expect(config).toContain('ownerUserId: U1');
+    expect(config).toContain('ownerDisplayName: Daniel');
   });
 
   it('preserves CLI source on successful workspace install', async () => {

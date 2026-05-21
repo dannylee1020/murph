@@ -25,7 +25,7 @@ function getSlackWorkspace() {
   return getSlackService().getUsableWorkspace();
 }
 
-function saveAuthedUserAsDefaultOwner(result: SlackInstallResult): void {
+function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
   if (!result.authedUser?.id) return;
 
   const store = getStore();
@@ -33,20 +33,35 @@ function saveAuthedUserAsDefaultOwner(result: SlackInstallResult): void {
     ...(store.getAppSettings().setupDefaults ?? {}),
     ...(readMurphConfig().setup ?? {})
   };
-  if (currentDefaults.ownerUserId?.trim()) return;
+  const ownerDisplayName = result.authedUser.displayName || result.authedUser.id;
 
   store.upsertUser({
     workspaceId: result.workspace.id,
     externalUserId: result.authedUser.id,
-    displayName: result.authedUser.displayName || result.authedUser.id,
+    displayName: ownerDisplayName,
     timezone: currentDefaults.timezone,
     workdayStartHour: currentDefaults.workdayStartHour,
     workdayEndHour: currentDefaults.workdayEndHour
   });
+
+  const workspaceOwners = [
+    ...(currentDefaults.workspaceOwners ?? []).filter((owner) => owner.workspaceId !== result.workspace.id),
+    {
+      workspaceId: result.workspace.id,
+      ownerUserId: result.authedUser.id,
+      ownerDisplayName
+    }
+  ];
+
   updateMurphSetupDefaults({
     ...currentDefaults,
-    ownerUserId: result.authedUser.id,
-    ownerDisplayName: result.authedUser.displayName || result.authedUser.id
+    workspaceOwners,
+    ...(currentDefaults.ownerUserId?.trim()
+      ? {}
+      : {
+          ownerUserId: result.authedUser.id,
+          ownerDisplayName
+        })
   });
 }
 
@@ -100,7 +115,7 @@ export const slackRoutes: Route[] = [
         provider: env.defaultProvider,
         model: env.defaultModel
       });
-      saveAuthedUserAsDefaultOwner(install);
+      saveAuthedUserAsSetupOwner(install);
       await getChannelRegistry().getIngress('slack')?.start?.({ provider: 'slack' });
 
       redirect(res, `/setup?step=slack&success=1${sourceSuffix}`);

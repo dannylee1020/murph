@@ -146,6 +146,19 @@ describe('Discord OAuth callback route', () => {
     expect(location.searchParams.get('state')).toBeTruthy();
   });
 
+  it('returns setup-sourced Discord installs to the setup wizard', async () => {
+    const { get } = await setup();
+    const installResult = await get('/api/discord/install?source=setup');
+    const installLocation = new URL(installResult.headers.location);
+    const state = encodeURIComponent(installLocation.searchParams.get('state') ?? '');
+
+    const callbackResult = await get(`/api/discord/oauth/callback?code=abc&guild_id=G1&state=${state}`);
+
+    expect(callbackResult.status).toBe(302);
+    expect(callbackResult.headers.location).toMatch(/^\/setup\?step=discord&success=1&workspaceId=/);
+    expect(ensureStarted).toHaveBeenCalledOnce();
+  });
+
   it('rejects invalid OAuth state', async () => {
     const { get } = await setup();
 

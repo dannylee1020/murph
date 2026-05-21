@@ -159,7 +159,7 @@ export class SlackService {
       client_id: this.env.slackClientId,
       scope:
         'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read,im:history,mpim:history,users:read',
-      user_scope: 'search:read.public,search:read.private,search:read.im,search:read.mpim',
+      user_scope: 'search:read',
       redirect_uri: redirectUri
     });
     if (teamId?.trim()) {
@@ -318,7 +318,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.replies', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getUserSearchToken(workspace) ?? this.getBotToken(workspace.externalWorkspaceId)}`,
+        authorization: `Bearer ${this.getBotToken(workspace.id)}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
@@ -348,7 +348,7 @@ export class SlackService {
   async searchMessages(workspace: Workspace, query: string, limit = 5): Promise<SlackSearchResult[]> {
     const token = this.getUserSearchToken(workspace);
     if (!token) {
-      throw new Error('Slack user search token is missing. Reconnect Slack with user search scopes.');
+      throw new Error('Slack user search token is missing. Reconnect Slack with search:read user scope.');
     }
 
     const response = await fetch('https://slack.com/api/search.messages', {

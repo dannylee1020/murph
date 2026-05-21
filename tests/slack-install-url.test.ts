@@ -35,6 +35,7 @@ describe('Slack install URL', () => {
     const params = new URL(url!).searchParams;
     expect(params.get('client_id')).toBe('client-id');
     expect(params.get('team')).toBe('T123');
+    expect(params.get('user_scope')).toBe('search:read');
     expect(params.get('state')).toBeNull();
   });
 

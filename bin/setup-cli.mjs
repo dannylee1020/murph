@@ -155,7 +155,7 @@ Sections:
 
 Options:
   --quick            Skip sections that are already configured.
-  --reconnect-search Re-run Slack OAuth to refresh user-search consent.
+  --reconnect-search Re-run Slack OAuth to refresh search:read user consent.
   --non-interactive  Do not prompt; report missing setup and exit nonzero.
   --json             JSON output for status.
 `);

@@ -21,6 +21,23 @@ function buildThreadRef(channelId: string, threadTs: string): ChannelThreadRef {
   return { provider: 'slack', channelId, threadTs };
 }
 
+function buildTriggerMessage(
+  channelId: string,
+  threadTs: string,
+  actorUserId: string,
+  text: string
+): ContinuityTask['triggerMessage'] {
+  return {
+    provider: 'slack',
+    userId: actorUserId,
+    authorId: actorUserId,
+    text,
+    ts: threadTs,
+    messageId: threadTs,
+    createdAt: threadTs
+  };
+}
+
 function parseMentionedUsers(text: string): string[] {
   return [...text.matchAll(/<@([A-Z0-9]+)>/gi)].map((match) => match[1]);
 }
@@ -105,6 +122,7 @@ export function normalizeSlackEvent(
       source: 'slack_event',
       workspaceId,
       thread: buildThreadRef(channelId, threadTs),
+      triggerMessage: buildTriggerMessage(channelId, threadTs, actorUserId, text),
       targetUserId,
       actorUserId,
       rawEventId: envelope?.eventId,

@@ -71,6 +71,12 @@ describe('normalizeSlackEvent', () => {
     expect(result.task?.targetUserId).toBe('UOWNER');
     expect(result.task?.thread).toMatchObject({ provider: 'slack', channelId: 'C1', threadTs: '111.222' });
     expect(result.task?.actorUserId).toBe('UASKER');
+    expect(result.task?.triggerMessage).toMatchObject({
+      provider: 'slack',
+      userId: 'UASKER',
+      text: '<@UOWNER> can you confirm the launch spec?',
+      ts: '111.222'
+    });
   });
 
   it('uses the single scoped session fallback only for bot-directed messages', async () => {

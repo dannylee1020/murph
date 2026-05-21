@@ -175,6 +175,11 @@ type SetupDefaultsPayload = {
             ownerUserId: string;
             ownerDisplayName?: string;
         }>;
+        workspaceChannels?: Array<{
+            workspaceId: string;
+            channelScopeMode: 'selected' | 'all_accessible';
+            selectedChannels: Array<{ id: string; displayName: string }>;
+        }>;
         channelScopeMode?: 'selected' | 'all_accessible';
         selectedChannels?: Array<{ id: string; displayName: string }>;
         timezone?: string;
@@ -190,6 +195,21 @@ type SetupDefaultsPayload = {
             workdayEndHour: number;
         };
     };
+};
+
+type DiscordSetupPreparePayload = {
+    ok: boolean;
+    botUserId: string;
+    botName: string;
+    applicationId: string;
+    applicationName?: string;
+    redirectUri: string;
+    developerPortalUrl: string;
+    redirectUriRegistered?: boolean;
+    permissionsConfigured: boolean;
+    intentsConfigured: boolean;
+    configurationError?: string;
+    installUrl: string;
 };
 
 type IntegrationStatusPayload = {
@@ -538,20 +558,23 @@ function setSidebarWatchingCount(count: number): void {
     sidebarActiveSessionCount = count;
 }
 
-type SlackMembersPayload = {
-    ok: boolean;
-    error?: string;
-    members: Array<{ id: string; displayName: string; avatar?: string }>;
-};
-
-type SlackChannelsPayload = {
-    ok: boolean;
-    error?: string;
-    channels: ChannelChoice[];
-};
-
 type SetupWizardState = {
     currentStep: number;
+    selectedProviders: Array<'slack' | 'discord'>;
+    providerSelections: Record<
+        string,
+        {
+            workspaceId?: string;
+            ownerUserId: string;
+            ownerDisplayName: string;
+            channelScopeMode: 'selected' | 'all_accessible';
+            selectedChannelIds: string[];
+            selectedChannels: Array<{ id: string; displayName: string }>;
+        }
+    >;
+    discordPreparation?: DiscordSetupPreparePayload;
+    discordRedirectConfirmed: boolean;
+    errorMessage: string;
     selectedUserId: string;
     selectedUserName: string;
     channelScopeMode: 'selected' | 'all_accessible';
@@ -561,8 +584,24 @@ type SetupWizardState = {
     workdayStartHour: number;
 };
 
+type SetupChannelProvider = 'slack' | 'discord';
+type SetupStepKey =
+    | 'intro'
+    | 'ai'
+    | 'providers'
+    | 'schedule'
+    | `connect:${SetupChannelProvider}`
+    | `identity:${SetupChannelProvider}`
+    | `channels:${SetupChannelProvider}`;
+
+const SETUP_CHANNEL_PROVIDERS: SetupChannelProvider[] = ['slack', 'discord'];
+
 let setupWizardState: SetupWizardState = {
     currentStep: 0,
+    selectedProviders: [],
+    providerSelections: {},
+    discordRedirectConfirmed: false,
+    errorMessage: '',
     selectedUserId: '',
     selectedUserName: '',
     channelScopeMode: 'selected',
@@ -695,6 +734,202 @@ function applySetupDefaults(payload: SetupDefaultsPayload): void {
         setupWizardState.workdayStartHour;
 }
 
+function setupErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof ApiError) {
+        return error.status
+            ? `${error.message} (${error.status})`
+            : error.message;
+    }
+    return error instanceof Error ? error.message : fallback;
+}
+
+function setupProviderWorkspace(
+    setup: SetupStatusPayload,
+    provider: SetupChannelProvider,
+): ChannelWorkspace | undefined {
+    if (provider === 'slack') return setup.slack.workspace;
+    return setup.discord.workspace;
+}
+
+function inferSetupProviders(
+    setup: SetupStatusPayload,
+    defaults: SetupDefaultsPayload,
+): SetupChannelProvider[] {
+    const workspaceProviders = new Map<string, SetupChannelProvider>(
+        adminChannelWorkspaces(setup)
+            .filter((workspace) => workspace.provider === 'slack' || workspace.provider === 'discord')
+            .map((workspace) => [
+                workspace.id,
+                workspace.provider as SetupChannelProvider,
+            ]),
+    );
+    const fromWorkspaceChannels = (defaults.defaults.workspaceChannels ?? [])
+        .map((entry) => workspaceProviders.get(entry.workspaceId))
+        .filter((provider): provider is SetupChannelProvider =>
+            provider === 'slack' || provider === 'discord',
+        );
+    const fromDefaults: SetupChannelProvider | undefined =
+        defaults.defaults.channelProvider === 'slack' ||
+        defaults.defaults.channelProvider === 'discord'
+            ? defaults.defaults.channelProvider
+            : undefined;
+    const inferred: SetupChannelProvider[] = [
+        ...fromWorkspaceChannels,
+        ...(fromDefaults ? [fromDefaults] : []),
+        ...(setup.slack.installed ? ['slack' as const] : []),
+        ...(setup.discord.installed ? ['discord' as const] : []),
+    ];
+    return Array.from(new Set(inferred));
+}
+
+function ensureSetupProviderState(
+    setup: SetupStatusPayload,
+    defaults: SetupDefaultsPayload,
+): void {
+    if (setupWizardState.selectedProviders.length === 0) {
+        setupWizardState.selectedProviders = inferSetupProviders(
+            setup,
+            defaults,
+        );
+    }
+
+    for (const provider of SETUP_CHANNEL_PROVIDERS) {
+        const workspace = setupProviderWorkspace(setup, provider);
+        const existing = setupWizardState.providerSelections[provider];
+        const workspaceChannels = workspace
+            ? defaults.defaults.workspaceChannels?.find(
+                  (entry) => entry.workspaceId === workspace.id,
+              )
+            : undefined;
+        const owner = workspace
+            ? defaultOwnerForWorkspace(
+                  workspace,
+                  defaults,
+                  adminChannelWorkspaces(setup).length,
+              )
+            : { id: '', name: '' };
+        const selectedChannels =
+            workspaceChannels?.selectedChannels ??
+            (workspace?.id === defaults.workspaceId
+                ? (defaults.defaults.selectedChannels ?? [])
+                : []);
+        setupWizardState.providerSelections[provider] = {
+            workspaceId: workspace?.id ?? existing?.workspaceId,
+            ownerUserId: existing?.ownerUserId || owner.id,
+            ownerDisplayName: existing?.ownerDisplayName || owner.name,
+            channelScopeMode:
+                existing?.channelScopeMode ??
+                workspaceChannels?.channelScopeMode ??
+                (workspace?.id === defaults.workspaceId
+                    ? (defaults.defaults.channelScopeMode ?? 'selected')
+                    : 'selected'),
+            selectedChannels:
+                existing?.selectedChannels.length ? existing.selectedChannels : selectedChannels,
+            selectedChannelIds:
+                existing?.selectedChannelIds.length
+                    ? existing.selectedChannelIds
+                    : selectedChannels.map((channel) => channel.id),
+        };
+    }
+}
+
+function setupStepKeys(): SetupStepKey[] {
+    return [
+        'intro',
+        'ai',
+        'providers',
+        ...setupWizardState.selectedProviders.flatMap((provider) => {
+            const selection = setupWizardState.providerSelections[provider];
+            return [
+                `connect:${provider}` as const,
+                ...(selection?.ownerUserId
+                    ? []
+                    : [`identity:${provider}` as const]),
+                `channels:${provider}` as const,
+            ];
+        }),
+        'schedule',
+    ];
+}
+
+function advanceSetupStep(
+    renderedStepKeys: SetupStepKey[],
+    renderedStepIndex: number,
+    renderedStepKey: SetupStepKey,
+): void {
+    const nextStepKeys = setupStepKeys();
+    if (renderedStepKey === 'providers') {
+        setupWizardState.currentStep = Math.min(
+            renderedStepIndex + 1,
+            nextStepKeys.length - 1,
+        );
+        return;
+    }
+
+    const intendedNextStep = renderedStepKeys[renderedStepIndex + 1];
+    const intendedNextIndex = intendedNextStep
+        ? nextStepKeys.indexOf(intendedNextStep)
+        : -1;
+    setupWizardState.currentStep =
+        intendedNextIndex >= 0
+            ? intendedNextIndex
+            : Math.min(renderedStepIndex + 1, nextStepKeys.length - 1);
+}
+
+function splitSetupStep(
+    stepKey: SetupStepKey,
+): { kind: SetupStepKey; provider?: SetupChannelProvider } {
+    if (stepKey.startsWith('connect:')) {
+        return {
+            kind: 'connect:slack',
+            provider: stepKey.split(':')[1] as SetupChannelProvider,
+        };
+    }
+    if (stepKey.startsWith('identity:')) {
+        return {
+            kind: 'identity:slack',
+            provider: stepKey.split(':')[1] as SetupChannelProvider,
+        };
+    }
+    if (stepKey.startsWith('channels:')) {
+        return {
+            kind: 'channels:slack',
+            provider: stepKey.split(':')[1] as SetupChannelProvider,
+        };
+    }
+    return { kind: stepKey };
+}
+
+function setupPrimaryProvider(): SetupChannelProvider {
+    return setupWizardState.selectedProviders[0] ?? 'slack';
+}
+
+function selectedWorkspaceChannelsPayload() {
+    return setupWizardState.selectedProviders
+        .map((provider) => setupWizardState.providerSelections[provider])
+        .filter((selection) => selection?.workspaceId)
+        .map((selection) => ({
+            workspaceId: selection.workspaceId!,
+            channelScopeMode: selection.channelScopeMode,
+            selectedChannels:
+                selection.channelScopeMode === 'selected'
+                    ? selection.selectedChannels
+                    : [],
+        }));
+}
+
+function selectedWorkspaceOwnersPayload() {
+    return setupWizardState.selectedProviders
+        .map((provider) => setupWizardState.providerSelections[provider])
+        .filter((selection) => selection?.workspaceId && selection.ownerUserId)
+        .map((selection) => ({
+            workspaceId: selection.workspaceId!,
+            ownerUserId: selection.ownerUserId,
+            ownerDisplayName:
+                selection.ownerDisplayName || selection.ownerUserId,
+        }));
+}
+
 function storageKey(prefix: string, workspaceId: string): string {
     return `${prefix}:${workspaceId}`;
 }
@@ -728,6 +963,10 @@ function getHomeChannelMode(
     if (stored === 'selected' || stored === 'all_accessible') {
         return stored;
     }
+    const workspaceChannels = defaults?.workspaceChannels?.find(
+        (entry) => entry.workspaceId === workspaceId,
+    );
+    if (workspaceChannels) return workspaceChannels.channelScopeMode;
     return defaults?.channelScopeMode === 'all_accessible'
         ? 'all_accessible'
         : 'selected';
@@ -754,6 +993,12 @@ function getHomeSelectedChannels(
             );
         } catch {}
     }
+    const workspaceChannels = defaults?.workspaceChannels?.find(
+        (entry) => entry.workspaceId === workspaceId,
+    );
+    if (workspaceChannels?.channelScopeMode === 'selected') {
+        return workspaceChannels.selectedChannels;
+    }
     return defaults?.channelScopeMode === 'selected'
         ? (defaults.selectedChannels ?? [])
         : [];
@@ -776,17 +1021,17 @@ function setHomeChannelSelection(
 
 async function getJson<T>(path: string): Promise<T> {
     const response = await fetch(path);
+    const payload = (await response.json().catch(() => ({}))) as T & {
+        error?: string;
+    };
     if (!response.ok) {
-        throw new Error(`Request failed: ${path}`);
+        throw new ApiError(
+            payload.error ?? `Request failed: ${path}`,
+            response.status,
+            payload,
+        );
     }
-    return (await response.json()) as T;
-}
-
-async function getSlackJson<T>(path: string): Promise<T> {
-    const response = await fetch(path);
-    return (await response
-        .json()
-        .catch(() => ({ ok: false, error: `Request failed: ${path}` }))) as T;
+    return payload;
 }
 
 async function postJson<T>(path: string, body?: unknown): Promise<T> {
@@ -828,7 +1073,11 @@ async function putJson<T>(path: string, body?: unknown): Promise<T> {
         error?: string;
     };
     if (!response.ok) {
-        throw new Error(payload.error ?? `Request failed: ${path}`);
+        throw new ApiError(
+            payload.error ?? `Request failed: ${path}`,
+            response.status,
+            payload,
+        );
     }
     return payload;
 }
@@ -1420,6 +1669,47 @@ function providerLabel(provider: string): string {
     return titleCase(provider);
 }
 
+function discordPreparationDetails(
+    preparation: DiscordSetupPreparePayload,
+): string {
+    const redirectNotice =
+        preparation.redirectUriRegistered === true
+            ? '<div class="setup-success">Discord OAuth redirect URI is registered</div>'
+            : preparation.redirectUriRegistered === false
+              ? `<div class="notice danger"><strong>Discord OAuth redirect URI is not registered yet.</strong><p>Add this exact URI in Discord Developer Portal > OAuth2 > General > Redirects, then save changes.</p></div>`
+              : `<div class="notice"><strong>Murph could not verify Discord OAuth redirect URIs from the Discord API.</strong><p>Confirm this URI is registered in Discord Developer Portal > OAuth2 > General > Redirects before authorizing Murph.</p></div>`;
+    const configurationNotice = preparation.permissionsConfigured
+        ? ''
+        : `<div class="notice danger"><strong>Discord app configuration automation failed.</strong><p>${escapeHtml(preparation.configurationError ?? 'Open Developer Portal > Bot, enable Server Members Intent and Message Content Intent, and approve the requested bot permissions.')}</p></div>`;
+    const intentNotice =
+        preparation.permissionsConfigured && !preparation.intentsConfigured
+            ? '<div class="notice"><strong>Discord privileged intents may still need manual review.</strong><p>Open Developer Portal > Bot and confirm Server Members Intent and Message Content Intent are enabled.</p></div>'
+            : '';
+    const confirmation =
+        preparation.redirectUriRegistered === true
+            ? ''
+            : `<label class="setup-confirmation">
+                 <input type="checkbox" id="discord-redirect-confirmed" ${setupWizardState.discordRedirectConfirmed ? 'checked' : ''} />
+                 <span>I added this redirect URI and saved the Discord application.</span>
+               </label>`;
+
+    return `
+      <div class="setup-success">Discord bot validated: ${escapeHtml(preparation.botName)} (${escapeHtml(preparation.botUserId)})</div>
+      ${redirectNotice}
+      <div class="setup-copy-block">
+        <span>Redirect URI</span>
+        <code>${escapeHtml(preparation.redirectUri)}</code>
+      </div>
+      <div class="setup-copy-block">
+        <span>Discord Developer Portal</span>
+        <a href="${escapeHtml(preparation.developerPortalUrl)}" target="_blank" rel="noreferrer">${escapeHtml(preparation.developerPortalUrl)}</a>
+      </div>
+      ${configurationNotice}
+      ${intentNotice}
+      ${confirmation}
+    `;
+}
+
 function adminChannelWorkspaces(setup: SetupStatusPayload): ChannelWorkspace[] {
     if (setup.channelWorkspaces?.length) {
         return setup.channelWorkspaces;
@@ -1987,18 +2277,6 @@ function calculateDurationHours(endHour: number, timezone: string): number {
     return Math.max(1, Math.min(hoursUntil, 24));
 }
 
-function setupStepForNextStep(
-    nextStep: SetupDoctorPayload['nextStep'],
-): number {
-    if (nextStep === 'ai') return 1;
-    if (nextStep === 'slack_config') return 2;
-    if (nextStep === 'slack_oauth') return 3;
-    if (nextStep === 'identity') return 4;
-    if (nextStep === 'channels') return 5;
-    if (nextStep === 'ready') return 6;
-    return 0;
-}
-
 function setupCheckList(checks: SetupDoctorPayload['checks']): string {
     return `
     <div class="setup-check-list">
@@ -2009,6 +2287,7 @@ function setupCheckList(checks: SetupDoctorPayload['checks']): string {
                   'slack_socket',
                   'slack_oauth_config',
                   'slack_installed',
+                  'discord_ingress',
                   'identity',
                   'channels',
               ].includes(check.id),
@@ -2028,41 +2307,60 @@ function setupCheckList(checks: SetupDoctorPayload['checks']): string {
 
 async function renderSetup(): Promise<void> {
     setTitle('Murph Setup');
-    if (setupWizardState.selectedChannels.length === 0) {
-        setupWizardState.selectedChannels = getSelectedChannels();
-        setupWizardState.selectedChannelIds =
-            setupWizardState.selectedChannels.map((channel) => channel.id);
-    }
-
     const params = new URLSearchParams(window.location.search);
     let setupNotice = '';
-    const slackCliReturn =
-        params.get('step') === 'slack' && params.get('source') === 'cli';
-    if (
-        params.get('step') === 'slack' &&
-        params.get('success') === '1' &&
-        !slackCliReturn
-    ) {
-        setupNotice =
-            '<div class="setup-success">Slack workspace connected</div>';
+    const returnedStep = params.get('step');
+    const slackCliReturn = returnedStep === 'slack' && params.get('source') === 'cli';
+    if (returnedStep === 'slack' && params.get('success') === '1' && !slackCliReturn) {
+        setupNotice = '<div class="setup-success">Slack workspace connected</div>';
+        setupWizardState.selectedProviders = ['slack'];
         history.replaceState(null, '', '/setup');
-    } else if (
-        params.get('step') === 'slack' &&
-        params.get('error') === 'slack_oauth_failed' &&
-        !slackCliReturn
-    ) {
-        setupWizardState.currentStep = 3;
-        const reason = params.get('reason') || 'Slack app installation failed.';
-        setupNotice = `<div class="notice danger">Slack app installation failed: ${escapeHtml(reason)}</div>`;
+    } else if (returnedStep === 'discord' && params.get('success') === '1') {
+        setupNotice = '<div class="setup-success">Discord server connected</div>';
+        setupWizardState.selectedProviders = ['discord'];
+        history.replaceState(null, '', '/setup');
+    } else if (params.get('error')) {
+        const provider = returnedStep === 'discord' ? 'Discord' : returnedStep === 'slack' ? 'Slack' : 'Setup';
+        const reason = params.get('reason') || params.get('error') || 'Setup failed.';
+        setupNotice = `<div class="notice danger">${provider} setup failed: ${escapeHtml(reason)}</div>`;
+        if (returnedStep === 'slack') setupWizardState.selectedProviders = ['slack'];
+        if (returnedStep === 'discord') setupWizardState.selectedProviders = ['discord'];
         history.replaceState(null, '', '/setup');
     }
 
-    const [setup, doctor, defaults] = await Promise.all([
-        getJson<SetupStatusPayload>('/api/setup/status'),
-        getJson<SetupDoctorPayload>('/api/setup/doctor'),
-        getJson<SetupDefaultsPayload>('/api/setup/defaults'),
-    ]);
+    let setup: SetupStatusPayload;
+    let doctor: SetupDoctorPayload;
+    let defaults: SetupDefaultsPayload;
+    try {
+        [setup, doctor, defaults] = await Promise.all([
+            getJson<SetupStatusPayload>('/api/setup/status'),
+            getJson<SetupDoctorPayload>('/api/setup/doctor'),
+            getJson<SetupDefaultsPayload>('/api/setup/defaults'),
+        ]);
+    } catch (error) {
+        app.innerHTML = `
+      <div class="wizard-container">
+        <div class="wizard-panel">
+          <div class="wizard-header">
+            <span class="wizard-brand"><img src="/img/murph-logo.svg" alt="" aria-hidden="true" />Murph</span>
+          </div>
+          <div class="wizard-step">
+            <h1>Setup could not load</h1>
+            <div class="notice danger">${escapeHtml(setupErrorMessage(error, 'Murph could not load setup status.'))}</div>
+            <div class="wizard-actions">
+              <button type="button" id="setup-retry">Retry</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+        app.querySelector<HTMLButtonElement>('#setup-retry')?.addEventListener('click', () => {
+            void renderSetup();
+        });
+        return;
+    }
     applySetupDefaults(defaults);
+    ensureSetupProviderState(setup, defaults);
 
     if (slackCliReturn) {
         const failed = params.get('error') === 'slack_oauth_failed';
@@ -2090,15 +2388,19 @@ async function renderSetup(): Promise<void> {
     }
 
     if (setupWizardState.currentStep === 0 && doctor.nextStep !== 'core') {
-        setupWizardState.currentStep = setupStepForNextStep(doctor.nextStep);
-    }
-    if (setup.slack.installed && setupWizardState.currentStep < 4) {
-        setupWizardState.currentStep = 4;
+        setupWizardState.currentStep = doctor.nextStep === 'ai' ? 1 : 2;
     }
 
+    const stepKeys = setupStepKeys();
+    if (setupWizardState.currentStep >= stepKeys.length) {
+        setupWizardState.currentStep = stepKeys.length - 1;
+    }
     const step = setupWizardState.currentStep;
+    const stepKey = stepKeys[step] ?? 'intro';
+    const splitStep = splitSetupStep(stepKey);
+    const stepProvider = splitStep.provider;
     const visibleStep = Math.max(1, step);
-    const totalSteps = 6;
+    const totalSteps = stepKeys.length - 1;
 
     const dots = `
     ${Array.from({ length: totalSteps }, (_, i) => {
@@ -2116,7 +2418,7 @@ async function renderSetup(): Promise<void> {
 
     let stepContent = '';
 
-    if (step === 0) {
+    if (stepKey === 'intro') {
         stepContent = `
       <div class="wizard-step">
         <h1>Set up Murph</h1>
@@ -2127,7 +2429,7 @@ async function renderSetup(): Promise<void> {
         </div>
       </div>
     `;
-    } else if (step === 1) {
+    } else if (stepKey === 'ai') {
         stepContent = `
       <div class="wizard-step">
         <h1>Add an AI provider</h1>
@@ -2163,13 +2465,50 @@ async function renderSetup(): Promise<void> {
         }
       </div>
     `;
-    } else if (step === 2) {
+    } else if (stepKey === 'providers') {
+        const providerCards = SETUP_CHANNEL_PROVIDERS.map((provider) => {
+            const workspace = setupProviderWorkspace(setup, provider);
+            const checked = setupWizardState.selectedProviders.includes(provider);
+            const status = workspace
+                ? `Connected to ${workspace.name}`
+                : provider === 'slack'
+                  ? setup.slack.oauthConfigured
+                      ? 'Ready to connect'
+                      : 'Needs Slack app settings'
+                  : setup.discord.botTokenConfigured && setup.discord.clientSecretConfigured
+                    ? 'Ready to check OAuth'
+                    : 'Needs Discord app settings';
+            return `
+          <label class="member-item channel-item ${checked ? 'selected' : ''}">
+            <input type="checkbox" name="setupProvider" value="${provider}" ${checked ? 'checked' : ''} />
+            <span class="member-avatar-placeholder">${provider === 'slack' ? '#' : 'D'}</span>
+            <span class="channel-copy">
+              <strong>${escapeHtml(providerLabel(provider))}</strong>
+              <small>${escapeHtml(status)}</small>
+            </span>
+          </label>
+        `;
+        }).join('');
         stepContent = `
+      <div class="wizard-step">
+        <h1>Choose channel providers</h1>
+        <p>Select the places Murph should watch by default. You can configure Slack, Discord, or both.</p>
+        <div class="member-list provider-list">${providerCards}</div>
+        <div class="wizard-actions">
+          <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
+          <button type="button" id="wizard-next" ${setupWizardState.selectedProviders.length === 0 ? 'disabled' : ''}>Continue</button>
+        </div>
+      </div>
+    `;
+    } else if (stepProvider && stepKey.startsWith('connect:')) {
+        if (stepProvider === 'slack') {
+            const slackConfigured = setup.slack.socketConfigured && setup.slack.oauthConfigured;
+            stepContent = `
       <div class="wizard-step">
         <h1>Create the Slack app</h1>
         <p>Use the manifest at <code>/slack-manifest.yaml</code>, enable Socket Mode, and confirm Slack lists <code>http://localhost:5173/api/slack/oauth/callback</code> under Redirect URLs.</p>
         ${
-            setup.slack.socketConfigured && setup.slack.oauthConfigured
+            slackConfigured
                 ? `<div class="setup-success">Slack app config is ready</div>`
                 : `<form class="form" id="slack-config-form">
                <label>
@@ -2186,40 +2525,78 @@ async function renderSetup(): Promise<void> {
                </label>
              </form>`
         }
+        ${setup.slack.installed ? '<div class="setup-success">Slack connected</div>' : ''}
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
-          <button type="button" id="wizard-next">${setup.slack.socketConfigured && setup.slack.oauthConfigured ? 'Continue' : 'Save and continue'}</button>
+          ${
+              setup.slack.installed
+                  ? '<button type="button" id="wizard-next">Continue</button>'
+                  : slackConfigured
+                    ? '<a class="button" href="/api/slack/install">Connect Slack workspace</a>'
+                    : '<button type="button" id="wizard-next">Save and continue</button>'
+          }
         </div>
       </div>
     `;
-    } else if (step === 3) {
-        stepContent = `
+        } else {
+            const configured =
+                setup.discord.botTokenConfigured &&
+                setup.discord.clientIdConfigured &&
+                setup.discord.clientSecretConfigured;
+            const prepared = setupWizardState.discordPreparation;
+            const canInstallDiscord =
+                prepared &&
+                (prepared.redirectUriRegistered === true ||
+                    (prepared.redirectUriRegistered === undefined &&
+                        setupWizardState.discordRedirectConfirmed));
+            const canRecheckDiscord =
+                prepared?.redirectUriRegistered === false &&
+                setupWizardState.discordRedirectConfirmed;
+            stepContent = `
       <div class="wizard-step">
-        <h1>Connect Slack workspace</h1>
-        <p>Murph needs access to your Slack workspace to watch channels while you're away.</p>
+        <h1>Connect Discord</h1>
+        <p>Add the Discord bot token and client secret. Murph will derive the client ID, show the exact OAuth redirect URI, then open Discord authorization.</p>
         ${
-            setup.slack.installed
-                ? `<div class="setup-success">Slack connected</div>
-             <div class="wizard-actions">
-               <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
-               <button type="button" id="wizard-next">Continue</button>
-             </div>`
-                : `<div class="wizard-actions">
+            setup.discord.installed
+                ? '<div class="setup-success">Discord connected</div>'
+                : prepared
+                  ? discordPreparationDetails(prepared)
+                  : configured
+                    ? `<div class="setup-success">Discord app values are saved</div>
+                       <p>Check the Discord application before opening authorization.</p>`
+                : `<form class="form" id="discord-config-form">
+               <label>
+                 <span>Bot token</span>
+                 <input type="password" name="botToken" autocomplete="off" ${setup.discord.botTokenConfigured ? '' : 'required'} />
+               </label>
+               <label>
+                 <span>Client secret</span>
+                 <input type="password" name="clientSecret" autocomplete="off" ${setup.discord.clientSecretConfigured ? '' : 'required'} />
+               </label>
+             </form>`
+        }
+        <div class="wizard-actions">
                <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
                ${
-                   setup.slack.oauthConfigured
-                       ? '<a class="button" href="/api/slack/install">Connect Slack workspace</a>'
-                       : '<button type="button" id="wizard-next" disabled>Add Slack credentials first</button>'
+                   setup.discord.installed
+                       ? '<button type="button" id="wizard-next">Continue</button>'
+                       : prepared
+                         ? canInstallDiscord
+                             ? `<a class="button" href="${escapeHtml(prepared.installUrl)}">Connect Discord server</a>`
+                             : canRecheckDiscord
+                               ? '<button type="button" id="wizard-next">Re-check redirect URI</button>'
+                               : '<button type="button" id="wizard-next" disabled>Confirm redirect URI</button>'
+                         : '<button type="button" id="wizard-next">Check Discord app</button>'
                }
-             </div>`
-        }
+        </div>
       </div>
     `;
-    } else if (step === 4) {
+        }
+    } else if (stepProvider && stepKey.startsWith('identity:')) {
         stepContent = `
       <div class="wizard-step">
         <h1>Which one are you?</h1>
-        <p>Pick yourself from the list so Murph knows who to watch for.</p>
+        <p>Pick yourself from ${escapeHtml(providerLabel(stepProvider))} so Murph knows who to watch for there.</p>
         <div id="member-list-container"><p class="empty">Loading team members...</p></div>
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
@@ -2227,11 +2604,11 @@ async function renderSetup(): Promise<void> {
         </div>
       </div>
     `;
-    } else if (step === 5) {
+    } else if (stepProvider && stepKey.startsWith('channels:')) {
         stepContent = `
       <div class="wizard-step">
         <h1>Which channels should Murph watch?</h1>
-        <p>Pick the channels you want covered overnight. Public channels can be joined automatically. Private channels must already include the Slack app.</p>
+        <p>Pick the ${escapeHtml(providerLabel(stepProvider))} channels you want covered overnight.</p>
         <div id="channel-list-container"><p class="empty">Loading channels...</p></div>
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
@@ -2239,7 +2616,7 @@ async function renderSetup(): Promise<void> {
         </div>
       </div>
     `;
-    } else if (step === 6) {
+    } else if (stepKey === 'schedule') {
         stepContent = `
       <div class="wizard-step">
         <h1>Set your schedule</h1>
@@ -2277,26 +2654,67 @@ async function renderSetup(): Promise<void> {
           ${step > 0 ? `<div class="wizard-progress-dots">${dots}</div>` : ''}
         </div>
         ${setupNotice}
+        ${setupWizardState.errorMessage ? `<div class="notice danger">${escapeHtml(setupWizardState.errorMessage)}</div>` : ''}
         ${stepContent}
       </div>
     </div>
   `;
 
-    if (step === 4) {
+    app.querySelector<HTMLInputElement>('#discord-redirect-confirmed')?.addEventListener(
+        'change',
+        (event) => {
+            setupWizardState.discordRedirectConfirmed =
+                (event.currentTarget as HTMLInputElement).checked;
+            void renderSetup();
+        },
+    );
+
+    if (stepKey === 'providers') {
+        const syncProviderSelection = () => {
+            const selected = Array.from(
+                app.querySelectorAll<HTMLInputElement>(
+                    'input[name="setupProvider"]:checked',
+                ),
+            )
+                .map((input) => input.value)
+                .filter((provider): provider is SetupChannelProvider =>
+                    provider === 'slack' || provider === 'discord',
+                );
+            setupWizardState.selectedProviders = selected;
+            const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
+            if (nextBtn) nextBtn.disabled = selected.length === 0;
+            app.querySelectorAll<HTMLLabelElement>('.provider-list .member-item')
+                .forEach((item) => {
+                    const input = item.querySelector<HTMLInputElement>('input');
+                    item.classList.toggle('selected', Boolean(input?.checked));
+                });
+        };
+        app.querySelectorAll<HTMLInputElement>('input[name="setupProvider"]')
+            .forEach((input) => input.addEventListener('change', syncProviderSelection));
+    }
+
+    if (stepProvider && stepKey.startsWith('identity:')) {
         const container = app.querySelector<HTMLDivElement>(
             '#member-list-container',
         );
+        const selection = setupWizardState.providerSelections[stepProvider];
+        const workspace = setupProviderWorkspace(setup, stepProvider);
+        const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
         try {
-            const membersPayload =
-                await getSlackJson<SlackMembersPayload>('/api/slack/members');
-            if (membersPayload.ok && membersPayload.members.length > 0) {
+            if (!workspace) {
+                throw new Error(`${providerLabel(stepProvider)} is not connected yet.`);
+            }
+            const membersPayload = await getJson<SetupMembersPayload>(
+                `/api/setup/members?provider=${encodeURIComponent(stepProvider)}&workspaceId=${encodeURIComponent(workspace.id)}`,
+            );
+            if (membersPayload.members.length > 0) {
                 container!.innerHTML = `
           <div class="member-list">
             ${membersPayload.members
                 .map(
                     (m) => `
-              <div class="member-item" data-user-id="${escapeHtml(m.id)}" data-user-name="${escapeHtml(m.displayName)}">
-                ${m.avatar ? `<img src="${escapeHtml(m.avatar)}" alt="" />` : `<span class="member-avatar-placeholder">${escapeHtml(m.displayName.charAt(0).toUpperCase())}</span>`}
+              <div class="member-item ${selection.ownerUserId === m.id ? 'selected' : ''}" data-user-id="${escapeHtml(m.id)}" data-user-name="${escapeHtml(m.displayName)}">
+                <span class="member-avatar-placeholder">${escapeHtml(m.displayName.charAt(0).toUpperCase())}</span>
                 <span>${escapeHtml(m.displayName)}</span>
               </div>
             `,
@@ -2314,88 +2732,72 @@ async function renderSetup(): Promise<void> {
                                     el.classList.remove('selected'),
                                 );
                             item.classList.add('selected');
-                            setupWizardState.selectedUserId =
+                            selection.ownerUserId =
                                 item.dataset.userId ?? '';
-                            setupWizardState.selectedUserName =
+                            selection.ownerDisplayName =
                                 item.dataset.userName ?? '';
-                            const nextBtn =
-                                app.querySelector<HTMLButtonElement>(
-                                    '#wizard-next',
-                                );
                             if (nextBtn) nextBtn.disabled = false;
                         });
                     });
-            } else if (
-                membersPayload.error === 'slack_reconnect_required' ||
-                membersPayload.error === 'no_workspace'
-            ) {
-                container!.innerHTML = `
-          <p class="empty">Reconnect Slack before choosing yourself.</p>
-          <a class="button" href="/api/slack/install">Connect Slack workspace</a>
-        `;
+                if (selection.ownerUserId && nextBtn) nextBtn.disabled = false;
             } else {
+                throw new Error(`No ${providerLabel(stepProvider)} members were available.`);
+            }
+        } catch (error) {
+            if (!workspace) {
                 container!.innerHTML = `
+          <div class="notice danger">${escapeHtml(setupErrorMessage(error, `Connect ${providerLabel(stepProvider)} before choosing yourself.`))}</div>
+        `;
+                if (nextBtn) nextBtn.disabled = true;
+                return;
+            }
+                container!.innerHTML = `
+          <div class="notice danger">${escapeHtml(setupErrorMessage(error, `Murph could not load ${providerLabel(stepProvider)} members.`))}</div>
           <form class="form" id="manual-name-form">
-            <label><span>Your name</span><input name="displayName" placeholder="e.g. Danny" required /></label>
+            <label><span>Your ${escapeHtml(providerLabel(stepProvider))} name</span><input name="displayName" placeholder="e.g. Danny" value="${escapeHtml(selection.ownerDisplayName)}" required /></label>
           </form>
         `;
-                const nextBtn =
-                    app.querySelector<HTMLButtonElement>('#wizard-next');
-                if (nextBtn) nextBtn.disabled = false;
+                if (nextBtn) nextBtn.disabled = !selection.ownerUserId;
                 const nameInput = container!.querySelector<HTMLInputElement>(
                     'input[name="displayName"]',
                 );
                 nameInput?.addEventListener('input', () => {
-                    setupWizardState.selectedUserName = nameInput.value.trim();
-                    setupWizardState.selectedUserId = nameInput.value
+                    selection.ownerDisplayName = nameInput.value.trim();
+                    selection.ownerUserId = nameInput.value
                         .trim()
                         .toLowerCase()
                         .replace(/\s+/g, '_');
+                    if (nextBtn) nextBtn.disabled = !selection.ownerUserId;
                 });
-            }
-        } catch {
-            container!.innerHTML = `
-        <form class="form" id="manual-name-form">
-          <label><span>Your name</span><input name="displayName" placeholder="e.g. Danny" required /></label>
-        </form>
-      `;
-            const nextBtn =
-                app.querySelector<HTMLButtonElement>('#wizard-next');
-            if (nextBtn) nextBtn.disabled = false;
-            const nameInput = container!.querySelector<HTMLInputElement>(
-                'input[name="displayName"]',
-            );
-            nameInput?.addEventListener('input', () => {
-                setupWizardState.selectedUserName = nameInput.value.trim();
-                setupWizardState.selectedUserId = nameInput.value
-                    .trim()
-                    .toLowerCase()
-                    .replace(/\s+/g, '_');
-            });
         }
     }
 
-    if (step === 5) {
+    if (stepProvider && stepKey.startsWith('channels:')) {
         const container = app.querySelector<HTMLDivElement>(
             '#channel-list-container',
         );
         const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
+        const selection = setupWizardState.providerSelections[stepProvider];
+        const workspace = setupProviderWorkspace(setup, stepProvider);
         try {
-            const channelsPayload = await getSlackJson<SlackChannelsPayload>(
-                '/api/slack/channels',
+            if (!workspace) {
+                throw new Error(`${providerLabel(stepProvider)} is not connected yet.`);
+            }
+            const channelsPayload = await getJson<SetupChannelsPayload>(
+                `/api/setup/channels?provider=${encodeURIComponent(stepProvider)}&workspaceId=${encodeURIComponent(workspace.id)}`,
             );
-            if (channelsPayload.ok && channelsPayload.channels.length > 0) {
+            if (channelsPayload.channels.length > 0) {
                 container!.innerHTML = `
-          <label class="member-item channel-item ${setupWizardState.channelScopeMode === 'all_accessible' ? 'selected' : ''}">
-            <input type="radio" name="setupChannelMode" value="all_accessible" ${setupWizardState.channelScopeMode === 'all_accessible' ? 'checked' : ''} />
+          <label class="member-item channel-item ${selection.channelScopeMode === 'all_accessible' ? 'selected' : ''}">
+            <input type="radio" name="setupChannelMode" value="all_accessible" ${selection.channelScopeMode === 'all_accessible' ? 'checked' : ''} />
             <span class="member-avatar-placeholder">*</span>
             <span class="channel-copy">
               <strong>All accessible channels</strong>
-              <small>Murph will watch every channel the Slack app can read</small>
+              <small>Murph will watch every ${escapeHtml(providerLabel(stepProvider))} channel it can read</small>
             </span>
           </label>
-          <label class="member-item channel-item ${setupWizardState.channelScopeMode === 'selected' ? 'selected' : ''}">
-            <input type="radio" name="setupChannelMode" value="selected" ${setupWizardState.channelScopeMode !== 'all_accessible' ? 'checked' : ''} />
+          <label class="member-item channel-item ${selection.channelScopeMode === 'selected' ? 'selected' : ''}">
+            <input type="radio" name="setupChannelMode" value="selected" ${selection.channelScopeMode !== 'all_accessible' ? 'checked' : ''} />
             <span class="member-avatar-placeholder">#</span>
             <span class="channel-copy">
               <strong>Selected channels</strong>
@@ -2406,21 +2808,16 @@ async function renderSetup(): Promise<void> {
             ${channelsPayload.channels
                 .map((channel) => {
                     const selected =
-                        setupWizardState.selectedChannelIds.includes(
+                        selection.selectedChannelIds.includes(
                             channel.id,
                         );
-                    const badge = channel.isPrivate
-                        ? 'Private'
-                        : channel.isMember
-                          ? 'Joined'
-                          : 'Public';
                     return `
                 <label class="member-item channel-item ${selected ? 'selected' : ''}">
                   <input type="checkbox" name="setupChannelScope" value="${escapeHtml(channel.id)}" ${selected ? 'checked' : ''} />
                   <span class="member-avatar-placeholder">${escapeHtml(channel.displayName.replace('#', '').charAt(0).toUpperCase())}</span>
                   <span class="channel-copy">
                     <strong>${escapeHtml(channel.displayName)}</strong>
-                    <small>${escapeHtml(badge)}</small>
+                    <small>${escapeHtml(channelBadge(channel))}</small>
                   </span>
                 </label>
               `;
@@ -2448,9 +2845,9 @@ async function renderSetup(): Promise<void> {
                             id: channel.id,
                             displayName: channel.displayName,
                         }));
-                    setupWizardState.channelScopeMode = mode;
-                    setupWizardState.selectedChannels = selectedChannels;
-                    setupWizardState.selectedChannelIds = selectedChannels.map(
+                    selection.channelScopeMode = mode;
+                    selection.selectedChannels = selectedChannels;
+                    selection.selectedChannelIds = selectedChannels.map(
                         (channel) => channel.id,
                     );
                     if (nextBtn)
@@ -2491,25 +2888,31 @@ async function renderSetup(): Promise<void> {
                         input.addEventListener('change', syncSelection);
                     });
                 syncSelection();
-            } else if (
-                channelsPayload.error === 'slack_reconnect_required' ||
-                channelsPayload.error === 'no_workspace'
-            ) {
+            } else {
+                throw new Error(`No ${providerLabel(stepProvider)} channels were available.`);
+            }
+        } catch (error) {
+            if (!workspace) {
                 container!.innerHTML = `
-          <p class="empty">Reconnect Slack before choosing channels.</p>
-          <a class="button" href="/api/slack/install">Connect Slack workspace</a>
+          <div class="notice danger">${escapeHtml(setupErrorMessage(error, `Connect ${providerLabel(stepProvider)} before choosing channels.`))}</div>
         `;
                 if (nextBtn) nextBtn.disabled = true;
-            } else {
-                container!.innerHTML =
-                    '<p class="empty">No Slack channels were available yet. You can keep going and watch all accessible channels.</p>';
-                setupWizardState.channelScopeMode = 'all_accessible';
-                if (nextBtn) nextBtn.disabled = false;
+                return;
             }
-        } catch {
-            container!.innerHTML =
-                '<p class="empty">Murph could not load Slack channels right now. You can keep going and watch all accessible channels.</p>';
-            setupWizardState.channelScopeMode = 'all_accessible';
+                container!.innerHTML = `
+          <div class="notice danger">${escapeHtml(setupErrorMessage(error, `Murph could not load ${providerLabel(stepProvider)} channels.`))}</div>
+          <label class="member-item channel-item selected">
+            <input type="radio" name="setupChannelMode" value="all_accessible" checked />
+            <span class="member-avatar-placeholder">*</span>
+            <span class="channel-copy">
+              <strong>All accessible channels</strong>
+              <small>Use this fallback until channel loading works</small>
+            </span>
+          </label>
+        `;
+            selection.channelScopeMode = 'all_accessible';
+            selection.selectedChannels = [];
+            selection.selectedChannelIds = [];
             if (nextBtn) nextBtn.disabled = false;
         }
     }
@@ -2517,7 +2920,9 @@ async function renderSetup(): Promise<void> {
     app.querySelector<HTMLButtonElement>('#wizard-next')?.addEventListener(
         'click',
         async () => {
-            if (step === 1) {
+            setupWizardState.errorMessage = '';
+            try {
+            if (stepKey === 'ai') {
                 const form =
                     app.querySelector<HTMLFormElement>('#ai-provider-form');
                 const formData = form ? new FormData(form) : new FormData();
@@ -2556,7 +2961,8 @@ async function renderSetup(): Promise<void> {
             }
 
             if (
-                step === 2 &&
+                stepProvider === 'slack' &&
+                stepKey.startsWith('connect:') &&
                 !(setup.slack.socketConfigured && setup.slack.oauthConfigured)
             ) {
                 const form =
@@ -2579,36 +2985,107 @@ async function renderSetup(): Promise<void> {
                     SLACK_CLIENT_ID: clientId,
                     SLACK_CLIENT_SECRET: clientSecret,
                 });
+                await renderSetup();
+                return;
             }
 
-            if (step === 4) {
-                if (!setupWizardState.selectedUserId) return;
+            if (
+                stepProvider === 'discord' &&
+                stepKey.startsWith('connect:') &&
+                !setup.discord.installed
+            ) {
+                const prepared = setupWizardState.discordPreparation;
+                if (prepared) {
+                    if (
+                        prepared.redirectUriRegistered === true ||
+                        (prepared.redirectUriRegistered === undefined &&
+                            setupWizardState.discordRedirectConfirmed)
+                    ) {
+                        window.location.href = prepared.installUrl;
+                    } else if (
+                        prepared.redirectUriRegistered === false &&
+                        setupWizardState.discordRedirectConfirmed
+                    ) {
+                        setupWizardState.discordPreparation = await postJson<DiscordSetupPreparePayload>(
+                            '/api/setup/discord/prepare',
+                            {},
+                        );
+                        setupWizardState.discordRedirectConfirmed =
+                            setupWizardState.discordPreparation
+                                .redirectUriRegistered === true;
+                        await renderSetup();
+                    }
+                    return;
+                }
+                const form =
+                    app.querySelector<HTMLFormElement>('#discord-config-form');
+                const formData = form ? new FormData(form) : new FormData();
+                const botToken = String(formData.get('botToken') ?? '').trim();
+                const clientSecret = String(
+                    formData.get('clientSecret') ?? '',
+                ).trim();
+                if (
+                    (!setup.discord.botTokenConfigured && !botToken) ||
+                    (!setup.discord.clientSecretConfigured && !clientSecret)
+                )
+                    return;
+                const payload: { botToken?: string; clientSecret?: string } =
+                    {};
+                if (botToken) payload.botToken = botToken;
+                if (clientSecret) payload.clientSecret = clientSecret;
+                setupWizardState.discordPreparation = await postJson<DiscordSetupPreparePayload>(
+                    '/api/setup/discord/prepare',
+                    payload,
+                );
+                setupWizardState.discordRedirectConfirmed =
+                    setupWizardState.discordPreparation.redirectUriRegistered ===
+                    true;
+                await renderSetup();
+                return;
+            }
+
+            if (stepProvider && stepKey.startsWith('identity:')) {
+                const selection = setupWizardState.providerSelections[stepProvider];
+                if (!selection.ownerUserId) return;
                 await putJson('/api/setup/defaults', {
-                    ownerUserId: setupWizardState.selectedUserId,
-                    ownerDisplayName: setupWizardState.selectedUserName,
+                    channelProvider: setupPrimaryProvider(),
+                    workspaceId: selection.workspaceId,
+                    ownerUserId: selection.ownerUserId,
+                    ownerDisplayName: selection.ownerDisplayName,
+                    workspaceOwners: selectedWorkspaceOwnersPayload(),
+                    workspaceChannels: selectedWorkspaceChannelsPayload(),
                     timezone: setupWizardState.timezone,
                     workdayStartHour: setupWizardState.workdayStartHour,
                     workdayEndHour: setupWizardState.workdayStartHour + 8,
                 });
             }
             if (
-                step === 5 &&
-                setupWizardState.channelScopeMode === 'selected' &&
-                setupWizardState.selectedChannelIds.length === 0
+                stepProvider &&
+                stepKey.startsWith('channels:') &&
+                setupWizardState.providerSelections[stepProvider].channelScopeMode === 'selected' &&
+                setupWizardState.providerSelections[stepProvider].selectedChannelIds.length === 0
             ) {
                 return;
             }
-            if (step === 5) {
+            if (stepProvider && stepKey.startsWith('channels:')) {
+                const selection = setupWizardState.providerSelections[stepProvider];
+                const primary = setupWizardState.providerSelections[setupPrimaryProvider()];
                 await putJson('/api/setup/defaults', {
-                    channelScopeMode: setupWizardState.channelScopeMode,
+                    channelProvider: setupPrimaryProvider(),
+                    workspaceId: primary.workspaceId,
+                    ownerUserId: primary.ownerUserId,
+                    ownerDisplayName: primary.ownerDisplayName,
+                    workspaceOwners: selectedWorkspaceOwnersPayload(),
+                    workspaceChannels: selectedWorkspaceChannelsPayload(),
+                    channelScopeMode: selection.channelScopeMode,
                     selectedChannels:
-                        setupWizardState.channelScopeMode === 'selected'
-                            ? setupWizardState.selectedChannels
+                        selection.channelScopeMode === 'selected'
+                            ? selection.selectedChannels
                             : [],
                 });
             }
 
-            if (step === 6) {
+            if (stepKey === 'schedule') {
                 const form =
                     app.querySelector<HTMLFormElement>('#schedule-form');
                 if (form) {
@@ -2624,31 +3101,71 @@ async function renderSetup(): Promise<void> {
                     );
                 }
 
+                const primaryProvider = setupPrimaryProvider();
+                const primary = setupWizardState.providerSelections[primaryProvider];
                 await putJson('/api/setup/defaults', {
-                    ownerUserId: setupWizardState.selectedUserId,
-                    ownerDisplayName: setupWizardState.selectedUserName,
-                    channelScopeMode: setupWizardState.channelScopeMode,
+                    channelProvider: primaryProvider,
+                    workspaceId: primary.workspaceId,
+                    ownerUserId: primary.ownerUserId,
+                    ownerDisplayName: primary.ownerDisplayName,
+                    workspaceOwners: selectedWorkspaceOwnersPayload(),
+                    workspaceChannels: selectedWorkspaceChannelsPayload(),
+                    channelScopeMode: primary.channelScopeMode,
                     selectedChannels:
-                        setupWizardState.channelScopeMode === 'selected'
-                            ? setupWizardState.selectedChannels
+                        primary.channelScopeMode === 'selected'
+                            ? primary.selectedChannels
                             : [],
                     timezone: setupWizardState.timezone,
                     workdayStartHour: setupWizardState.workdayStartHour,
                     workdayEndHour: setupWizardState.workdayStartHour + 8,
                 });
+                const setupStatus =
+                    await getJson<SetupStatusPayload>('/api/setup/status');
+                const missing = [
+                    ...(adminChannelWorkspaces(setupStatus).length === 0
+                        ? ['workspace connection']
+                        : []),
+                    ...(!setupStatus.userConfigured ? ['owner identity'] : []),
+                    ...(!setupStatus.channelsConfigured
+                        ? ['default channels']
+                        : []),
+                ];
+                if (missing.length > 0) {
+                    setupWizardState.errorMessage = `Setup is still incomplete: ${missing.join(', ')}.`;
+                    await renderSetup();
+                    return;
+                }
 
                 setCurrentUser(
-                    setupWizardState.selectedUserId,
-                    setupWizardState.selectedUserName,
+                    primary.ownerUserId,
+                    primary.ownerDisplayName,
                 );
-                setSelectedChannels(setupWizardState.selectedChannels);
+                setSelectedChannels(primary.selectedChannels);
+                for (const provider of setupWizardState.selectedProviders) {
+                    const selection = setupWizardState.providerSelections[provider];
+                    if (selection.workspaceId) {
+                        setHomeWorkspaceEnabled(selection.workspaceId, true);
+                        setHomeChannelSelection(
+                            selection.workspaceId,
+                            selection.channelScopeMode,
+                            selection.selectedChannels,
+                        );
+                    }
+                }
                 history.replaceState(null, '', '/');
                 await render();
                 return;
             }
 
-            setupWizardState.currentStep++;
+            advanceSetupStep(stepKeys, step, stepKey);
             await renderSetup();
+            } catch (error) {
+                setupWizardState.errorMessage = setupErrorMessage(
+                    error,
+                    'Setup could not save that step.',
+                );
+                await renderSetup();
+            }
         },
     );
 
@@ -2704,10 +3221,7 @@ async function renderDashboard(): Promise<void> {
                             : 'Murph could not load channels right now.';
                 }
 
-                const defaults =
-                    workspace.id === setupDefaults.workspaceId
-                        ? setupDefaults.defaults
-                        : undefined;
+                const defaults = setupDefaults.defaults;
                 let mode = getHomeChannelMode(workspace.id, defaults);
                 let selectedChannels = getHomeSelectedChannels(
                     workspace.id,
@@ -3065,6 +3579,38 @@ async function renderDashboard(): Promise<void> {
             }));
     }
 
+    function workspaceChannelsFromForm(form: HTMLFormElement) {
+        return homeTargetsFromForm(form, false).map((target) => {
+            const state = channelStates.find(
+                (entry) => entry.workspace.id === target.workspaceId,
+            );
+            const formData = new FormData(form);
+            const channelScopeMode: 'selected' | 'all_accessible' =
+                String(
+                    formData.get(`channelScopeMode:${target.workspaceId}`) ??
+                        state?.mode ??
+                        'selected',
+                ) === 'all_accessible'
+                    ? 'all_accessible'
+                    : 'selected';
+            const selectedChannels =
+                channelScopeMode === 'selected'
+                    ? target.channelScope.map((channelId) => ({
+                          id: channelId,
+                          displayName:
+                              state?.availableChannels.find(
+                                  (channel) => channel.id === channelId,
+                              )?.displayName ?? channelId,
+                      }))
+                    : [];
+            return {
+                workspaceId: target.workspaceId,
+                channelScopeMode,
+                selectedChannels,
+            };
+        });
+    }
+
     app.querySelector<HTMLButtonElement>('.save-customize')?.addEventListener(
         'click',
         async (event) => {
@@ -3080,6 +3626,7 @@ async function renderDashboard(): Promise<void> {
             try {
                 await putJson('/api/setup/defaults', {
                     workspaceOwners: workspaceOwnersFromForm(form),
+                    workspaceChannels: workspaceChannelsFromForm(form),
                 });
             } catch (error) {
                 if (status) {
@@ -3112,6 +3659,7 @@ async function renderDashboard(): Promise<void> {
             try {
                 await putJson('/api/setup/defaults', {
                     workspaceOwners: workspaceOwnersFromForm(form),
+                    workspaceChannels: workspaceChannelsFromForm(form),
                 });
                 await postJson<SessionCreateResponse>(
                     '/api/gateway/sessions/bulk',

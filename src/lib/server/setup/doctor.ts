@@ -29,6 +29,24 @@ function check(id: string, label: string, status: SetupCheckStatus, message: str
   return { id, label, status, message, fix };
 }
 
+function configuredChannelTargetCount(setupDefaults: {
+  channelScopeMode?: 'selected' | 'all_accessible';
+  selectedChannels?: Array<{ id: string }>;
+  workspaceChannels?: Array<{
+    workspaceId: string;
+    channelScopeMode: 'selected' | 'all_accessible';
+    selectedChannels: Array<{ id: string }>;
+  }>;
+}): number {
+  if (setupDefaults.workspaceChannels?.length) {
+    return setupDefaults.workspaceChannels.filter((entry) => (
+      entry.channelScopeMode === 'all_accessible' || entry.selectedChannels.length > 0
+    )).length;
+  }
+  if (setupDefaults.channelScopeMode === 'all_accessible') return 1;
+  return setupDefaults.selectedChannels?.length ? 1 : 0;
+}
+
 export function getSetupDoctor(): SetupDoctorPayload {
   const env = getRuntimeEnv();
   const store = getStore();
@@ -96,7 +114,7 @@ export function getSetupDoctor(): SetupDoctorPayload {
   checks.push(
     slackWorkspace && slack.getUserSearchToken(slackWorkspace)
       ? check('slack_user_search', 'Slack user search', 'ok', 'Slack search token is configured.')
-      : check('slack_user_search', 'Slack user search', 'warning', 'Slack cross-channel search is not connected yet.', 'Reconnect Slack with user search scopes.')
+      : check('slack_user_search', 'Slack user search', 'warning', 'Slack cross-channel search is not connected yet.', 'Reconnect Slack with search:read user scope.')
   );
 
   if (slackWorkspace && env.slackEventsMode === 'socket' && env.slackAppToken) {
@@ -124,15 +142,14 @@ export function getSetupDoctor(): SetupDoctorPayload {
   checks.push(
     summary.userCount > 0 && configuredOwnerCount > 0
       ? check('identity', 'User identity', 'ok', `${configuredOwnerCount} owner identity${configuredOwnerCount === 1 ? '' : 'ies'} configured.`)
-      : check('identity', 'User identity', 'action_required', 'Pick yourself from Slack so Murph knows who to watch for.')
+      : check('identity', 'User identity', 'action_required', 'Pick yourself so Murph knows who to watch for.')
   );
 
+  const channelTargetCount = configuredChannelTargetCount(setupDefaults);
   checks.push(
-    setupDefaults?.channelScopeMode === 'all_accessible'
-      ? check('channels', 'Watched channels', 'ok', 'Murph will watch all accessible channels.')
-      : (setupDefaults?.selectedChannels?.length ?? 0) > 0
-        ? check('channels', 'Watched channels', 'ok', `${setupDefaults?.selectedChannels?.length ?? 0} watched channel(s) selected.`)
-        : check('channels', 'Watched channels', 'action_required', 'Choose Slack channels or explicitly allow all accessible channels.')
+    channelTargetCount > 0
+      ? check('channels', 'Watched channels', 'ok', `${channelTargetCount} workspace channel default${channelTargetCount === 1 ? '' : 's'} configured.`)
+      : check('channels', 'Watched channels', 'action_required', 'Choose channels or explicitly allow all accessible channels.')
   );
 
   const notion = getNotionStatus();

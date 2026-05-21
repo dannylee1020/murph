@@ -1,4 +1,5 @@
-import { sendJson } from '../http.js';
+import type { IncomingMessage } from 'node:http';
+import { readJson, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 import { DEFAULT_AGENT_MODEL } from '#lib/config';
 import { getRuntimeEnv } from '#lib/server/util/env';
@@ -19,8 +20,23 @@ import { getSlackService } from '#lib/server/channels/slack/service';
 import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getIngressHealth } from '#lib/server/channels/ingress-health';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
-import { readJson } from '../http.js';
 import type { SetupDefaults, Workspace } from '#lib/types';
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function publicAppUrl(req: IncomingMessage, url: URL): string {
+  const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
+  const host = forwardedHost ?? req.headers.host ?? url.host;
+  const forwardedProto = firstHeaderValue(req.headers['x-forwarded-proto']);
+  const proto = forwardedProto ?? (host.includes('localhost') || host.startsWith('127.') ? 'http' : 'https');
+  return `${proto}://${host}`;
+}
+
+function discordDeveloperPortalOAuthUrl(applicationId: string): string {
+  return `https://discord.com/developers/applications/${encodeURIComponent(applicationId)}/oauth2`;
+}
 
 function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
   const channelScopeMode = value.channelScopeMode === 'all_accessible' ? 'all_accessible' : 'selected';
@@ -39,6 +55,26 @@ function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
     .filter((owner): owner is { workspaceId: string; ownerUserId: string; ownerDisplayName: string } => (
       Boolean(owner.workspaceId && owner.ownerUserId)
     ));
+  const workspaceChannels = (value.workspaceChannels ?? [])
+    .map((entry) => {
+      const entryMode = entry.channelScopeMode === 'all_accessible' ? 'all_accessible' : 'selected';
+      const entryChannels = (entry.selectedChannels ?? [])
+        .map((channel) => ({
+          id: channel.id?.trim(),
+          displayName: channel.displayName?.trim() || channel.id?.trim()
+        }))
+        .filter((channel): channel is { id: string; displayName: string } => Boolean(channel.id && channel.displayName));
+      return {
+        workspaceId: entry.workspaceId?.trim(),
+        channelScopeMode: entryMode,
+        selectedChannels: entryMode === 'selected' ? entryChannels : []
+      };
+    })
+    .filter((entry): entry is {
+      workspaceId: string;
+      channelScopeMode: 'selected' | 'all_accessible';
+      selectedChannels: Array<{ id: string; displayName: string }>;
+    } => Boolean(entry.workspaceId && (entry.channelScopeMode === 'all_accessible' || entry.selectedChannels.length > 0)));
 
   return {
     channelProvider: value.channelProvider?.trim() || undefined,
@@ -46,6 +82,7 @@ function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
     ownerUserId: value.ownerUserId?.trim() || undefined,
     ownerDisplayName: value.ownerDisplayName?.trim() || undefined,
     workspaceOwners,
+    workspaceChannels,
     channelScopeMode,
     selectedChannels,
     timezone: value.timezone?.trim() || undefined,
@@ -87,18 +124,31 @@ function resolveSetupDefaultsForWorkspace(workspace: Workspace | undefined, defa
   }
 
   const workspaceOwner = defaults.workspaceOwners?.find((owner) => owner.workspaceId === workspace.id);
+  const workspaceChannels = defaults.workspaceChannels?.find((channels) => channels.workspaceId === workspace.id);
+  const channelDefaults = workspaceChannels
+    ? {
+        channelScopeMode: workspaceChannels.channelScopeMode,
+        selectedChannels: workspaceChannels.selectedChannels
+      }
+    : {};
   if (workspaceOwner) {
     return {
       ...defaults,
       workspaceId: workspace.id,
       channelProvider: workspace.provider,
       ownerUserId: workspaceOwner.ownerUserId,
-      ownerDisplayName: workspaceOwner.ownerDisplayName ?? workspaceOwner.ownerUserId
+      ownerDisplayName: workspaceOwner.ownerDisplayName ?? workspaceOwner.ownerUserId,
+      ...channelDefaults
     };
   }
 
   if (!defaults.ownerUserId) {
-    return defaults;
+    return {
+      ...defaults,
+      workspaceId: workspace.id,
+      channelProvider: workspace.provider,
+      ...channelDefaults
+    };
   }
 
   const workspaces = getStore().listWorkspaces();
@@ -108,14 +158,30 @@ function resolveSetupDefaultsForWorkspace(workspace: Workspace | undefined, defa
     : workspaces.length <= 1;
 
   return legacyOwnerApplies
-    ? defaults
+    ? {
+        ...defaults,
+        workspaceId: workspace.id,
+        channelProvider: workspace.provider,
+        ...channelDefaults
+      }
     : {
         ...defaults,
         workspaceId: workspace.id,
         channelProvider: workspace.provider,
         ownerUserId: undefined,
-        ownerDisplayName: undefined
+        ownerDisplayName: undefined,
+        ...channelDefaults
       };
+}
+
+function workspaceChannelsConfigured(defaults: SetupDefaults): boolean {
+  if (defaults.workspaceChannels?.length) {
+    return defaults.workspaceChannels.every((entry) => (
+      entry.channelScopeMode === 'all_accessible' || entry.selectedChannels.length > 0
+    ));
+  }
+
+  return defaults.channelScopeMode === 'all_accessible' || (defaults.selectedChannels?.length ?? 0) > 0;
 }
 
 function getProviderWorkspace(provider?: string, workspaceId?: string): Workspace | undefined {
@@ -253,8 +319,7 @@ export const systemRoutes: Route[] = [
       userConfigured: summary.userCount > 0 && Boolean(
         setupDefaults?.ownerUserId || (setupDefaults?.workspaceOwners?.length ?? 0) > 0
       ),
-      channelsConfigured: setupDefaults?.channelScopeMode === 'all_accessible' ||
-        (setupDefaults?.selectedChannels?.length ?? 0) > 0
+      channelsConfigured: workspaceChannelsConfigured(setupDefaults)
     });
   }),
   route('GET', '/api/setup/defaults', async ({ res, url }) => {
@@ -355,6 +420,63 @@ export const systemRoutes: Route[] = [
   route('GET', '/api/setup/doctor', async ({ res }) => {
     await ensureRuntimeInitialized();
     sendJson(res, getSetupDoctor());
+  }),
+  route('POST', '/api/setup/discord/prepare', async ({ req, res, url }) => {
+    const body = await readJson<{ botToken?: string; clientSecret?: string }>(req);
+    const discord = getDiscordService();
+    const botToken = body.botToken?.trim() || (() => {
+      try {
+        return discord.getBotToken();
+      } catch {
+        return undefined;
+      }
+    })();
+    const clientSecret = body.clientSecret?.trim() || getRuntimeEnv().discordClientSecret;
+
+    if (!botToken) {
+      sendJson(res, { ok: false, error: 'Discord bot token is required.' }, 400);
+      return;
+    }
+    if (!clientSecret) {
+      sendJson(res, { ok: false, error: 'Discord client secret is required.' }, 400);
+      return;
+    }
+
+    try {
+      const bot = await discord.validateBotToken(botToken);
+      updateSetupConfigValues({
+        DISCORD_BOT_TOKEN: botToken,
+        DISCORD_CLIENT_ID: bot.applicationId,
+        DISCORD_CLIENT_SECRET: clientSecret
+      });
+      const configuration = await discord.configureApplication(botToken);
+      const appUrl = publicAppUrl(req, url);
+      const env = getRuntimeEnv();
+      const redirectUri = env.discordRedirectUri ?? `${appUrl}/api/discord/oauth/callback`;
+      const redirectUriRegistered = bot.applicationRedirectUris === undefined
+        ? undefined
+        : bot.applicationRedirectUris.includes(redirectUri);
+
+      sendJson(res, {
+        ok: true,
+        botUserId: bot.botUserId,
+        botName: bot.botName ?? bot.botUsername ?? bot.botUserId,
+        applicationId: bot.applicationId,
+        applicationName: bot.applicationName,
+        redirectUri,
+        developerPortalUrl: discordDeveloperPortalOAuthUrl(bot.applicationId),
+        redirectUriRegistered,
+        permissionsConfigured: configuration.permissionsConfigured,
+        intentsConfigured: configuration.intentsConfigured,
+        configurationError: configuration.error,
+        installUrl: '/api/discord/install?source=setup'
+      });
+    } catch (error) {
+      sendJson(res, {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Discord setup preparation failed'
+      }, 400);
+    }
   }),
   route('POST', '/api/setup/config', async ({ req, res }) => {
     const body = await readJson<Record<string, string | undefined>>(req);

@@ -122,4 +122,52 @@ describe('classifyPolicyExecution', () => {
       confidence: 0
     });
   });
+
+  it('queues instead of abstaining when only partial evidence has a read-only tool failure', async () => {
+    classifyPolicyExecutionMock.mockResolvedValue({
+      execution: 'abstain',
+      matchedTopics: [],
+      matchedRuleIds: [],
+      reason: 'Evidence is partial because Slack search failed.',
+      confidence: 0.9
+    });
+
+    await expect(classifyPolicyExecution(context(), session(), action(), {
+      status: 'partial',
+      attemptedTools: ['notion.search', 'slack.search'],
+      successfulTools: [{ name: 'notion.search', summary: { resultCount: 1 } }],
+      failedTools: [{ name: 'slack.search', error: 'missing_scope' }],
+      updatedAt: new Date().toISOString()
+    })).resolves.toEqual({
+      execution: 'queue',
+      matchedTopics: [],
+      matchedRuleIds: [],
+      reason: 'Evidence is partial because Slack search failed.',
+      confidence: 0.9
+    });
+  });
+
+  it('keeps classifier abstain when a policy topic is matched', async () => {
+    classifyPolicyExecutionMock.mockResolvedValue({
+      execution: 'abstain',
+      matchedTopics: ['payroll'],
+      matchedRuleIds: [],
+      reason: 'Policy blocks this topic.',
+      confidence: 0.9
+    });
+
+    await expect(classifyPolicyExecution(context(), session(), action(), {
+      status: 'partial',
+      attemptedTools: ['notion.search', 'slack.search'],
+      successfulTools: [{ name: 'notion.search', summary: { resultCount: 1 } }],
+      failedTools: [{ name: 'slack.search', error: 'missing_scope' }],
+      updatedAt: new Date().toISOString()
+    })).resolves.toEqual({
+      execution: 'abstain',
+      matchedTopics: ['payroll'],
+      matchedRuleIds: [],
+      reason: 'Policy blocks this topic.',
+      confidence: 0.9
+    });
+  });
 });

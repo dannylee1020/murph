@@ -176,6 +176,11 @@ export interface SetupDefaults {
     ownerUserId?: string;
     ownerDisplayName?: string;
     workspaceOwners?: Array<{ workspaceId: string; ownerUserId: string; ownerDisplayName?: string }>;
+    workspaceChannels?: Array<{
+        workspaceId: string;
+        channelScopeMode: 'selected' | 'all_accessible';
+        selectedChannels: Array<{ id: string; displayName: string }>;
+    }>;
     channelScopeMode?: 'selected' | 'all_accessible';
     selectedChannels?: Array<{ id: string; displayName: string }>;
     timezone?: string;
@@ -262,6 +267,7 @@ export interface ContinuityTask {
     workspaceId: string;
     sessionId?: string;
     thread: ThreadRef;
+    triggerMessage?: ChannelMessage;
     targetUserId: string;
     actorUserId?: string;
     rawEventId?: string;
