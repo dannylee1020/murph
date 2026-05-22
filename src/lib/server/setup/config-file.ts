@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import type { ProviderName, SetupDefaults } from '#lib/types';
+import type { PolicyExecutionMode, ProviderName, SetupDefaults } from '#lib/types';
+import { normalizePolicyExecutionMode } from '#lib/server/runtime/policy-compiler';
 
 export const MURPH_CONFIG_FILE = 'config.yaml';
 
@@ -66,6 +67,7 @@ export interface MurphConfig {
   };
   policy?: {
     profile?: string;
+    mode?: PolicyExecutionMode;
   };
 }
 
@@ -346,7 +348,8 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
       }
     },
     policy: {
-      profile: stringValue(policy.profile)
+      profile: stringValue(policy.profile),
+      mode: normalizePolicyExecutionMode(policy.mode)
     }
   };
 }
@@ -385,5 +388,19 @@ export function updateMurphSetupDefaults(defaults: SetupDefaults, cwd = process.
 export function updateMurphPolicyProfile(profileName: string | undefined, cwd = process.cwd()): void {
   const raw = readRawConfig(cwd);
   setPath(raw, ['policy', 'profile'], profileName);
+  writeRawConfig(raw, cwd);
+}
+
+export function updateMurphPolicyConfig(input: {
+  profileName?: string;
+  mode?: PolicyExecutionMode;
+}, cwd = process.cwd()): void {
+  const raw = readRawConfig(cwd);
+  if (Object.prototype.hasOwnProperty.call(input, 'profileName')) {
+    setPath(raw, ['policy', 'profile'], input.profileName);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'mode')) {
+    setPath(raw, ['policy', 'mode'], input.mode);
+  }
   writeRawConfig(raw, cwd);
 }

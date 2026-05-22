@@ -17,7 +17,7 @@ Discord setup has a few manual Developer Portal steps. Do those first, then let 
 http://localhost:5173/api/discord/oauth/callback
 ```
 
-If you use a custom `MURPH_URL`, `MURPH_PORT`, or `DISCORD_REDIRECT_URI`, register the exact callback URL printed by `murph setup discord` instead.
+If you use a custom Murph origin or Discord redirect URI in `~/.murph/config.yaml`, register the exact callback URL printed by `murph setup discord` instead.
 
 ## Step 1: Create Or Open The Discord App
 
@@ -104,6 +104,8 @@ murph setup channels
 
 If channel listing is unavailable, paste Discord channel IDs when prompted. Murph validates pasted IDs through Discord when the bot has access.
 
+Discord owner identity is still saved only through the OAuth authorization step. If setup can save the server but cannot identify your account, reconnect Discord through the install URL before saving channel defaults.
+
 ## Bot Permissions
 
 Murph requests this scoped permission set:
@@ -178,6 +180,8 @@ Then rerun:
 ```bash
 murph setup channels
 ```
+
+If setup asks for channel IDs manually, copy the numeric Discord channel IDs from Discord developer mode and paste them comma-separated.
 
 ### Owner Identity Is Missing
 

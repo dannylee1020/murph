@@ -3,6 +3,7 @@ description: Marketing coverage for launches, campaigns, messaging, and public-f
 blockedTopics: unreleased financials, compensation, performance reviews, legal advice, confidential employee matters
 alwaysQueueTopics: launch messaging, press statements, brand review, legal review, public claims, customer references, crisis communications, embargoed announcements
 blockedActions:
+mode: manual_review
 allowAutoSend: no
 requireGroundingForFacts: yes
 preferAskWhenUncertain: yes

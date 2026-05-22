@@ -3,6 +3,7 @@ description: Conservative leadership coverage for executive, strategy, and exter
 blockedTopics: payroll details, performance reviews, legal advice, confidential employee matters
 alwaysQueueTopics: investor topics, board topics, strategy, hiring decisions, firing decisions, compensation, company commitments, customer escalations, pricing, legal compliance
 blockedActions:
+mode: manual_review
 allowAutoSend: no
 requireGroundingForFacts: yes
 preferAskWhenUncertain: yes

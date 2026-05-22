@@ -3,6 +3,7 @@ description: Product coverage for specs, launches, roadmap, and customer-facing 
 blockedTopics: compensation, performance reviews, legal advice, confidential employee matters
 alwaysQueueTopics: roadmap commitments, launch decisions, pricing, prioritization tradeoffs, customer escalations, external commitments, scope changes
 blockedActions:
+mode: manual_review
 allowAutoSend: no
 requireGroundingForFacts: yes
 preferAskWhenUncertain: yes

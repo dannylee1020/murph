@@ -216,6 +216,44 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(session.policy?.compiled.allowAutoSend).toBe(false);
   });
 
+  it('inherits auto-send mode from the durable policy config when mode is omitted', async () => {
+    const { post, store, workspace } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
+    ]);
+    const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
+    updateMurphPolicyConfig({ profileName: 'yolo', mode: 'auto_send_low_risk' });
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1']
+    });
+
+    expect(response.status).toBe(201);
+    const session = store.listActiveSessions(workspace.id)[0];
+    expect(session.mode).toBe('auto_send_low_risk');
+    expect(session.policyProfileName).toBe('yolo');
+    expect(session.policy?.compiled.executionMode).toBe('auto_send_low_risk');
+  });
+
+  it('does not let session mode increase autonomy beyond policy mode', async () => {
+    const { post, store, workspace } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
+    ]);
+    const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
+    updateMurphPolicyConfig({ profileName: 'default', mode: 'manual_review' });
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1'],
+      mode: 'auto_send_low_risk'
+    });
+
+    expect(response.status).toBe(201);
+    const session = store.listActiveSessions(workspace.id)[0];
+    expect(session.mode).toBe('manual_review');
+    expect(session.policy?.compiled.executionMode).toBe('manual_review');
+  });
+
   it('computes timezone-aware session stop time on the server', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-19T07:30:00.000Z'));

@@ -16,6 +16,7 @@ import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import {
   buildUserPolicyProfile,
   builtinPolicyProfile,
+  normalizePolicyExecutionMode,
   resolveEffectivePolicy
 } from '#lib/server/runtime/policy-compiler';
 import { loadSkills } from '#lib/server/skills/loader';
@@ -23,8 +24,8 @@ import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { requireMatchingSetupOwner } from '#lib/server/setup/owner-identity';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
-import { readMurphConfig, updateMurphPolicyProfile } from '#lib/server/setup/config-file';
-import type { AgentUser, ChannelEnsureMemberResult, ChannelSetupMember, SessionMode, Workspace } from '#lib/types';
+import { readMurphConfig, updateMurphPolicyConfig } from '#lib/server/setup/config-file';
+import type { AgentUser, ChannelEnsureMemberResult, ChannelSetupMember, PolicyExecutionMode, SessionMode, Workspace } from '#lib/types';
 
 const gateway = getGateway();
 
@@ -68,6 +69,21 @@ type PreparedSessionTarget = {
   channelScope: string[];
   autoJoined: Array<{ id: string; name?: string }>;
 };
+
+function sessionModeFromPolicyMode(mode: PolicyExecutionMode): SessionMode {
+  return mode;
+}
+
+function effectivePolicyMode(profileMode: PolicyExecutionMode): PolicyExecutionMode {
+  return readMurphConfig().policy?.mode ?? profileMode;
+}
+
+function resolveSessionMode(inputMode: SessionMode | undefined, policyMode: PolicyExecutionMode): SessionMode {
+  if (!inputMode) return sessionModeFromPolicyMode(policyMode);
+  if (inputMode === 'dry_run') return 'dry_run';
+  if (inputMode === 'manual_review') return 'manual_review';
+  return policyMode === 'auto_send_low_risk' ? 'auto_send_low_risk' : 'manual_review';
+}
 
 function workspaceDescriptor(workspace: Workspace) {
   return {
@@ -237,10 +253,12 @@ async function createPreparedSession(target: PreparedSessionTarget, input: Sessi
     externalUserId: target.ownerUserId,
     displayName: target.ownerMember.displayName || target.ownerUserId
   });
-  const mode = input.mode ?? 'manual_review';
-  const { selectedProfile } = await resolveProfileSelection(mode);
+  const { selectedProfile } = await resolveProfileSelection();
+  const policyMode = effectivePolicyMode(selectedProfile.compiled.executionMode);
+  const mode = resolveSessionMode(input.mode, policyMode);
   const effective = resolveEffectivePolicy({
     mode,
+    executionMode: policyMode,
     baseProfile: selectedProfile
   });
   const policyProfile = buildUserPolicyProfile({
@@ -267,7 +285,6 @@ async function createPreparedSession(target: PreparedSessionTarget, input: Sessi
 }
 
 async function resolveProfileSelection(
-  mode: SessionMode,
   explicitProfileName?: string
 ) {
   const profiles = await loadPolicyProfiles();
@@ -281,21 +298,28 @@ async function resolveProfileSelection(
 
   return {
     profiles,
-    selectedProfile: selectedProfile ?? builtinPolicyProfile(mode)
+    selectedProfile: selectedProfile ?? builtinPolicyProfile('manual_review')
   };
 }
 
-async function policyConfigPayload(mode: SessionMode = 'manual_review') {
+async function policyConfigPayload(mode?: PolicyExecutionMode) {
   const store = getStore();
   const settings = store.getAppSettings();
-  const configProfileName = readMurphConfig().policy?.profile;
-  const { profiles, selectedProfile } = await resolveProfileSelection(mode);
-  const effective = resolveEffectivePolicy({ mode, baseProfile: selectedProfile });
+  const config = readMurphConfig();
+  const configProfileName = config.policy?.profile;
+  const { profiles, selectedProfile } = await resolveProfileSelection();
+  const policyMode = mode ?? config.policy?.mode ?? selectedProfile.compiled.executionMode;
+  const effective = resolveEffectivePolicy({
+    mode: sessionModeFromPolicyMode(policyMode),
+    executionMode: policyMode,
+    baseProfile: selectedProfile
+  });
 
   return {
     ok: true,
     profiles,
     policyProfileName: normalizePolicyProfileName(configProfileName || settings.policyProfileName),
+    mode: policyMode,
     selectedProfileName: selectedProfile.name,
     selectedProfile,
     compiled: effective.compiled
@@ -340,34 +364,46 @@ export const gatewayRoutes: Route[] = [
     sendJson(res, await policyConfigPayload());
   }),
   route('PUT', '/api/gateway/policy/config', async ({ req, res }) => {
-    const body = await readJson<{ profileName?: unknown }>(req);
+    const body = await readJson<{ profileName?: unknown; mode?: unknown }>(req);
     const profileName = typeof body.profileName === 'string'
       ? normalizePolicyProfileName(body.profileName)
       : undefined;
+    const mode = body.mode === undefined ? undefined : normalizePolicyExecutionMode(body.mode);
     const profiles = await loadPolicyProfiles();
 
     if (profileName && !profiles.some((profile) => profile.name === profileName)) {
       sendJson(res, { ok: false, error: 'unknown_policy_profile' }, 400);
       return;
     }
+    if (body.mode !== undefined && !mode) {
+      sendJson(res, { ok: false, error: 'invalid_policy_mode' }, 400);
+      return;
+    }
 
-    updateMurphPolicyProfile(profileName);
+    updateMurphPolicyConfig({
+      ...(Object.prototype.hasOwnProperty.call(body, 'profileName') ? { profileName } : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'mode') ? { mode } : {})
+    });
     sendJson(res, await policyConfigPayload());
   }),
   route('POST', '/api/gateway/policy/preview', async ({ req, res }) => {
     const body = await readJson<{
       profileName?: string;
+      mode?: string;
       overrideRaw?: string;
       scopedRules?: unknown;
       sessionMode?: SessionMode;
     }>(req);
-    const mode = body.sessionMode ?? 'manual_review';
-    const { profiles, selectedProfile } = await resolveProfileSelection(
-      mode,
-      body.profileName
-    );
+    const { profiles, selectedProfile } = await resolveProfileSelection(body.profileName);
+    const policyMode =
+      normalizePolicyExecutionMode(body.mode) ??
+      effectivePolicyMode(selectedProfile.compiled.executionMode);
+    const sessionMode = body.sessionMode
+      ? resolveSessionMode(body.sessionMode, policyMode)
+      : sessionModeFromPolicyMode(policyMode);
     const effective = resolveEffectivePolicy({
-      mode,
+      mode: sessionMode,
+      executionMode: policyMode,
       baseProfile: selectedProfile,
       overrideRaw: body.overrideRaw,
       scopedRules: body.scopedRules
@@ -375,6 +411,8 @@ export const gatewayRoutes: Route[] = [
     sendJson(res, {
       ok: true,
       profiles,
+      mode: policyMode,
+      sessionMode,
       selectedProfileName: selectedProfile.name,
       compiled: effective.compiled,
       warnings: effective.warnings

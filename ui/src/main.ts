@@ -4,6 +4,7 @@ type CompiledPolicyPayload = {
     blockedTopics: string[];
     alwaysQueueTopics: string[];
     blockedActions: string[];
+    executionMode: string;
     requireGroundingForFacts: boolean;
     preferAskWhenUncertain: boolean;
     allowAutoSend: boolean;
@@ -438,6 +439,7 @@ type PolicyConfigPayload = {
     ok: boolean;
     profiles: PolicyProfilesPayload['profiles'];
     policyProfileName?: string;
+    mode: string;
     selectedProfileName: string;
     selectedProfile: PolicyProfilesPayload['profiles'][number];
     compiled: CompiledPolicyPayload;
@@ -1355,6 +1357,11 @@ function sessionModeLabel(mode: string): string {
     return titleCase(mode);
 }
 
+function policyExecutionModeLabel(mode: string): string {
+    if (mode === 'auto_send_low_risk') return 'Auto-handle routine stuff';
+    return 'Show me drafts first';
+}
+
 function policyProfileOptions(
     profiles: PolicyProfilesPayload['profiles'],
     selected: string | undefined,
@@ -1386,10 +1393,8 @@ function policySummary(
     const rows = [
         ['Selected profile', profileName],
         [
-            'Auto-send',
-            compiled.allowAutoSend
-                ? 'Allowed when session mode allows it'
-                : 'Disabled',
+            'Execution mode',
+            policyExecutionModeLabel(compiled.executionMode),
         ],
         [
             'Grounding',
@@ -3078,10 +3083,11 @@ async function renderSetup(): Promise<void> {
 async function renderDashboard(): Promise<void> {
     setTitle('Murph');
     loading('Home');
-    const [data, setupStatus, setupDefaults] = await Promise.all([
+    const [data, setupStatus, setupDefaults, policyConfig] = await Promise.all([
         getJson<SummaryPayload>('/api/gateway/summary'),
         getJson<SetupStatusPayload>('/api/setup/status'),
         getJson<SetupDefaultsPayload>('/api/setup/defaults'),
+        getJson<PolicyConfigPayload>('/api/gateway/policy/config'),
     ]);
     setSidebarWatchingCount(data.summary.activeSessionCount);
 
@@ -3198,6 +3204,7 @@ async function renderDashboard(): Promise<void> {
         currentUser?.schedule?.workdayStartHour ??
         setupWizardState.workdayStartHour;
     const estimatedHours = calculateDurationHours(userStartHour, userTz);
+    const policyModeLabel = policyExecutionModeLabel(policyConfig.mode);
     const providerBanner = !setupStatus.provider.configured
         ? `<div class="setup-banner">
         <p>Connect an AI provider to let Murph draft replies for you.</p>
@@ -3222,7 +3229,7 @@ async function renderDashboard(): Promise<void> {
     <section class="launch-section">
       <article class="panel go-to-sleep-card">
         <h2>Go to sleep</h2>
-        <p>Murph will watch your accessible channels and queue drafts for your review.</p>
+        <p>Murph will watch your accessible channels using your policy default.</p>
         <form id="go-to-sleep-form">
           <dl class="go-to-sleep-summary">
             <div class="summary-cell">
@@ -3235,7 +3242,7 @@ async function renderDashboard(): Promise<void> {
             </div>
             <div class="summary-cell">
               <dt>Mode</dt>
-              <dd>Show me drafts first</dd>
+              <dd>${escapeHtml(policyModeLabel)}</dd>
             </div>
           </dl>
           ${ownerNotice}
@@ -3245,17 +3252,17 @@ async function renderDashboard(): Promise<void> {
             <summary>Customize</summary>
             ${homeChannelGroups(channelStates)}
             <fieldset class="customize-fieldset">
-              <legend>Review mode</legend>
+              <legend>Session mode</legend>
               <div class="mode-selector">
                 <label class="mode-radio">
-                  <input type="radio" name="mode" value="manual_review" checked />
-                  <span class="mode-label">Show me drafts first</span>
-                  <span class="mode-description">Review all proposed replies before sending</span>
+                  <input type="radio" name="mode" value="" checked />
+                  <span class="mode-label">Use policy default</span>
+                  <span class="mode-description">${escapeHtml(policyModeLabel)}</span>
                 </label>
                 <label class="mode-radio">
-                  <input type="radio" name="mode" value="auto_send_low_risk" />
-                  <span class="mode-label">Auto-handle routine stuff</span>
-                  <span class="mode-description">Send low-risk items automatically, queue the rest</span>
+                  <input type="radio" name="mode" value="manual_review" />
+                  <span class="mode-label">Review everything tonight</span>
+                  <span class="mode-description">Temporary override for this session</span>
                 </label>
                 <label class="mode-radio">
                   <input type="radio" name="mode" value="dry_run" />
@@ -3551,12 +3558,9 @@ async function renderDashboard(): Promise<void> {
                     workspaceOwners: workspaceOwnersFromForm(form),
                     workspaceChannels: workspaceChannelsFromForm(form),
                 });
-                await postJson<SessionCreateResponse>(
-                    '/api/gateway/sessions/bulk',
-                    {
+                const payload: Record<string, unknown> = {
                         ownerUserId: currentUserId,
                         title: 'Watching overnight',
-                        mode,
                         stopLocalTime: endTimeVal,
                         timezone: tz,
                         targets: targets.map((target) => ({
@@ -3564,7 +3568,13 @@ async function renderDashboard(): Promise<void> {
                             ownerUserId: target.ownerUserId,
                             channelScope: target.channelScope,
                         })),
-                    },
+                    };
+                if (mode) {
+                    payload.mode = mode;
+                }
+                await postJson<SessionCreateResponse>(
+                    '/api/gateway/sessions/bulk',
+                    payload,
                 );
                 dashboardError = '';
                 dashboardNotice =
@@ -3725,6 +3735,13 @@ async function renderSettings(): Promise<void> {
                   ${policyProfileOptions(policyConfig.profiles, policyConfig.policyProfileName)}
                 </select>
               </label>
+              <label>
+                Execution mode
+                <select name="mode">
+                  <option value="manual_review" ${policyConfig.mode === 'manual_review' ? 'selected' : ''}>Show me drafts first</option>
+                  <option value="auto_send_low_risk" ${policyConfig.mode === 'auto_send_low_risk' ? 'selected' : ''}>Auto-handle routine stuff</option>
+                </select>
+              </label>
               <p class="policy-help">Need a custom policy? <a href="https://murph-agent.com/docs/policy" target="_blank" rel="noreferrer">Use Murph Agent to generate one</a>.</p>
               <div class="actions">
                 <button type="button" class="secondary open-policy-profiles">Profiles</button>
@@ -3776,6 +3793,7 @@ async function renderSettings(): Promise<void> {
             );
             await putJson('/api/gateway/policy/config', {
                 profileName: String(formData.get('profileName') ?? ''),
+                mode: String(formData.get('mode') ?? 'manual_review'),
             });
             dashboardNotice = 'Policy saved.';
             await renderSettings();

@@ -3,6 +3,7 @@ description: Generic safe profile for local-first Murph coverage.
 blockedTopics: payroll details, compensation, performance reviews, legal advice, confidential employee matters
 alwaysQueueTopics: customer escalations, company commitments, deadlines, pricing, roadmap, hiring, security, incidents
 blockedActions:
+mode: manual_review
 allowAutoSend: no
 requireGroundingForFacts: yes
 preferAskWhenUncertain: yes

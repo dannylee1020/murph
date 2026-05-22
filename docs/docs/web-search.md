@@ -17,10 +17,14 @@ integrations:
     backend: brave
 ```
 
-Set the key through setup or as a local credential. An explicit environment variable also works as a development or hosted runtime override:
+Store the Brave key through setup or the browser UI. Murph saves it as a local credential in `~/.murph/.credentials`.
 
-```text
-BRAVE_SEARCH_API_KEY=...
+To use Tavily instead, save the backend choice in `~/.murph/config.yaml`:
+
+```yaml
+integrations:
+  webSearch:
+    backend: tavily
 ```
 
 `web.fetch` reads an explicit `http(s)` URL with a simple HTTP fetch and text extraction. It is intentionally lightweight for now and does not run a browser crawler by default.
@@ -30,6 +34,8 @@ BRAVE_SEARCH_API_KEY=...
 Brave is a practical hosted default for public search: it is simple to configure, avoids running local search infrastructure, and gives Murph a dependable baseline for web discovery.
 
 Tavily is also supported out of the box, and self-hosted options can be added through the same provider shape when a deployment needs a different privacy, cost, or control posture.
+
+For development or hosted deployments, `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, and `MURPH_WEB_SEARCH_BACKEND` still work as explicit runtime overrides. For normal local setup, prefer `~/.murph/config.yaml` and `~/.murph/.credentials`.
 
 ## Extending search and fetch
 

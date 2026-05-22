@@ -3,6 +3,7 @@ import type {
   ContinuityCase,
   ContinuityActionType,
   PolicyControls,
+  PolicyExecutionMode,
   PolicyProfile,
   ScopedPolicyRule,
   SessionMode,
@@ -12,6 +13,7 @@ import type {
 type PolicyPatch = PolicyControls;
 
 const ACTIONS: ContinuityActionType[] = ['reply', 'ask', 'redirect', 'defer', 'remind', 'abstain'];
+const POLICY_EXECUTION_MODES: PolicyExecutionMode[] = ['manual_review', 'auto_send_low_risk'];
 const INTENTS: ContinuityCase[] = [
   'status_request',
   'clarification',
@@ -59,19 +61,50 @@ function detectBoolean(raw: string, labels: string[], fallback?: boolean): boole
   return fallback;
 }
 
+function detectPolicyExecutionMode(raw: string): PolicyExecutionMode | undefined {
+  for (const label of ['execution mode', 'executionMode', 'mode']) {
+    const pattern = new RegExp(`${label}\\s*:\\s*([a-z_\\-]+)`, 'i');
+    const match = raw.match(pattern);
+    const normalized = normalizePolicyExecutionMode(match?.[1]);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+export function normalizePolicyExecutionMode(value: unknown): PolicyExecutionMode | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase().replace(/-/g, '_');
+  return POLICY_EXECUTION_MODES.includes(normalized as PolicyExecutionMode)
+    ? normalized as PolicyExecutionMode
+    : undefined;
+}
+
+export function policyExecutionModeFromAllowAutoSend(allowAutoSend: boolean | undefined): PolicyExecutionMode {
+  return allowAutoSend ? 'auto_send_low_risk' : 'manual_review';
+}
+
+export function policyExecutionModeFromSessionMode(mode: SessionMode): PolicyExecutionMode {
+  return mode === 'auto_send_low_risk' ? 'auto_send_low_risk' : 'manual_review';
+}
+
 function implicitTopics(raw: string, phrases: string[]): string[] {
   const lower = raw.toLowerCase();
   return phrases.filter((phrase) => lower.includes(phrase));
 }
 
-function canonicalize(compiled: CompiledPolicy): CompiledPolicy {
+export function normalizeCompiledPolicy(compiled: CompiledPolicy): CompiledPolicy {
+  const executionMode =
+    compiled.executionMode ?? policyExecutionModeFromAllowAutoSend(compiled.allowAutoSend);
   return {
     blockedTopics: unique(compiled.blockedTopics),
     alwaysQueueTopics: unique(compiled.alwaysQueueTopics),
     blockedActions: [...new Set(compiled.blockedActions)],
+    executionMode,
     requireGroundingForFacts: compiled.requireGroundingForFacts,
     preferAskWhenUncertain: compiled.preferAskWhenUncertain,
-    allowAutoSend: compiled.allowAutoSend,
+    allowAutoSend: executionMode === 'auto_send_low_risk',
     notesForAgent: unique(compiled.notesForAgent),
     rules: normalizeScopedPolicyRules(compiled.rules ?? [])
   };
@@ -82,6 +115,7 @@ function patchHasValues(patch: PolicyPatch): boolean {
     (patch.blockedTopics && patch.blockedTopics.length > 0) ||
       (patch.alwaysQueueTopics && patch.alwaysQueueTopics.length > 0) ||
       (patch.blockedActions && patch.blockedActions.length > 0) ||
+      patch.executionMode !== undefined ||
       patch.requireGroundingForFacts !== undefined ||
       patch.preferAskWhenUncertain !== undefined ||
       patch.allowAutoSend !== undefined ||
@@ -94,6 +128,7 @@ export function recommendedPolicyRaw(mode: SessionMode): string {
     return [
       'Always queue: launch decisions, customer escalations',
       'Block topics: payroll, legal, performance reviews',
+      'Mode: auto_send_low_risk',
       'Require grounding for facts: yes',
       'Prefer ask when uncertain: yes',
       'Allow auto-send: yes',
@@ -104,6 +139,7 @@ export function recommendedPolicyRaw(mode: SessionMode): string {
   return [
     'Always queue: launch decisions, customer escalations',
     'Block topics: payroll, legal, performance reviews',
+    'Mode: manual_review',
     'Require grounding for facts: yes',
     'Prefer ask when uncertain: yes',
     'Allow auto-send: no',
@@ -136,9 +172,10 @@ export function compilePolicy(raw: string, mode: SessionMode): { compiled: Compi
     detectBoolean(normalizedRaw, ['require grounding for facts'], true) ?? true;
   const preferAskWhenUncertain =
     detectBoolean(normalizedRaw, ['prefer ask when uncertain'], true) ?? true;
-  const allowAutoSend =
-    detectBoolean(normalizedRaw, ['allow auto-send'], mode === 'auto_send_low_risk') ??
+  const legacyAllowAutoSend = detectBoolean(normalizedRaw, ['allow auto-send'], mode === 'auto_send_low_risk') ??
     mode === 'auto_send_low_risk';
+  const executionMode =
+    detectPolicyExecutionMode(normalizedRaw) ?? policyExecutionModeFromAllowAutoSend(legacyAllowAutoSend);
   const notesForAgent = unique(matchList(normalizedRaw, ['notes', 'notes for agent']));
 
   if (!/:\s*/.test(normalizedRaw)) {
@@ -146,13 +183,14 @@ export function compilePolicy(raw: string, mode: SessionMode): { compiled: Compi
   }
 
   return {
-    compiled: canonicalize({
+    compiled: normalizeCompiledPolicy({
       blockedTopics,
       alwaysQueueTopics,
       blockedActions,
+      executionMode,
       requireGroundingForFacts,
       preferAskWhenUncertain,
-      allowAutoSend,
+      allowAutoSend: executionMode === 'auto_send_low_risk',
       notesForAgent
     }),
     warnings
@@ -177,6 +215,7 @@ export function compilePolicyOverride(
       ...implicitTopics(normalizedRaw, ['launch decisions', 'customer escalations'])
     ]),
     blockedActions: detectActions(normalizedRaw, ['blocked actions', 'never do']),
+    executionMode: detectPolicyExecutionMode(normalizedRaw),
     requireGroundingForFacts: detectBoolean(normalizedRaw, ['require grounding for facts']),
     preferAskWhenUncertain: detectBoolean(normalizedRaw, ['prefer ask when uncertain']),
     allowAutoSend: detectBoolean(normalizedRaw, ['allow auto-send']),
@@ -192,13 +231,17 @@ export function compilePolicyOverride(
 }
 
 export function mergeCompiledPolicy(base: CompiledPolicy, patch: PolicyPatch): CompiledPolicy {
-  return canonicalize({
+  const executionMode =
+    patch.executionMode ??
+    (patch.allowAutoSend !== undefined ? policyExecutionModeFromAllowAutoSend(patch.allowAutoSend) : base.executionMode);
+  return normalizeCompiledPolicy({
     blockedTopics: [...base.blockedTopics, ...(patch.blockedTopics ?? [])],
     alwaysQueueTopics: [...base.alwaysQueueTopics, ...(patch.alwaysQueueTopics ?? [])],
     blockedActions: [...base.blockedActions, ...(patch.blockedActions ?? [])],
+    executionMode,
     requireGroundingForFacts: patch.requireGroundingForFacts ?? base.requireGroundingForFacts,
     preferAskWhenUncertain: patch.preferAskWhenUncertain ?? base.preferAskWhenUncertain,
-    allowAutoSend: patch.allowAutoSend ?? base.allowAutoSend,
+    allowAutoSend: executionMode === 'auto_send_low_risk',
     notesForAgent: [...base.notesForAgent, ...(patch.notesForAgent ?? [])],
     rules: base.rules
   });
@@ -223,6 +266,7 @@ function normalizeControls(input: unknown): PolicyControls {
     blockedTopics: listFromUnknown(record.blockedTopics).map((entry) => entry.toLowerCase()),
     alwaysQueueTopics: listFromUnknown(record.alwaysQueueTopics).map((entry) => entry.toLowerCase()),
     blockedActions,
+    executionMode: normalizePolicyExecutionMode(record.executionMode ?? record.mode),
     requireGroundingForFacts: booleanFromUnknown(record.requireGroundingForFacts),
     preferAskWhenUncertain: booleanFromUnknown(record.preferAskWhenUncertain),
     allowAutoSend: booleanFromUnknown(record.allowAutoSend),
@@ -235,6 +279,7 @@ function controlsHaveValues(controls: PolicyControls): boolean {
     (controls.blockedTopics && controls.blockedTopics.length > 0) ||
       (controls.alwaysQueueTopics && controls.alwaysQueueTopics.length > 0) ||
       (controls.blockedActions && controls.blockedActions.length > 0) ||
+      controls.executionMode !== undefined ||
       controls.requireGroundingForFacts !== undefined ||
       controls.preferAskWhenUncertain !== undefined ||
       controls.allowAutoSend !== undefined ||
@@ -281,6 +326,7 @@ export function normalizeScopedPolicyRules(input: unknown): ScopedPolicyRule[] {
           blockedTopics: unique(controls.blockedTopics ?? []),
           alwaysQueueTopics: unique(controls.alwaysQueueTopics ?? []),
           blockedActions: [...new Set(controls.blockedActions ?? [])],
+          executionMode: controls.executionMode,
           requireGroundingForFacts: controls.requireGroundingForFacts,
           preferAskWhenUncertain: controls.preferAskWhenUncertain,
           allowAutoSend: controls.allowAutoSend,
@@ -293,6 +339,7 @@ export function normalizeScopedPolicyRules(input: unknown): ScopedPolicyRule[] {
 
 export function resolveEffectivePolicy(input: {
   mode: SessionMode;
+  executionMode?: PolicyExecutionMode;
   baseProfile?: PolicyProfile;
   overrideRaw?: string;
   scopedRules?: unknown;
@@ -300,12 +347,16 @@ export function resolveEffectivePolicy(input: {
   const profile = input.baseProfile ?? builtinPolicyProfile(input.mode);
   const { patch, warnings } = compilePolicyOverride(input.overrideRaw ?? '');
   const scopedRules = normalizeScopedPolicyRules(input.scopedRules ?? profile.compiled.rules ?? []);
+  const merged = mergeCompiledPolicy(profile.compiled, patch);
+  const executionMode = input.executionMode ?? merged.executionMode ?? policyExecutionModeFromSessionMode(input.mode);
   return {
     profile,
-    compiled: {
-      ...mergeCompiledPolicy(profile.compiled, patch),
+    compiled: normalizeCompiledPolicy({
+      ...merged,
+      executionMode,
+      allowAutoSend: executionMode === 'auto_send_low_risk',
       rules: scopedRules
-    },
+    }),
     warnings
   };
 }
@@ -322,7 +373,7 @@ export function buildUserPolicyProfile(input: {
     profileName: input.profileName,
     overrideRaw: input.overrideRaw?.trim() || undefined,
     raw: input.overrideRaw?.trim() || '',
-    compiled: canonicalize({
+    compiled: normalizeCompiledPolicy({
       ...input.compiled,
       rules: normalizeScopedPolicyRules(input.scopedRules ?? input.compiled.rules ?? [])
     }),

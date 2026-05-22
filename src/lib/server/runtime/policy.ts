@@ -9,7 +9,11 @@ import type {
   PolicyExecutionDecision,
   ProposedAction
 } from '#lib/types';
-import { builtinPolicyProfile } from '#lib/server/runtime/policy-compiler';
+import {
+  builtinPolicyProfile,
+  normalizeCompiledPolicy,
+  policyExecutionModeFromAllowAutoSend
+} from '#lib/server/runtime/policy-compiler';
 
 const AUTO_SEND_ACTIONS = new Set<ContinuityActionType>(DEFAULT_AUTO_SEND_ACTIONS);
 
@@ -39,16 +43,22 @@ function ruleSpecificity(rule: NonNullable<CompiledPolicy['rules']>[number]): nu
 }
 
 function applyControls(base: CompiledPolicy, controls: PolicyControls): CompiledPolicy {
-  return {
+  const executionMode =
+    controls.executionMode ??
+    (controls.allowAutoSend !== undefined
+      ? policyExecutionModeFromAllowAutoSend(controls.allowAutoSend)
+      : base.executionMode);
+  return normalizeCompiledPolicy({
     blockedTopics: unique([...base.blockedTopics, ...(controls.blockedTopics ?? [])]),
     alwaysQueueTopics: unique([...base.alwaysQueueTopics, ...(controls.alwaysQueueTopics ?? [])]),
     blockedActions: [...new Set([...base.blockedActions, ...(controls.blockedActions ?? [])])],
+    executionMode,
     requireGroundingForFacts: controls.requireGroundingForFacts ?? base.requireGroundingForFacts,
     preferAskWhenUncertain: controls.preferAskWhenUncertain ?? base.preferAskWhenUncertain,
-    allowAutoSend: controls.allowAutoSend ?? base.allowAutoSend,
+    allowAutoSend: executionMode === 'auto_send_low_risk',
     notesForAgent: unique([...base.notesForAgent, ...(controls.notesForAgent ?? [])]),
     rules: base.rules
-  };
+  });
 }
 
 function resolveRuntimePolicy(
@@ -201,7 +211,18 @@ export function evaluatePolicy(
       allowed: true,
       disposition: 'queued',
       execution: 'queue',
-      reason: 'Manual review session queues actions by default'
+      reason: compiledPolicy?.executionMode === 'auto_send_low_risk'
+        ? 'Temporary manual-review session queues actions'
+        : 'Policy manual-review mode queues actions by default'
+    };
+  }
+
+  if (compiledPolicy && compiledPolicy.executionMode !== 'auto_send_low_risk') {
+    return {
+      allowed: true,
+      disposition: 'queued',
+      execution: 'queue',
+      reason: 'Policy manual-review mode queues actions by default'
     };
   }
 

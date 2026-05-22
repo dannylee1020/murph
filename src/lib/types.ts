@@ -28,6 +28,8 @@ export type ProviderName = 'openai' | 'anthropic';
 
 export type SessionMode = 'dry_run' | 'manual_review' | 'auto_send_low_risk';
 
+export type PolicyExecutionMode = 'manual_review' | 'auto_send_low_risk';
+
 export type SessionStatus = 'active' | 'stopped' | 'expired';
 
 export type ToolSideEffectClass = 'read' | 'write' | 'external_write';
@@ -122,6 +124,7 @@ export interface PolicyControls {
     blockedTopics?: string[];
     alwaysQueueTopics?: string[];
     blockedActions?: ContinuityActionType[];
+    executionMode?: PolicyExecutionMode;
     requireGroundingForFacts?: boolean;
     preferAskWhenUncertain?: boolean;
     allowAutoSend?: boolean;
@@ -143,6 +146,7 @@ export interface CompiledPolicy {
     blockedTopics: string[];
     alwaysQueueTopics: string[];
     blockedActions: ContinuityActionType[];
+    executionMode: PolicyExecutionMode;
     requireGroundingForFacts: boolean;
     preferAskWhenUncertain: boolean;
     allowAutoSend: boolean;

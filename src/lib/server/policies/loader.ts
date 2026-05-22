@@ -1,7 +1,12 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { POLICIES_ROOT } from '#lib/config';
-import { normalizeScopedPolicyRules } from '#lib/server/runtime/policy-compiler';
+import {
+  normalizeCompiledPolicy,
+  normalizePolicyExecutionMode,
+  policyExecutionModeFromAllowAutoSend,
+  normalizeScopedPolicyRules
+} from '#lib/server/runtime/policy-compiler';
 import type { CompiledPolicy, PolicyProfile } from '#lib/types';
 
 const POLICY_PROFILE_ALIASES: Record<string, string> = {
@@ -38,16 +43,22 @@ function parseCompiledPolicy(metadata: Record<string, string>, body: string): Co
     .map((line) => line.trim())
     .filter(Boolean);
 
-  return {
+  const legacyAllowAutoSend = parseBoolean(metadata.allowAutoSend, false);
+  const executionMode =
+    normalizePolicyExecutionMode(metadata.mode ?? metadata.executionMode) ??
+    policyExecutionModeFromAllowAutoSend(legacyAllowAutoSend);
+
+  return normalizeCompiledPolicy({
     blockedTopics: parseCsv(metadata.blockedTopics).map((item) => item.toLowerCase()),
     alwaysQueueTopics: parseCsv(metadata.alwaysQueueTopics).map((item) => item.toLowerCase()),
     blockedActions: parseCsv(metadata.blockedActions) as CompiledPolicy['blockedActions'],
+    executionMode,
     requireGroundingForFacts: parseBoolean(metadata.requireGroundingForFacts, true),
     preferAskWhenUncertain: parseBoolean(metadata.preferAskWhenUncertain, true),
-    allowAutoSend: parseBoolean(metadata.allowAutoSend, false),
+    allowAutoSend: executionMode === 'auto_send_low_risk',
     notesForAgent: [...parseCsv(metadata.notes).map((item) => item.toLowerCase()), ...bodyNotes],
     rules: normalizeScopedPolicyRules(parseJson(metadata.scopedRules))
-  };
+  });
 }
 
 async function parsePolicyFile(filePath: string): Promise<PolicyProfile | null> {

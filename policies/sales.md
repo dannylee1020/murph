@@ -3,6 +3,7 @@ description: Sales coverage for customer threads, follow-ups, renewals, and comm
 blockedTopics: compensation, performance reviews, legal advice, confidential employee matters, unreleased financials
 alwaysQueueTopics: discounts, pricing exceptions, contract terms, procurement, security questionnaires, churn risks, customer commitments, renewal risks
 blockedActions:
+mode: manual_review
 allowAutoSend: no
 requireGroundingForFacts: yes
 preferAskWhenUncertain: yes

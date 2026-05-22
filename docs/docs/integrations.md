@@ -29,6 +29,38 @@ An integration can provide:
 
 Murph enables capabilities when an integration is connected, so the model can use relevant tools without a hidden second step.
 
+## GitHub repository scope
+
+GitHub is intentionally narrower than a broad account search. Connecting GitHub saves a personal access token as a local credential, but GitHub retrieval stays disabled until at least one repository is selected.
+
+From the browser UI:
+
+1. Open Settings.
+2. Connect GitHub with a personal access token.
+3. Choose **Manage repositories**.
+4. Select one or more `owner/repo` repositories.
+5. Save the selection.
+
+After repositories are selected, Murph can use GitHub context while grounding work:
+
+- `github.search`
+- `github.read_issue`
+- `github.read_pr`
+
+The normal setup path stores the token in `~/.murph/.credentials` and stores repository scope with the GitHub connection metadata. You can also keep repository scope in `~/.murph/config.yaml`:
+
+```yaml
+integrations:
+  github:
+    repositories:
+      - owner/repo
+      - owner/another-repo
+```
+
+Without repository scope, GitHub appears connected but asks you to choose repositories before retrieval is enabled.
+
+For development or hosted deployments, `GITHUB_PAT` and `GITHUB_REPOSITORIES` still work as explicit runtime overrides.
+
 ## Web tools
 
 `web.search` discovers public web results. Brave is the default backend; Tavily can be selected in configuration.

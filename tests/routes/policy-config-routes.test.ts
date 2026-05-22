@@ -115,6 +115,8 @@ describe('policy configuration routes', () => {
       'yolo'
     ]);
     expect(response.body.selectedProfileName).toBe('builtin-manual_review');
+    expect(response.body.mode).toBe('manual_review');
+    expect(response.body.compiled.executionMode).toBe('manual_review');
     expect(response.body.compiled.requireGroundingForFacts).toBe(true);
   });
 
@@ -128,6 +130,7 @@ describe('policy configuration routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.policyProfileName).toBe('product');
     expect(response.body.selectedProfileName).toBe('product');
+    expect(response.body.mode).toBe('manual_review');
     expect(store.getAppSettings().policyProfileName).toBeUndefined();
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('profile: product');
   });
@@ -142,11 +145,26 @@ describe('policy configuration routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.policyProfileName).toBe('yolo');
     expect(response.body.selectedProfileName).toBe('yolo');
+    expect(response.body.mode).toBe('auto_send_low_risk');
     expect(response.body.compiled).toEqual(expect.objectContaining({
+      executionMode: 'auto_send_low_risk',
       allowAutoSend: true,
       requireGroundingForFacts: true,
       preferAskWhenUncertain: false
     }));
+  });
+
+  it('saves durable policy execution mode independently from profile', async () => {
+    const { request } = await setup();
+
+    const response = await request('PUT', '/api/gateway/policy/config', {
+      mode: 'auto_send_low_risk'
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.mode).toBe('auto_send_low_risk');
+    expect(response.body.compiled.executionMode).toBe('auto_send_low_risk');
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('mode: auto_send_low_risk');
   });
 
   it('rejects unknown local policy profile selection', async () => {
@@ -158,5 +176,16 @@ describe('policy configuration routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('unknown_policy_profile');
+  });
+
+  it('rejects invalid policy execution mode', async () => {
+    const { request } = await setup();
+
+    const response = await request('PUT', '/api/gateway/policy/config', {
+      mode: 'dry_run'
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('invalid_policy_mode');
   });
 });

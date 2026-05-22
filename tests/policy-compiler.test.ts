@@ -10,6 +10,7 @@ describe('policy compiler', () => {
   it('builds a mode-aware built-in fallback profile', () => {
     const profile = builtinPolicyProfile('manual_review');
     expect(profile.name).toBe('builtin-manual_review');
+    expect(profile.compiled.executionMode).toBe('manual_review');
     expect(profile.compiled.allowAutoSend).toBe(false);
     expect(profile.compiled.requireGroundingForFacts).toBe(true);
   });
@@ -21,7 +22,18 @@ describe('policy compiler', () => {
 
     expect(merged.alwaysQueueTopics).toContain('pricing');
     expect(merged.requireGroundingForFacts).toBe(base.requireGroundingForFacts);
+    expect(merged.executionMode).toBe('manual_review');
     expect(merged.allowAutoSend).toBe(false);
+  });
+
+  it('uses explicit policy mode over legacy allowAutoSend text', () => {
+    const resolved = resolveEffectivePolicy({
+      mode: 'manual_review',
+      overrideRaw: 'Mode: auto_send_low_risk\nAllow auto-send: no'
+    });
+
+    expect(resolved.compiled.executionMode).toBe('auto_send_low_risk');
+    expect(resolved.compiled.allowAutoSend).toBe(true);
   });
 
   it('resolves profile plus override into one effective compiled policy', () => {
@@ -33,6 +45,7 @@ describe('policy compiler', () => {
         blockedTopics: ['legal'],
         alwaysQueueTopics: ['launch decisions'],
         blockedActions: [],
+        executionMode: 'manual_review' as const,
         requireGroundingForFacts: true,
         preferAskWhenUncertain: true,
         allowAutoSend: false,

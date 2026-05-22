@@ -1,6 +1,7 @@
 import { emitControlPlaneEvent } from '#lib/server/runtime/control-plane';
 import { getStore } from '#lib/server/persistence/store';
 import { requireMatchingSetupOwner } from '#lib/server/setup/owner-identity';
+import { readMurphConfig } from '#lib/server/setup/config-file';
 import type { SessionMode } from '#lib/types';
 import { readForm, redirect } from '../http.js';
 import { route, type Route } from '../router.js';
@@ -8,7 +9,7 @@ import { route, type Route } from '../router.js';
 async function createSessionFromInput(input: {
   ownerUserId: string;
   title: string;
-  mode: SessionMode;
+  mode?: SessionMode;
   channelScopeRaw: string;
   durationHours: number;
 }): Promise<{ ok: true; session: { id: string } } | { ok: false }> {
@@ -34,7 +35,7 @@ async function createSessionFromInput(input: {
     workspaceId: workspace.id,
     ownerUserId: input.ownerUserId,
     title: input.title,
-    mode: input.mode,
+    mode: input.mode ?? readMurphConfig().policy?.mode ?? 'manual_review',
     channelScope: input.channelScopeRaw
       ? input.channelScopeRaw
           .split(',')
@@ -78,7 +79,7 @@ export const formRoutes: Route[] = [
     const response = await createSessionFromInput({
       ownerUserId,
       title: String(formData.get('title') ?? 'Overnight autopilot').trim() || 'Overnight autopilot',
-      mode: (String(formData.get('mode') ?? 'manual_review').trim() || 'manual_review') as SessionMode,
+      mode: (String(formData.get('mode') ?? '').trim() || undefined) as SessionMode | undefined,
       channelScopeRaw: String(formData.get('channelScope') ?? '').trim(),
       durationHours: Math.max(1, Number(formData.get('durationHours') ?? 10))
     });

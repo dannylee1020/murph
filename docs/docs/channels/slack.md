@@ -66,7 +66,7 @@ For local setup, the redirect URL is usually:
 http://localhost:5173/api/slack/oauth/callback
 ```
 
-If `MURPH_APP_URL` points to a public tunnel or hosted URL, use that origin with `/api/slack/oauth/callback`.
+If `app.url` in `~/.murph/config.yaml` points to a public tunnel or hosted URL, use that origin with `/api/slack/oauth/callback`.
 
 ## Socket Mode and tokens
 
@@ -102,20 +102,20 @@ Reconnect stores a fresh user-search token locally.
 `murph setup slack` handles the Murph side of the flow:
 
 - detects authorized Slack CLI workspaces when available
-- creates the app from `docs/public/slack-manifest.yaml` when given an app configuration token
+- creates or updates the app from `docs/public/slack-manifest.yaml` when given an app configuration token
 - saves Slack app credentials locally
 - starts or verifies the local Murph server
 - opens the Slack install URL
 - saves the connected workspace after OAuth
 - stores bot and user-search tokens from the OAuth callback
+- saves the authorizing Slack user as Murph's owner identity
 - starts Socket Mode when the workspace is connected
 
 ## Identity and channels
 
-After Slack is connected, setup asks for:
+After Slack is connected, setup uses the OAuth callback to identify the Slack user who authorized Murph. That user becomes the owner Murph watches for. Setup no longer lists workspace members or lets you choose another Slack user manually.
 
-- the Slack user Murph should watch for
-- the Slack channels Murph should monitor
+Then setup asks which Slack channels Murph should monitor by default.
 
 Public channels can be joined automatically when Slack permissions allow it. Private channels must already include the Slack app.
 
@@ -130,6 +130,12 @@ murph setup channels
 If Slack reports a redirect URI mismatch, add the exact redirect URL printed by setup to the Slack app's OAuth settings.
 
 If setup says the app configuration token looks like an app-level token, create a Slack app configuration token instead. App-level tokens start with `xapp-` and are used for Socket Mode, not app creation.
+
+If Slack is connected but owner identity is missing, reconnect Slack from setup so the OAuth callback can save your Slack user:
+
+```bash
+murph setup slack
+```
 
 If Slack channels do not load, reconnect Slack and verify the app is installed in the expected workspace.
 

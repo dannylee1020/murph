@@ -58,8 +58,8 @@ murph uninstall
 | [Policy](https://murph-agent.com/docs/policy) | Create custom policy profiles with Murph Agent or local profile files. |
 | [Usage](https://murph-agent.com/docs/usage) | Use `murph`, the browser UI, and `murph agent` for setup, sessions, review, and daily operation. |
 | [Plugins](https://murph-agent.com/docs/plugins) | Create scoped plugins with skills, connectors, and read-only tools. |
-| [Channels](https://murph-agent.com/docs/channels) | Connect Slack or Discord, choose watched channels, and use the Slack manifest at `/slack-manifest.yaml`. |
-| [Integrations](https://murph-agent.com/docs/integrations) | Connect context sources like docs, GitHub, Gmail, Calendar, and meetings. |
+| [Channels](https://murph-agent.com/docs/channels) | Connect Slack or Discord, lock owner identity through OAuth, and choose watched channels. |
+| [Integrations](https://murph-agent.com/docs/integrations) | Connect context sources like docs, scoped GitHub repositories, Gmail, Calendar, and meetings. |
 | [Core Concepts](https://murph-agent.com/docs/core-concepts) | Sessions, context, skills, policy, triage, and audit trails. |
 | [Contributing](https://murph-agent.com/docs/contributing) | Local development, project structure, and contribution workflow. |
 

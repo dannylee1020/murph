@@ -56,6 +56,7 @@ function session(mode: AutopilotSession['mode']): AutopilotSession {
     blockedTopics: [],
     alwaysQueueTopics: [],
     blockedActions: [],
+    executionMode: mode === 'auto_send_low_risk' ? 'auto_send_low_risk' as const : 'manual_review' as const,
     requireGroundingForFacts: false,
     preferAskWhenUncertain: true,
     allowAutoSend: mode === 'auto_send_low_risk',
@@ -116,6 +117,7 @@ function yoloPolicy(): CompiledPolicy {
     blockedTopics: [],
     alwaysQueueTopics: [],
     blockedActions: [],
+    executionMode: 'auto_send_low_risk',
     requireGroundingForFacts: true,
     preferAskWhenUncertain: false,
     allowAutoSend: true,
@@ -174,6 +176,7 @@ describe('evaluatePolicy', () => {
       blockedTopics: [],
       alwaysQueueTopics: ['launch decisions'],
       blockedActions: [],
+      executionMode: 'manual_review',
       requireGroundingForFacts: true,
       preferAskWhenUncertain: true,
       allowAutoSend: false,
@@ -181,7 +184,7 @@ describe('evaluatePolicy', () => {
     });
 
     expect(evaluatePolicy(action(), compiledPolicyContext, policySession).disposition).toBe('queued');
-    expect(evaluatePolicy(action({ confidence: 0.7 }), context(), policySession).reason).toMatch(/disables auto-send/);
+    expect(evaluatePolicy(action({ confidence: 0.7 }), context(), policySession).reason).toMatch(/manual-review mode/);
   });
 
   it('applies channel-scoped rules before auto-send', () => {
@@ -192,6 +195,7 @@ describe('evaluatePolicy', () => {
         blockedTopics: [],
         alwaysQueueTopics: [],
         blockedActions: [],
+        executionMode: 'auto_send_low_risk',
         requireGroundingForFacts: false,
         preferAskWhenUncertain: false,
         allowAutoSend: true,
@@ -208,7 +212,7 @@ describe('evaluatePolicy', () => {
     );
 
     expect(decision.disposition).toBe('queued');
-    expect(decision.reason).toMatch(/disables auto-send/);
+    expect(decision.reason).toMatch(/manual-review mode/);
   });
 
   it('does not evaluate yolo grounding in policy', () => {
@@ -283,6 +287,7 @@ describe('evaluatePolicy', () => {
           blockedTopics: ['payroll'],
           alwaysQueueTopics: [],
           blockedActions: [],
+          executionMode: 'auto_send_low_risk',
           requireGroundingForFacts: true,
           preferAskWhenUncertain: true,
           allowAutoSend: true,
@@ -293,7 +298,7 @@ describe('evaluatePolicy', () => {
     ).toBe('abstain');
   });
 
-  it('allows grounded yolo auto-send only when session mode allows it', () => {
+  it('allows grounded yolo auto-send only when session mode does not temporarily restrict it', () => {
     const groundedContext = context({
       artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Status', text: 'Ready' }]
     });

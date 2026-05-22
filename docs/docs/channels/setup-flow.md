@@ -15,6 +15,12 @@ Run the full setup wizard:
 murph setup
 ```
 
+The full wizard runs these sections:
+
+```text
+core -> provider -> channel provider -> slack/discord -> identity -> channels -> schedule -> policy -> status
+```
+
 Run channel-specific setup when only channel settings changed:
 
 ```bash
@@ -39,6 +45,15 @@ Use the setup wizard to connect Slack or Discord, authorize your own account thr
 ## Local storage
 
 Secrets are stored in `~/.murph/.credentials`. Non-secret app and workspace metadata is stored in `~/.murph/config.yaml`.
+
+Channel defaults include:
+
+- the selected channel provider
+- the connected Slack workspace or Discord server
+- the OAuth owner identity for that workspace/server
+- selected channels or all accessible channels
+
+If identity is missing, reconnect Slack or Discord. `murph setup identity` verifies identity, but it cannot manually set a different owner.
 
 ## Setup check
 

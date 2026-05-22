@@ -947,6 +947,7 @@ function createMurphTools() {
                 'murph_policy_preview: preview policy changes before saving.',
             parameters: Type.Object({
                 profileName: Type.Optional(Type.String()),
+                mode: Type.Optional(Type.String()),
                 overrideRaw: Type.Optional(Type.String()),
                 sessionMode: Type.Optional(Type.String()),
             }),
@@ -956,11 +957,12 @@ function createMurphTools() {
         defineTool({
             name: 'murph_policy_set',
             label: 'Set Murph policy',
-            description: 'Set Murph local policy profile.',
+            description: 'Set Murph local policy profile or execution mode.',
             promptSnippet:
-                'murph_policy_set: save the selected policy profile.',
+                'murph_policy_set: save the selected policy profile or execution mode.',
             parameters: Type.Object({
-                profileName: Type.String(),
+                profileName: Type.Optional(Type.String()),
+                mode: Type.Optional(Type.String()),
             }),
             executionMode: 'sequential',
             execute: async (_toolCallId, params) =>

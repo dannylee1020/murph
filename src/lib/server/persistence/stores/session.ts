@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { AutopilotSession, SessionMode, SessionStatus, UserPolicyProfile } from '#lib/types';
+import { normalizeCompiledPolicy } from '#lib/server/runtime/policy-compiler';
 import type { Db } from './_shared.js';
 import { parseJsonArray, parseJsonObject } from './_shared.js';
 
@@ -32,6 +33,25 @@ interface SessionRow {
 }
 
 function mapSession(row: SessionRow): AutopilotSession {
+  const policy = row.policy_json
+    ? parseJsonObject<UserPolicyProfile>(row.policy_json, {
+        raw: '',
+        compiled: {
+          blockedTopics: [],
+          alwaysQueueTopics: [],
+          blockedActions: [],
+          executionMode: 'manual_review',
+          requireGroundingForFacts: true,
+          preferAskWhenUncertain: true,
+          allowAutoSend: false,
+          notesForAgent: []
+        },
+        compiledAt: new Date(0).toISOString(),
+        source: 'default',
+        version: 1
+      })
+    : undefined;
+
   return {
     id: row.id,
     workspaceId: row.workspace_id,
@@ -42,23 +62,7 @@ function mapSession(row: SessionRow): AutopilotSession {
     channelScope: parseJsonArray(row.channel_scope_json),
     policyProfileName: row.policy_profile_name,
     policyOverrideRaw: row.policy_override_raw,
-    policy: row.policy_json
-      ? parseJsonObject<UserPolicyProfile>(row.policy_json, {
-          raw: '',
-          compiled: {
-            blockedTopics: [],
-            alwaysQueueTopics: [],
-            blockedActions: [],
-            requireGroundingForFacts: true,
-            preferAskWhenUncertain: true,
-            allowAutoSend: false,
-            notesForAgent: []
-          },
-          compiledAt: new Date(0).toISOString(),
-          source: 'default',
-          version: 1
-        })
-      : undefined,
+    policy: policy ? { ...policy, compiled: normalizeCompiledPolicy(policy.compiled) } : undefined,
     startedAt: row.started_at,
     endsAt: row.ends_at,
     stoppedAt: row.stopped_at
