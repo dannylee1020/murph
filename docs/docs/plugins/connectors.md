@@ -19,9 +19,9 @@ A connector owns the source identity, credential check, context sources, and too
 
 ## Adapter module
 
-Connector files live under `adapters/*.mjs` because the runtime calls them integration adapters.
+Connector files currently live under `adapters/*.mjs`. That directory name is an implementation detail; public docs call these modules connectors.
 
-An adapter module must export a default adapter or a named `adapter` export.
+The module must export a default connector object or a named `adapter` export.
 
 ```js
 export default {

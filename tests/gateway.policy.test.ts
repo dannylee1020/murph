@@ -11,7 +11,7 @@ vi.mock('../src/lib/server/memory/markdown', () => ({
 
 function skill(): SkillManifest {
   return {
-    name: 'channel-continuity',
+    name: 'notion-docs',
     description: '',
     channelNames: ['slack'],
     contextSourceNames: ['memory.linked_artifacts'],
@@ -101,7 +101,7 @@ function runResult(
       confidence: 0.9,
       ...overrides.proposedAction
     },
-    selectedSkillNames: ['channel-continuity'],
+    selectedSkillNames: ['notion-docs'],
     toolsUsed: [],
     toolResults: overrides.toolResults ?? [{
       id: 'call-1',

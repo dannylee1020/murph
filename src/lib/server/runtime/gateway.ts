@@ -213,7 +213,7 @@ export class Gateway {
     });
     emitControlPlaneEvent({ type: 'agent.run.updated', run });
     this.emitRunEvent(run.id, 'agent.run.started', { recurringJobId: job.id, jobType: job.jobType });
-    this.emitRunEvent(run.id, 'agent.skill.selected', { skills: ['morning-digest'] });
+    this.emitRunEvent(run.id, 'agent.skill.selected', { skills: [] });
     this.emitRunEvent(run.id, 'agent.model.completed', {
       action: 'reply',
       reason: 'Scheduled morning digest',

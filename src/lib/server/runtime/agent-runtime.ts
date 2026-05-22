@@ -90,10 +90,6 @@ function objectInput(input: unknown): Record<string, unknown> {
   return input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {};
 }
 
-function requiresGrounding(context: ContextAssembly): boolean {
-  return context.artifacts.length === 0 && context.skills.some((skill) => skill.groundingPolicy === 'required_when_no_artifacts');
-}
-
 function mergeArtifacts(base: ContextArtifact[], updates: ContextArtifact[]): ContextArtifact[] {
   const merged = [...base];
   const indexById = new Map(merged.map((artifact, index) => [artifact.id, index]));
@@ -253,7 +249,6 @@ export class AgentRuntime {
         retrieval: tool.retrieval
       })),
       workspaceMemory,
-      fallbackSkillName: 'channel-continuity'
     });
     const { availableTools } = listAvailableTools({
       allTools,

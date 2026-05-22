@@ -5,7 +5,7 @@ description: Add Murph behavior instructions with plugin skills.
 
 # Skills
 
-Skills describe how Murph should handle a type of work.
+Skills describe how Murph should use a specific integration, connector, or evidence source.
 
 ## Skill file
 
@@ -14,11 +14,13 @@ Plugin skills are Markdown files with frontmatter and instructions.
 ```md
 ---
 name: linear
-description: Handle Linear-related work.
+description: Use Linear evidence for issue, project, cycle, and blocker questions.
+knowledgeDomains: [work_item]
+contextSourceNames: [linear.thread_search]
 priority: 20
 ---
 
-Use Linear context when the request mentions issues, projects, cycles, or blockers.
+Use Linear evidence when the request mentions issues, projects, cycles, or blockers.
 ```
 
 ## Name
@@ -35,4 +37,4 @@ Use Linear context when the request mentions issues, projects, cycles, or blocke
 
 ## Instructions
 
-The Markdown body tells Murph how to handle the work. Keep it specific to one behavior.
+The Markdown body tells Murph how to interpret and use that source. Keep it specific to one integration or connector.

@@ -174,19 +174,9 @@ integrations:
 
 Store the Brave key through setup or the browser UI. It is saved as a local credential in `~/.murph/.credentials`.
 
-Tavily is also supported out of the box:
+For development or hosted deployments, `BRAVE_SEARCH_API_KEY` and `MURPH_WEB_SEARCH_BACKEND` still work as explicit runtime overrides.
 
-```yaml
-integrations:
-  webSearch:
-    backend: tavily
-```
-
-Store the Tavily key in `~/.murph/.credentials`. For development or hosted deployments, `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, and `MURPH_WEB_SEARCH_BACKEND` still work as explicit runtime overrides.
-
-These are defaults, not a closed provider model. Additional search providers can be added behind the same `web.search` contract when you need a different index, privacy posture, hosted provider, or self-hosted service.
-
-`web.search` discovers candidate pages. `web.fetch` reads an explicit URL with a simple HTTP fetch and text extraction; it is intentionally not a browser crawler by default. More advanced fetch/extraction providers can be added later without changing the basic tool contract.
+`web.search` discovers candidate pages. `web.fetch` reads an explicit URL with a simple HTTP fetch and text extraction; it is intentionally not a browser crawler by default.
 
 ## Policy
 

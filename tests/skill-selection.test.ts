@@ -24,26 +24,32 @@ const workspaceMemory: WorkspaceMemory = {
 };
 
 describe('selectSkills', () => {
-  it('always includes the fallback channel-continuity skill', () => {
+  it('returns an empty selection when no integration skills are eligible', () => {
     const selected = selectSkills({
-      skills: [skill({ name: 'channel-continuity', priority: 100 })],
+      skills: [
+        skill({
+          name: 'notion-docs',
+          priority: 120,
+          contextSourceNames: ['notion.thread_search']
+        })
+      ],
       channel: 'slack',
       sessionMode: 'manual_review',
       tools: [{ name: 'channel.fetch_thread', description: '', sideEffectClass: 'read' }],
       workspaceMemory
     });
 
-    expect(selected.map((entry) => entry.name)).toEqual(['channel-continuity']);
+    expect(selected.map((entry) => entry.name)).toEqual([]);
   });
 
   it('includes every eligible skill regardless of message wording — composition is the goal', () => {
     const selected = selectSkills({
       skills: [
-        skill({ name: 'channel-continuity', priority: 100 }),
         skill({
-          name: 'documentation-grounded-continuity',
+          name: 'notion-docs',
           priority: 120,
-          knowledgeDomains: ['documentation']
+          knowledgeDomains: ['documentation'],
+          contextSourceNames: ['memory.linked_artifacts']
         })
       ],
       channel: 'slack',
@@ -53,15 +59,13 @@ describe('selectSkills', () => {
     });
 
     expect(selected.map((entry) => entry.name)).toEqual([
-      'documentation-grounded-continuity',
-      'channel-continuity'
+      'notion-docs'
     ]);
   });
 
-  it('drops skills that require unavailable context sources but keeps the fallback', () => {
+  it('drops skills that require unavailable context sources', () => {
     const selected = selectSkills({
       skills: [
-        skill({ name: 'channel-continuity', priority: 100 }),
         skill({
           name: 'needs-missing-source',
           priority: 120,
@@ -74,15 +78,14 @@ describe('selectSkills', () => {
       workspaceMemory
     });
 
-    expect(selected.map((entry) => entry.name)).toEqual(['channel-continuity']);
+    expect(selected.map((entry) => entry.name)).toEqual([]);
   });
 
   it('keeps skills whose required context source is enabled in workspace memory', () => {
     const selected = selectSkills({
       skills: [
-        skill({ name: 'channel-continuity', priority: 100 }),
         skill({
-          name: 'documentation-grounded-continuity',
+          name: 'notion-docs',
           priority: 120,
           contextSourceNames: ['notion.thread_search']
         })
@@ -97,15 +100,13 @@ describe('selectSkills', () => {
     });
 
     expect(selected.map((entry) => entry.name)).toEqual([
-      'documentation-grounded-continuity',
-      'channel-continuity'
+      'notion-docs'
     ]);
   });
 
   it('orders eligible skills by priority desc, breaking ties by name asc', () => {
     const selected = selectSkills({
       skills: [
-        skill({ name: 'channel-continuity', priority: 100 }),
         skill({ name: 'beta-skill', priority: 110 }),
         skill({ name: 'alpha-skill', priority: 110 }),
         skill({ name: 'gamma-skill', priority: 120 })
@@ -119,8 +120,7 @@ describe('selectSkills', () => {
     expect(selected.map((entry) => entry.name)).toEqual([
       'gamma-skill',
       'alpha-skill',
-      'beta-skill',
-      'channel-continuity'
+      'beta-skill'
     ]);
   });
 });

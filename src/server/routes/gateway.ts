@@ -450,7 +450,7 @@ export const gatewayRoutes: Route[] = [
             channels: [],
             tools: getNotionStatus().configured ? ['notion.search', 'notion.read_page'] : [],
             contextSources: getNotionStatus().configured ? ['notion.thread_search'] : [],
-            skills: ['documentation-grounded-continuity'],
+            skills: ['notion-docs'],
             providers: []
           }
         },

@@ -1,11 +1,11 @@
 ---
 title: Integrations
-description: Connect context sources and tools Murph can use while grounding work.
+description: Connect external work sources Murph can use for context.
 ---
 
 # Integrations
 
-Integrations give Murph access to the context it needs to answer safely.
+Integrations are connected work sources Murph can use for context while grounding replies.
 
 ## Built-in integrations
 
@@ -15,7 +15,6 @@ Integrations give Murph access to the context it needs to answer safely.
 - Google Calendar
 - Granola
 - Obsidian
-- Web search and fetch
 
 Connect integrations from setup or the local UI.
 
@@ -23,11 +22,11 @@ Connect integrations from setup or the local UI.
 
 An integration can provide:
 
-- read-only tools
 - context sources for grounding
+- read-only source search tools
 - credential status for setup
 
-Murph enables capabilities when an integration is connected, so the model can use relevant tools without a hidden second step.
+Murph enables the relevant context and search capabilities when an integration is connected.
 
 ## GitHub repository scope
 
@@ -61,13 +60,6 @@ Without repository scope, GitHub appears connected but asks you to choose reposi
 
 For development or hosted deployments, `GITHUB_PAT` and `GITHUB_REPOSITORIES` still work as explicit runtime overrides.
 
-## Web tools
-
-`web.search` discovers public web results. Brave is the default backend; Tavily can be selected in configuration.
-
-`web.fetch` reads an explicit `http(s)` URL and extracts readable text with a simple HTTP fetch. It is intentionally lightweight for now and does not run a browser crawler such as Crawl4AI.
-
-The shipped providers are just defaults. Murph's integration model is meant to grow: a new web search provider, self-hosted search service, or richer fetch/extraction backend can be added behind the existing tool shape instead of changing how the runtime asks for web context.
 
 ## Custom integrations
 

@@ -16,7 +16,7 @@ const workspaceMemory: WorkspaceMemory = {
 
 function skill(overrides: Partial<SkillManifest> = {}): SkillManifest {
   return {
-    name: 'channel-continuity',
+    name: 'notion-docs',
     description: '',
     channelNames: ['slack'],
     sessionModes: ['manual_review'],
@@ -80,7 +80,7 @@ function context(overrides: Partial<ContextAssembly> = {}): ContextAssembly {
       }
     },
     artifacts: [],
-    skills: [skill()],
+    skills: [],
     availableTools: [],
     summary: '',
     unresolvedQuestions: [],

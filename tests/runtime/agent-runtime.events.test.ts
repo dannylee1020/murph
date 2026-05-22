@@ -368,35 +368,40 @@ async function setupRuntime() {
   return new AgentRuntime();
 }
 
-function channelSkill(): SkillManifest {
+function notionSkill(): SkillManifest {
   return {
-    name: 'channel-continuity',
+    name: 'notion-docs',
     description: '',
     channelNames: ['slack'],
+    contextSourceNames: ['notion.thread_search'],
+    knowledgeDomains: ['documentation'],
+    groundingPolicy: 'required_when_no_artifacts',
     sessionModes: ['manual_review'],
-    priority: 100,
+    priority: 120,
     riskLevel: 'low',
     instructions: ''
   };
 }
 
-function documentationSkill(): SkillManifest {
+function githubSkill(): SkillManifest {
   return {
-    ...channelSkill(),
-    name: 'documentation-grounded-continuity',
-    knowledgeDomains: ['documentation'],
+    ...notionSkill(),
+    name: 'github-code',
+    contextSourceNames: ['github.thread_search'],
+    knowledgeDomains: ['code', 'documentation'],
     groundingPolicy: 'required_when_no_artifacts',
-    priority: 120
+    priority: 105
   };
 }
 
-function communicationSkill(): SkillManifest {
+function googleSkill(): SkillManifest {
   return {
-    ...channelSkill(),
-    name: 'communication-grounded-continuity',
+    ...notionSkill(),
+    name: 'google-workspace',
+    contextSourceNames: ['gmail.thread_search'],
     knowledgeDomains: ['email', 'calendar', 'team'],
     groundingPolicy: 'required_when_no_artifacts',
-    priority: 110
+    priority: 115
   };
 }
 
@@ -450,7 +455,7 @@ describe('AgentRuntime model failure events', () => {
     failInitialFetchThread = false;
     enabledOptionalTools = [];
     enabledContextSources = [];
-    testSkills = [channelSkill()];
+    testSkills = [];
     runAgentLoopMock.mockImplementation(async () => {
       throw new Error('Native tool call request failed');
     });
@@ -521,7 +526,8 @@ describe('AgentRuntime model failure events', () => {
   });
 
   it('does not run retrieval when the model abstains from an irrelevant trigger', async () => {
-    testSkills = [documentationSkill(), channelSkill()];
+    testSkills = [notionSkill(), githubSkill()];
+    enabledContextSources = ['notion.thread_search', 'github.thread_search'];
     enabledOptionalTools = ['notion.search', 'notion.read_page', 'github.search'];
     const draft: ProviderDraftResult = {
       continuityCase: 'unknown',
@@ -555,7 +561,8 @@ describe('AgentRuntime model failure events', () => {
   });
 
   it('fans out all enabled retrieval tools when the model calls runtime.retrieve_all', async () => {
-    testSkills = [documentationSkill(), channelSkill()];
+    testSkills = [notionSkill(), githubSkill()];
+    enabledContextSources = ['notion.thread_search', 'github.thread_search'];
     enabledOptionalTools = ['notion.search', 'notion.read_page', 'github.search'];
     runAgentLoopMock.mockImplementation(async (prompts, agentContext, config, emit) => {
       emit({ type: 'turn_start' });

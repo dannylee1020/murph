@@ -36,7 +36,7 @@ Every plugin needs `plugin.json`:
 }
 ```
 
-The manifest must declare at least one skill, adapter, or channel.
+The manifest must declare at least one skill, connector module, or channel. Connector modules are listed under `capabilities.adapters` because that is the current manifest field name.
 
 For a channel plugin:
 
@@ -56,11 +56,11 @@ For a channel plugin:
 
 Use `skills/*.md` for skill files referenced by `capabilities.skills`.
 
-## Adapters directory
+## Connectors directory
 
 Use `adapters/*.mjs` for connector modules referenced by `capabilities.adapters`.
 
-The directory is named `adapters` because that is the runtime field name. In docs, treat each adapter module as a connector for one outside source.
+The directory is named `adapters` because that is the current manifest field name. In user-facing docs, treat each module as a connector for one outside source.
 
 ## Channel modules
 

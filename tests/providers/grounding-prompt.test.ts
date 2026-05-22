@@ -42,15 +42,15 @@ function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolve
     },
     skills: [
       {
-        name: 'documentation-grounded-continuity',
-        description: 'Grounds replies in documentation.',
+        name: 'notion-docs',
+        description: 'Use Notion as shared documentation evidence.',
         knowledgeDomains: ['documentation'],
         groundingPolicy: 'required_when_no_artifacts',
         channelNames: ['slack'],
         sessionModes: ['manual_review'],
         priority: 1,
         riskLevel: 'low',
-        instructions: 'Choose the best documentation tool before answering.'
+        instructions: 'Use notion.search for discovery and notion.read_page for source-of-truth content.'
       }
     ],
     availableTools: [
@@ -69,12 +69,14 @@ function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolve
 
 const requiredDirective: GroundingDirective = {
   required: true,
-  reason: 'Skill "documentation-grounded-continuity" requires retrieval grounding before drafting because no current-run source evidence is present.'
+  reason: 'Skill "notion-docs" requires retrieval grounding before drafting because no current-run source evidence is present.'
 };
 
 describe('buildGroundingPrompt', () => {
   it('renders channel reply style guidance', () => {
     const prompt = buildGroundingPrompt(context());
+    expect(prompt).toContain('preserve continuity without pretending to be that user');
+    expect(prompt).toContain('Do not make policy exceptions, irreversible decisions, or commitments');
     expect(prompt).toContain('Write like a teammate in the channel, not a chatbot.');
     expect(prompt).toContain('Use simple words and 1-3 short sentences by default.');
     expect(prompt).toContain('Lead with the answer or status, not setup phrases.');

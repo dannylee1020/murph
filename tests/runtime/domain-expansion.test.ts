@@ -13,7 +13,7 @@ const workspaceMemory: WorkspaceMemory = {
 
 function skill(overrides: Partial<SkillManifest> = {}): SkillManifest {
   return {
-    name: 'documentation-grounded-continuity',
+    name: 'notion-docs',
     description: '',
     knowledgeDomains: ['documentation'],
     channelNames: ['slack'],

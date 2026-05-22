@@ -11,17 +11,29 @@ Murph is built around bounded offline handoffs, not an always-on chatbot.
 
 A session is a bounded handoff window. You start a session before going offline, choose the channels to watch, and let Murph handle matching incoming work.
 
+## Capability taxonomy
+
+Murph uses a few public terms consistently:
+
+| Term | Meaning |
+| --- | --- |
+| Channels | Messaging places Murph watches and replies in, such as Slack and Discord. |
+| Integrations | Connected work sources Murph can use for context, such as Notion, GitHub, Gmail, Calendar, Granola, and Obsidian. |
+| Tools | Callable actions Murph can run, such as web search, web fetch, source search, file read, or shell. |
+| Plugins | Local extension packages that add channels, integrations, tools, or skills. |
+| Skills | Instructions that teach Murph how to use a specific source or tool well. |
+| Connectors | Plugin modules that connect one external source to Murph. |
+
 ## Skills
 
-Skills describe how Murph should handle different kinds of requests. They help Murph choose the right behavior and the right context sources.
+Skills describe how Murph should use specific integrations and evidence sources. Skills add source-specific guidance once the matching integration is available.
 
 Examples include:
 
-- channel continuity
-- communication
-- meeting questions
-- documentation lookup
-- morning digest
+- Notion documentation
+- Google Gmail and Calendar
+- Granola meeting notes
+- GitHub issues and pull requests
 
 ## Grounded responses
 

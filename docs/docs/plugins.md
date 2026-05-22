@@ -5,7 +5,7 @@ description: Extend Murph with scoped local plugin packages.
 
 # Plugins
 
-Plugins are local extension packages that add behavior without editing Murph core source.
+Plugins are local extension packages that add channels, integrations, tools, or skills without editing Murph core source.
 
 ## Scoped plugins
 
@@ -21,9 +21,9 @@ Use `~/.murph/plugins/<category>/<id>` for user-local extensions. Use `./plugins
 Categories keep extension types separated:
 
 - `channels` for advanced Slack/Discord-style messaging provider extensions.
-- `tools` for connector-backed tools.
+- `tools` for connector-backed callable actions.
 - `skills` for prompt guidance.
-- `context` for grounding sources.
+- `context` for integration-style grounding sources.
 - `bundles` for plugins that intentionally combine multiple categories.
 
 Murph still loads older flat plugin directories under `plugins/<id>` for compatibility, but new plugins should use the category-first layout.

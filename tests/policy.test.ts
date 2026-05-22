@@ -35,7 +35,7 @@ function context(overrides: Partial<ContextAssembly> = {}): ContextAssembly {
     artifacts: [],
     skills: [
       {
-        name: 'channel-continuity',
+        name: 'notion-docs',
         description: '',
         sessionModes: ['manual_review', 'auto_send_low_risk', 'dry_run'],
         priority: 1,

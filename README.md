@@ -2,7 +2,7 @@
 
 Murph is a local-first handoff agent for the hours you are away.
 
-Start a session before you log off. Murph watches the channels you choose, pulls context from your connected tools, drafts grounded replies, applies your policy, and leaves a review trail for every decision.
+Start a session before you log off. Murph watches the channels you choose, pulls context from connected integrations and tools, drafts grounded replies, applies your policy, and leaves a review trail for every decision.
 
 | What you need | What Murph does |
 | --- | --- |
@@ -81,8 +81,8 @@ Learn more in [Murph Agent](https://murph-agent.com/docs/usage/murph-agent).
 | --- | --- |
 | Channels | Slack, Discord + any channel of your choice |
 | LLM providers | OpenAI, Anthropic |
-| Context sources | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian + custom plugins |
-| Runtime tools | web search, web fetch, file read, shell + custom tools |
+| Integrations | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian + custom plugins |
+| Tools | web search, web fetch, file read, shell + custom tools |
 | Storage | SQLite + local file system|
 
 ## Contributing
@@ -90,7 +90,7 @@ Learn more in [Murph Agent](https://murph-agent.com/docs/usage/murph-agent).
 Murph is organized around a few extension points:
 
 - **Channels** for messaging surfaces.
-- **Integrations** for built-in external context sources.
+- **Integrations** for connected external work sources.
 - **Plugins** for local extensions.
 - **Skills** for request-specific behavior.
 - **Connectors** for one outside source inside a plugin.
@@ -98,7 +98,7 @@ Murph is organized around a few extension points:
 - **Policies** for autonomy and review rules.
 - **Providers** for model backends.
 
-The listed providers and tools are defaults, not a closed set. New search providers, fetch backends, and local integrations should start as scoped plugins before changing Murph core.
+The listed integrations and tools are defaults, not a closed set. Custom integrations and tools should start as scoped plugins before changing Murph core.
 
 For local development:
 

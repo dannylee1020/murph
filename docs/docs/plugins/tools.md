@@ -5,9 +5,9 @@ description: Add read-only callable actions from scoped plugin connectors.
 
 # Tools
 
-A tool is one callable action Murph can run through a connector.
+A tool is one callable action Murph can run.
 
-Example: a Linear connector can expose a `linear.search` tool.
+Examples include built-in web search and plugin-provided source search. A Linear connector can expose a `linear.search` tool.
 
 ## Connector relationship
 
