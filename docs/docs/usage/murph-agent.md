@@ -26,6 +26,41 @@ Use Murph Agent when you want guided local work instead of editing files by hand
 - create and preview custom policy profiles
 - debug local runtime behavior with tool logs and setup APIs
 
+## Built-in skills
+
+Murph Agent loads built-in Pi skills for common Murph work:
+
+- plugin
+- skill
+- channel
+- policy
+- setup
+
+The active Murph Agent skill directory is:
+
+```text
+~/.murph/pi-agent/skills/<skill>/SKILL.md
+```
+
+Murph seeds the built-in skills into that directory from the installed app when `murph agent` starts. You can add your own Pi skills alongside them.
+
+The bundled defaults live with the app source:
+
+```text
+<murph app>/agent/skills/<skill>/SKILL.md
+```
+
+They are different from Murph runtime skills. Runtime skills guide the async messenger runtime when it drafts channel replies. Murph Agent skills guide the local setup/coding agent while it helps you configure or extend Murph.
+
+## Knowledge search
+
+Murph Agent also has read-only search tools for Murph-specific work:
+
+- `murph_docs_search` searches local docs and Murph Agent skills.
+- `murph_architecture_search` searches the current Murph source and docs.
+
+The agent should use these before broad source searches when you ask about Murph setup, plugins, channels, policy, configuration, or runtime architecture.
+
 ## Model selection
 
 Choose persistent model defaults with `murph setup provider` or the browser setup flow. Normal setup stores non-secret provider and model choices in `~/.murph/config.yaml`; provider API keys stay in `~/.murph/.credentials`.

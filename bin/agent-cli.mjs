@@ -1,5 +1,12 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+    existsSync,
+    mkdirSync,
+    readdirSync,
+    readFileSync,
+    statSync,
+    writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -14,6 +21,8 @@ const credentialsPath =
     process.env.MURPH_CREDENTIALS_PATH || path.join(murphHome, '.credentials');
 const agentDir =
     process.env.MURPH_AGENT_DIR || path.join(murphHome, 'pi-agent');
+const bundledAgentSkillsDir = path.join(appDir, 'agent', 'skills');
+const activeAgentSkillsDir = path.join(agentDir, 'skills');
 const murphUrl =
     process.env.MURPH_URL ||
     `http://localhost:${process.env.MURPH_PORT || '5173'}`;
@@ -34,6 +43,8 @@ const CUSTOM_TOOL_NAMES = [
     'murph_setup_status',
     'murph_setup_doctor',
     'murph_runtime_health',
+    'murph_docs_search',
+    'murph_architecture_search',
     'murph_integration_status',
     'murph_integration_connect',
     'murph_plugin_status',
@@ -445,6 +456,220 @@ function textResult(details, terminate = false) {
     };
 }
 
+function clampLimit(value, fallback = 5) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(1, Math.min(20, Math.floor(parsed)));
+}
+
+function normalizeText(value) {
+    return String(value || '').toLowerCase();
+}
+
+function queryTerms(query) {
+    return normalizeText(query)
+        .split(/[^a-z0-9_.-]+/i)
+        .map((term) => term.trim())
+        .filter((term) => term.length >= 2);
+}
+
+function filesUnder(root, extensions) {
+    if (!existsSync(root)) return [];
+    const stats = statSync(root);
+    if (stats.isFile()) {
+        return extensions.has(path.extname(root)) ? [root] : [];
+    }
+    if (!stats.isDirectory()) return [];
+
+    const files = [];
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+        if (
+            entry.name.startsWith('.') ||
+            entry.name === 'node_modules' ||
+            entry.name === 'dist' ||
+            entry.name === '.vite'
+        ) {
+            continue;
+        }
+        const entryPath = path.join(root, entry.name);
+        if (entry.isDirectory()) {
+            files.push(...filesUnder(entryPath, extensions));
+        } else if (entry.isFile() && extensions.has(path.extname(entry.name))) {
+            files.push(entryPath);
+        }
+    }
+    return files;
+}
+
+function copyDirectory(source, target) {
+    mkdirSync(target, { recursive: true });
+    for (const entry of readdirSync(source, { withFileTypes: true })) {
+        const sourcePath = path.join(source, entry.name);
+        const targetPath = path.join(target, entry.name);
+        if (entry.isDirectory()) {
+            copyDirectory(sourcePath, targetPath);
+        } else if (entry.isFile()) {
+            const next = readFileSync(sourcePath);
+            const current = existsSync(targetPath)
+                ? readFileSync(targetPath)
+                : undefined;
+            if (!current || !current.equals(next)) {
+                writeFileSync(targetPath, next);
+            }
+        }
+    }
+}
+
+function syncBuiltinAgentSkills() {
+    if (!existsSync(bundledAgentSkillsDir)) {
+        return { source: bundledAgentSkillsDir, target: activeAgentSkillsDir, synced: [] };
+    }
+
+    mkdirSync(activeAgentSkillsDir, { recursive: true });
+    const synced = [];
+    for (const entry of readdirSync(bundledAgentSkillsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+        const source = path.join(bundledAgentSkillsDir, entry.name);
+        if (!existsSync(path.join(source, 'SKILL.md'))) continue;
+        copyDirectory(source, path.join(activeAgentSkillsDir, entry.name));
+        synced.push(entry.name);
+    }
+    return { source: bundledAgentSkillsDir, target: activeAgentSkillsDir, synced };
+}
+
+function displayPath(filePath) {
+    const resolved = path.resolve(filePath);
+    if (isWithin(resolved, appDir)) {
+        return path.relative(appDir, resolved).split(path.sep).join('/');
+    }
+    if (isWithin(resolved, murphHome)) {
+        return `~/.murph/${path.relative(murphHome, resolved).split(path.sep).join('/')}`;
+    }
+    return resolved;
+}
+
+function nearestHeading(lines, index) {
+    for (let i = index; i >= 0; i -= 1) {
+        const match = lines[i].match(/^#{1,6}\s+(.+)$/);
+        if (match) return match[1].trim();
+    }
+    return undefined;
+}
+
+function excerptFor(lines, index) {
+    const start = Math.max(0, index - 1);
+    const end = Math.min(lines.length, index + 2);
+    return lines
+        .slice(start, end)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .slice(0, 500);
+}
+
+function scoreMatch({ filePath, heading, excerpt }, terms) {
+    const haystack = normalizeText(`${path.basename(filePath)} ${heading || ''} ${excerpt}`);
+    const sourceScore =
+        isWithin(filePath, activeAgentSkillsDir) || isWithin(filePath, bundledAgentSkillsDir)
+            ? 4
+            : 0;
+    return terms.reduce((score, term) => {
+        if (normalizeText(path.basename(filePath)).includes(term)) score += 4;
+        if (normalizeText(heading).includes(term)) score += 3;
+        if (haystack.includes(term)) score += 1;
+        return score;
+    }, sourceScore);
+}
+
+function searchFiles({ query, roots, extensions, limit = 5 }) {
+    const terms = queryTerms(query);
+    if (terms.length === 0) {
+        return { query, results: [], searched: [] };
+    }
+
+    const files = [...new Set(roots.flatMap((root) => filesUnder(root, extensions)))];
+    const results = [];
+    for (const filePath of files) {
+        let text;
+        try {
+            text = readFileSync(filePath, 'utf8');
+        } catch {
+            continue;
+        }
+        const lines = text.split(/\r?\n/);
+        for (let index = 0; index < lines.length; index += 1) {
+            const line = normalizeText(lines[index]);
+            if (!terms.some((term) => line.includes(term))) continue;
+            const heading = nearestHeading(lines, index);
+            const excerpt = excerptFor(lines, index);
+            const score = scoreMatch({ filePath, heading, excerpt }, terms);
+            if (score === 0) continue;
+            results.push({
+                path: displayPath(filePath),
+                line: index + 1,
+                heading,
+                excerpt,
+                score,
+            });
+        }
+    }
+
+    results.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path) || a.line - b.line);
+    const seen = new Set();
+    const deduped = [];
+    for (const result of results) {
+        const key = `${result.path}:${result.heading || ''}:${result.excerpt}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(result);
+        if (deduped.length >= clampLimit(limit)) break;
+    }
+
+    return {
+        query,
+        results: deduped.map(({ score, ...result }) => result),
+        searched: files.map((filePath) => displayPath(filePath)),
+    };
+}
+
+function searchMurphDocs(query, limit) {
+    return searchFiles({
+        query,
+        extensions: new Set(['.md']),
+        limit,
+        roots: [
+            path.join(appDir, 'README.md'),
+            path.join(appDir, 'docs', 'index.md'),
+            path.join(appDir, 'docs', 'docs'),
+            activeAgentSkillsDir,
+            bundledAgentSkillsDir,
+        ],
+    });
+}
+
+function searchMurphArchitecture(query, limit) {
+    return searchFiles({
+        query,
+        extensions: new Set(['.md', '.ts', '.tsx', '.js', '.mjs', '.json']),
+        limit,
+        roots: [
+            activeAgentSkillsDir,
+            bundledAgentSkillsDir,
+            path.join(appDir, 'bin'),
+            path.join(appDir, 'src', 'server'),
+            path.join(appDir, 'src', 'lib'),
+            path.join(appDir, 'scripts'),
+            path.join(appDir, 'policies'),
+            path.join(appDir, 'skills'),
+            path.join(appDir, 'docs', 'docs', 'core-concepts.md'),
+            path.join(appDir, 'docs', 'docs', 'plugins.md'),
+            path.join(appDir, 'docs', 'docs', 'channels.md'),
+            path.join(appDir, 'docs', 'docs', 'policy.md'),
+        ],
+    });
+}
+
 async function confirmTool(toolName, args, ctx) {
     if (!ctx.hasUI) {
         return false;
@@ -772,6 +997,34 @@ function createMurphTools() {
             execute: async () => requestJsonTool('GET', '/api/health'),
         }),
         defineTool({
+            name: 'murph_docs_search',
+            label: 'Search Murph docs',
+            description:
+                'Search local Murph docs and Murph Agent built-in skills.',
+            promptSnippet:
+                'murph_docs_search: search Murph docs and built-in skills before answering user-facing Murph questions.',
+            parameters: Type.Object({
+                query: Type.String(),
+                limit: Type.Optional(Type.Number()),
+            }),
+            execute: async (_toolCallId, params) =>
+                textResult(searchMurphDocs(params.query, params.limit)),
+        }),
+        defineTool({
+            name: 'murph_architecture_search',
+            label: 'Search Murph architecture',
+            description:
+                'Search current Murph source and docs for runtime, plugin, channel, policy, and config questions.',
+            promptSnippet:
+                'murph_architecture_search: search current Murph source and docs before answering core runtime or extension questions.',
+            parameters: Type.Object({
+                query: Type.String(),
+                limit: Type.Optional(Type.Number()),
+            }),
+            execute: async (_toolCallId, params) =>
+                textResult(searchMurphArchitecture(params.query, params.limit)),
+        }),
+        defineTool({
             name: 'murph_integration_status',
             label: 'Murph integration status',
             description: 'Read Murph integration status.',
@@ -978,6 +1231,8 @@ function murphSystemPrompt(sourceEdits) {
         'You are Murph Agent, a user-facing coding agent embedded in the Murph CLI.',
         'Your job is to help the local operator set up Murph, debug Murph, build scoped integrations, create skills/connectors, and adjust policy configuration.',
         'Murph async messenger runtime is separate. Do not present yourself as the async runtime brain.',
+        'Built-in Murph Agent skills are Pi skills for this local setup/coding agent. They are separate from Murph runtime skills used by the async messenger runtime.',
+        'Use relevant Murph Agent skills for workflow guidance. Use murph_docs_search for user-facing docs questions and murph_architecture_search for runtime, plugin, channel, policy, and config architecture questions before falling back to generic grep.',
         'Prefer Murph custom tools for setup, integration status, plugin reload, and policy changes before editing files by hand.',
         'For custom policy changes, inspect the current policy with murph_policy_get/profiles, edit or create policies/*.md, preview changes with murph_policy_preview, then select the profile with murph_policy_set.',
         'For new capabilities, prefer category-scoped plugin packages under ~/.murph/plugins/{channels,tools,skills,context,bundles}/<id>.',
@@ -989,6 +1244,10 @@ function murphSystemPrompt(sourceEdits) {
             : 'Default write scope is Plugin+Config. Do not modify Murph source files unless the operator restarts with --source-edits or explicitly asks for source edits.',
         'Never ask the user to paste credentials into chat. Use credential tools that prompt locally.',
     ].join('\n');
+}
+
+function builtinSkillArgs() {
+    return existsSync(activeAgentSkillsDir) ? ['--skill', activeAgentSkillsDir] : [];
 }
 
 function formatDuration(ms) {
@@ -1318,6 +1577,7 @@ function buildPiArgs(prompt, options, passthrough) {
         path.join(appDir, 'themes/murph-agent.json'),
         '--tools',
         DEFAULT_TOOL_NAMES.join(','),
+        ...builtinSkillArgs(),
         '--thinking',
         options.thinking || (options.sourceEdits ? 'medium' : 'low'),
         ...passthrough,
@@ -1358,6 +1618,7 @@ async function runAgent(prompt, options, passthrough) {
 
     mkdirSync(agentDir, { recursive: true });
     process.env.PI_CODING_AGENT_DIR = agentDir;
+    syncBuiltinAgentSkills();
 
     const piArgs = buildPiArgs(prompt, options, passthrough);
     await runPiMain(piArgs, {
@@ -1367,7 +1628,14 @@ async function runAgent(prompt, options, passthrough) {
     });
 }
 
-export { scaffoldPlugin };
+export {
+    DEFAULT_TOOL_NAMES,
+    buildPiArgs,
+    scaffoldPlugin,
+    searchMurphArchitecture,
+    searchMurphDocs,
+    syncBuiltinAgentSkills,
+};
 
 const isDirectRun =
     process.argv[1] &&
