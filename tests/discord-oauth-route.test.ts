@@ -127,6 +127,7 @@ describe('Discord OAuth callback route', () => {
     expect(config).toContain('ownerDisplayName: Danny');
     const workspace = store.getWorkspaceByExternalId('discord', 'G1');
     expect(workspace && store.getUser(workspace.id, 'U_DISCORD')?.displayName).toBe('Danny');
+    expect(workspace && store.getProviderSettings(workspace.id)).toBeUndefined();
     expect(ensureStarted).toHaveBeenCalledOnce();
   });
 

@@ -143,11 +143,6 @@ export const discordRoutes: Route[] = [
       const redirectUri = env.discordRedirectUri ?? `${publicAppUrl(req, url)}/api/discord/oauth/callback`;
       const install = await getDiscordService().exchangeCode(code, guildId, redirectUri);
       const { workspace } = install;
-      getStore().upsertProviderSettings({
-        workspaceId: workspace.id,
-        provider: env.defaultProvider,
-        model: env.defaultModel
-      });
       saveAuthedDiscordUserAsWorkspaceOwner(install);
       await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
 
@@ -171,12 +166,6 @@ export const discordRoutes: Route[] = [
       await ensureRuntimeInitialized();
       const guild = await getDiscordService().fetchGuild(guildId);
       const workspace = await getDiscordService().saveGuildWorkspace(guild);
-      const env = getRuntimeEnv();
-      getStore().upsertProviderSettings({
-        workspaceId: workspace.id,
-        provider: env.defaultProvider,
-        model: env.defaultModel
-      });
       await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
       sendJson(res, {
         ok: true,

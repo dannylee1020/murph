@@ -6,8 +6,10 @@ import { OpenAIProvider } from '#lib/server/providers/openai';
 import type { ModelProvider, ProviderName, ProviderSettings } from '#lib/types';
 
 export function getModelProvider(settings?: ProviderSettings): ModelProvider {
-  const providerName: ProviderName = settings?.provider ?? 'openai';
-  const model = settings?.model ?? DEFAULT_PROVIDER_MODEL[providerName];
+  const env = getRuntimeEnv();
+  const providerName: ProviderName = settings?.provider ?? env.defaultProvider;
+  const model = settings?.model ??
+    (providerName === env.defaultProvider ? env.defaultModel : DEFAULT_PROVIDER_MODEL[providerName]);
   const pluginFactory = getRegisteredProviderFactory(providerName);
 
   if (pluginFactory) {

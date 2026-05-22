@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -60,5 +61,32 @@ describe('murph agent CLI plugin scaffold', () => {
     expect(channel).toContain("id: 'teams_test'");
     expect(channel).toContain('connector:');
     expect(channel).toContain('ingress:');
+  });
+
+  it('does not advertise no-server mode', () => {
+    const output = execFileSync('node', ['bin/agent-cli.mjs', '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8'
+    });
+
+    expect(output).not.toContain('--no-server');
+    expect(output).toContain('--source-edits');
+  });
+
+  it('rejects no-server mode with a clear message', () => {
+    let output = '';
+    try {
+      execFileSync('node', ['bin/agent-cli.mjs', '--no-server'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        stdio: 'pipe'
+      });
+    } catch (error) {
+      const failure = error as { stdout?: string; stderr?: string; status?: number };
+      output = `${failure.stdout ?? ''}${failure.stderr ?? ''}`;
+      expect(failure.status).toBe(1);
+    }
+
+    expect(output).toContain('--no-server is no longer supported');
   });
 });

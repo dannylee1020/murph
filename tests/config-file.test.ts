@@ -15,7 +15,8 @@ const envKeys = [
   'MURPH_AGENT_MODEL',
   'SLACK_EVENTS_MODE',
   'MURPH_WEB_SEARCH_BACKEND',
-  'OPENAI_API_KEY'
+  'OPENAI_API_KEY',
+  'ANTHROPIC_API_KEY'
 ] as const;
 const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 
@@ -75,6 +76,23 @@ describe('murph config file', () => {
     expect(env.agentModel).toBe('claude-opus-4-7');
     expect(env.slackEventsMode).toBe('http');
     expect(env.githubRepositories).toEqual(['acme/app', 'acme/api']);
+  });
+
+  it('uses config-backed runtime provider defaults for the model provider', async () => {
+    writeFileSync('config.yaml', [
+      'ai:',
+      '  defaultProvider: anthropic',
+      '  defaultModel: claude-opus-4-7',
+      ''
+    ].join('\n'));
+    const { writeSecret } = await import('../src/lib/server/credentials/local-store');
+    writeSecret('anthropic', 'api_key', 'sk-ant-test');
+
+    const { getModelProvider } = await import('../src/lib/server/providers/index');
+    const provider = getModelProvider();
+
+    expect(provider.name).toBe('anthropic');
+    expect((provider as any).model).toBe('claude-opus-4-7');
   });
 
   it('lets environment values override YAML', async () => {

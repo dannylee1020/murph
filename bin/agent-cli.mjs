@@ -160,11 +160,11 @@ function usage() {
         ...commandList([
             [
                 '--provider NAME',
-                'Model provider. Defaults to MURPH_AGENT_PROVIDER or setup defaults.',
+                'Model provider. Defaults to config.yaml agent/runtime defaults.',
             ],
             [
                 '--model NAME',
-                'Model id. Defaults to MURPH_AGENT_MODEL or the provider default.',
+                'Model id. Defaults to config.yaml agent/runtime defaults.',
             ],
             [
                 '--thinking LEVEL',
@@ -175,7 +175,6 @@ function usage() {
                 'Run one-shot text mode instead of the fullscreen chat TUI.',
             ],
             ['--no-session', 'Use an in-memory session for this run.'],
-            ['--no-server', "Do not auto-start Murph's local HTTP server."],
             ['--continue', 'Continue the most recent Murph agent session.'],
             ['--source-edits', 'Allow direct Murph source edits for this run.'],
             ['--verbose-tools', 'Start with expanded tool output.'],
@@ -244,7 +243,7 @@ function parseArgs(argv) {
         } else if (arg === '--no-session') {
             options.noSession = true;
         } else if (arg === '--no-server') {
-            options.noServer = true;
+            options.unsupportedOption = arg;
         } else if (arg === '--continue' || arg === '-c') {
             options.continueSession = true;
         } else if (arg === '--source-edits') {
@@ -1343,6 +1342,12 @@ function buildPiArgs(prompt, options, passthrough) {
 }
 
 async function runAgent(prompt, options, passthrough) {
+    if (options.unsupportedOption) {
+        throw new Error(
+            `${options.unsupportedOption} is no longer supported. Run murph agent so Murph can start the local server for setup, integration, plugin, and policy tools.`,
+        );
+    }
+
     if (options.version) {
         await runPiMain(['--version']);
         return;

@@ -5,7 +5,7 @@ description: Use the local Murph Agent TUI.
 
 # Murph Agent
 
-`murph agent` opens a local TUI for setup help, debugging, policy changes, and scoped plugin work.
+`murph agent` opens a local TUI for setup help, debugging, integrations, policy changes, and scoped plugin work.
 
 ## Start the agent
 
@@ -15,22 +15,46 @@ murph agent
 
 Normal runs start the local Murph server automatically so agent tools can call setup, plugin, integration, and policy APIs.
 
+## What to use it for
+
+Use Murph Agent when you want guided local work instead of editing files by hand:
+
+- inspect setup, doctor, integration, plugin, and policy status
+- connect or troubleshoot Slack, Discord, and built-in integrations
+- create scoped plugins for custom channels, tools, skills, connectors, or context sources
+- write or revise source-specific skills
+- create and preview custom policy profiles
+- debug local runtime behavior with tool logs and setup APIs
+
 ## Model selection
 
-Choose persistent model defaults with `murph setup provider` or the browser setup flow. By default, `murph agent` inherits the runtime provider and model. `murph setup ai` remains as a compatibility alias.
+Choose persistent model defaults with `murph setup provider` or the browser setup flow. Normal setup stores non-secret provider and model choices in `~/.murph/config.yaml`; provider API keys stay in `~/.murph/.credentials`.
+
+Runtime replies and `murph agent` share the same provider and model by default:
+
+```yaml
+ai:
+  defaultProvider: openai
+  defaultModel: gpt-5.5
+```
+
+Save an optional agent override when you want the local setup/coding agent to use a different model:
+
+```yaml
+ai:
+  defaultProvider: openai
+  defaultModel: gpt-5.5
+  agent:
+    provider: anthropic
+    model: claude-opus-4-7
+```
+
+`murph setup ai` remains as a compatibility alias.
 
 Use flags for a one-run override:
 
 ```bash
 murph agent --provider openai --model gpt-5.5
-```
-
-## Offline mode
-
-Use `--no-server` for offline or smoke-test sessions:
-
-```bash
-murph agent --no-server
 ```
 
 ## Write scope
@@ -42,6 +66,8 @@ Use `--source-edits` only when you explicitly want the agent to edit Murph sourc
 ```bash
 murph agent --source-edits
 ```
+
+This is an intent guardrail against accidental core edits, not a security boundary. Murph is a local open-source app, so source-edit mode is for contributors and advanced local hacking when changing core runtime files is actually the goal.
 
 ## TUI commands
 

@@ -1,4 +1,3 @@
-import { getRuntimeEnv } from '#lib/server/util/env';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import { handleSlackEventEnvelope, verifySlackHttpSignature } from '#lib/server/channels/slack/events';
 import { getSlackService } from '#lib/server/channels/slack/service';
@@ -108,13 +107,6 @@ export const slackRoutes: Route[] = [
       await ensureRuntimeInitialized();
       const install = await getSlackService().exchangeCode(code, publicAppUrl(req, url));
       const { workspace } = install;
-      const env = getRuntimeEnv();
-
-      getStore().upsertProviderSettings({
-        workspaceId: workspace.id,
-        provider: env.defaultProvider,
-        model: env.defaultModel
-      });
       saveAuthedUserAsSetupOwner(install);
       await getChannelRegistry().getIngress('slack')?.start?.({ provider: 'slack' });
 

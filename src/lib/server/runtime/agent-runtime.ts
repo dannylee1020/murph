@@ -9,6 +9,7 @@ import { selectSkills } from '#lib/server/skills/selection';
 import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
+import { getRuntimeEnv } from '#lib/server/util/env';
 import {
   buildNormalizedRetrievalRequest,
   deterministicRetrievalInputForTool
@@ -308,8 +309,8 @@ export class AgentRuntime {
     runtimeEvents: Array<{ type: RuntimeEventType; payload: unknown }>;
     postLoopEvidence: PostLoopEvidence;
   }> {
-    const providerSettings = this.store.getProviderSettings(context.workspaceId);
-    const provider = getModelProvider(providerSettings);
+    const runtimeEnv = getRuntimeEnv();
+    const provider = getModelProvider();
     const toolCallingPlan = buildRuntimeToolCallingPlan({
       context,
       allTools: this.tools.list(),
@@ -341,7 +342,7 @@ export class AgentRuntime {
         },
         workspace,
         provider: provider.name,
-        model: providerSettings?.model,
+        model: runtimeEnv.defaultModel,
         maxToolCallsPerRun: MAX_TOOL_CALLS_PER_RUN,
         groundingDirective: toolCallingPlan.groundingDirective,
         retrievalToolNames: toolCallingPlan.retrievalToolNames,

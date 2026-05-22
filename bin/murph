@@ -339,7 +339,7 @@ agent_command() {
         args+=("$1")
         ;;
       --no-server)
-        ensure_server=false
+        fail "murph agent --no-server is no longer supported. Run murph agent so Murph can start the local server for setup, integration, plugin, and policy tools."
         ;;
       *)
         args+=("$1")

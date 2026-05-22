@@ -84,6 +84,10 @@ function shouldPersistThreadSummary(
   return proposedAction.type === 'reply' && proposedAction.confidence >= 0.7 && evidenceStatus.status !== 'none';
 }
 
+function runtimeProviderName(): AuditRecord['provider'] {
+  return getRuntimeEnv().defaultProvider;
+}
+
 function compactSnapshotText(text: string, limit = 1000): string {
   const compacted = text.replace(/\s+/g, ' ').trim();
   return compacted.length > limit ? `${compacted.slice(0, limit - 3)}...` : compacted;
@@ -229,7 +233,7 @@ export class Gateway {
       message,
       reason: 'Scheduled morning digest',
       confidence: 1,
-      provider: this.store.getProviderSettings(workspace.id)?.provider,
+      provider: runtimeProviderName(),
       contextSnapshot: {
         summary: 'Scheduled morning digest.',
         continuityCase: 'unknown' as const,
@@ -571,7 +575,7 @@ export class Gateway {
         message: proposedAction.message,
         reason: message,
         confidence: proposedAction.confidence,
-        provider: this.store.getProviderSettings(workspace.id)?.provider,
+        provider: runtimeProviderName(),
         contextSnapshot
       });
 
@@ -592,7 +596,7 @@ export class Gateway {
         policyReason: 'Action execution failed',
         modelReason: message,
         confidence: proposedAction.confidence,
-        provider: this.store.getProviderSettings(workspace.id)?.provider
+        provider: runtimeProviderName()
       });
       emitControlPlaneEvent({ type: 'audit.created', audit });
       return audit;
@@ -629,7 +633,7 @@ export class Gateway {
               message: proposedAction.message,
               reason: proposedAction.reason,
               confidence: proposedAction.confidence,
-              provider: this.store.getProviderSettings(workspace.id)?.provider,
+              provider: runtimeProviderName(),
               contextSnapshot
             },
             { workspace, session, task, workspaceMemory }
@@ -645,7 +649,7 @@ export class Gateway {
             message: proposedAction.message,
             reason: proposedAction.reason,
             confidence: proposedAction.confidence,
-            provider: this.store.getProviderSettings(workspace.id)?.provider,
+            provider: runtimeProviderName(),
             contextSnapshot
           });
     if (decision.execution === 'queue') {
@@ -671,7 +675,7 @@ export class Gateway {
       policyReason: decision.reason,
       modelReason: proposedAction.reason,
       confidence: proposedAction.confidence,
-      provider: this.store.getProviderSettings(workspace.id)?.provider
+      provider: runtimeProviderName()
     });
     emitControlPlaneEvent({ type: 'audit.created', audit });
     return audit;

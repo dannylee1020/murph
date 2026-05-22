@@ -111,6 +111,7 @@ describe('Slack OAuth callback route', () => {
     expect(config).toContain('workspaceOwners:');
     const workspace = store.getWorkspaceByExternalId('slack', 'T1');
     expect(workspace && store.getUser(workspace.id, 'U1')?.displayName).toBe('Daniel');
+    expect(workspace && store.getProviderSettings(workspace.id)).toBeUndefined();
   });
 
   it('preserves an existing setup owner while saving the Slack workspace owner on reconnect', async () => {
