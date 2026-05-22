@@ -7,6 +7,23 @@ description: Understand sessions, context, skills, policy, and triage.
 
 Murph is built around bounded offline handoffs, not an always-on chatbot.
 
+## Local-first design
+
+Murph runs on your machine, stores runtime state locally, and keeps credentials in your local Murph home instead of making a hosted service the default control plane.
+
+Local-first means:
+
+- runtime state lives in local SQLite
+- secrets live in `~/.murph/.credentials`
+- non-secret setup and runtime config live in `~/.murph/config.yaml`
+- setup runs through the `murph` CLI or local browser UI
+- model providers use explicit local configuration
+- policy controls whether Murph sends, queues, or skips replies
+
+Credentials are stored with owner-only permissions and are not uploaded to Murph servers. Murph uses them locally to call the providers and channels you connect.
+
+This makes Murph a fit for founders, operators, developers, and small teams that want async automation without handing every workflow to a hosted agent.
+
 ## Sessions
 
 A session is a bounded handoff window. You start a session before going offline, choose the channels to watch, and let Murph handle matching incoming work.
@@ -22,7 +39,6 @@ Murph uses a few public terms consistently:
 | Tools | Callable actions Murph can run, such as web search, web fetch, source search, file read, or shell. |
 | Plugins | Local extension packages that add channels, integrations, tools, or skills. |
 | Skills | Instructions that teach Murph how to use a specific source or tool well. |
-| Connectors | Plugin modules that connect one external source to Murph. |
 
 ## Skills
 
@@ -46,3 +62,9 @@ Policy decides whether Murph may send, queue, or abstain from a drafted action. 
 ## Triage and audit
 
 After a session, triage shows what Murph handled, queued, or skipped. Run events preserve context, tool calls, policy decisions, and final action results.
+
+## Extensibility
+
+Murph ships defaults for channels, integrations, tools, skills, policy profiles, providers, and storage. Those defaults are not a closed set.
+
+New channels, integrations, skills, policies, model providers, search providers, and fetch backends should plug into the existing extension points instead of changing the handoff workflow.

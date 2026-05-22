@@ -1,11 +1,13 @@
 ---
-title: Create a Plugin
-description: Create a scoped plugin with Murph Agent.
+title: Create and Manage Plugins
+description: Create, reload, and inspect scoped plugins.
 ---
 
-# Create a Plugin
+# Create and Manage Plugins
 
 Use Murph Agent when creating or updating scoped plugins.
+
+A plugin is a local extension package under `~/.murph/plugins`. Use one when you want Murph to understand a source, expose a read-only tool, add a skill, or support a messaging channel without changing Murph core source.
 
 ## Start Murph Agent
 
@@ -27,7 +29,7 @@ Ask Murph Agent to create a plugin under the matching category root:
 Example request:
 
 ```text
-Create a scoped plugin for Linear that adds a skill, a connector, and a read-only search tool.
+Create a scoped plugin for Linear that adds a custom integration, a skill, and a read-only search tool.
 ```
 
 For a channel:
@@ -44,14 +46,26 @@ Normal plugin work should stay inside the plugin package. Do not use source-edit
 
 ## Verify the package
 
-Reload plugins after the files are created:
+Reload plugins after the files are created or changed:
 
 ```bash
 curl -s -X POST http://localhost:5173/api/plugins/reload
 ```
 
-Then check plugin status:
+Reload unregisters plugin-sourced capabilities and loads scoped plugins again. The response includes the current load status for each discovered scoped plugin.
+
+Reload after editing `plugin.json`, skill files, channel modules, or integration modules.
+
+## Inspect plugin status
+
+Check plugin status when a package does not load as expected:
 
 ```bash
 curl -s http://localhost:5173/api/plugins/status
 ```
+
+Loaded plugins include their id, name, version, root, and registered capabilities.
+
+Failed plugins include an error message from manifest parsing, skill parsing, path validation, channel validation, or integration validation. Other valid plugins can still load when one plugin fails.
+
+Status responses list registered channel ids, skill names, and integration ids for each plugin.

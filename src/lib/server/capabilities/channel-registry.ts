@@ -1,12 +1,12 @@
 import type {
   ChannelAdapter,
   ChannelEnsureMemberResult,
-  ChannelConnector,
   ChannelIngress,
   ChannelMembershipStatus,
   ChannelMessage,
   ChannelPlugin,
   ChannelProvider,
+  ChannelSetup,
   ChannelSetupChannel,
   ChannelSetupMember,
   ChannelThreadRef,
@@ -29,7 +29,7 @@ export class ChannelRegistry {
     this.registerPlugin({
       id: adapter.id,
       displayName: adapter.displayName,
-      adapter
+      runtime: adapter
     }, { source: 'runtime' });
   }
 
@@ -37,11 +37,11 @@ export class ChannelRegistry {
     if (!plugin.id || !/^[a-z0-9][a-z0-9._-]*$/i.test(plugin.id)) {
       throw new Error(`Invalid channel id: ${plugin.id || '<empty>'}`);
     }
-    if (!plugin.adapter || plugin.adapter.id !== plugin.id) {
-      throw new Error(`Channel plugin ${plugin.id} adapter id must match plugin id`);
+    if (!plugin.runtime || plugin.runtime.id !== plugin.id) {
+      throw new Error(`Channel plugin ${plugin.id} runtime id must match plugin id`);
     }
     if (this.channels.has(plugin.id)) {
-      throw new Error(`Channel adapter already registered: ${plugin.id}`);
+      throw new Error(`Channel already registered: ${plugin.id}`);
     }
 
     this.channels.set(plugin.id, {
@@ -52,25 +52,25 @@ export class ChannelRegistry {
   }
 
   get(provider: ChannelProvider): ChannelAdapter {
-    const adapter = this.channels.get(provider)?.plugin.adapter;
+    const runtime = this.channels.get(provider)?.plugin.runtime;
 
-    if (!adapter) {
-      throw new Error(`Unknown channel adapter: ${provider}`);
+    if (!runtime) {
+      throw new Error(`Unknown channel runtime: ${provider}`);
     }
 
-    return adapter;
+    return runtime;
   }
 
   getPlugin(provider: ChannelProvider): ChannelPlugin {
     const plugin = this.channels.get(provider)?.plugin;
     if (!plugin) {
-      throw new Error(`Unknown channel adapter: ${provider}`);
+      throw new Error(`Unknown channel: ${provider}`);
     }
     return plugin;
   }
 
-  getConnector(provider: ChannelProvider): ChannelConnector | undefined {
-    return this.channels.get(provider)?.plugin.connector;
+  getSetup(provider: ChannelProvider): ChannelSetup | undefined {
+    return this.channels.get(provider)?.plugin.setup;
   }
 
   getIngress(provider: ChannelProvider): ChannelIngress | undefined {
@@ -94,11 +94,11 @@ export class ChannelRegistry {
   }
 
   async postMessage(workspace: Workspace, provider: ChannelProvider, channelId: string, text: string): Promise<{ ts?: string }> {
-    const adapter = this.get(provider);
-    if (!adapter.postMessage) {
-      throw new Error(`Channel adapter ${provider} does not support top-level messages`);
+    const runtime = this.get(provider);
+    if (!runtime.postMessage) {
+      throw new Error(`Channel runtime ${provider} does not support top-level messages`);
     }
-    return await adapter.postMessage(workspace, channelId, text);
+    return await runtime.postMessage(workspace, channelId, text);
   }
 
   async checkMembership(
@@ -106,11 +106,11 @@ export class ChannelRegistry {
     provider: ChannelProvider,
     channelId: string
   ): Promise<ChannelMembershipStatus | undefined> {
-    const adapter = this.get(provider);
-    if (!adapter.checkMembership) {
+    const runtime = this.get(provider);
+    if (!runtime.checkMembership) {
       return undefined;
     }
-    return await adapter.checkMembership(workspace, channelId);
+    return await runtime.checkMembership(workspace, channelId);
   }
 
   async ensureMember(
@@ -118,46 +118,46 @@ export class ChannelRegistry {
     provider: ChannelProvider,
     channelId: string
   ): Promise<ChannelEnsureMemberResult> {
-    const adapter = this.get(provider);
-    if (!adapter.ensureMember) {
+    const runtime = this.get(provider);
+    if (!runtime.ensureMember) {
       return {
         channelId,
         status: 'already_member'
       };
     }
-    return await adapter.ensureMember(workspace, channelId);
+    return await runtime.ensureMember(workspace, channelId);
   }
 
   async listMembers(workspace: Workspace): Promise<ChannelSetupMember[]> {
-    const connector = this.getConnector(workspace.provider);
-    if (!connector?.listMembers) {
+    const setup = this.getSetup(workspace.provider);
+    if (!setup?.listMembers) {
       throw new Error(`Channel ${workspace.provider} does not support member discovery`);
     }
-    return connector.listMembers(workspace);
+    return setup.listMembers(workspace);
   }
 
   async getMember(workspace: Workspace, userId: string): Promise<ChannelSetupMember> {
-    const connector = this.getConnector(workspace.provider);
-    if (!connector?.getMember) {
+    const setup = this.getSetup(workspace.provider);
+    if (!setup?.getMember) {
       throw new Error(`Channel ${workspace.provider} does not support member lookup`);
     }
-    return connector.getMember(workspace, userId);
+    return setup.getMember(workspace, userId);
   }
 
   async listChannels(workspace: Workspace): Promise<ChannelSetupChannel[]> {
-    const connector = this.getConnector(workspace.provider);
-    if (!connector?.listChannels) {
+    const setup = this.getSetup(workspace.provider);
+    if (!setup?.listChannels) {
       throw new Error(`Channel ${workspace.provider} does not support channel discovery`);
     }
-    return connector.listChannels(workspace);
+    return setup.listChannels(workspace);
   }
 
   async getChannel(workspace: Workspace, channelId: string): Promise<ChannelSetupChannel> {
-    const connector = this.getConnector(workspace.provider);
-    if (!connector?.getChannel) {
+    const setup = this.getSetup(workspace.provider);
+    if (!setup?.getChannel) {
       throw new Error(`Channel ${workspace.provider} does not support channel lookup`);
     }
-    return connector.getChannel(workspace, channelId);
+    return setup.getChannel(workspace, channelId);
   }
 
   async startIngress(): Promise<void> {
@@ -182,10 +182,10 @@ export class ChannelRegistry {
       version: plugin.version,
       source,
       filePath,
-      capabilities: plugin.adapter.capabilities,
+      capabilities: plugin.runtime.capabilities,
       setup: {
-        configurable: Boolean(plugin.connector),
-        requirements: plugin.connector?.requirements ?? []
+        configurable: Boolean(plugin.setup),
+        requirements: plugin.setup?.requirements ?? []
       },
       ingress: {
         startable: Boolean(plugin.ingress?.start),

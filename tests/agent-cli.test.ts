@@ -29,18 +29,20 @@ describe('murph agent CLI plugin scaffold', () => {
     const result = scaffoldPlugin({
       id: 'linear_test',
       name: 'Linear Test',
-      includeAdapter: true,
+      includeIntegration: true,
       includeSkill: false,
       searchProfile: 'work_item',
       searchToolName: 'linear_test.search_issues'
     });
-    const adapter = readFileSync(join(result.root, 'adapters', 'linear_test.mjs'), 'utf8');
+    const integration = readFileSync(join(result.root, 'integrations', 'linear_test.mjs'), 'utf8');
+    const manifest = readFileSync(join(result.root, 'plugin.json'), 'utf8');
 
-    expect(adapter).toContain("name: 'linear_test.search_issues'");
-    expect(adapter).toContain('retrievalEligible: true');
-    expect(adapter).toContain("retrieval: { profile: 'work_item' }");
-    expect(adapter).toContain("required: ['query']");
-    expect(adapter).toContain('Keep the normalized { query, limit } contract.');
+    expect(manifest).toContain('"integrations": [');
+    expect(integration).toContain("name: 'linear_test.search_issues'");
+    expect(integration).toContain('retrievalEligible: true');
+    expect(integration).toContain("retrieval: { profile: 'work_item' }");
+    expect(integration).toContain("required: ['query']");
+    expect(integration).toContain('Keep the normalized { query, limit } contract.');
   });
 
   it('scaffolds channel plugins under the channels category', async () => {
@@ -59,7 +61,8 @@ describe('murph agent CLI plugin scaffold', () => {
     expect(result.root).toContain(join('plugins', 'channels', 'teams_test'));
     expect(manifest).toContain('"channels": [');
     expect(channel).toContain("id: 'teams_test'");
-    expect(channel).toContain('connector:');
+    expect(channel).toContain('runtime:');
+    expect(channel).toContain('setup:');
     expect(channel).toContain('ingress:');
   });
 

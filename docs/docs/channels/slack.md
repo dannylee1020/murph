@@ -5,11 +5,111 @@ description: Connect Slack as a Murph channel.
 
 # Slack
 
-Slack is the most complete Murph channel setup path today.
+Slack setup can create the Murph Slack app from a manifest, or you can configure the app manually in Slack's dashboard. Do the Slack dashboard steps first when manual setup is needed, then run `murph setup slack` to validate credentials, open OAuth, save your workspace, and choose watched channels.
 
-## Setup command
+## What You Need
 
-Run Slack setup from the CLI:
+- Access to the [Slack apps dashboard](https://api.slack.com/apps).
+- Permission to create, configure, and install Slack apps in the target workspace.
+- Murph running on the same local URL you will register as the OAuth redirect URL. The default is:
+
+```text
+http://localhost:5173/api/slack/oauth/callback
+```
+
+If `app.url` in `~/.murph/config.yaml` points to a public tunnel or hosted URL, register that origin with `/api/slack/oauth/callback`.
+
+## Step 1: Create Or Open The Slack App
+
+1. Open the [Slack apps dashboard](https://api.slack.com/apps).
+2. Create a new app for Murph, or open the existing Murph app.
+3. Keep the app page open. You will use **Basic Information**, **OAuth & Permissions**, **Socket Mode**, and **Event Subscriptions**.
+
+The fastest path is to create the app from Murph's manifest. Slack's manifest flow is available from the [Create New App](https://api.slack.com/apps?new_app=1) page.
+
+## Step 2: Create From The Murph Manifest
+
+Use Murph's Slack manifest when Slack lets you create or update the app from a manifest:
+
+```text
+docs/public/slack-manifest.yaml
+```
+
+The public manifest is also available after install:
+
+```text
+/slack-manifest.yaml
+```
+
+The manifest sets the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode.
+
+`murph setup slack` can also create or update the app from the manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it.
+
+Do not confuse the app configuration token with the app-level token. The app-level token starts with `xapp-` and is used for Socket Mode.
+
+## Step 3: Add The OAuth Redirect URL
+
+In **OAuth & Permissions** -> **Redirect URLs**, add the exact Murph callback URL:
+
+```text
+http://localhost:5173/api/slack/oauth/callback
+```
+
+Save the Slack app after adding it.
+
+Slack requires redirect URLs to match exactly. If setup prints a different URL because you use a custom Murph origin, add that exact URL instead.
+
+## Step 4: Check Scopes And Events
+
+In **OAuth & Permissions** -> **Scopes**, verify these bot token scopes:
+
+- `app_mentions:read`
+- `channels:history`
+- `channels:join`
+- `channels:read`
+- `chat:write`
+- `groups:history`
+- `groups:read`
+- `im:history`
+- `mpim:history`
+
+Verify this user token scope:
+
+- `search:read`
+
+In **Event Subscriptions** -> **Subscribe to bot events**, verify these events:
+
+- `app_mention`
+- `message.channels`
+- `message.groups`
+- `message.im`
+- `message.mpim`
+
+Socket Mode means local Murph installs do not need a public Slack Events Request URL.
+
+## Step 5: Enable Socket Mode And Create The App-Level Token
+
+1. Go to **Socket Mode**.
+2. Enable Socket Mode.
+3. Go to **Basic Information** -> **App-Level Tokens**.
+4. Create an app-level token with the `connections:write` scope.
+5. Keep the generated `xapp-...` token ready for `murph setup slack`.
+
+Murph uses this token to connect to Slack Socket Mode.
+
+## Step 6: Copy The App Credentials
+
+Go to **Basic Information** -> **App Credentials** and keep these values ready for setup:
+
+- Client ID
+- Client Secret
+- Signing Secret
+
+Murph stores the Client Secret and Signing Secret locally in `~/.murph/.credentials`. Non-secret app and workspace defaults are stored in `~/.murph/config.yaml`.
+
+## Step 7: Run Slack Setup
+
+Run:
 
 ```bash
 murph setup slack
@@ -21,75 +121,69 @@ You can also choose Slack during the full setup flow:
 murph setup
 ```
 
-Slack secrets are stored locally in `~/.murph/.credentials`. Non-secret app and workspace defaults are stored in `~/.murph/config.yaml`.
+Setup may ask for:
 
-## Before you start
+1. Slack app configuration token, if you want Murph to create or update the app from the manifest.
+2. Slack app-level token (`xapp-...`) for Socket Mode.
+3. Slack Client ID.
+4. Slack Client Secret.
+5. Slack Signing Secret.
 
-You need permission to create and install Slack apps in the target workspace.
+Then Murph will:
 
-The installer includes setup helpers such as the Slack CLI when needed, but Murph can still fall back to manual Slack app setup.
+- save Slack app credentials locally;
+- start or verify the local Murph server;
+- open the Slack install URL;
+- save the connected workspace after OAuth;
+- store bot and user-search tokens from the OAuth callback;
+- save the authorizing Slack user as Murph's owner identity;
+- start Socket Mode when the workspace is connected.
 
-## Manual Slack checklist
+## Step 8: Approve OAuth And Choose Channels
 
-The preferred path is to let Murph create the Slack app from the manifest:
+When the browser opens:
 
-1. Open Slack's app configuration token flow in your browser.
-2. Create an app configuration token for the workspace you want Murph to use.
-3. Run `murph setup slack`.
-4. Paste the app configuration token when setup asks for it.
-5. Create or copy the Slack app-level token when setup asks for it.
-6. Open the Murph-generated Slack install URL and approve the workspace install.
+1. Choose the Slack workspace Murph should use.
+2. Approve the requested bot and user scopes.
+3. Return to the terminal and continue setup.
 
-Murph uses the app configuration token once to create the app from the manifest, then discards it.
+Murph uses the OAuth callback to save the Slack workspace and identify the Slack user who authorized the app. That user becomes the Slack owner Murph watches for by default.
 
-If app automation fails or you choose manual setup:
+If you are running the full `murph setup` wizard, setup continues into channel selection. If you ran only `murph setup slack`, choose channels afterward:
 
-1. Create a Slack app from the manifest at `docs/public/slack-manifest.yaml`.
-2. Confirm the redirect URL printed by setup is listed in the Slack app.
-3. Confirm Socket Mode is enabled.
-4. Create an app-level token that starts with `xapp-` and includes `connections:write`.
-5. Copy the Client ID, Client Secret, and app-level token into setup.
-6. Copy the Signing Secret when you want HTTP event signature verification configured.
-7. Open the Murph-generated install URL and approve OAuth.
-
-The public manifest path is also available after install:
-
-```text
-/slack-manifest.yaml
+```bash
+murph setup channels
 ```
 
-## OAuth redirect
+Public channels can be joined automatically when Slack permissions allow it. Private channels must already include the Slack app.
 
-For local setup, the redirect URL is usually:
+## Local Storage
+
+Slack secrets are stored locally:
 
 ```text
-http://localhost:5173/api/slack/oauth/callback
+~/.murph/.credentials
 ```
 
-If `app.url` in `~/.murph/config.yaml` points to a public tunnel or hosted URL, use that origin with `/api/slack/oauth/callback`.
+Non-secret Slack setup values are stored locally:
 
-## Socket Mode and tokens
+```text
+~/.murph/config.yaml
+```
 
-Murph uses Slack Socket Mode by default. Socket Mode avoids exposing a public Events URL during local development.
+## Verify Setup
 
-Slack setup needs these app credentials:
+Run:
 
-- Client ID
-- Client Secret
-- app-level token (`xapp-...`) with `connections:write`
-- Signing Secret when HTTP event signature verification is needed
+```bash
+murph doctor
+```
 
-After OAuth approval, Murph stores the workspace bot token locally. If the user-search scopes are approved, Murph also stores a user search token locally.
+Then start a short test session and mention Murph in a watched Slack channel.
 
-## OAuth scopes
+## Reconnect Search
 
-Murph's manifest requests bot scopes for messages, channel listing, channel joins, replies, direct messages, and user lookup.
-
-It also requests user scopes for Slack search:
-
-- `search:read`
-
-Reconnect Slack after adding scopes or changing user-search consent:
+Murph can use Slack user search when the `search:read` user scope is approved. Reconnect Slack after adding the user scope or changing user-search consent:
 
 ```bash
 murph setup slack --reconnect-search
@@ -97,51 +191,65 @@ murph setup slack --reconnect-search
 
 Reconnect stores a fresh user-search token locally.
 
-## What setup automates
-
-`murph setup slack` handles the Murph side of the flow:
-
-- detects authorized Slack CLI workspaces when available
-- creates or updates the app from `docs/public/slack-manifest.yaml` when given an app configuration token
-- saves Slack app credentials locally
-- starts or verifies the local Murph server
-- opens the Slack install URL
-- saves the connected workspace after OAuth
-- stores bot and user-search tokens from the OAuth callback
-- saves the authorizing Slack user as Murph's owner identity
-- starts Socket Mode when the workspace is connected
-
-## Identity and channels
-
-After Slack is connected, setup uses the OAuth callback to identify the Slack user who authorized Murph. That user becomes the owner Murph watches for. Setup no longer lists workspace members or lets you choose another Slack user manually.
-
-Then setup asks which Slack channels Murph should monitor by default.
-
-Public channels can be joined automatically when Slack permissions allow it. Private channels must already include the Slack app.
-
-Use channel-specific setup when only watched channels changed:
-
-```bash
-murph setup channels
-```
-
 ## Troubleshooting
 
-If Slack reports a redirect URI mismatch, add the exact redirect URL printed by setup to the Slack app's OAuth settings.
+### Redirect URI Mismatch
 
-If setup says the app configuration token looks like an app-level token, create a Slack app configuration token instead. App-level tokens start with `xapp-` and are used for Socket Mode, not app creation.
+The redirect URL is missing or does not match exactly.
 
-If Slack is connected but owner identity is missing, reconnect Slack from setup so the OAuth callback can save your Slack user:
+Fix it in Slack app dashboard -> **OAuth & Permissions** -> **Redirect URLs**. Add the exact URI printed by setup, including scheme, host, port, and path.
+
+Default:
+
+```text
+http://localhost:5173/api/slack/oauth/callback
+```
+
+### App Configuration Token Looks Like An App-Level Token
+
+The app configuration token and app-level token are different.
+
+- App configuration token: used once to create or update the app from the manifest.
+- App-level token: starts with `xapp-` and is used for Socket Mode.
+
+Create the app configuration token from Slack's app manifest/configuration flow, then rerun setup.
+
+### Socket Mode Is Not Connected
+
+Check **Socket Mode** in the Slack app dashboard:
+
+1. Socket Mode is enabled.
+2. The app-level token exists.
+3. The app-level token has `connections:write`.
+4. The `xapp-...` token was pasted into setup.
+
+Then restart Murph or rerun:
 
 ```bash
 murph setup slack
 ```
 
-If Slack channels do not load, reconnect Slack and verify the app is installed in the expected workspace.
+### Channels Do Not Load
 
-If selected public channels cannot be joined, reinstall or reconnect Slack after updating scopes. Private channels require inviting the Slack app directly.
+Reconnect Slack and verify the app is installed in the expected workspace.
 
-## Runtime path
+For public channels, check that the app has `channels:read`, `channels:join`, and the required message history scopes. For private channels, invite the Slack app directly into the channel.
+
+Then rerun:
+
+```bash
+murph setup channels
+```
+
+### Owner Identity Is Missing
+
+Reconnect Slack through Murph's OAuth flow. Murph uses the Slack OAuth callback to save only the authorizing user as the owner.
+
+```bash
+murph setup slack
+```
+
+## Runtime Path
 
 Each Slack handoff follows the same path:
 

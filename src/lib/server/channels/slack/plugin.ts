@@ -12,8 +12,8 @@ export function createSlackChannelPlugin(): ChannelPlugin {
     id: 'slack',
     displayName: 'Slack',
     description: 'Slack channel plugin',
-    adapter: createSlackChannelAdapter(),
-    connector: {
+    runtime: createSlackChannelAdapter(),
+    setup: {
       requirements: [
         { key: 'SLACK_CLIENT_ID', label: 'Client ID', kind: 'config', required: true },
         { key: 'SLACK_CLIENT_SECRET', label: 'Client secret', kind: 'secret', required: true },

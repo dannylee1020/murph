@@ -1,27 +1,29 @@
 ---
 title: Connectors
-description: Add external sources to scoped plugins.
+description: Implement plugin-provided integrations.
 ---
 
 # Connectors
 
-A connector is the plugin module for one outside source.
+For users, the public concept is an integration: a connected source Murph can use for context.
+
+For plugin authors, a connector is the module that implements a plugin-provided integration.
 
 Examples:
 
-- Linear connector
-- internal docs connector
-- customer CRM connector
+- Linear integration implemented by a Linear connector
+- internal docs integration implemented by an internal docs connector
+- customer CRM integration implemented by a CRM connector
 
 ## What a connector owns
 
-A connector owns the source identity, credential check, context sources, and tools for one integration.
+A connector owns the source identity, credential check, context sources, and tools for one plugin-provided integration.
 
-## Adapter module
+## Integration module
 
-Connector files currently live under `adapters/*.mjs`. That directory name is an implementation detail; public docs call these modules connectors.
+Connector files live under `integrations/*.mjs` and are referenced by `capabilities.integrations` in `plugin.json`.
 
-The module must export a default connector object or a named `adapter` export.
+The module must export a default connector object or a named `integration` export.
 
 ```js
 export default {
@@ -54,7 +56,7 @@ Use `contextSources` when the source can return grounding context for Murph.
 
 Use `tools` for specific callable actions owned by the connector.
 
-Example: a Linear connector can expose a `linear.search` tool.
+Example: a Linear integration can expose a `linear.search` tool through its connector.
 
 ## Connector ids
 
@@ -62,4 +64,4 @@ Connector ids must be stable and use simple id characters: letters, numbers, dot
 
 ## Safety boundary
 
-Scoped plugin connectors can add skills, context sources, and read-only tools. Messaging providers belong in [channel plugins](/docs/plugins/channels), not connector modules.
+Scoped plugin connectors can implement integrations with skills, context sources, and read-only tools. Messaging providers belong in [channel plugins](/docs/plugins/channels), not connector modules.

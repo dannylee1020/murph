@@ -21,7 +21,7 @@ Use Murph Agent when you want guided local work instead of editing files by hand
 
 - inspect setup, doctor, integration, plugin, and policy status
 - connect or troubleshoot Slack, Discord, and built-in integrations
-- create scoped plugins for custom channels, tools, skills, connectors, or context sources
+- create scoped plugins for custom channels, integrations, tools, skills, or context sources
 - write or revise source-specific skills
 - create and preview custom policy profiles
 - debug local runtime behavior with tool logs and setup APIs

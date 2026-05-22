@@ -29,12 +29,12 @@ export const channelRoutes: Route[] = [
   }),
   route('GET', '/api/channels/:provider/setup/status', async ({ res, params }) => {
     await ensureRuntimeInitialized();
-    const connector = getChannelRegistry().getConnector(params.provider);
-    if (!connector?.getStatus) {
+    const setup = getChannelRegistry().getSetup(params.provider);
+    if (!setup?.getStatus) {
       sendUnsupported(res, params.provider, 'status');
       return;
     }
-    sendJson(res, { ok: true, provider: params.provider, status: await connector.getStatus() });
+    sendJson(res, { ok: true, provider: params.provider, status: await setup.getStatus() });
   }),
   route('GET', '/api/channels/:provider/members', async ({ res, url, params }) => {
     await ensureRuntimeInitialized();
@@ -109,8 +109,8 @@ export const channelRoutes: Route[] = [
   }),
   route('POST', '/api/channels/:provider/setup/:action', async ({ req, res, url, params }) => {
     await ensureRuntimeInitialized();
-    const connector = getChannelRegistry().getConnector(params.provider);
-    if (!connector?.handleSetupAction) {
+    const setup = getChannelRegistry().getSetup(params.provider);
+    if (!setup?.handleSetupAction) {
       sendUnsupported(res, params.provider, 'setup_action');
       return;
     }
@@ -118,17 +118,17 @@ export const channelRoutes: Route[] = [
     sendJson(res, {
       ok: true,
       provider: params.provider,
-      result: await connector.handleSetupAction({ action: params.action, body, url })
+      result: await setup.handleSetupAction({ action: params.action, body, url })
     });
   }),
   route('GET', '/api/channels/:provider/oauth/callback', async ({ res, url, params }) => {
     await ensureRuntimeInitialized();
-    const connector = getChannelRegistry().getConnector(params.provider);
-    if (!connector?.handleOAuthCallback) {
+    const setup = getChannelRegistry().getSetup(params.provider);
+    if (!setup?.handleOAuthCallback) {
       sendUnsupported(res, params.provider, 'oauth_callback');
       return;
     }
-    const result = await connector.handleOAuthCallback({ url });
+    const result = await setup.handleOAuthCallback({ url });
     if (result && typeof result === 'object' && 'redirect' in result && typeof result.redirect === 'string') {
       redirect(res, result.redirect);
       return;

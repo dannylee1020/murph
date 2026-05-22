@@ -5,7 +5,7 @@ description: Add Murph behavior instructions with plugin skills.
 
 # Skills
 
-Skills describe how Murph should use a specific integration, connector, or evidence source.
+Skills describe how Murph should use a specific integration, tool, or evidence source.
 
 ## Skill file
 
@@ -37,4 +37,4 @@ Use Linear evidence when the request mentions issues, projects, cycles, or block
 
 ## Instructions
 
-The Markdown body tells Murph how to interpret and use that source. Keep it specific to one integration or connector.
+The Markdown body tells Murph how to interpret and use that source. Keep it specific to one integration, tool, or evidence source.

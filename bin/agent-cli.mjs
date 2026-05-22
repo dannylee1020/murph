@@ -350,7 +350,6 @@ function isWithin(candidate, root) {
 function allowedWriteRoots() {
     return [
         path.join(murphHome, 'plugins'),
-        path.join(appDir, 'plugins'),
         path.join(appDir, 'policies'),
         path.join(appDir, 'skills'),
     ];
@@ -541,15 +540,16 @@ function scaffoldPlugin(params) {
         : category === 'skills'
           ? params.includeSkill !== false
           : params.includeSkill !== false;
-    const includeAdapter = includeChannel
-        ? params.includeAdapter === true
+    const includeIntegration = includeChannel
+        ? params.includeIntegration === true
         : category === 'skills'
-          ? params.includeAdapter === true
-          : params.includeAdapter !== false;
-    const includeSearchTool = includeAdapter && params.includeSearchTool !== false;
+          ? params.includeIntegration === true
+          : params.includeIntegration !== false;
+    const includeSearchTool =
+        includeIntegration && params.includeSearchTool !== false;
     const name = params.name || id;
     const description = params.description || `${name} plugin for Murph.`;
-    const capabilities = { channels: [], skills: [], adapters: [] };
+    const capabilities = { channels: [], skills: [], integrations: [] };
 
     mkdirSync(root, { recursive: true });
 
@@ -561,7 +561,7 @@ function scaffoldPlugin(params) {
   id: '${id}',
   displayName: '${name}',
   description: '${description}',
-  adapter: {
+  runtime: {
     id: '${id}',
     displayName: '${name}',
     capabilities: ['event_ingress', 'thread_fetch', 'reply_post'],
@@ -576,7 +576,7 @@ function scaffoldPlugin(params) {
       throw new Error('Implement ${id} postReply');
     }
   },
-  connector: {
+  setup: {
     requirements: [],
     getStatus() {
       return { configured: false, installed: false };
@@ -620,16 +620,19 @@ function scaffoldPlugin(params) {
                 '---',
                 `Use this skill when the user asks about ${name}.`,
                 '',
-                'Prefer grounded answers from adapter context sources and tools before giving setup guidance.',
+                'Prefer grounded answers from integration context sources and tools before giving setup guidance.',
             ].join('\n'),
         );
         capabilities.skills.push(`skills/${id}.md`);
     }
 
-    if (includeAdapter) {
-        const adapterDir = ensureUnderRoot(root, path.join(root, 'adapters'));
-        mkdirSync(adapterDir, { recursive: true });
-        const adapterPath = path.join(adapterDir, `${id}.mjs`);
+    if (includeIntegration) {
+        const integrationDir = ensureUnderRoot(
+            root,
+            path.join(root, 'integrations'),
+        );
+        mkdirSync(integrationDir, { recursive: true });
+        const integrationPath = path.join(integrationDir, `${id}.mjs`);
         const envKey = `${id.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`;
         const searchProfile = includeSearchTool
             ? safeRetrievalProfile(params.searchProfile)
@@ -662,14 +665,14 @@ function scaffoldPlugin(params) {
         return {
           results: [],
           query: input.query,
-          hint: 'Implement ${searchToolName} in this adapter. Keep the normalized { query, limit } contract.'
+          hint: 'Implement ${searchToolName} in this integration. Keep the normalized { query, limit } contract.'
         };
       }
     }
   ]`
             : '[]';
         writeFileSync(
-            adapterPath,
+            integrationPath,
             `export default {
   id: '${id}',
   name: '${name}',
@@ -688,7 +691,7 @@ function scaffoldPlugin(params) {
 };
 `,
         );
-        capabilities.adapters.push(`adapters/${id}.mjs`);
+        capabilities.integrations.push(`integrations/${id}.mjs`);
     }
 
     writeFileSync(
@@ -717,7 +720,7 @@ function validatePluginRoot(pluginRoot) {
     const paths = [
         ...(capabilities.channels || []),
         ...(capabilities.skills || []),
-        ...(capabilities.adapters || []),
+        ...(capabilities.integrations || []),
     ];
 
     if (!manifest.id || !/^[a-z0-9][a-z0-9._-]*$/i.test(manifest.id)) {
@@ -728,7 +731,7 @@ function validatePluginRoot(pluginRoot) {
     }
     if (paths.length === 0) {
         throw new Error(
-            'plugin.json must declare at least one channel, skill, or adapter',
+            'plugin.json must declare at least one channel, skill, or integration',
         );
     }
     for (const relativePath of paths) {
@@ -819,7 +822,7 @@ function createMurphTools() {
             description:
                 'Create a scoped Murph plugin draft under ~/.murph/plugins/<category>.',
             promptSnippet:
-                'murph_plugin_create_draft: create a scoped channel, skill, or adapter plugin package.',
+                'murph_plugin_create_draft: create a scoped channel, skill, or integration plugin package.',
             parameters: Type.Object({
                 id: Type.String(),
                 name: Type.Optional(Type.String()),
@@ -834,7 +837,7 @@ function createMurphTools() {
                 ])),
                 includeChannel: Type.Optional(Type.Boolean()),
                 includeSkill: Type.Optional(Type.Boolean()),
-                includeAdapter: Type.Optional(Type.Boolean()),
+                includeIntegration: Type.Optional(Type.Boolean()),
                 includeSearchTool: Type.Optional(Type.Boolean()),
                 searchProfile: Type.Optional(Type.Union([
                     Type.Literal('generic'),
@@ -979,8 +982,8 @@ function murphSystemPrompt(sourceEdits) {
         'For custom policy changes, inspect the current policy with murph_policy_get/profiles, edit or create policies/*.md, preview changes with murph_policy_preview, then select the profile with murph_policy_set.',
         'For new capabilities, prefer category-scoped plugin packages under ~/.murph/plugins/{channels,tools,skills,context,bundles}/<id>.',
         'For custom messaging providers, create channel plugins under ~/.murph/plugins/channels/<id>; do not edit Murph core runtime files.',
-        'When creating a searchable connector, implement it as an adapters/*.mjs module and include a read-only { query, limit } search tool with retrievalEligible: true and retrieval.profile set to the closest preset.',
-        'Installed connector tools must remain read-only. Channel plugins may post through their channel adapter but should keep unrelated tools read-only.',
+        'When creating a searchable connector, implement it as an integrations/*.mjs module and include a read-only { query, limit } search tool with retrievalEligible: true and retrieval.profile set to the closest preset.',
+        'Installed connector tools must remain read-only. Channel plugins may post through their channel runtime but should keep unrelated tools read-only.',
         sourceEdits
             ? 'This run explicitly allows Murph source edits. Keep changes focused and validate them.'
             : 'Default write scope is Plugin+Config. Do not modify Murph source files unless the operator restarts with --source-edits or explicitly asks for source edits.',

@@ -78,14 +78,11 @@ export default defineConfig({
           text: 'Plugins',
           items: [
             { text: 'Overview', link: '/docs/plugins' },
-            { text: 'Package Structure', link: '/docs/plugins/package-structure' },
             { text: 'Channels', link: '/docs/plugins/channels' },
             { text: 'Skills', link: '/docs/plugins/skills' },
             { text: 'Connectors', link: '/docs/plugins/connectors' },
             { text: 'Tools', link: '/docs/plugins/tools' },
-            { text: 'Create a Plugin', link: '/docs/plugins/create' },
-            { text: 'Reload Plugins', link: '/docs/plugins/reload' },
-            { text: 'Plugin Status', link: '/docs/plugins/status' }
+            { text: 'Create and Manage', link: '/docs/plugins/create' }
           ]
         },
         {
@@ -97,13 +94,6 @@ export default defineConfig({
             { text: 'Slack', link: '/docs/channels/slack' },
             { text: 'Discord', link: '/docs/channels/discord' },
             { text: 'Troubleshooting', link: '/docs/channels/troubleshooting' }
-          ]
-        },
-        {
-          text: 'Guides',
-          items: [
-            { text: 'Local-first AI Agent', link: '/docs/local-first-ai-agent' },
-            { text: 'Web Search', link: '/docs/web-search' }
           ]
         }
       ]

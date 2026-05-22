@@ -2,7 +2,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const originalCwd = process.cwd();
 
 function tempMurphHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'murph-plugins-'));
@@ -14,7 +16,7 @@ function tempMurphHome(): string {
 function writePlugin(home: string, id: string, options: { toolSideEffect?: string; skillPath?: string } = {}): string {
   const root = join(home, 'plugins', id);
   mkdirSync(join(root, 'skills'), { recursive: true });
-  mkdirSync(join(root, 'adapters'), { recursive: true });
+  mkdirSync(join(root, 'integrations'), { recursive: true });
   const skillPath = options.skillPath ?? `skills/${id}.md`;
 
   writeFileSync(join(root, 'plugin.json'), JSON.stringify({
@@ -24,7 +26,7 @@ function writePlugin(home: string, id: string, options: { toolSideEffect?: strin
     version: '0.1.0',
     capabilities: {
       skills: [skillPath],
-      adapters: [`adapters/${id}.mjs`]
+      integrations: [`integrations/${id}.mjs`]
     }
   }));
   writeFileSync(join(root, 'skills', `${id}.md`), [
@@ -35,11 +37,11 @@ function writePlugin(home: string, id: string, options: { toolSideEffect?: strin
     '---',
     'Use plugin context.'
   ].join('\n'));
-  writeFileSync(join(root, 'adapters', `${id}.mjs`), `
+  writeFileSync(join(root, 'integrations', `${id}.mjs`), `
 export default {
   id: '${id}',
   name: '${id}',
-  description: '${id} adapter',
+  description: '${id} integration',
   credential: {
     authType: 'api_key',
     credentialKind: 'api_key',
@@ -72,7 +74,64 @@ export default {
   return root;
 }
 
+function writeLegacyAdapterPlugin(home: string, id: string): string {
+  const root = join(home, 'plugins', id);
+  mkdirSync(join(root, 'adapters'), { recursive: true });
+  writeFileSync(join(root, 'plugin.json'), JSON.stringify({
+    id,
+    name: id,
+    description: `${id} plugin`,
+    version: '0.1.0',
+    capabilities: {
+      adapters: [`adapters/${id}.mjs`]
+    }
+  }));
+  writeFileSync(join(root, 'adapters', `${id}.mjs`), 'export default {};');
+  return root;
+}
+
 function writeChannelPlugin(home: string, id: string): string {
+  const root = join(home, 'plugins', 'channels', id);
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, 'plugin.json'), JSON.stringify({
+    id,
+    name: id,
+    description: `${id} channel`,
+    version: '0.1.0',
+    capabilities: {
+      channels: ['channel.mjs']
+    }
+  }));
+  writeFileSync(join(root, 'channel.mjs'), `
+export const channel = {
+  id: '${id}',
+  displayName: '${id}',
+  runtime: {
+    id: '${id}',
+    displayName: '${id}',
+    capabilities: ['event_ingress', 'thread_fetch', 'reply_post'],
+    normalizeEvent() {
+      return null;
+    },
+    async fetchThread() {
+      return [];
+    },
+    async postReply() {}
+  },
+  setup: {
+    async listMembers() {
+      return [{ id: 'U1', displayName: 'User One' }];
+    },
+    async listChannels() {
+      return [{ id: 'C1', displayName: '#general' }];
+    }
+  }
+};
+`);
+  return root;
+}
+
+function writeLegacyChannelPlugin(home: string, id: string): string {
   const root = join(home, 'plugins', 'channels', id);
   mkdirSync(root, { recursive: true });
   writeFileSync(join(root, 'plugin.json'), JSON.stringify({
@@ -100,14 +159,7 @@ export const channel = {
     },
     async postReply() {}
   },
-  connector: {
-    async listMembers() {
-      return [{ id: 'U1', displayName: 'User One' }];
-    },
-    async listChannels() {
-      return [{ id: 'C1', displayName: '#general' }];
-    }
-  }
+  connector: {}
 };
 `);
   return root;
@@ -116,10 +168,15 @@ export const channel = {
 describe('scoped plugin loader', () => {
   beforeEach(() => {
     vi.resetModules();
+    process.chdir(originalCwd);
     delete process.env.MURPH_HOME;
   });
 
-  it('loads plugin skills and read-only adapter capabilities', async () => {
+  afterEach(() => {
+    process.chdir(originalCwd);
+  });
+
+  it('loads plugin skills and read-only integration capabilities', async () => {
     const home = tempMurphHome();
     writePlugin(home, 'linear');
 
@@ -137,7 +194,7 @@ describe('scoped plugin loader', () => {
         capabilities: {
           channels: [],
           skills: ['linear'],
-          adapters: ['linear']
+          integrations: ['linear']
         }
       })
     ]);
@@ -149,7 +206,7 @@ describe('scoped plugin loader', () => {
     expect(getContextSourceRegistry().has('linear.context')).toBe(true);
   });
 
-  it('rejects adapter tools that are not read-only', async () => {
+  it('rejects integration tools that are not read-only', async () => {
     const home = tempMurphHome();
     writePlugin(home, 'linear', { toolSideEffect: 'external_write' });
 
@@ -162,8 +219,8 @@ describe('scoped plugin loader', () => {
     expect(statuses[0]).toEqual(expect.objectContaining({
       id: 'linear',
       status: 'failed',
-        error: 'Plugin adapter linear tool linear.read must be read-only'
-      }));
+      error: 'Plugin integration linear tool linear.read must be read-only'
+    }));
     expect(getToolRegistry().has('linear.read')).toBe(false);
     expect((await loadSkills('__missing__')).map((skill) => skill.name)).not.toContain('linear');
   });
@@ -180,6 +237,21 @@ describe('scoped plugin loader', () => {
       id: 'linear',
       status: 'failed',
       error: 'Plugin path escapes package root: ../outside.md'
+    }));
+  });
+
+  it('rejects old adapter-only manifests', async () => {
+    const home = tempMurphHome();
+    writeLegacyAdapterPlugin(home, 'linear');
+
+    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
+
+    const statuses = await loadScopedPlugins();
+
+    expect(statuses[0]).toEqual(expect.objectContaining({
+      id: 'linear',
+      status: 'failed',
+      error: 'plugin.json must declare at least one skill, integration, or channel'
     }));
   });
 
@@ -200,7 +272,7 @@ describe('scoped plugin loader', () => {
         capabilities: {
           channels: ['teams'],
           skills: [],
-          adapters: []
+          integrations: []
         }
       })
     ]);
@@ -211,4 +283,31 @@ describe('scoped plugin loader', () => {
     }));
   });
 
+  it('rejects old channel adapter descriptors', async () => {
+    const home = tempMurphHome();
+    writeLegacyChannelPlugin(home, 'teams');
+
+    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
+
+    const statuses = await loadScopedPlugins();
+
+    expect(statuses[0]).toEqual(expect.objectContaining({
+      id: 'teams',
+      status: 'failed',
+      error: 'Channel plugin teams runtime id must match channel id'
+    }));
+  });
+
+  it('loads only the Murph home plugin root by default', async () => {
+    const home = tempMurphHome();
+    const workspace = mkdtempSync(join(tmpdir(), 'murph-repo-local-plugins-'));
+    writePlugin(home, 'global_plugin');
+    writePlugin(workspace, 'repo_plugin');
+    process.chdir(workspace);
+
+    const { getScopedPluginRoots, loadScopedPlugins } = await import('#lib/server/plugins/loader');
+
+    expect(getScopedPluginRoots()).toEqual([join(home, 'plugins')]);
+    expect((await loadScopedPlugins()).map((status) => status.id)).toEqual(['global_plugin']);
+  });
 });

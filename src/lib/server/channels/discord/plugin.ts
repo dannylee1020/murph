@@ -13,8 +13,8 @@ export function createDiscordChannelPlugin(): ChannelPlugin {
     id: 'discord',
     displayName: 'Discord',
     description: 'Discord channel plugin',
-    adapter: createDiscordChannelAdapter(),
-    connector: {
+    runtime: createDiscordChannelAdapter(),
+    setup: {
       requirements: [
         { key: 'DISCORD_BOT_TOKEN', label: 'Bot token', kind: 'secret', required: true },
         { key: 'DISCORD_CLIENT_ID', label: 'Application client ID', kind: 'config', required: true },

@@ -360,7 +360,7 @@ export interface ChannelSetupRequirement {
     description?: string;
 }
 
-export interface ChannelConnectorStatus {
+export interface ChannelSetupStatus {
     configured: boolean;
     installed?: boolean;
     error?: string;
@@ -371,9 +371,9 @@ export interface ChannelConnectorStatus {
     };
 }
 
-export interface ChannelConnector {
+export interface ChannelSetup {
     requirements?: ChannelSetupRequirement[];
-    getStatus?(): Promise<ChannelConnectorStatus> | ChannelConnectorStatus;
+    getStatus?(): Promise<ChannelSetupStatus> | ChannelSetupStatus;
     listMembers?(workspace: Workspace): Promise<ChannelSetupMember[]>;
     getMember?(workspace: Workspace, userId: string): Promise<ChannelSetupMember>;
     listChannels?(workspace: Workspace): Promise<ChannelSetupChannel[]>;
@@ -404,8 +404,8 @@ export interface ChannelPlugin {
     displayName: string;
     description?: string;
     version?: string;
-    adapter: ChannelAdapter;
-    connector?: ChannelConnector;
+    runtime: ChannelAdapter;
+    setup?: ChannelSetup;
     ingress?: ChannelIngress;
 }
 

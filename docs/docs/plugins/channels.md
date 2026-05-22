@@ -11,11 +11,10 @@ Murph ships with Slack and Discord as built-in channels. Other providers can be 
 
 Channel plugins solve the Murph-side boundary: provider-specific runtime code, setup metadata, and ingress behavior can live outside core source. They do not remove the provider-side setup work required by each platform.
 
-Use a category-first package:
+Ask `murph agent` to build plugins for you or use a category-first package:
 
 ```text
 ~/.murph/plugins/channels/<id>
-./plugins/channels/<id>
 ```
 
 ## Manifest
@@ -40,17 +39,16 @@ Use a category-first package:
 export const channel = {
   id: 'teams',
   displayName: 'Microsoft Teams',
-  capabilities: ['event_ingress', 'thread_fetch', 'reply_post'],
-  adapter,
-  connector,
+  runtime,
+  setup,
   ingress
 };
 ```
 
 The descriptor has three parts:
 
-- `adapter`: normalize events, fetch thread messages, post replies, and optionally post top-level messages or check membership.
-- `connector`: setup/status behavior, member lookup, channel lookup, setup actions, and OAuth callbacks when the provider needs them.
+- `runtime`: normalize events, fetch thread messages, post replies, and optionally post top-level messages or check membership.
+- `setup`: setup/status behavior, member lookup, channel lookup, setup actions, and OAuth callbacks when the provider needs them.
 - `ingress`: webhook or realtime startup behavior.
 
 ## Runtime boundary

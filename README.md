@@ -57,7 +57,7 @@ murph uninstall
 | [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and local runtime settings. |
 | [Policy](https://murph-agent.com/docs/policy) | Create custom policy profiles with Murph Agent or local profile files. |
 | [Usage](https://murph-agent.com/docs/usage) | Use `murph`, the browser UI, and `murph agent` for setup, sessions, review, and daily operation. |
-| [Plugins](https://murph-agent.com/docs/plugins) | Create scoped plugins with skills, connectors, and read-only tools. |
+| [Plugins](https://murph-agent.com/docs/plugins) | Create scoped plugins with custom integrations, skills, and read-only tools. |
 | [Channels](https://murph-agent.com/docs/channels) | Connect Slack or Discord, lock owner identity through OAuth, and choose watched channels. |
 | [Integrations](https://murph-agent.com/docs/integrations) | Connect context sources like docs, scoped GitHub repositories, Gmail, Calendar, and meetings. |
 | [Core Concepts](https://murph-agent.com/docs/core-concepts) | Sessions, context, skills, policy, triage, and audit trails. |
@@ -93,8 +93,7 @@ Murph is organized around a few extension points:
 - **Integrations** for connected external work sources.
 - **Plugins** for local extensions.
 - **Skills** for request-specific behavior.
-- **Connectors** for one outside source inside a plugin.
-- **Tools** for individual callable actions exposed by connectors.
+- **Tools** for individual callable actions.
 - **Policies** for autonomy and review rules.
 - **Providers** for model backends.
 

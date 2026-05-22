@@ -51,7 +51,7 @@ async function setup() {
   getChannelRegistry().registerPlugin({
     id: 'fixture',
     displayName: 'Fixture',
-    adapter: {
+    runtime: {
       id: 'fixture',
       displayName: 'Fixture',
       capabilities: ['event_ingress', 'thread_fetch', 'reply_post'],
@@ -63,7 +63,7 @@ async function setup() {
       },
       async postReply() {}
     },
-    connector: {
+    setup: {
       getStatus() {
         return { configured: true, installed: true };
       },
@@ -108,7 +108,7 @@ describe('channel routes', () => {
     delete process.env.OPENAI_API_KEY;
   });
 
-  it('lists providers and dispatches setup lookups through channel connectors', async () => {
+  it('lists providers and dispatches setup lookups through channel setup handlers', async () => {
     const { call, workspace } = await setup();
 
     expect((await call('GET', '/api/channels/providers')).body.providers).toEqual([
