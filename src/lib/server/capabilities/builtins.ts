@@ -2,12 +2,6 @@ import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getContextSourceRegistry } from '#lib/server/capabilities/context-source-registry';
 import { getMemoryService } from '#lib/server/memory/service';
 import { searchLocalFiles, toArtifact as localFsToArtifact } from '#lib/server/context-sources/local-fs';
-import {
-  isObsidianConfigured,
-  readObsidianNote,
-  searchObsidianNotes,
-  toArtifact as obsidianToArtifact
-} from '#lib/server/context-sources/obsidian';
 import { writeThreadMemory } from '#lib/server/memory/markdown';
 import { createFileReadTool } from '#lib/server/tools/file-ops';
 import { createShellExecTool } from '#lib/server/tools/shell';
@@ -116,25 +110,6 @@ export function registerBuiltInTools(): void {
     },
     { optional: true, source: 'core' }
   );
-
-  if (isObsidianConfigured()) {
-    contextSources.register(
-      {
-        name: 'obsidian.thread_search',
-        description: 'Search an Obsidian vault by the current thread text.',
-        optional: true,
-        knowledgeDomains: ['documentation', 'meeting'],
-        async retrieve(input) {
-          const query =
-            input.context.thread.latestMessage ||
-            input.context.thread.recentMessages.map((message) => message.text).join(' ');
-          const results = await searchObsidianNotes(query, 3);
-          return results.map((result) => obsidianToArtifact(result));
-        }
-      },
-      { optional: true, source: 'core' }
-    );
-  }
 
   contextSources.register(
     {
@@ -427,55 +402,6 @@ export function registerBuiltInTools(): void {
       }
     }
   );
-
-  if (isObsidianConfigured()) {
-    tools.push(
-      {
-        name: 'obsidian.search',
-        description: 'Search an Obsidian vault by query text.',
-        sideEffectClass: 'read',
-        retrievalEligible: true,
-        retrieval: { profile: 'title_keywords' },
-        inputSchema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['query'],
-          properties: {
-            query: { type: 'string' },
-            limit: { type: 'number' }
-          }
-        },
-        knowledgeDomains: ['documentation', 'meeting'],
-        optional: true,
-        requiresWorkspaceEnablement: true,
-        supportsDryRun: true,
-        async execute(input: { query: string; limit?: number }) {
-          return { results: await searchObsidianNotes(input.query, input.limit ?? 3) };
-        }
-      },
-      {
-        name: 'obsidian.read_note',
-        description: 'Read an Obsidian note by path.',
-        sideEffectClass: 'read',
-        retrievalEligible: false,
-        inputSchema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['path'],
-          properties: {
-            path: { type: 'string' }
-          }
-        },
-        knowledgeDomains: ['documentation', 'meeting'],
-        optional: true,
-        requiresWorkspaceEnablement: true,
-        supportsDryRun: true,
-        async execute(input: { path: string }) {
-          return await readObsidianNote(input.path);
-        }
-      }
-    );
-  }
 
   tools.push(
     createWebSearchTool(),

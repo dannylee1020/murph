@@ -2100,6 +2100,10 @@ button.primary-large:hover {
   gap: 16px;
 }
 
+.github-repo-step[hidden] {
+  display: none;
+}
+
 .github-repo-picker {
   display: grid;
   gap: 14px;

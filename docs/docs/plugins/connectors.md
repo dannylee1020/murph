@@ -9,6 +9,8 @@ For users, the public concept is an integration: a connected source Murph can us
 
 For plugin authors, a connector is the module that implements a plugin-provided integration.
 
+For the full connector contract, credential shape, context source examples, and boundaries, use [Extending Connectors](/docs/developing/extending/connectors).
+
 Examples:
 
 - Linear integration implemented by a Linear connector

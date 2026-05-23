@@ -2,14 +2,14 @@ import { listAdapters } from './adapter-registry.js';
 import { readEnvCredential } from './env-credentials.js';
 
 export type IntegrationProvider = string;
-export type IntegrationAuthType = 'api_key' | 'oauth';
+export type IntegrationAuthType = 'api_key' | 'oauth' | 'path';
 
 export interface IntegrationDefinition {
   provider: IntegrationProvider;
   name: string;
   description: string;
   authType: IntegrationAuthType;
-  credentialKind: 'api_key' | 'oauth_bundle';
+  credentialKind: 'api_key' | 'oauth_bundle' | 'config_path';
   envKey: string;
   credentialLabel: string;
   installPath?: string;
@@ -50,6 +50,17 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     credentialLabel: 'API key',
     tools: ['granola.search', 'granola.read_meeting'],
     contextSources: ['granola.thread_search']
+  },
+  {
+    provider: 'obsidian',
+    name: 'Obsidian',
+    description: 'Local Markdown vault notes and knowledge base context.',
+    authType: 'path',
+    credentialKind: 'config_path',
+    envKey: 'OBSIDIAN_VAULT_PATH',
+    credentialLabel: 'Vault path',
+    tools: ['obsidian.search', 'obsidian.read_note'],
+    contextSources: ['obsidian.thread_search']
   },
   {
     provider: 'google',

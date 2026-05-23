@@ -7,6 +7,8 @@ description: Add messaging providers without editing Murph core runtime code.
 
 Channel plugins are an advanced extension path for Slack/Discord-style messaging providers.
 
+For the full channel plugin contract, runtime adapter shape, setup hooks, and ingress behavior, use [Extending Channels](/docs/developing/extending/channels).
+
 Murph ships with Slack and Discord as built-in channels. Other providers can be added locally as channel plugins, but they are not turnkey built-in support.
 
 Channel plugins solve the Murph-side boundary: provider-specific runtime code, setup metadata, and ingress behavior can live outside core source. They do not remove the provider-side setup work required by each platform.

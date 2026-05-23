@@ -10,7 +10,7 @@ export interface IntegrationAdapter {
   description: string;
   credential: {
     authType: IntegrationAuthType;
-    credentialKind: 'api_key' | 'oauth_bundle';
+    credentialKind: 'api_key' | 'oauth_bundle' | 'config_path';
     envKey: string;
     credentialLabel: string;
     installPath?: string;

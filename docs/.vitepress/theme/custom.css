@@ -152,6 +152,35 @@ body:has(.murph-home) .VPFooter {
 
 .VPSidebar {
   border-right: 1px solid var(--murph-rule-soft);
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+
+.VPSidebar:hover {
+  scrollbar-color: var(--murph-rule-soft) transparent;
+}
+
+.VPSidebar::-webkit-scrollbar {
+  width: 10px;
+}
+
+.VPSidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.VPSidebar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+.VPSidebar:hover::-webkit-scrollbar-thumb {
+  background-color: var(--murph-rule-soft);
+}
+
+.VPSidebar:hover::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--murph-rule-soft) 70%, var(--murph-ink));
 }
 
 .VPSidebarItem .text {

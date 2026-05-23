@@ -225,7 +225,7 @@ type IntegrationStatusPayload = {
         credentialLabel: string;
         installPath?: string;
         status: 'connected' | 'disconnected' | 'reconnect_required';
-        source?: 'credentials' | 'env';
+        source?: 'credentials' | 'config' | 'env';
         envKey: string;
         tools: string[];
         contextSources: string[];
@@ -237,6 +237,7 @@ type IntegrationStatusPayload = {
             repositories?: string[];
             needsRepoScope?: boolean;
             oauthConfigured?: boolean;
+            vaultPath?: string;
         };
         errorMessage?: string;
     }>;
@@ -2133,6 +2134,10 @@ function integrationCard(
             detailRows.push(
                 `<div><dt>Account</dt><dd>${escapeHtml(integration.metadata.account)}</dd></div>`,
             );
+        } else if (integration.provider === 'obsidian' && integration.metadata.vaultPath) {
+            detailRows.push(
+                `<div><dt>Vault</dt><dd>${escapeHtml(integration.metadata.vaultPath)}</dd></div>`,
+            );
         } else if (integration.source === 'env') {
             detailRows.push(
                 `<div><dt>Key</dt><dd>Set on this server</dd></div>`,
@@ -2156,6 +2161,8 @@ function integrationCard(
         const authLabel =
             integration.status === 'reconnect_required'
                 ? 'Reconnect required'
+                : integration.authType === 'path'
+                  ? 'Vault path'
                 : integration.authType === 'oauth'
                   ? 'OAuth'
                   : 'API key';
@@ -4053,7 +4060,15 @@ async function renderSettings(): Promise<void> {
                     '#integration-github-repo-step',
                 );
                 if (providerInput) providerInput.value = provider;
-                if (credentialInput) credentialInput.value = '';
+                if (credentialInput) {
+                    credentialInput.value = '';
+                    credentialInput.type =
+                        integration.authType === 'path' ? 'text' : 'password';
+                    credentialInput.placeholder =
+                        integration.authType === 'path'
+                            ? '/Users/you/Documents/Obsidian Vault'
+                            : '';
+                }
                 form.hidden = false;
                 if (repoStep) repoStep.hidden = true;
                 if (error) {
@@ -4084,7 +4099,10 @@ async function renderSettings(): Promise<void> {
                     labelEl.textContent =
                         integration.credentialLabel ?? 'API key';
                 if (hintEl) {
-                    hintEl.textContent = `Stored locally for Murph and available to all channel workspaces. ${integration.envKey} still works as a server env override.`;
+                    hintEl.textContent =
+                        integration.authType === 'path'
+                            ? `Stored in Murph's local config and available to all channel workspaces. ${integration.envKey} still works as a server env override.`
+                            : `Stored locally for Murph and available to all channel workspaces. ${integration.envKey} still works as a server env override.`;
                 }
                 dialog.showModal();
                 credentialInput?.focus();
@@ -4124,7 +4142,9 @@ async function renderSettings(): Promise<void> {
                     workspaceId:
                         form.dataset.workspaceId ??
                         integrationsPayload.workspaceId,
-                    credential,
+                    ...(integration.authType === 'path'
+                        ? { vaultPath: credential }
+                        : { credential }),
                 },
             );
             if (provider === 'github') {

@@ -9,6 +9,9 @@ import {
 import type { IntegrationDefinition } from './registry.js';
 
 export function integrationCredentialKey(definition: Pick<IntegrationDefinition, 'credentialKind'>): string {
+  if (definition.credentialKind === 'config_path') {
+    return 'config_path';
+  }
   return definition.credentialKind === 'oauth_bundle' ? 'oauth_bundle' : 'api_key';
 }
 

@@ -7,6 +7,8 @@ description: Customize Murph policy profiles with Murph Agent or local profile f
 
 Policy controls what Murph does with a drafted response when a session is running.
 
+For the full policy profile format, runtime order, and metadata reference, use [Extending Policy](/docs/developing/extending/policy).
+
 Murph Agent is the preferred way to create or adjust a custom profile:
 
 ```bash

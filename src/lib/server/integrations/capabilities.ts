@@ -7,6 +7,7 @@ import {
   globalIntegrationCredential,
   integrationCredentialKey,
 } from './global-scope.js';
+import { isObsidianConfigured } from '#lib/server/context-sources/obsidian';
 
 const CHANNEL_PROVIDER_CAPABILITIES: Record<string, Pick<IntegrationDefinition, 'tools' | 'contextSources'>> = {
   slack: {
@@ -122,7 +123,9 @@ export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string
     const key = integrationCredentialKey(definition);
     const hasLocalCred = definition.provider === 'google'
       ? Boolean(findGoogleOAuthRecord(workspaceId) || globalIntegrationCredential('google', 'access_token'))
-      : Boolean(globalIntegrationCredential(definition.provider, key));
+      : definition.credentialKind === 'config_path'
+        ? definition.provider === 'obsidian' && isObsidianConfigured()
+        : Boolean(globalIntegrationCredential(definition.provider, key));
     const hasEnvCred = Boolean(readEnvCredential(definition.provider));
     if (definition.provider === 'github' && (hasLocalCred || hasEnvCred) && !githubHasRepositoryScope(workspaceId)) {
       disableIntegrationCapabilities(workspaceId, definition);

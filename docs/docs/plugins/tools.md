@@ -9,6 +9,8 @@ A tool is one callable action Murph can run.
 
 Examples include built-in web search and plugin-provided source search. A Linear integration can expose a `linear.search` tool.
 
+For the full tool contract, retrieval settings, and examples, use [Extending Tools](/docs/developing/extending/tools).
+
 ## Built-in web tools
 
 Murph includes built-in web tools for public information:

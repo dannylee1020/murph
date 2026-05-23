@@ -9,10 +9,10 @@ Murph is installed as a local app plus a `murph` CLI.
 
 ## Requirements
 
-- A terminal with `curl`, `tar`, `mktemp`, and `uname`
-- An OpenAI or Anthropic API key
+- `curl`
+- Node.js 20+ and npm
 
-The installer checks the minimal runtime pre-reqs first. If Node.js 20+ and npm are not available, it installs Node locally under `~/.murph/deps`. Setup helpers such as the Slack CLI are installed after Murph itself is built.
+If Node.js 20+ or npm is missing, the installer downloads a Murph-managed Node/npm copy under `~/.murph/deps`. It does not install Node globally or modify your system package manager. Setup helpers such as the Slack CLI are installed after Murph itself is built.
 
 ## Install from the internet
 

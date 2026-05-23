@@ -7,6 +7,8 @@ description: Add Murph behavior instructions with plugin skills.
 
 Skills describe how Murph should use a specific integration, tool, or evidence source.
 
+For the full skill frontmatter contract and selection guidance, use [Extending Skills](/docs/developing/extending/skills).
+
 ## Skill file
 
 Plugin skills are Markdown files with frontmatter and instructions.

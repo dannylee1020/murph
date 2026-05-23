@@ -146,22 +146,6 @@ setup:
 
 Use `channelScopeMode: all_accessible` only after you have verified the app or bot can safely read every channel it can access.
 
-## GitHub scope
-
-GitHub retrieval is disabled until a repository scope is selected. The browser UI stores the GitHub token in `~/.murph/.credentials` and writes selected repositories into local setup metadata. You can also keep the repository scope in `~/.murph/config.yaml`:
-
-```yaml
-integrations:
-  github:
-    repositories:
-      - owner/repo
-      - owner/another-repo
-```
-
-The token itself remains a secret and belongs in `~/.murph/.credentials`, not `config.yaml`.
-
-For development or hosted deployments, `GITHUB_PAT` and `GITHUB_REPOSITORIES` still work as explicit runtime overrides.
-
 ## Web search
 
 Murph ships with Brave Search as the default public web discovery provider:

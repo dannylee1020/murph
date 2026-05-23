@@ -108,7 +108,8 @@ const CONFIG_KEY_CLEARERS: Record<string, (config: Record<string, unknown>) => v
   MURPH_AGENT_PROVIDER: (config) => deletePath(config, ['ai', 'agent', 'provider']),
   MURPH_AGENT_MODEL: (config) => deletePath(config, ['ai', 'agent', 'model']),
   MURPH_POLICY_PROVIDER: (config) => deletePath(config, ['ai', 'policy', 'provider']),
-  MURPH_POLICY_MODEL: (config) => deletePath(config, ['ai', 'policy', 'model'])
+  MURPH_POLICY_MODEL: (config) => deletePath(config, ['ai', 'policy', 'model']),
+  OBSIDIAN_VAULT_PATH: (config) => deletePath(config, ['integrations', 'obsidian', 'vaultPath'])
 };
 
 function murphHome(): string {

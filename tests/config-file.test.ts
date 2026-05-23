@@ -13,6 +13,7 @@ const envKeys = [
   'MURPH_DEFAULT_MODEL',
   'MURPH_AGENT_PROVIDER',
   'MURPH_AGENT_MODEL',
+  'OBSIDIAN_VAULT_PATH',
   'SLACK_EVENTS_MODE',
   'MURPH_WEB_SEARCH_BACKEND',
   'OPENAI_API_KEY',
@@ -78,6 +79,21 @@ describe('murph config file', () => {
     expect(env.githubRepositories).toEqual(['acme/app', 'acme/api']);
   });
 
+  it('does not let a blank Obsidian env override hide the configured vault path', async () => {
+    writeFileSync('config.yaml', [
+      'integrations:',
+      '  obsidian:',
+      '    vaultPath: /Users/test/Vault',
+      ''
+    ].join('\n'));
+    process.env.OBSIDIAN_VAULT_PATH = '';
+
+    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
+    const env = getRuntimeEnv();
+
+    expect(env.obsidianVaultPath).toBe('/Users/test/Vault');
+  });
+
   it('uses config-backed runtime provider defaults for the model provider', async () => {
     writeFileSync('config.yaml', [
       'ai:',
@@ -138,17 +154,19 @@ describe('murph config file', () => {
       MURPH_APP_URL: 'https://murph.example',
       MURPH_DEFAULT_MODEL: 'gpt-5.5',
       MURPH_AGENT_MODEL: 'claude-opus-4-7',
-      GITHUB_REPOSITORIES: 'acme/app,acme/api'
+      GITHUB_REPOSITORIES: 'acme/app,acme/api',
+      OBSIDIAN_VAULT_PATH: '/Users/test/Vault'
     });
 
     const raw = readFileSync('config.yaml', 'utf8');
-    expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES']);
+    expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES', 'OBSIDIAN_VAULT_PATH']);
     expect(raw).toContain('keep: true');
     expect(raw).toContain('url: https://murph.example');
     expect(raw).toContain('defaultModel: gpt-5.5');
     expect(raw).toContain('model: claude-opus-4-7');
     expect(raw).toContain('- acme/app');
     expect(raw).toContain('- acme/api');
+    expect(raw).toContain('vaultPath: /Users/test/Vault');
   });
 
   it('clears explicit Murph Agent overrides so the agent can inherit runtime', async () => {
@@ -174,5 +192,23 @@ describe('murph config file', () => {
     expect(raw).toContain('defaultModel: gpt-5.5');
     expect(raw).not.toContain('provider: anthropic');
     expect(raw).not.toContain('model: claude-opus-4-7');
+  });
+
+  it('clears Obsidian vault path config because it is non-secret local setup state', async () => {
+    writeFileSync('config.yaml', [
+      'integrations:',
+      '  obsidian:',
+      '    vaultPath: /Users/test/Vault',
+      ''
+    ].join('\n'));
+    const { updateMurphConfigValues } = await import('../src/lib/server/setup/config-file');
+
+    const result = updateMurphConfigValues({
+      OBSIDIAN_VAULT_PATH: ''
+    });
+
+    const raw = readFileSync('config.yaml', 'utf8');
+    expect(result.updated).toEqual(['OBSIDIAN_VAULT_PATH']);
+    expect(raw).not.toContain('vaultPath');
   });
 });

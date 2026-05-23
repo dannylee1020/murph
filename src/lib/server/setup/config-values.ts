@@ -50,7 +50,11 @@ export function updateSetupConfigValues(values: Record<string, string | undefine
   const configUpdated = updateMurphConfigValues(configValues).updated;
   for (const key of configUpdated) {
     const value = configValues[key]?.trim();
-    if (value) process.env[key] = value;
+    if (value) {
+      process.env[key] = value;
+    } else {
+      delete process.env[key];
+    }
   }
 
   resetRuntimeEnvCache();

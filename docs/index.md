@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Murph
-description: Local-first AI handoff agent for Slack, Discord, and async work.
+description: Local-first AI handoff agent for async work.
 sidebar: false
 aside: false
 editLink: false

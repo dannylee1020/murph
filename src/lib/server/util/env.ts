@@ -138,7 +138,9 @@ export function getRuntimeEnv(): RuntimeEnv {
     notionMaxResults: envOrConfigNumber('NOTION_MAX_RESULTS', config.integrations?.notion?.maxResults, 3),
     githubPat: envOrSecret('GITHUB_PAT', 'github', 'api_key'),
     githubRepositories: envOrConfigCsv('GITHUB_REPOSITORIES', config.integrations?.github?.repositories),
-    obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH ?? config.integrations?.obsidian?.vaultPath,
+    obsidianVaultPath: process.env.OBSIDIAN_VAULT_PATH?.trim()
+      ? process.env.OBSIDIAN_VAULT_PATH
+      : config.integrations?.obsidian?.vaultPath,
     granolaApiKey: envOrSecret('GRANOLA_API_KEY', 'granola', 'api_key'),
     googleAccessToken: envOrSecret('GOOGLE_ACCESS_TOKEN', 'google', 'access_token'),
     googleClientId: process.env.GOOGLE_CLIENT_ID ?? config.integrations?.google?.clientId,

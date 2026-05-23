@@ -7,6 +7,8 @@ description: Extend Murph with scoped local plugin packages.
 
 Plugins are local extension packages that add channels, custom integrations, tools, or skills to Murph.
 
+For implementation-level plugin details, use [Extending Plugins](/docs/developing/extending/plugins).
+
 ## Scoped plugins
 
 Scoped plugins live under the Murph home directory:

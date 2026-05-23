@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +36,7 @@ async function setup(options: { githubPat?: string } = {}) {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-integrations-route-'));
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
+  process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   if (options.githubPat) {
@@ -44,6 +45,7 @@ async function setup(options: { githubPat?: string } = {}) {
     process.env.GITHUB_PAT = '';
   }
   process.env.NOTION_API_KEY = '';
+  process.env.OBSIDIAN_VAULT_PATH = '';
   process.env.GOOGLE_ACCESS_TOKEN = '';
   process.env.GOOGLE_CLIENT_ID = '';
   process.env.GOOGLE_CLIENT_SECRET = '';
@@ -194,6 +196,94 @@ describe('integration routes', () => {
     const memory = store.getOrCreateWorkspaceMemory(discordWorkspace.id);
     expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['notion.search', 'notion.read_page']));
     expect(memory.enabledContextSources).toContain('notion.thread_search');
+  });
+
+  it('lists Obsidian as a path-based connector for the integration card UI', async () => {
+    const { request, workspace } = await setup();
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const obsidian = response.body.integrations.find((integration: any) => integration.provider === 'obsidian');
+
+    expect(response.status).toBe(200);
+    expect(obsidian).toEqual(expect.objectContaining({
+      provider: 'obsidian',
+      name: 'Obsidian',
+      status: 'disconnected',
+      authType: 'path',
+      credentialLabel: 'Vault path',
+      envKey: 'OBSIDIAN_VAULT_PATH',
+      tools: ['obsidian.search', 'obsidian.read_note'],
+      contextSources: ['obsidian.thread_search']
+    }));
+  });
+
+  it('connects Obsidian with a local vault path without storing a secret', async () => {
+    const { request, store, workspace } = await setup();
+    const vault = mkdtempSync(join(tmpdir(), 'murph-obsidian-vault-'));
+    const realVault = realpathSync(vault);
+    writeFileSync(join(vault, 'Plan.md'), 'Launch readiness notes');
+
+    const response = await request('POST', '/api/integrations/obsidian/connect', {
+      workspaceId: workspace.id,
+      vaultPath: vault
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration).toEqual(expect.objectContaining({
+      provider: 'obsidian',
+      status: 'connected',
+      source: 'config',
+      authType: 'path',
+      credentialLabel: 'Vault path',
+      canDisconnect: true,
+      metadata: expect.objectContaining({
+        vaultPath: realVault
+      })
+    }));
+    const { readSecretRecord } = await import('#lib/server/credentials/local-store');
+    expect(readSecretRecord('obsidian', 'config_path')).toBeUndefined();
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain(`vaultPath: ${realVault}`);
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['obsidian.search', 'obsidian.read_note']));
+    expect(memory.enabledContextSources).toContain('obsidian.thread_search');
+  });
+
+  it('rejects invalid Obsidian vault paths', async () => {
+    const { request, workspace } = await setup();
+    const file = join(mkdtempSync(join(tmpdir(), 'murph-obsidian-file-')), 'note.md');
+    writeFileSync(file, 'not a vault directory');
+
+    const response = await request('POST', '/api/integrations/obsidian/connect', {
+      workspaceId: workspace.id,
+      vaultPath: file
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('must be a directory');
+  });
+
+  it('disconnects Obsidian config and disables its retrieval capabilities', async () => {
+    const { request, store, workspace } = await setup();
+    const vault = mkdtempSync(join(tmpdir(), 'murph-obsidian-vault-'));
+    mkdirSync(join(vault, 'Notes'));
+    writeFileSync(join(vault, 'Notes', 'Plan.md'), 'Launch readiness notes');
+    await request('POST', '/api/integrations/obsidian/connect', {
+      workspaceId: workspace.id,
+      vaultPath: vault
+    });
+
+    const response = await request('DELETE', `/api/integrations/obsidian/disconnect?workspaceId=${workspace.id}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration).toEqual(expect.objectContaining({
+      provider: 'obsidian',
+      status: 'disconnected'
+    }));
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).not.toContain('vaultPath');
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).not.toContain('obsidian.search');
+    expect(memory.enabledOptionalTools).not.toContain('obsidian.read_note');
+    expect(memory.enabledContextSources).not.toContain('obsidian.thread_search');
   });
 
   it('reports global credentials before env fallback when both are present', async () => {

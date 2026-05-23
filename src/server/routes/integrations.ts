@@ -1,7 +1,12 @@
 import { getRuntimeEnv } from '#lib/server/util/env';
+import { resetRuntimeEnvCache } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getGitHubService } from '#lib/server/context-sources/github';
+import {
+  getObsidianConnectionStatus,
+  validateObsidianVaultPath
+} from '#lib/server/context-sources/obsidian';
 import { getIntegration, listIntegrations, readEnvCredential } from '#lib/server/integrations/registry';
 import { loadIntegrationAdapters } from '#lib/server/integrations/adapter-loader';
 import { registerBuiltInIntegrationAdapters } from '#lib/server/integrations/register-builtins';
@@ -19,12 +24,14 @@ import {
   integrationCredentialKey,
   saveIntegrationConnectionForAllWorkspaces
 } from '#lib/server/integrations/global-scope';
+import { updateMurphConfigValues } from '#lib/server/setup/config-file';
 import { readJson, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 
 interface ConnectBody {
   workspaceId?: string;
   credential?: string;
+  vaultPath?: string;
 }
 
 interface GitHubRepositoriesBody {
@@ -104,18 +111,25 @@ async function ensureIntegrationRegistryLoaded(): Promise<void> {
 function statusFor(provider: string, workspaceId: string) {
   const definition = getIntegration(provider)!;
   const stored = getStore().getIntegrationConnection(workspaceId, provider);
-  const envValue = readEnvCredential(provider);
+  const pathStatus = definition.credentialKind === 'config_path' && provider === 'obsidian'
+    ? getObsidianConnectionStatus()
+    : undefined;
+  const envValue = pathStatus?.source === 'env' ? pathStatus.vaultPath : readEnvCredential(provider);
   const env = getRuntimeEnv();
   const key = integrationCredentialKey(definition);
   const local = provider === 'google'
     ? findGoogleOAuthRecord(workspaceId) ?? globalIntegrationCredential('google', 'access_token')
-    : globalIntegrationCredential(provider, key);
-  const reconnectRequired = !envValue && !local && stored?.status === 'connected';
-  const source = local ? 'credentials' : envValue ? 'env' : undefined;
+    : definition.credentialKind === 'config_path'
+      ? undefined
+      : globalIntegrationCredential(provider, key);
+  const source = local ? 'credentials' : pathStatus?.source ?? (envValue ? 'env' : undefined);
+  const reconnectRequired = !source && stored?.status === 'connected';
   const oauthConfigured = provider === 'google'
     ? Boolean(env.googleClientId && env.googleClientSecret)
     : undefined;
-  const metadata = source === 'credentials'
+  const metadata = definition.credentialKind === 'config_path' && pathStatus?.configured
+    ? { ...(stored?.metadata ?? {}), vaultPath: pathStatus.vaultPath }
+    : source === 'credentials'
     ? local?.metadata ?? {}
     : envValue
       ? { masked: maskCredential(envValue) }
@@ -140,7 +154,7 @@ function statusFor(provider: string, workspaceId: string) {
     installPath: definition.installPath,
     tools: definition.tools,
     contextSources: definition.contextSources,
-    canDisconnect: source === 'credentials' || reconnectRequired,
+    canDisconnect: source === 'credentials' || source === 'config' || reconnectRequired,
     metadata: provider === 'github'
       ? { ...metadata, repositories: githubRepositories, needsRepoScope: source ? (githubRepositories ?? []).length === 0 : false }
       : oauthConfigured === undefined
@@ -183,6 +197,33 @@ export const integrationRoutes: Route[] = [
     }
 
     const credential = body.credential?.trim();
+    const vaultPath = body.vaultPath?.trim() || credential;
+    if (definition.credentialKind === 'config_path') {
+      if (!vaultPath) {
+        sendJson(res, { ok: false, error: 'vault_path_required' }, 400);
+        return;
+      }
+      try {
+        const validation = await validateObsidianVaultPath(vaultPath);
+        updateMurphConfigValues({ OBSIDIAN_VAULT_PATH: validation.vaultPath });
+        resetRuntimeEnvCache();
+        const metadata = {
+          vaultPath: validation.vaultPath,
+          validatedAt: new Date().toISOString()
+        };
+        saveIntegrationConnectionForAllWorkspaces({
+          provider: definition.provider,
+          credentialKind: definition.credentialKind,
+          metadata
+        });
+        enableIntegrationCapabilitiesForAllWorkspaces(definition);
+        sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
+      } catch (error) {
+        sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
+      }
+      return;
+    }
+
     if (!credential) {
       sendJson(res, { ok: false, error: 'credential_required' }, 400);
       return;
@@ -296,6 +337,20 @@ export const integrationRoutes: Route[] = [
     }
 
     const key = integrationCredentialKey(definition);
+    if (definition.credentialKind === 'config_path') {
+      const currentStatus = getObsidianConnectionStatus();
+      if (currentStatus.source !== 'env') {
+        updateMurphConfigValues({ OBSIDIAN_VAULT_PATH: '' });
+        resetRuntimeEnvCache();
+      }
+      deleteIntegrationConnectionForAllWorkspaces(definition.provider);
+      if (!getObsidianConnectionStatus().configured) {
+        disableIntegrationCapabilitiesForAllWorkspaces(definition);
+      }
+      sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
+      return;
+    }
+
     deleteIntegrationCredentialEverywhere(definition.provider, key);
     deleteIntegrationConnectionForAllWorkspaces(definition.provider);
     if (!readEnvCredential(definition.provider)) {
