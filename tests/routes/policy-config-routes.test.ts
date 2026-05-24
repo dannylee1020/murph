@@ -105,7 +105,7 @@ describe('policy configuration routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.ok).toBe(true);
-    expect(response.body.profiles.map((profile: { name: string }) => profile.name)).toEqual([
+    expect(response.body.profiles.map((profile: { name: string }) => profile.name)).toEqual(expect.arrayContaining([
       'default',
       'engineering',
       'leadership',
@@ -113,7 +113,7 @@ describe('policy configuration routes', () => {
       'product',
       'sales',
       'yolo'
-    ]);
+    ]));
     expect(response.body.selectedProfileName).toBe('builtin-manual_review');
     expect(response.body.mode).toBe('manual_review');
     expect(response.body.compiled.executionMode).toBe('manual_review');

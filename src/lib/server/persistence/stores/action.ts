@@ -5,6 +5,7 @@ import type {
   ContinuityActionType,
   ContinuityCase,
   ProviderName,
+  ReviewLifecycleEntry,
   ReviewItem,
   TriageItem
 } from '#lib/types';
@@ -42,6 +43,14 @@ interface ActionRow {
   created_at: string;
 }
 
+interface AuditLifecycleRow {
+  task_id: string;
+  disposition: ActionDisposition;
+  policy_reason: string;
+  model_reason: string;
+  created_at: string;
+}
+
 function mapAction(row: ActionRow): ReviewItem {
   return {
     id: row.id,
@@ -59,6 +68,58 @@ function mapAction(row: ActionRow): ReviewItem {
     contextSnapshot: parseContextSnapshot(row.context_snapshot_json),
     createdAt: row.created_at
   };
+}
+
+function lifecycleLabel(row: AuditLifecycleRow): string {
+  if (row.disposition === 'queued') {
+    return 'Queued by policy';
+  }
+  if (row.task_id.startsWith('review:') && row.disposition === 'auto_sent') {
+    return 'Approved and sent by operator';
+  }
+  if (row.task_id.startsWith('review:') && row.disposition === 'abstained') {
+    return 'Marked abstained by operator';
+  }
+  if (row.task_id.startsWith('review:')) {
+    return 'Resolved by operator';
+  }
+  return 'Recorded by policy';
+}
+
+function lifecycleReason(row: AuditLifecycleRow): string {
+  return row.task_id.startsWith('review:') ? row.policy_reason : row.policy_reason || row.model_reason;
+}
+
+function listReviewLifecycle(db: Db, row: ActionRow): ReviewLifecycleEntry[] {
+  const rows = db
+    .prepare(
+      `SELECT task_id, disposition, policy_reason, model_reason, created_at
+       FROM audit_entries
+       WHERE workspace_id = ?
+         AND thread_ts = ?
+         AND (session_id = ? OR (session_id IS NULL AND ? IS NULL))
+         AND (
+           task_id = ?
+           OR (disposition = 'queued' AND created_at >= ?)
+         )
+       ORDER BY created_at ASC`
+    )
+    .all(
+      row.workspace_id,
+      row.thread_ts,
+      row.session_id ?? null,
+      row.session_id ?? null,
+      `review:${row.id}`,
+      row.created_at
+    ) as AuditLifecycleRow[];
+
+  return rows.map((auditRow) => ({
+    disposition: auditRow.disposition,
+    label: lifecycleLabel(auditRow),
+    reason: lifecycleReason(auditRow),
+    source: auditRow.task_id.startsWith('review:') ? 'operator' : 'policy',
+    createdAt: auditRow.created_at
+  }));
 }
 
 function parseContextSnapshot(value: string | null | undefined): ActionContextSnapshot | undefined {
@@ -244,6 +305,7 @@ export function listTriageItems(db: Db, workspaceId?: string, sessionId?: string
             }
           }
         : undefined);
+    item.lifecycle = listReviewLifecycle(db, row);
     return item;
   });
 }

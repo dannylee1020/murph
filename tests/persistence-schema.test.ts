@@ -38,15 +38,24 @@ describe('sqlite schema cleanup', () => {
       '001_create_current_schema',
       '002_simplify_local_first_schema',
       '003_add_channel_events',
-      '004_add_memory_index_runs'
+      '004_add_memory_index_runs',
+      '005_add_runtime_refresh_state'
     ]);
+    expect(tableExists(db, 'runtime_refresh_state')).toBe(true);
+    expect(columns(db, 'autopilot_sessions')).toEqual(expect.arrayContaining([
+      'runtime_revision_json',
+      'last_runtime_refresh_at',
+      'policy_binding',
+      'channel_scope_binding'
+    ]));
     const { runMigrations } = await import('#lib/server/persistence/migrator');
     runMigrations(db, sqlitePath);
     expect(migrationIds(db)).toEqual([
       '001_create_current_schema',
       '002_simplify_local_first_schema',
       '003_add_channel_events',
-      '004_add_memory_index_runs'
+      '004_add_memory_index_runs',
+      '005_add_runtime_refresh_state'
     ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(false);
   });
@@ -180,7 +189,14 @@ describe('sqlite schema cleanup', () => {
     expect(columns(migrated, 'workspaces')).not.toEqual(expect.arrayContaining(['slack_team_id', 'bot_token_encrypted']));
     expect(columns(migrated, 'users')).not.toEqual(expect.arrayContaining(['slack_user_id', 'fallback_slack_user_id']));
     expect(columns(migrated, 'autopilot_sessions')).not.toContain('owner_slack_user_id');
+    expect(columns(migrated, 'autopilot_sessions')).toEqual(expect.arrayContaining([
+      'runtime_revision_json',
+      'last_runtime_refresh_at',
+      'policy_binding',
+      'channel_scope_binding'
+    ]));
     expect(columns(migrated, 'integration_connections')).not.toContain('credential_encrypted');
+    expect(tableExists(migrated, 'runtime_refresh_state')).toBe(true);
     expect(tableExists(migrated, 'integration_credentials')).toBe(false);
     expect(tableExists(migrated, 'user_memory')).toBe(false);
     expect(tableExists(migrated, 'feedback_memory')).toBe(false);
@@ -188,7 +204,8 @@ describe('sqlite schema cleanup', () => {
       '001_create_current_schema',
       '002_simplify_local_first_schema',
       '003_add_channel_events',
-      '004_add_memory_index_runs'
+      '004_add_memory_index_runs',
+      '005_add_runtime_refresh_state'
     ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(true);
     (migrated as unknown as { close?: () => void }).close?.();

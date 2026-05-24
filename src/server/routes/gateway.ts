@@ -25,6 +25,7 @@ import { getSlackService } from '#lib/server/channels/slack/service';
 import { requireMatchingSetupOwner } from '#lib/server/setup/owner-identity';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { readMurphConfig, updateMurphPolicyConfig } from '#lib/server/setup/config-file';
+import { refreshRuntimeState } from '#lib/server/runtime/refresh';
 import type { AgentUser, ChannelEnsureMemberResult, ChannelSetupMember, PolicyExecutionMode, SessionMode, Workspace } from '#lib/types';
 
 const gateway = getGateway();
@@ -277,6 +278,8 @@ async function createPreparedSession(target: PreparedSessionTarget, input: Sessi
     policyProfileName: policyProfile.profileName,
     policyOverrideRaw: policyProfile.overrideRaw,
     policy: policyProfile,
+    policyBinding: input.mode ? 'explicit' : 'config',
+    channelScopeBinding: input.channelScope ? 'explicit' : 'setup_defaults',
     endsAt: resolveSessionEndsAt(input, user)
   });
   emitControlPlaneEvent({ type: 'session.updated', session });
@@ -384,7 +387,11 @@ export const gatewayRoutes: Route[] = [
       ...(Object.prototype.hasOwnProperty.call(body, 'profileName') ? { profileName } : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'mode') ? { mode } : {})
     });
-    sendJson(res, await policyConfigPayload());
+    const refresh = await refreshRuntimeState({
+      reason: 'policy_config_updated',
+      deferIfRunActive: true
+    });
+    sendJson(res, { ...(await policyConfigPayload()), refresh });
   }),
   route('POST', '/api/gateway/policy/preview', async ({ req, res }) => {
     const body = await readJson<{
@@ -495,7 +502,12 @@ export const gatewayRoutes: Route[] = [
     };
 
     store.upsertWorkspaceMemory(next);
-    sendJson(res, { ok: true, workspaceMemory: next });
+    const refresh = await refreshRuntimeState({
+      reason: 'workspace_capabilities_updated',
+      workspaceIds: [workspace.id],
+      deferIfRunActive: true
+    });
+    sendJson(res, { ok: true, workspaceMemory: next, refresh });
   }),
   route('GET', '/api/gateway/audit', ({ res, url }) => {
     sendJson(res, {

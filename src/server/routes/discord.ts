@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { getDiscordService } from '#lib/server/channels/discord/service';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
+import { refreshRuntimeState } from '#lib/server/runtime/refresh';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
@@ -145,6 +146,11 @@ export const discordRoutes: Route[] = [
       const { workspace } = install;
       saveAuthedDiscordUserAsWorkspaceOwner(install);
       await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
+      await refreshRuntimeState({
+        reason: 'channel_setup_updated',
+        workspaceIds: [workspace.id],
+        deferIfRunActive: true
+      });
 
       redirect(res, source === 'setup'
         ? `/setup?step=discord&success=1&workspaceId=${encodeURIComponent(workspace.id)}`
@@ -167,13 +173,19 @@ export const discordRoutes: Route[] = [
       const guild = await getDiscordService().fetchGuild(guildId);
       const workspace = await getDiscordService().saveGuildWorkspace(guild);
       await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
+      const refresh = await refreshRuntimeState({
+        reason: 'channel_setup_updated',
+        workspaceIds: [workspace.id],
+        deferIfRunActive: true
+      });
       sendJson(res, {
         ok: true,
         workspace: {
           id: workspace.id,
           externalWorkspaceId: workspace.externalWorkspaceId,
           name: workspace.name
-        }
+        },
+        refresh
       });
     } catch (error) {
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'discord_guild_save_failed' }, 400);

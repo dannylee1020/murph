@@ -42,6 +42,8 @@ async function createSessionFromInput(input: {
           .map((entry) => entry.trim())
           .filter(Boolean)
       : [],
+    policyBinding: input.mode ? 'explicit' : 'config',
+    channelScopeBinding: input.channelScopeRaw ? 'explicit' : 'setup_defaults',
     endsAt: new Date(Date.now() + input.durationHours * 60 * 60 * 1000).toISOString()
   });
   emitControlPlaneEvent({ type: 'session.updated', session });

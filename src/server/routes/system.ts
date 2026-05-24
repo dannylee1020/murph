@@ -5,6 +5,7 @@ import { DEFAULT_AGENT_MODEL } from '#lib/config';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getNotionStatus } from '#lib/server/context-sources/notion';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
+import { refreshRuntimeState } from '#lib/server/runtime/refresh';
 import { getStore } from '#lib/server/persistence/store';
 import { getSetupDoctor } from '#lib/server/setup/doctor';
 import { updateSetupConfigValues } from '#lib/server/setup/config-values';
@@ -514,7 +515,12 @@ export const systemRoutes: Route[] = [
     }
 
     updateMurphSetupDefaults(defaults);
-    sendJson(res, setupDefaultsPayload(workspace));
+    const refresh = await refreshRuntimeState({
+      reason: 'setup_defaults_updated',
+      workspaceIds: [workspace.id],
+      deferIfRunActive: true
+    });
+    sendJson(res, { ...setupDefaultsPayload(workspace), refresh });
   }),
   route('GET', '/api/setup/doctor', async ({ res }) => {
     await ensureRuntimeInitialized();
@@ -582,7 +588,11 @@ export const systemRoutes: Route[] = [
 
     try {
       const result = updateSetupConfigValues(body);
-      sendJson(res, { ok: true, ...result, doctor: getSetupDoctor() });
+      const refresh = await refreshRuntimeState({
+        reason: 'setup_config_updated',
+        deferIfRunActive: true
+      });
+      sendJson(res, { ok: true, ...result, doctor: getSetupDoctor(), refresh });
     } catch (error) {
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'setup_config_update_failed' }, 400);
     }

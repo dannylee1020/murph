@@ -167,6 +167,25 @@ export function listAgentRuns(db: Db, sessionId?: string, limit = 50): AgentRunR
   return rows.map(mapRun);
 }
 
+export function listAgentRunsForThread(
+  db: Db,
+  workspaceId: string,
+  channelId: string,
+  threadTs: string,
+  limit = 50
+): AgentRunRecord[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM agent_runs
+       WHERE workspace_id = ? AND channel_id = ? AND thread_ts = ?
+       ORDER BY started_at DESC
+       LIMIT ?`
+    )
+    .all(workspaceId, channelId, threadTs, limit) as RunRow[];
+
+  return rows.map(mapRun);
+}
+
 export function listRunSummaries(db: Db, sessionId?: string, limit = 50): AgentRunSummary[] {
   return listAgentRuns(db, sessionId, limit).map((run) => {
     const events = listAgentRunEvents(db, run.id);

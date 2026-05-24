@@ -1,17 +1,8 @@
 import { getStore } from '#lib/server/persistence/store';
-import { writeRunMemoryPage, type MemoryIndexSourcePayload } from '#lib/server/memory/wiki';
-import type { AgentRunEventRecord } from '#lib/types';
+import { rebuildMemoryPagesForRun } from '#lib/server/memory/wiki';
 
 const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 10;
-
-function indexSourcePayload(events: AgentRunEventRecord[]): MemoryIndexSourcePayload | null {
-  const event = [...events].reverse().find((entry) => entry.type === 'agent.memory.index_source');
-  if (!event || !event.payload || typeof event.payload !== 'object') {
-    return null;
-  }
-  return event.payload as MemoryIndexSourcePayload;
-}
 
 export class MemoryIndexWorker {
   private readonly store = getStore();
@@ -56,30 +47,19 @@ export class MemoryIndexWorker {
     }
 
     try {
-      const payload = indexSourcePayload(this.store.listAgentRunEvents(run.id));
-      if (!payload) {
-        this.store.markMemoryIndexIndexed(run.id, `${run.id}:no-index-source`, 'skipped');
-        this.store.appendAgentRunEvent({
-          runId: run.id,
-          type: 'agent.memory.indexed',
-          payload: { status: 'skipped', reason: 'No indexable memory source event found.' }
-        });
-        return;
-      }
-
-      const result = await writeRunMemoryPage(run, payload);
+      const result = await rebuildMemoryPagesForRun(run);
       this.store.markMemoryIndexIndexed(
         run.id,
         result.contentHash,
-        result.evidenceCount > 0 ? 'indexed' : 'skipped'
+        result.pageCount > 0 ? 'indexed' : 'skipped'
       );
       this.store.appendAgentRunEvent({
         runId: run.id,
         type: 'agent.memory.indexed',
         payload: {
-          status: result.evidenceCount > 0 ? 'indexed' : 'skipped',
-          evidenceCount: result.evidenceCount,
-          pagePath: result.pagePath
+          status: result.pageCount > 0 ? 'indexed' : 'skipped',
+          pageCount: result.pageCount,
+          pagePaths: result.pagePaths
         }
       });
     } catch (error) {

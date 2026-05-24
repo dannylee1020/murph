@@ -5,10 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentToolResult, ContextAssembly, ContinuityTask, SkillManifest } from '../src/lib/types';
 import type { AgentRunResult } from '../src/lib/server/runtime/agent-runtime';
 
-vi.mock('../src/lib/server/memory/markdown', () => ({
-  writeThreadMemory: vi.fn().mockResolvedValue('test-thread-memory.md')
-}));
-
 function skill(): SkillManifest {
   return {
     name: 'notion-docs',
@@ -343,6 +339,41 @@ describe('Gateway session-first policy', () => {
       message: 'The owner is away; this is queued for review.',
       reason: 'Session is active and context is sufficient.'
     }));
+  });
+
+  it('shows policy queue and operator approval in triage lifecycle', async () => {
+    const { gateway, store, workspace } = await setup({
+      policyExecution: {
+        execution: 'queue',
+        reason: 'Request is policy-sensitive and needs operator review.',
+        confidence: 0.7
+      }
+    });
+
+    await gateway.handleTask(task());
+    const queued = store.listReviewQueue(workspace.id)[0];
+
+    await gateway.handleReviewAction(queued.id, { action: 'approve_send' });
+
+    const triageItems = store.listTriageItems(workspace.id, queued.sessionId);
+    expect(triageItems[0]).toEqual(expect.objectContaining({
+      id: queued.id,
+      disposition: 'auto_sent'
+    }));
+    expect(triageItems[0].lifecycle).toEqual([
+      expect.objectContaining({
+        disposition: 'queued',
+        label: 'Queued by policy',
+        source: 'policy',
+        reason: 'Policy manual-review mode queues actions by default'
+      }),
+      expect.objectContaining({
+        disposition: 'auto_sent',
+        label: 'Approved and sent by operator',
+        source: 'operator',
+        reason: 'Operator approved queued action'
+      })
+    ]);
   });
 
   it('approves queued Discord replies with provider-specific thread metadata', async () => {

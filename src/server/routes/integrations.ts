@@ -1,5 +1,6 @@
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { resetRuntimeEnvCache } from '#lib/server/util/env';
+import { refreshRuntimeState } from '#lib/server/runtime/refresh';
 import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getGitHubService } from '#lib/server/context-sources/github';
@@ -11,10 +12,11 @@ import { getIntegration, listIntegrations, readEnvCredential } from '#lib/server
 import { loadIntegrationAdapters } from '#lib/server/integrations/adapter-loader';
 import { registerBuiltInIntegrationAdapters } from '#lib/server/integrations/register-builtins';
 import { maskCredential } from '#lib/server/integrations/credentials';
-import { findGoogleOAuthRecord } from '#lib/server/integrations/google-oauth';
 import {
+  effectiveIntegrationCredential,
   enableIntegrationCapabilitiesForAllWorkspaces,
-  disableIntegrationCapabilitiesForAllWorkspaces
+  disableIntegrationCapabilitiesForAllWorkspaces,
+  MISSING_INTEGRATION_CREDENTIAL_MESSAGE
 } from '#lib/server/integrations/capabilities';
 import { maskSecret, writeSecret } from '#lib/server/credentials/local-store';
 import {
@@ -57,6 +59,14 @@ function getTargetWorkspace(workspaceId?: string) {
 
   return getSlackService().getUsableWorkspace() ??
     store.getFirstWorkspace();
+}
+
+async function refreshIntegrations(workspaceId?: string) {
+  return await refreshRuntimeState({
+    reason: 'integration_updated',
+    workspaceIds: workspaceId ? [workspaceId] : undefined,
+    deferIfRunActive: true
+  });
 }
 
 async function validateCredential(provider: string, credential: string): Promise<Record<string, unknown>> {
@@ -114,16 +124,13 @@ function statusFor(provider: string, workspaceId: string) {
   const pathStatus = definition.credentialKind === 'config_path' && provider === 'obsidian'
     ? getObsidianConnectionStatus()
     : undefined;
-  const envValue = pathStatus?.source === 'env' ? pathStatus.vaultPath : readEnvCredential(provider);
+  const effectiveCredential = effectiveIntegrationCredential(definition, workspaceId);
+  const { envValue, local, source } = effectiveCredential;
   const env = getRuntimeEnv();
-  const key = integrationCredentialKey(definition);
-  const local = provider === 'google'
-    ? findGoogleOAuthRecord(workspaceId) ?? globalIntegrationCredential('google', 'access_token')
-    : definition.credentialKind === 'config_path'
-      ? undefined
-      : globalIntegrationCredential(provider, key);
-  const source = local ? 'credentials' : pathStatus?.source ?? (envValue ? 'env' : undefined);
-  const reconnectRequired = !source && stored?.status === 'connected';
+  const reconnectRequired = !source && (
+    stored?.status === 'connected' ||
+    (stored?.status === 'error' && stored.errorMessage === MISSING_INTEGRATION_CREDENTIAL_MESSAGE)
+  );
   const oauthConfigured = provider === 'google'
     ? Boolean(env.googleClientId && env.googleClientSecret)
     : undefined;
@@ -161,7 +168,7 @@ function statusFor(provider: string, workspaceId: string) {
         ? metadata
         : { ...metadata, oauthConfigured },
     errorMessage: reconnectRequired
-      ? 'Local credential is missing. Reconnect this integration.'
+      ? MISSING_INTEGRATION_CREDENTIAL_MESSAGE
       : stored?.errorMessage
   };
 }
@@ -217,7 +224,8 @@ export const integrationRoutes: Route[] = [
           metadata
         });
         enableIntegrationCapabilitiesForAllWorkspaces(definition);
-        sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
+        const refresh = await refreshIntegrations(workspace.id);
+        sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id), refresh });
       } catch (error) {
         sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
       }
@@ -248,7 +256,8 @@ export const integrationRoutes: Route[] = [
       } else {
         enableIntegrationCapabilitiesForAllWorkspaces(definition);
       }
-      sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
+      const refresh = await refreshIntegrations(workspace.id);
+      sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id), refresh });
     } catch (error) {
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
     }
@@ -320,7 +329,8 @@ export const integrationRoutes: Route[] = [
       disableIntegrationCapabilitiesForAllWorkspaces(definition);
     }
 
-    sendJson(res, { ok: true, integration: statusFor('github', workspace.id) });
+    const refresh = await refreshIntegrations(workspace.id);
+    sendJson(res, { ok: true, integration: statusFor('github', workspace.id), refresh });
   }),
   route('DELETE', '/api/integrations/:provider/disconnect', async ({ res, params, url }) => {
     await ensureIntegrationRegistryLoaded();
@@ -347,7 +357,8 @@ export const integrationRoutes: Route[] = [
       if (!getObsidianConnectionStatus().configured) {
         disableIntegrationCapabilitiesForAllWorkspaces(definition);
       }
-      sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
+      const refresh = await refreshIntegrations(workspace.id);
+      sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id), refresh });
       return;
     }
 
@@ -356,6 +367,7 @@ export const integrationRoutes: Route[] = [
     if (!readEnvCredential(definition.provider)) {
       disableIntegrationCapabilitiesForAllWorkspaces(definition);
     }
-    sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id) });
+    const refresh = await refreshIntegrations(workspace.id);
+    sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id), refresh });
   })
 ];

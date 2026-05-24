@@ -12,6 +12,7 @@ import { getRuntimeEnv } from '#lib/server/util/env';
 import { evaluatePolicy } from '#lib/server/runtime/policy';
 import { classifyPolicyExecution } from '#lib/server/runtime/policy-classifier';
 import { outputSummary } from '#lib/server/runtime/tool-output';
+import { refreshRuntimeState, withRuntimeRunLock } from '#lib/server/runtime/refresh';
 import type {
   ActionContextSnapshot,
   AgentToolResult,
@@ -361,6 +362,19 @@ export class Gateway {
       throw new Error('Workspace not found');
     }
 
+    try {
+      return await withRuntimeRunLock(workspace.id, async () => {
+        await refreshRuntimeState({ reason: 'before_agent_run', workspaceIds: [workspace.id] });
+        return await this.handleTaskForWorkspace(task, workspace);
+      });
+    } finally {
+      await refreshRuntimeState({ reason: 'after_agent_run', workspaceIds: [workspace.id] }).catch((error) => {
+        console.warn('[runtime] failed to drain pending refresh:', error instanceof Error ? error.message : error);
+      });
+    }
+  }
+
+  private async handleTaskForWorkspace(task: ContinuityTask, workspace: Workspace): Promise<AuditRecord> {
     const workspaceMemory = this.memory.getWorkspaceMemory(workspace.id);
 
     const session = this.resolveSession(task, workspace.id);
@@ -498,7 +512,7 @@ export class Gateway {
       evidenceStatus
     });
     const persistThreadSummary = shouldPersistThreadSummary(proposedAction, evidenceStatus);
-    const threadMemory = await this.tools.execute<
+    await this.tools.execute<
       {
         workspaceId: string;
         channelId: string;
@@ -524,14 +538,8 @@ export class Gateway {
     );
     toolsUsed.push('memory.thread.write');
     if (persistThreadSummary) {
-      await this.tools.execute<{ context: typeof context }, unknown>(
-        'memory.thread.write_markdown',
-        { context: { ...context, memory: { ...context.memory, thread: threadMemory } } },
-        { workspace, session, task, workspaceMemory }
-      );
-      toolsUsed.push('memory.thread.write_markdown');
       this.emitRunEvent(run.id, 'agent.memory.written', {
-        tools: ['memory.thread.write', 'memory.thread.write_markdown'],
+        tools: ['memory.thread.write'],
         evidenceStatus: evidenceStatus.status,
         successfulTools: evidenceStatus.successfulTools.map((tool) => tool.name),
         failedTools
@@ -543,7 +551,7 @@ export class Gateway {
           : 'Only high-confidence replies are persisted as durable thread summaries.',
         failedTools,
         evidenceStatus: evidenceStatus.status,
-        skipped: ['summary', 'markdown']
+        skipped: ['summary']
       });
     }
 

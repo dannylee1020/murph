@@ -1366,6 +1366,31 @@ code {
   overflow-wrap: anywhere;
 }
 
+.review-lifecycle {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-lifecycle li {
+  display: grid;
+  grid-template-columns: minmax(150px, max-content) max-content minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+
+.review-lifecycle span {
+  font-weight: 600;
+}
+
+.review-lifecycle time,
+.review-lifecycle small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
 .activity-grid {
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   align-items: start;
@@ -2542,6 +2567,11 @@ button.primary-large:hover {
   .details > div {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .review-lifecycle li {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 
   .actions.integration-actions {

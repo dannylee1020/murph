@@ -99,6 +99,30 @@ export function getOrCreateThreadMemory(
   channelId: string,
   threadTs: string
 ): ThreadMemory {
+  const existing = getThreadMemory(db, workspaceId, channelId, threadTs);
+  if (existing) {
+    return existing;
+  }
+
+  const memory: ThreadMemory = {
+    workspaceId,
+    channelId,
+    threadTs,
+    linkedArtifacts: [],
+    openQuestions: [],
+    blockerNotes: []
+  };
+
+  upsertThreadMemory(db, memory);
+  return memory;
+}
+
+export function getThreadMemory(
+  db: Db,
+  workspaceId: string,
+  channelId: string,
+  threadTs: string
+): ThreadMemory | undefined {
   const row = db
     .prepare(
       `SELECT data_json FROM thread_memory WHERE workspace_id = ? AND channel_id = ? AND thread_ts = ?`
@@ -115,18 +139,7 @@ export function getOrCreateThreadMemory(
       blockerNotes: []
     });
   }
-
-  const memory: ThreadMemory = {
-    workspaceId,
-    channelId,
-    threadTs,
-    linkedArtifacts: [],
-    openQuestions: [],
-    blockerNotes: []
-  };
-
-  upsertThreadMemory(db, memory);
-  return memory;
+  return undefined;
 }
 
 export function upsertThreadMemory(db: Db, memory: ThreadMemory): void {

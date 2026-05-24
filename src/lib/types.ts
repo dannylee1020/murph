@@ -32,6 +32,10 @@ export type PolicyExecutionMode = 'manual_review' | 'auto_send_low_risk';
 
 export type SessionStatus = 'active' | 'stopped' | 'expired';
 
+export type SessionPolicyBinding = 'config' | 'explicit';
+
+export type SessionChannelScopeBinding = 'setup_defaults' | 'explicit';
+
 export type ToolSideEffectClass = 'read' | 'write' | 'external_write';
 
 export interface Workspace {
@@ -501,6 +505,14 @@ export interface ReviewItem {
     createdAt: string;
 }
 
+export interface ReviewLifecycleEntry {
+    disposition: ActionDisposition;
+    label: string;
+    reason: string;
+    source: 'policy' | 'operator';
+    createdAt: string;
+}
+
 export interface ActionContextSnapshot {
     summary: string;
     continuityCase: ContinuityCase;
@@ -521,6 +533,7 @@ export interface ActionContextSnapshot {
 
 export interface TriageItem extends ReviewItem {
     contextSnapshot?: ActionContextSnapshot;
+    lifecycle?: ReviewLifecycleEntry[];
 }
 
 export interface ThreadStateRecord {
@@ -688,6 +701,10 @@ export interface AutopilotSession {
     policyProfileName?: string;
     policyOverrideRaw?: string;
     policy?: UserPolicyProfile;
+    runtimeRevisionJson?: string;
+    lastRuntimeRefreshAt?: string;
+    policyBinding: SessionPolicyBinding;
+    channelScopeBinding: SessionChannelScopeBinding;
     startedAt: string;
     endsAt: string;
     stoppedAt?: string;

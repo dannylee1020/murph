@@ -1,4 +1,5 @@
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
+import { refreshRuntimeState } from '#lib/server/runtime/refresh';
 import { handleSlackEventEnvelope, verifySlackHttpSignature } from '#lib/server/channels/slack/events';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
@@ -109,6 +110,11 @@ export const slackRoutes: Route[] = [
       const { workspace } = install;
       saveAuthedUserAsSetupOwner(install);
       await getChannelRegistry().getIngress('slack')?.start?.({ provider: 'slack' });
+      await refreshRuntimeState({
+        reason: 'channel_setup_updated',
+        workspaceIds: [workspace.id],
+        deferIfRunActive: true
+      });
 
       redirect(res, `/setup?step=slack&success=1${sourceSuffix}`);
     } catch (error) {

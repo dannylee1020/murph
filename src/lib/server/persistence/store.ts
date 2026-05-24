@@ -35,6 +35,7 @@ import * as providerSettings from './stores/provider-settings.js';
 import * as recurringJob from './stores/recurring-job.js';
 import * as reminder from './stores/reminder.js';
 import * as run from './stores/run.js';
+import * as runtimeRefresh from './stores/runtime-refresh.js';
 import * as session from './stores/session.js';
 import * as threadState from './stores/thread-state.js';
 import * as user from './stores/user.js';
@@ -101,6 +102,9 @@ export class Store {
   getOrCreateThreadMemory(workspaceId: string, channelId: string, threadTs: string): ThreadMemory {
     return memory.getOrCreateThreadMemory(this.db, workspaceId, channelId, threadTs);
   }
+  getThreadMemory(workspaceId: string, channelId: string, threadTs: string): ThreadMemory | undefined {
+    return memory.getThreadMemory(this.db, workspaceId, channelId, threadTs);
+  }
   upsertThreadMemory(next: ThreadMemory): void {
     memory.upsertThreadMemory(this.db, next);
   }
@@ -149,6 +153,25 @@ export class Store {
     channelId: string
   ): AutopilotSession | undefined {
     return session.findMatchingSession(this.db, workspaceId, ownerUserId, channelId);
+  }
+  patchSessionRefresh(id: string, patch: session.SessionRefreshPatch): AutopilotSession | undefined {
+    return session.patchSessionRefresh(this.db, id, patch);
+  }
+  getRuntimeRefreshState(scopeKey: string): runtimeRefresh.RuntimeRefreshState | undefined {
+    return runtimeRefresh.getRuntimeRefreshState(this.db, scopeKey);
+  }
+  markRuntimeRefreshPending(scopeKey: string, reason: string): runtimeRefresh.RuntimeRefreshState {
+    return runtimeRefresh.markRuntimeRefreshPending(this.db, scopeKey, reason);
+  }
+  setRuntimeRefreshState(
+    scopeKey: string,
+    input: {
+      pending?: boolean;
+      pendingReasons?: string[];
+      lastRevisionJson?: string;
+    }
+  ): runtimeRefresh.RuntimeRefreshState {
+    return runtimeRefresh.setRuntimeRefreshState(this.db, scopeKey, input);
   }
 
   // Thread state
@@ -213,6 +236,9 @@ export class Store {
   }
   listAgentRuns(sessionId?: string, limit = 50): AgentRunRecord[] {
     return run.listAgentRuns(this.db, sessionId, limit);
+  }
+  listAgentRunsForThread(workspaceId: string, channelId: string, threadTs: string, limit = 50): AgentRunRecord[] {
+    return run.listAgentRunsForThread(this.db, workspaceId, channelId, threadTs, limit);
   }
   listRunSummaries(sessionId?: string, limit = 50): AgentRunSummary[] {
     return run.listRunSummaries(this.db, sessionId, limit);

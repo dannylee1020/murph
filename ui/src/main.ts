@@ -330,6 +330,13 @@ type TriagePayload = {
         message: string;
         confidence?: number;
         createdAt: string;
+        lifecycle?: Array<{
+            disposition: string;
+            label: string;
+            reason: string;
+            source: string;
+            createdAt: string;
+        }>;
         contextSnapshot?: {
             summary: string;
             continuityCase: string;
@@ -4377,6 +4384,30 @@ function dispositionPill(disposition: string | undefined): string {
     return `<span class="pill pill-muted">${escapeHtml(titleCase(disposition ?? 'unknown'))}</span>`;
 }
 
+function renderReviewLifecycle(item: TriagePayload['items'][number]): string {
+    const lifecycle = item.lifecycle ?? [];
+    if (lifecycle.length === 0) {
+        return '';
+    }
+
+    return `
+        <div>
+          <dt>Lifecycle</dt>
+          <dd>
+            <ol class="review-lifecycle">
+              ${lifecycle.map((entry) => `
+                <li>
+                  <span>${escapeHtml(entry.label)}</span>
+                  <time title="${escapeHtml(formatExactIso(entry.createdAt))}">${escapeHtml(formatRelative(entry.createdAt))}</time>
+                  <small>${escapeHtml(entry.reason || titleCase(entry.disposition))}</small>
+                </li>
+              `).join('')}
+            </ol>
+          </dd>
+        </div>
+    `;
+}
+
 function renderTriageItem(item: TriagePayload['items'][number]): string {
     const messages = item.contextSnapshot?.thread.messages ?? [];
     const excerpt = messages.at(-1)?.text ?? item.message ?? item.reason;
@@ -4397,6 +4428,7 @@ function renderTriageItem(item: TriagePayload['items'][number]): string {
         <div><dt>Thread excerpt</dt><dd>${escapeHtml(excerpt || 'No thread messages captured.')}</dd></div>
         <div><dt>Murph response</dt><dd>${escapeHtml(item.message || 'No message drafted')}</dd></div>
         <div><dt>Reason</dt><dd>${escapeHtml(item.reason)}</dd></div>
+        ${renderReviewLifecycle(item)}
       </dl>
     </article>
   `;

@@ -2,7 +2,6 @@ import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getContextSourceRegistry } from '#lib/server/capabilities/context-source-registry';
 import { getMemoryService } from '#lib/server/memory/service';
 import { searchLocalFiles, toArtifact as localFsToArtifact } from '#lib/server/context-sources/local-fs';
-import { writeThreadMemory } from '#lib/server/memory/markdown';
 import { readMemoryPage } from '#lib/server/memory/wiki';
 import { createFileReadTool } from '#lib/server/tools/file-ops';
 import { createShellExecTool } from '#lib/server/tools/shell';
@@ -265,15 +264,6 @@ export function registerBuiltInTools(): void {
           input.evidenceStatus
         );
         return next;
-      }
-    },
-    {
-      name: 'memory.thread.write_markdown',
-      description: 'Write inspectable markdown thread memory file.',
-      sideEffectClass: 'write',
-      supportsDryRun: true,
-      async execute(input: { context: any }) {
-        return await writeThreadMemory(input.context);
       }
     },
     {

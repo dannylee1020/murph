@@ -3,6 +3,14 @@ import type { AgentRunEventRecord, AgentRunRecord, AuditRecord, AutopilotSession
 
 export type ControlPlaneEvent =
   | { type: 'session.updated'; session: AutopilotSession }
+  | {
+      type: 'runtime.state.refreshed';
+      reason: string;
+      changedSurfaces: string[];
+      workspaceIds: string[];
+      sessionsUpdated: number;
+      pending: boolean;
+    }
   | { type: 'queue.updated'; item: ReviewItem }
   | { type: 'audit.created'; audit: AuditRecord }
   | { type: 'briefing.ready'; sessionId: string }

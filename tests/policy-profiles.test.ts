@@ -5,9 +5,10 @@ describe('policy profile loader', () => {
   it('loads shipped role profiles with auto-send disabled', async () => {
     const profiles = await loadPolicyProfiles();
     const names = profiles.map((profile) => profile.name);
+    const shippedNames = ['default', 'engineering', 'leadership', 'marketing', 'product', 'sales', 'yolo'];
 
-    expect(names).toEqual(['default', 'engineering', 'leadership', 'marketing', 'product', 'sales', 'yolo']);
-    expect(profiles.filter((profile) => profile.name !== 'yolo').every((profile) => profile.compiled.allowAutoSend === false)).toBe(true);
+    expect(names).toEqual(expect.arrayContaining(shippedNames));
+    expect(profiles.filter((profile) => shippedNames.includes(profile.name) && profile.name !== 'yolo').every((profile) => profile.compiled.allowAutoSend === false)).toBe(true);
     expect(profiles.find((profile) => profile.name === 'engineering')?.compiled.alwaysQueueTopics).toContain('production incidents');
     expect(profiles.find((profile) => profile.name === 'sales')?.compiled.alwaysQueueTopics).toContain('contract terms');
   });

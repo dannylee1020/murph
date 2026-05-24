@@ -12,6 +12,7 @@ import {
   enableIntegrationCapabilitiesForAllWorkspaces,
   disableIntegrationCapabilitiesForAllWorkspaces
 } from '#lib/server/integrations/capabilities';
+import { refreshRuntimeState } from '#lib/server/runtime/refresh';
 import { redirect, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 
@@ -83,6 +84,11 @@ export const googleRoutes: Route[] = [
 
       const definition = getIntegration('google')!;
       enableIntegrationCapabilitiesForAllWorkspaces(definition);
+      await refreshRuntimeState({
+        reason: 'integration_updated',
+        workspaceIds: [workspace.id],
+        deferIfRunActive: true
+      });
       redirect(res, `/settings?google=connected&workspaceId=${encodeURIComponent(workspace.id)}`);
     } catch (error) {
       console.error('[google] OAuth callback failed:', error);
@@ -103,6 +109,11 @@ export const googleRoutes: Route[] = [
       store.deleteIntegrationConnection(installedWorkspace.id, 'google');
     }
     disableIntegrationCapabilitiesForAllWorkspaces(definition);
-    sendJson(res, { ok: true });
+    const refresh = await refreshRuntimeState({
+      reason: 'integration_updated',
+      workspaceIds: [workspace.id],
+      deferIfRunActive: true
+    });
+    sendJson(res, { ok: true, refresh });
   })
 ];
