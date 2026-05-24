@@ -1,6 +1,7 @@
 app:
   url: http://localhost:5173
   sqlitePath: data/murph.sqlite
+  memoryPath: ~/.murph/memory
   heartbeatIntervalMs: 900000
   runEventRetentionDays: 30
   contextSourceTimeoutMs: 3000

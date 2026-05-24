@@ -111,6 +111,12 @@ const allTools: ToolInventoryItem[] = [
     retrievalEligible: false
   }),
   tool({
+    name: 'memory.wiki.read_page',
+    sideEffectClass: 'read',
+    knowledgeDomains: ['documentation'],
+    retrievalEligible: false
+  }),
+  tool({
     name: 'web.search',
     sideEffectClass: 'read',
     optional: true,
@@ -128,7 +134,8 @@ describe('listAvailableTools', () => {
       'channel.fetch_thread',
       'memory.thread.read',
       'notion.search',
-      'notion.read_page'
+      'notion.read_page',
+      'memory.wiki.read_page'
     ]);
     expect(result.retrievalToolNames).toEqual(['notion.search']);
     expect(result.availableTools.find((t) => t.name === 'notion.search')?.retrieval).toEqual({ profile: 'title_keywords' });
@@ -142,7 +149,8 @@ describe('listAvailableTools', () => {
 
     expect(result.availableTools.map((t) => t.name)).toEqual([
       'channel.fetch_thread',
-      'memory.thread.read'
+      'memory.thread.read',
+      'memory.wiki.read_page'
     ]);
     expect(result.retrievalToolNames).toEqual([]);
   });
@@ -210,6 +218,53 @@ describe('buildRuntimeToolCallingPlan', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
         artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Checkout', text: 'ready' }]
+      }),
+      allTools,
+      policy: policy()
+    });
+
+    expect(plan.groundingDirective.required).toBe(false);
+  });
+
+  it('exposes memory page reads for stable requests when a memory index is present', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        thread: {
+          ...context().thread,
+          latestMessage: 'What did we decide about checkout launch?'
+        },
+        artifacts: [{ id: 'memory-index', source: 'memory.tool_wiki.index', type: 'memory', title: 'Memory Index', text: 'path: wiki/threads/a.md' }]
+      }),
+      allTools,
+      policy: policy()
+    });
+
+    expect(plan.groundingDirective.required).toBe(true);
+    expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.retrieve_all', 'memory.wiki.read_page']);
+    expect(plan.retrievalToolNames).toEqual(['runtime.retrieve_all', 'memory.wiki.read_page']);
+  });
+
+  it('does not let the memory index count as source evidence or expose page reads for current requests', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        thread: {
+          ...context().thread,
+          latestMessage: 'What is the current checkout launch status?'
+        },
+        artifacts: [{ id: 'memory-index', source: 'memory.tool_wiki.index', type: 'memory', title: 'Memory Index', text: 'path: wiki/threads/a.md' }]
+      }),
+      allTools,
+      policy: policy()
+    });
+
+    expect(plan.groundingDirective.required).toBe(true);
+    expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.retrieve_all']);
+  });
+
+  it('allows a read memory page to satisfy source evidence for stable follow-up requests', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        artifacts: [{ id: 'memory-page', source: 'memory.tool_wiki.page', type: 'memory', title: 'Memory Page', text: 'Captured Notion evidence.' }]
       }),
       allTools,
       policy: policy()

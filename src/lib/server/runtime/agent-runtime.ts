@@ -1,5 +1,6 @@
 import { getContextSourceRegistry } from '#lib/server/capabilities/context-source-registry';
 import { getMemoryService } from '#lib/server/memory/service';
+import { readMemoryIndex } from '#lib/server/memory/wiki';
 import { getModelProvider } from '#lib/server/providers/index';
 import { runGroundingLoop } from '#lib/server/runtime/pi-agent-loop';
 import { expandContextSources } from '#lib/server/runtime/domain-expansion';
@@ -146,6 +147,31 @@ function notionPageArtifact(page: unknown): ContextArtifact | null {
   };
 }
 
+function memoryPageArtifact(page: unknown): ContextArtifact | null {
+  if (!page || typeof page !== 'object' || Array.isArray(page)) {
+    return null;
+  }
+  const record = page as Record<string, unknown>;
+  if (typeof record.path !== 'string' || typeof record.text !== 'string') {
+    return null;
+  }
+  const metadata = record.metadata && typeof record.metadata === 'object'
+    ? record.metadata as Record<string, unknown>
+    : {};
+  const title = typeof metadata.title === 'string' ? metadata.title : record.path;
+  return {
+    id: `memory.tool_wiki.page:${record.path}`,
+    source: 'memory.tool_wiki.page',
+    type: 'memory',
+    title,
+    text: record.text,
+    metadata: {
+      path: record.path,
+      ...metadata
+    }
+  };
+}
+
 export class AgentRuntime {
   private readonly store = getStore();
   private readonly memory = getMemoryService();
@@ -287,9 +313,23 @@ export class AgentRuntime {
       enabledContextSources: workspaceMemory.enabledContextSources,
       maxOptionalSources: 0
     });
+    const memoryIndex = await readMemoryIndex().catch(() => null);
+    const memoryArtifacts: ContextArtifact[] = memoryIndex
+      ? [{
+          id: `memory.tool_wiki.index:${workspace.id}`,
+          source: 'memory.tool_wiki.index',
+          type: 'memory',
+          title: 'Murph memory index',
+          text: memoryIndex,
+          metadata: {
+            workspaceId: workspace.id,
+            reliability: 'Use for stable/follow-up questions only; use live retrieval for latest/current/source-of-truth requests.'
+          }
+        }]
+      : [];
     return {
       ...baseContext,
-      artifacts,
+      artifacts: [...memoryArtifacts, ...artifacts],
       availableTools,
       continuityCase: inferCaseFromText(latestMessage),
       summary: latestMessage,
@@ -681,6 +721,14 @@ export class AgentRuntime {
   ): Promise<unknown> {
     if (name === 'notion.read_page') {
       const artifact = notionPageArtifact(output);
+      if (artifact) {
+        postLoopEvidence.artifacts = mergeArtifacts(postLoopEvidence.artifacts, [artifact]);
+      }
+      return output;
+    }
+
+    if (name === 'memory.wiki.read_page') {
+      const artifact = memoryPageArtifact(output);
       if (artifact) {
         postLoopEvidence.artifacts = mergeArtifacts(postLoopEvidence.artifacts, [artifact]);
       }

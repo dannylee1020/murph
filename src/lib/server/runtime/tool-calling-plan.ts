@@ -21,6 +21,7 @@ export interface RuntimeToolCallingPlan {
 }
 
 export const RUNTIME_RETRIEVE_ALL_TOOL_NAME = 'runtime.retrieve_all';
+export const MEMORY_WIKI_READ_PAGE_TOOL_NAME = 'memory.wiki.read_page';
 
 const RUNTIME_RETRIEVE_ALL_TOOL: AgentToolInventoryItem = {
   name: RUNTIME_RETRIEVE_ALL_TOOL_NAME,
@@ -79,7 +80,16 @@ function sessionModeAllowsTool(tool: ToolInventoryItem, sessionMode?: SessionMod
 }
 
 function isSourceArtifact(artifact: ContextAssembly['artifacts'][number]): boolean {
-  return artifact.source !== 'memory.linked_artifacts';
+  return artifact.source !== 'memory.linked_artifacts' && artifact.source !== 'memory.tool_wiki.index';
+}
+
+function hasMemoryIndexArtifact(context: ContextAssembly): boolean {
+  return context.artifacts.some((artifact) => artifact.source === 'memory.tool_wiki.index');
+}
+
+function requiresFreshRetrieval(context: ContextAssembly): boolean {
+  return /\b(latest|current|currently|today|now|status|source[- ]of[- ]truth|fresh|changed|update|go\/no-go)\b/i
+    .test(context.thread.latestMessage);
 }
 
 /**
@@ -122,7 +132,12 @@ export function buildRuntimeToolCallingPlan(input: {
     sessionMode: input.sessionMode
   });
   const fanoutTools = availableTools.filter((tool) => retrievalToolNames.includes(tool.name));
-  const modelTools = fanoutTools.length > 0 ? [RUNTIME_RETRIEVE_ALL_TOOL] : [];
+  const memoryReadTool = availableTools.find((tool) => tool.name === MEMORY_WIKI_READ_PAGE_TOOL_NAME);
+  const exposeMemoryRead = Boolean(memoryReadTool && hasMemoryIndexArtifact(input.context) && !requiresFreshRetrieval(input.context));
+  const modelTools = [
+    ...(fanoutTools.length > 0 ? [RUNTIME_RETRIEVE_ALL_TOOL] : []),
+    ...(exposeMemoryRead && memoryReadTool ? [memoryReadTool] : [])
+  ];
   const hasSourceArtifacts = input.context.artifacts.some(isSourceArtifact);
   const groundingDirective = input.policy?.requireGroundingForFacts && !hasSourceArtifacts
     ? {
@@ -136,7 +151,11 @@ export function buildRuntimeToolCallingPlan(input: {
 
   return {
     availableTools: modelTools,
-    retrievalToolNames: modelTools.map((tool) => tool.name),
+    retrievalToolNames: [
+      ...modelTools
+        .filter((tool) => tool.name === RUNTIME_RETRIEVE_ALL_TOOL_NAME || tool.name === MEMORY_WIKI_READ_PAGE_TOOL_NAME)
+        .map((tool) => tool.name)
+    ],
     fanoutTools,
     groundingDirective
   };

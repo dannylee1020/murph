@@ -11,6 +11,7 @@ export interface MurphConfig {
   app?: {
     url?: string;
     sqlitePath?: string;
+    memoryPath?: string;
     heartbeatIntervalMs?: number;
     runEventRetentionDays?: number;
     contextSourceTimeoutMs?: number;
@@ -74,6 +75,7 @@ export interface MurphConfig {
 const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value: string) => void> = {
   MURPH_APP_URL: (config, value) => setPath(config, ['app', 'url'], value),
   MURPH_SQLITE_PATH: (config, value) => setPath(config, ['app', 'sqlitePath'], value),
+  MURPH_MEMORY_PATH: (config, value) => setPath(config, ['app', 'memoryPath'], value),
   MURPH_HEARTBEAT_INTERVAL_MS: (config, value) => setPath(config, ['app', 'heartbeatIntervalMs'], numberFromString(value)),
   MURPH_RUN_EVENT_RETENTION_DAYS: (config, value) => setPath(config, ['app', 'runEventRetentionDays'], numberFromString(value)),
   MURPH_CONTEXT_SOURCE_TIMEOUT_MS: (config, value) => setPath(config, ['app', 'contextSourceTimeoutMs'], numberFromString(value)),
@@ -294,6 +296,7 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
     app: {
       url: stringValue(app.url),
       sqlitePath: stringValue(app.sqlitePath),
+      memoryPath: stringValue(app.memoryPath),
       heartbeatIntervalMs: numberValue(app.heartbeatIntervalMs),
       runEventRetentionDays: numberValue(app.runEventRetentionDays),
       contextSourceTimeoutMs: numberValue(app.contextSourceTimeoutMs),

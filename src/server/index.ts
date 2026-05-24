@@ -15,6 +15,7 @@ import { systemRoutes } from './routes/system.js';
 import { resolveListenPort, startServer } from './startup.js';
 import { getGateway } from '#lib/server/runtime/gateway';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
+import { getMemoryIndexWorker } from '#lib/server/memory/index-worker';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, '../..');
@@ -65,6 +66,7 @@ startServer(server, {
   port,
   onListening: () => {
     gateway.ensureStarted();
+    getMemoryIndexWorker().ensureStarted();
     void ensureRuntimeInitialized().catch((error) => {
       console.warn('[server] runtime initialization failed:', error instanceof Error ? error.message : error);
     });

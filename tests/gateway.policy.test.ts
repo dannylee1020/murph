@@ -125,7 +125,9 @@ async function setup(
   } = {}
 ) {
   vi.resetModules();
-  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-gateway-policy-')), 'murph.sqlite');
+  const testRoot = mkdtempSync(join(tmpdir(), 'murph-gateway-policy-'));
+  process.env.MURPH_SQLITE_PATH = join(testRoot, 'murph.sqlite');
+  process.env.MURPH_MEMORY_PATH = join(testRoot, 'memory');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   const fetchThread = vi.fn().mockResolvedValue([
     {

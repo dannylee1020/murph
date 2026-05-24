@@ -37,14 +37,16 @@ describe('sqlite schema cleanup', () => {
     expect(migrationIds(db)).toEqual([
       '001_create_current_schema',
       '002_simplify_local_first_schema',
-      '003_add_channel_events'
+      '003_add_channel_events',
+      '004_add_memory_index_runs'
     ]);
     const { runMigrations } = await import('#lib/server/persistence/migrator');
     runMigrations(db, sqlitePath);
     expect(migrationIds(db)).toEqual([
       '001_create_current_schema',
       '002_simplify_local_first_schema',
-      '003_add_channel_events'
+      '003_add_channel_events',
+      '004_add_memory_index_runs'
     ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(false);
   });
@@ -185,7 +187,8 @@ describe('sqlite schema cleanup', () => {
     expect(migrationIds(migrated)).toEqual([
       '001_create_current_schema',
       '002_simplify_local_first_schema',
-      '003_add_channel_events'
+      '003_add_channel_events',
+      '004_add_memory_index_runs'
     ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(true);
     (migrated as unknown as { close?: () => void }).close?.();

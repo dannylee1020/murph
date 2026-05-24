@@ -191,7 +191,9 @@ async function executeToolCall(
 
 async function setupRuntime() {
   vi.resetModules();
-  process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-agent-runtime-events-')), 'murph.sqlite');
+  const testRoot = mkdtempSync(join(tmpdir(), 'murph-agent-runtime-events-'));
+  process.env.MURPH_SQLITE_PATH = join(testRoot, 'murph.sqlite');
+  process.env.MURPH_MEMORY_PATH = join(testRoot, 'memory');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
 
   const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');

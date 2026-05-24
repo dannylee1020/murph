@@ -4,6 +4,7 @@ import { AgentRuntime } from '#lib/server/runtime/agent-runtime';
 import { emitControlPlaneEvent } from '#lib/server/runtime/control-plane';
 import { nextDailyRun } from '#lib/server/util/cron';
 import { getMemoryService } from '#lib/server/memory/service';
+import { getMemoryIndexWorker } from '#lib/server/memory/index-worker';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
 import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
@@ -84,6 +85,10 @@ function shouldPersistThreadSummary(
   return proposedAction.type === 'reply' && proposedAction.confidence >= 0.7 && evidenceStatus.status !== 'none';
 }
 
+function indexableArtifacts(artifacts: ContextAssembly['artifacts']): ContextAssembly['artifacts'] {
+  return artifacts.filter((artifact) => !artifact.source.startsWith('memory.'));
+}
+
 function runtimeProviderName(): AuditRecord['provider'] {
   return getRuntimeEnv().defaultProvider;
 }
@@ -115,6 +120,7 @@ function actionThreadSnapshot(thread: ChannelThreadRef, messages: ChannelMessage
 export class Gateway {
   private readonly agentRuntime = new AgentRuntime();
   private readonly memory = getMemoryService();
+  private readonly memoryIndexWorker = getMemoryIndexWorker();
   private readonly store = getStore();
   private readonly tools = getToolRegistry();
   private heartbeatHandle: NodeJS.Timeout | null = null;
@@ -659,11 +665,14 @@ export class Gateway {
     emitControlPlaneEvent({ type: 'queue.updated', item: reviewItem });
 
     emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
+    const indexSource = this.memoryIndexSource(runResult.toolResults, context.artifacts);
+    this.emitRunEvent(run.id, 'agent.memory.index_source', indexSource);
     this.emitRunEvent(run.id, 'agent.run.completed', { executionResult });
     const completedRun = this.store.finishAgentRun(run.id, 'completed');
     if (completedRun) {
       emitControlPlaneEvent({ type: 'agent.run.updated', run: completedRun });
     }
+    this.queueMemoryIndex(run.id, indexSource);
 
     const audit = this.recordAudit({
       task,
@@ -899,6 +908,30 @@ export class Gateway {
   private emitRunEvent(runId: string, type: RuntimeEventType, payload: unknown): void {
     const event = this.store.appendAgentRunEvent({ runId, type, payload });
     emitControlPlaneEvent({ type: 'agent.run.event', event });
+  }
+
+  private memoryIndexSource(toolResults: AgentToolResult[], artifacts: ContextAssembly['artifacts']): {
+    toolResults: AgentToolResult[];
+    artifacts: ContextAssembly['artifacts'];
+  } {
+    const readToolNames = new Set(this.tools.list()
+      .filter((tool) => tool.sideEffectClass === 'read' && !tool.name.startsWith('memory.'))
+      .map((tool) => tool.name));
+    return {
+      toolResults: toolResults.filter((result) => result.ok && readToolNames.has(result.name)),
+      artifacts: indexableArtifacts(artifacts)
+    };
+  }
+
+  private queueMemoryIndex(runId: string, source: { toolResults: AgentToolResult[]; artifacts: ContextAssembly['artifacts'] }): void {
+    if (source.toolResults.length === 0 && source.artifacts.length === 0) {
+      return;
+    }
+    this.emitRunEvent(runId, 'agent.memory.index_queued', {
+      toolResults: source.toolResults.length,
+      artifacts: source.artifacts.length
+    });
+    this.memoryIndexWorker.enqueue(runId);
   }
 
   private recordAudit(

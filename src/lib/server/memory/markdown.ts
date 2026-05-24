@@ -1,10 +1,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { MEMORY_ROOT } from '#lib/config';
+import { ensureMemoryRoot } from '#lib/server/memory/root';
 import type { ContextAssembly } from '#lib/types';
 
 export async function writeThreadMemory(context: ContextAssembly): Promise<string> {
-  const dir = path.join(MEMORY_ROOT, 'workspaces', context.workspaceId, 'threads');
+  const memoryRoot = await ensureMemoryRoot();
+  const dir = path.join(memoryRoot, 'workspaces', context.workspaceId, 'threads');
   const filePath = path.join(dir, `${context.thread.ref.threadTs}.md`);
 
   const body = [
