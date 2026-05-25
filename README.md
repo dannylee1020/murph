@@ -87,6 +87,8 @@ Learn more in [Murph Agent](https://murph-agent.com/docs/usage/murph-agent).
 
 ## Contributing
 
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. Keep changes focused, include validation, and update docs for user-facing behavior.
+
 Murph is organized around a few extension points:
 
 - **Channels** for messaging surfaces.
@@ -107,7 +109,7 @@ npm run dev
 npm test
 ```
 
-Open an issue before starting non-trivial changes.
+Open an issue before starting non-trivial core/runtime changes.
 
 ## License
 

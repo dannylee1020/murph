@@ -1,11 +1,11 @@
 ---
 title: Contributing
-description: Work on Murph locally and understand the main extension points.
+description: Work on Murph locally and open focused pull requests.
 ---
 
 # Contributing
 
-Murph is a local-first Node and Vite app.
+Murph is a local-first Node and Vite app. The full contribution guide lives in [`CONTRIBUTING.md`](https://github.com/dannylee1020/murph/blob/main/CONTRIBUTING.md).
 
 ## Local development
 
@@ -28,14 +28,23 @@ npm run check
 npm test
 ```
 
-## Extension points
+Run the docs build when docs change:
 
-- **Channels** add messaging surfaces.
-- **Integrations** add external context and read-only tools.
-- **Skills** describe request-specific behavior.
-- **Policies** control autonomy and review rules.
-- **Providers** add model backends.
+```bash
+npm run docs:build
+```
 
 ## Pull requests
 
-Open an issue before non-trivial changes. Keep changes focused, include validation, and avoid broad refactors unless they are required for the feature.
+Keep changes focused, include validation, and update docs for user-facing setup, runtime, policy, plugin, or CLI changes. Open an issue before large core/runtime changes.
+
+## Extension points
+
+Prefer existing extension points before changing Murph core:
+
+- **Channels** add messaging surfaces.
+- **Integrations** add external context and read-only tools.
+- **Plugins** package local extensions.
+- **Skills** describe source-specific runtime behavior.
+- **Policies** control autonomy and review rules.
+- **Providers** add model backends.
