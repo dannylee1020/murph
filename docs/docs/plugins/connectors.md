@@ -21,6 +21,8 @@ Examples:
 
 A connector owns the source identity, credential check, context sources, and tools for one plugin-provided integration.
 
+The same metadata also drives the integration card in the browser UI after plugins are reloaded. The UI does not regenerate source code for new connectors.
+
 ## Integration module
 
 Connector files live under `integrations/*.mjs` and are referenced by `capabilities.integrations` in `plugin.json`.
@@ -49,6 +51,8 @@ export default {
 ## Credentials
 
 The `credential` block describes how Murph checks whether the source is configured.
+
+It also describes the generic setup UI: API key, OAuth install URL, or local path. Use clear `credentialLabel` text because it is shown directly to the operator.
 
 ## Context sources
 

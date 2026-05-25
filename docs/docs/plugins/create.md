@@ -44,6 +44,10 @@ Channel plugins are an advanced extension path. Murph Agent can scaffold code an
 
 Normal plugin work should stay inside the plugin package. Do not use source-edit mode unless the change must modify Murph core.
 
+Integration cards are runtime-driven. A connector's metadata flows through `/api/integrations/status`, and the browser UI renders a generic card from that response.
+
+Only change core UI when the plugin needs a reusable setup primitive that other integrations can share, such as a new declarative field type.
+
 ## Verify the package
 
 Reload plugins after the files are created or changed:
@@ -55,6 +59,14 @@ curl -s -X POST http://localhost:5173/api/plugins/reload
 Reload unregisters plugin-sourced capabilities and loads scoped plugins again. The response includes the current load status for each discovered scoped plugin.
 
 Reload after editing `plugin.json`, skill files, channel modules, or integration modules.
+
+For integration plugins, also check the integration status response:
+
+```bash
+curl -s http://localhost:5173/api/integrations/status
+```
+
+The new integration should appear in the `integrations` list with its name, description, credential label, tools, and context sources. The browser UI uses the same list to show the card.
 
 ## Inspect plugin status
 

@@ -2,7 +2,7 @@ import { Readable } from 'node:stream';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type JsonResponse = {
   status: number;
@@ -35,9 +35,11 @@ function jsonResponse(): any & { result: () => JsonResponse } {
 async function setup(options: { githubPat?: string } = {}) {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-integrations-route-'));
+  const murphHome = join(root, '.murph');
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
   process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
+  process.env.MURPH_HOME = murphHome;
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   if (options.githubPat) {
     process.env.GITHUB_PAT = options.githubPat;
@@ -49,6 +51,8 @@ async function setup(options: { githubPat?: string } = {}) {
   process.env.GOOGLE_ACCESS_TOKEN = '';
   process.env.GOOGLE_CLIENT_ID = '';
   process.env.GOOGLE_CLIENT_SECRET = '';
+  process.env.LINEAR_API_KEY = '';
+  mkdirSync(join(murphHome, 'plugins'), { recursive: true });
 
   const { getStore } = await import('#lib/server/persistence/store');
   const store = getStore();
@@ -72,12 +76,63 @@ async function setup(options: { githubPat?: string } = {}) {
     return res.result();
   }
 
-  return { request, store, workspace };
+  return { request, store, workspace, murphHome };
+}
+
+function writeLinearPlugin(murphHome: string): void {
+  const root = join(murphHome, 'plugins', 'context', 'linear');
+  mkdirSync(join(root, 'integrations'), { recursive: true });
+  writeFileSync(join(root, 'plugin.json'), JSON.stringify({
+    id: 'linear',
+    name: 'Linear',
+    description: 'Linear issue and project context',
+    version: '0.1.0',
+    capabilities: {
+      integrations: ['integrations/linear.mjs']
+    }
+  }));
+  writeFileSync(join(root, 'integrations', 'linear.mjs'), `
+export default {
+  id: 'linear',
+  name: 'Linear',
+  description: 'Linear issues, projects, and specs.',
+  credential: {
+    authType: 'api_key',
+    credentialKind: 'api_key',
+    envKey: 'LINEAR_API_KEY',
+    credentialLabel: 'Linear API key'
+  },
+  tools: [{
+    name: 'linear.read_issue',
+    description: 'Read a Linear issue by id.',
+    sideEffectClass: 'read',
+    async execute() {
+      return { ok: true };
+    }
+  }],
+  contextSources: [{
+    name: 'linear.thread_search',
+    description: 'Search Linear issues from thread context.',
+    optional: true,
+    async retrieve() {
+      return [];
+    }
+  }],
+  isConfigured() {
+    return Boolean(process.env.LINEAR_API_KEY);
+  }
+};
+`);
 }
 
 describe('integration routes', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete process.env.MURPH_HOME;
+    delete process.env.LINEAR_API_KEY;
   });
 
   it('validates, stores, and reports a GitHub credential', async () => {
@@ -214,6 +269,38 @@ describe('integration routes', () => {
       envKey: 'OBSIDIAN_VAULT_PATH',
       tools: ['obsidian.search', 'obsidian.read_note'],
       contextSources: ['obsidian.thread_search']
+    }));
+  });
+
+  it('surfaces plugin-provided integrations in status after plugin reload', async () => {
+    const { request, workspace, murphHome } = await setup();
+    writeLinearPlugin(murphHome);
+
+    const { reloadScopedPlugins } = await import('#lib/server/plugins/loader');
+    const pluginStatuses = await reloadScopedPlugins();
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const linear = response.body.integrations.find((integration: any) => integration.provider === 'linear');
+
+    expect(pluginStatuses).toEqual([
+      expect.objectContaining({
+        id: 'linear',
+        status: 'loaded',
+        capabilities: expect.objectContaining({
+          integrations: ['linear']
+        })
+      })
+    ]);
+    expect(response.status).toBe(200);
+    expect(linear).toEqual(expect.objectContaining({
+      provider: 'linear',
+      name: 'Linear',
+      description: 'Linear issues, projects, and specs.',
+      status: 'disconnected',
+      authType: 'api_key',
+      credentialLabel: 'Linear API key',
+      envKey: 'LINEAR_API_KEY',
+      tools: ['linear.read_issue'],
+      contextSources: ['linear.thread_search']
     }));
   });
 

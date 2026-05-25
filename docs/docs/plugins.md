@@ -95,6 +95,8 @@ An integration is the connected source users think about, such as Linear or an i
 
 A tool is one callable action Murph can run. Some tools are built in, such as `web.search`; others are exposed by plugin-provided integrations, such as `linear.search`.
 
+After plugins are reloaded, connector metadata is exposed through integration status and appears as a generic integration card in the browser UI.
+
 ## Public boundary
 
 Scoped plugins are the documented plugin model. Keep custom integrations in scoped plugins unless a change must become part of Murph core.

@@ -9,6 +9,8 @@ A connector is the module that implements a plugin-provided integration.
 
 Use a connector when Murph should connect to a private source, check credentials, retrieve context, and expose read-only source tools.
 
+After plugin reload, connector metadata is exposed through `/api/integrations/status`. The browser UI renders integration cards from that runtime response instead of generating new frontend code for each connector.
+
 ## Module export
 
 Connector modules live under `integrations/*.mjs` and are referenced by `capabilities.integrations` in `plugin.json`.
@@ -47,6 +49,8 @@ The credential block describes how setup and status surfaces identify the connec
 | `installPath` | Optional source-specific setup URL or path. |
 
 `isConfigured(workspaceId)` should return `true` only when the source can actually be used.
+
+Keep connector metadata complete and operator-facing. The generic integration card uses `name`, `description`, `credentialLabel`, `tools`, and `contextSources` directly.
 
 ## Context sources
 
@@ -110,4 +114,3 @@ Scoped plugin connector tools must be read-only.
 - Use policy for autonomy and review rules.
 
 The scoped plugin loader rejects connector modules that try to contribute channel adapters or model providers.
-

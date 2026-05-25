@@ -60,6 +60,8 @@ channel.mjs
 
 `capabilities.skills` points to Markdown skill files. `capabilities.integrations` points to connector modules. `capabilities.channels` points to channel plugin modules.
 
+Integration connector metadata is runtime UI metadata too. After reload, `/api/integrations/status` exposes plugin-provided integrations so the browser UI can render generic cards without source changes.
+
 ## Loading and validation
 
 Reload scoped plugins after changing manifests or capability files:
@@ -85,4 +87,3 @@ Failed plugins return a validation error without blocking other valid packages.
 - Skill files must include parseable frontmatter.
 
 Ask `murph agent` to scaffold or inspect a plugin when you want it to write the package and call validation APIs for you.
-
