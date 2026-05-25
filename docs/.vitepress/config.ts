@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress';
 
 const siteUrl = 'https://murph-agent.com';
 const siteDescription =
-    'Local-first AI handoff agent for Slack, Discord, and async work.';
+    'Local-first handoff agent for staying offline without losing context.';
 const socialPreviewUrl = `${siteUrl}/img/social-preview.png`;
 
 export default defineConfig({

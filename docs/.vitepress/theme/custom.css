@@ -1,22 +1,23 @@
 :root {
   color-scheme: light;
-  --murph-page: oklch(93.2% 0.018 76);
-  --murph-surface: oklch(98% 0.007 82);
-  --murph-surface-soft: oklch(95.2% 0.011 82);
-  --murph-panel: oklch(98.4% 0.006 82);
-  --murph-ink: oklch(19% 0.009 82);
-  --murph-soft-ink: oklch(38% 0.012 78);
-  --murph-muted-ink: oklch(54% 0.011 78);
-  --murph-rule: oklch(29% 0.007 84 / 66%);
-  --murph-rule-soft: oklch(33% 0.007 84 / 24%);
-  --murph-amber: oklch(73% 0.155 70);
-  --murph-amber-hover: oklch(78% 0.155 74);
-  --murph-amber-ink: oklch(17% 0.012 70);
-  --murph-code-bg: oklch(96% 0.006 82);
-  --murph-code-rule: oklch(29% 0.007 84 / 48%);
-  --murph-code-keyword: oklch(61% 0.145 64);
-  --murph-code-string: oklch(46% 0.07 235);
-  --murph-code-comment: oklch(56% 0.012 84);
+  --murph-page: #f3ebdd;
+  --murph-surface: #fbf6ea;
+  --murph-surface-soft: #efe4d0;
+  --murph-panel: #fbf6ea;
+  --murph-ink: #0d0d0b;
+  --murph-soft-ink: #4d473c;
+  --murph-muted-ink: #6f6655;
+  --murph-rule: rgb(13 13 11 / 28%);
+  --murph-rule-soft: rgb(13 13 11 / 14%);
+  --murph-amber: #d49a4a;
+  --murph-amber-hover: #c98530;
+  --murph-amber-ink: #0d0d0b;
+  --murph-link: #8f5a16;
+  --murph-code-bg: #efe4d0;
+  --murph-code-rule: rgb(13 13 11 / 24%);
+  --murph-code-keyword: var(--murph-link);
+  --murph-code-string: #5f6f73;
+  --murph-code-comment: #6f6655;
   --space-xs: 0.5rem;
   --space-sm: 0.75rem;
   --space-md: 1.5rem;
@@ -35,7 +36,7 @@
   --vp-c-brand-1: var(--murph-code-keyword);
   --vp-c-brand-2: var(--murph-code-keyword);
   --vp-c-brand-3: var(--murph-amber);
-  --vp-c-brand-soft: oklch(73% 0.155 70 / 13%);
+  --vp-c-brand-soft: rgb(212 154 74 / 16%);
   --vp-button-brand-bg: var(--murph-amber);
   --vp-button-brand-border: var(--murph-amber);
   --vp-button-brand-text: var(--murph-amber-ink);
@@ -58,23 +59,24 @@
 
 .dark {
   color-scheme: dark;
-  --murph-page: oklch(9.5% 0.018 255);
-  --murph-surface: oklch(12.3% 0.018 255);
-  --murph-surface-soft: oklch(15.6% 0.018 255);
-  --murph-panel: oklch(11% 0.017 255);
-  --murph-ink: oklch(92.5% 0.008 82);
-  --murph-soft-ink: oklch(72% 0.014 250);
-  --murph-muted-ink: oklch(55% 0.014 250);
-  --murph-rule: oklch(86% 0.007 82 / 38%);
-  --murph-rule-soft: oklch(86% 0.007 82 / 15%);
-  --murph-amber: oklch(74% 0.154 72);
-  --murph-amber-hover: oklch(79% 0.152 75);
-  --murph-amber-ink: oklch(12% 0.012 255);
-  --murph-code-bg: oklch(10.4% 0.017 255);
-  --murph-code-rule: oklch(86% 0.007 82 / 25%);
-  --murph-code-keyword: oklch(77% 0.145 72);
-  --murph-code-string: oklch(73% 0.07 232);
-  --murph-code-comment: oklch(56% 0.012 248);
+  --murph-page: #0d0d0b;
+  --murph-surface: #1a1a17;
+  --murph-surface-soft: #24231f;
+  --murph-panel: #1a1a17;
+  --murph-ink: #f3ebdd;
+  --murph-soft-ink: #e8d8b8;
+  --murph-muted-ink: #a99a7d;
+  --murph-rule: rgb(232 216 184 / 32%);
+  --murph-rule-soft: rgb(232 216 184 / 16%);
+  --murph-amber: #d49a4a;
+  --murph-amber-hover: #e8d8b8;
+  --murph-amber-ink: #0d0d0b;
+  --murph-link: #d49a4a;
+  --murph-code-bg: #24231f;
+  --murph-code-rule: rgb(232 216 184 / 24%);
+  --murph-code-keyword: var(--murph-link);
+  --murph-code-string: #8d8f8a;
+  --murph-code-comment: #a99a7d;
 }
 
 html {
@@ -89,7 +91,7 @@ body,
 }
 
 ::selection {
-  background: oklch(73% 0.155 70 / 22%);
+  background: rgb(212 154 74 / 22%);
   color: var(--murph-ink);
 }
 
@@ -444,7 +446,7 @@ body:has(.murph-home) .VPFooter {
 }
 
 .murph-theme-toggle:hover {
-  background: oklch(73% 0.155 70 / 12%);
+  background: rgb(212 154 74 / 12%);
 }
 
 .murph-theme-toggle:focus-visible {

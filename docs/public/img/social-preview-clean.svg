@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-label="Murph">
+  <rect width="1280" height="640" fill="#f3ebdd"/>
+  <g transform="translate(258 244)">
+    <g fill="#d49a4a" transform="scale(5)">
+      <path d="M5 26V6l7.5 8L20 6v20l-7.5-8L5 26Z"/>
+      <path d="M20 26V6l7.5 8L35 6v20l-7.5-8L20 26Z"/>
+    </g>
+    <text
+      x="242"
+      y="128"
+      fill="#0d0d0b"
+      font-family="Geist, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+      font-size="168"
+      font-weight="850"
+      letter-spacing="0"
+    >Murph</text>
+  </g>
+</svg>

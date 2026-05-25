@@ -1,27 +1,27 @@
 :root {
   color-scheme: light;
 
-  /* Shared with the docs landing system: warm paper, graphite ink, amber action. */
-  --ink: oklch(19% 0.009 82);
-  --ink-soft: oklch(38% 0.012 78);
-  --muted: oklch(54% 0.011 78);
-  --faint: oklch(70% 0.01 78);
-  --rule: oklch(33% 0.007 84 / 24%);
-  --rule-strong: oklch(29% 0.007 84 / 48%);
-  --paper: oklch(97.2% 0.012 76);
-  --surface: oklch(99% 0.006 82);
-  --tint: oklch(98.1% 0.008 82);
+  /* Field Watch: old paper, void ink, lume beige, amber action. */
+  --ink: #0d0d0b;
+  --ink-soft: #4d473c;
+  --muted: #6f6655;
+  --faint: #a99a7d;
+  --rule: rgb(13 13 11 / 14%);
+  --rule-strong: rgb(13 13 11 / 28%);
+  --paper: #f3ebdd;
+  --surface: #fbf6ea;
+  --tint: #efe4d0;
 
-  /* Accent — amber/copper, used rarely as action punctuation. */
-  --accent: oklch(73% 0.155 70);
-  --accent-hover: oklch(78% 0.155 74);
-  --accent-soft: oklch(73% 0.155 70 / 13%);
-  --accent-ink: oklch(17% 0.012 70);
+  /* Accent — aged amber, used rarely as action punctuation. */
+  --accent: #d49a4a;
+  --accent-hover: #c98530;
+  --accent-soft: rgb(212 154 74 / 16%);
+  --accent-ink: #0d0d0b;
 
   /* Status hues, kept muted. */
-  --ok: oklch(66% 0.17 150);
-  --warn: oklch(70% 0.13 75);
-  --danger: oklch(58% 0.16 28);
+  --ok: #3f7f5f;
+  --warn: #b77b2d;
+  --danger: #a34a3b;
 
   /* Type — same Geist family as the docs site. */
   --font-sans:
@@ -51,24 +51,24 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --ink: #e5e2e1;
-  --ink-soft: #c8c6c5;
-  --muted: #d9c2b5;
-  --faint: #79706a;
-  --rule: rgb(83 68 57 / 66%);
-  --rule-strong: rgb(161 141 129 / 78%);
-  --paper: oklch(20% 0.006 78);
-  --surface: oklch(24% 0.007 78);
-  --tint: oklch(27% 0.008 78);
+  --ink: #f3ebdd;
+  --ink-soft: #e8d8b8;
+  --muted: #a99a7d;
+  --faint: #8d8f8a;
+  --rule: rgb(232 216 184 / 16%);
+  --rule-strong: rgb(232 216 184 / 32%);
+  --paper: #0d0d0b;
+  --surface: #1a1a17;
+  --tint: #24231f;
 
-  --accent: #d48447;
-  --accent-hover: #ffb784;
-  --accent-soft: rgb(212 132 71 / 18%);
-  --accent-ink: #4f2500;
+  --accent: #d49a4a;
+  --accent-hover: #e8d8b8;
+  --accent-soft: rgb(212 154 74 / 20%);
+  --accent-ink: #0d0d0b;
 
-  --ok: #8be8ad;
-  --warn: #d48447;
-  --danger: #ffb4ab;
+  --ok: #82c897;
+  --warn: #d49a4a;
+  --danger: #ef9d8f;
 }
 
 * {
@@ -2060,7 +2060,7 @@ button.primary-large:hover {
 }
 
 .modal::backdrop {
-  background: oklch(20% 0.018 78 / 0.28);
+  background: rgb(13 13 11 / 42%);
 }
 
 .modal-panel {

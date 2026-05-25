@@ -83,8 +83,9 @@ onBeforeUnmount(() => {
         <div class="murph-hero-inner">
           <h1 id="hero-heading">Stay offline without losing momentum.</h1>
           <p class="murph-lede">
-            Murph is a local-first handoff agent that watches selected channels,
-            uses your context, and leaves every decision ready for review.
+            Murph watches the channels you choose, checks your context, answers
+            what it can, queues risky work, and leaves a clean review trail for
+            when you return.
           </p>
 
           <div class="murph-install" aria-label="Install Murph">
@@ -108,15 +109,15 @@ onBeforeUnmount(() => {
             </button>
             <button
               type="button"
-              :class="{ 'is-copied': copiedCommand === 'murph agent' }"
-              :aria-label="copiedCommand === 'murph agent' ? 'Copied start command' : 'Copy start command'"
-              @click="copyCommand('murph agent')"
+              :class="{ 'is-copied': copiedCommand === 'murph setup' }"
+              :aria-label="copiedCommand === 'murph setup' ? 'Copied setup command' : 'Copy setup command'"
+              @click="copyCommand('murph setup')"
             >
               <span class="murph-command-copy">
-                <span class="murph-command-label">Start</span>
-                <code><span>murph</span> agent</code>
+                <span class="murph-command-label">Set up</span>
+                <code><span>murph</span> setup</code>
               </span>
-              <svg v-if="copiedCommand === 'murph agent'" viewBox="0 0 24 24" aria-hidden="true">
+              <svg v-if="copiedCommand === 'murph setup'" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m5 12.5 4.2 4.2L19 7" />
               </svg>
               <svg v-else viewBox="0 0 24 24" aria-hidden="true">
@@ -138,7 +139,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Channels</h2>
-          <p>Connect Slack, Discord, and more. We watch so you can rest.</p>
+          <p>Choose the channels Murph should watch while you're away. Slack and Discord work out of the box.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
@@ -148,7 +149,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Policy</h2>
-          <p>Define how Murph should handle alerts and requests conservatively.</p>
+          <p>Set what Murph can answer, what it must queue, and when it should stay silent.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
@@ -161,7 +162,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Context</h2>
-          <p>Grounded in your repos, docs, runbooks, incidents, and decisions.</p>
+          <p>Use your docs, repos, notes, runbooks, and tools so replies are grounded in your work.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
@@ -172,7 +173,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Review</h2>
-          <p>Get a clear morning digest with decisions, drafts, and open items.</p>
+          <p>Come back to what was sent, queued, skipped, and why.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
@@ -181,7 +182,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Local-first</h2>
-          <p>Self-hosted by default. Your data stays on your infrastructure.</p>
+          <p>Run it yourself. State and credentials stay on your machine.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
@@ -193,7 +194,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Extensible</h2>
-          <p>Extend with integrations, custom tools, and your own automations.</p>
+          <p>Add channels, integrations, tools, and workflows as your work changes.</p>
         </article>
       </section>
 
