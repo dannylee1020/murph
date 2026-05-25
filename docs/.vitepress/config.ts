@@ -45,14 +45,10 @@ export default defineConfig({
         sidebar: {
             '/docs/': [
                 {
-                    text: 'Start',
-                    collapsed: false,
-                    items: [{ text: 'Quickstart', link: '/docs/quickstart' }],
-                },
-                {
-                    text: 'Installation',
+                    text: 'Getting Started',
                     collapsed: false,
                     items: [
+                        { text: 'Quickstart', link: '/docs/quickstart' },
                         { text: 'Install Murph', link: '/docs/installation/' },
                         {
                             text: 'Troubleshooting',
@@ -61,13 +57,13 @@ export default defineConfig({
                     ],
                 },
                 {
-                    text: 'Operate',
+                    text: 'Core',
                     collapsed: false,
                     items: [
+                        { text: 'Core Concepts', link: '/docs/core-concepts' },
                         { text: 'Configuration', link: '/docs/configuration' },
                         { text: 'Memory', link: '/docs/memory' },
                         { text: 'Policy', link: '/docs/policy' },
-                        { text: 'Core Concepts', link: '/docs/core-concepts' },
                         { text: 'Integrations', link: '/docs/integrations' },
                     ],
                 },
