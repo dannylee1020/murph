@@ -65,6 +65,7 @@ export default defineConfig({
                     collapsed: false,
                     items: [
                         { text: 'Configuration', link: '/docs/configuration' },
+                        { text: 'Memory', link: '/docs/memory' },
                         { text: 'Policy', link: '/docs/policy' },
                         { text: 'Core Concepts', link: '/docs/core-concepts' },
                         { text: 'Integrations', link: '/docs/integrations' },

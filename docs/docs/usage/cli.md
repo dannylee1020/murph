@@ -24,6 +24,8 @@ murph setup status
 
 Use `murph setup` for the full wizard. The wizard creates core local config, chooses the runtime AI provider, chooses Slack or Discord, captures your OAuth owner identity, saves watched-channel defaults, sets the schedule, selects policy, and prints setup status.
 
+Setup changes refresh active config-bound sessions automatically. If Murph is already handling a request, the refresh is marked pending and applied at the next run boundary.
+
 Use `murph setup provider` to choose the runtime AI provider first, then the Murph Agent model. `murph setup ai` remains as a compatibility alias.
 
 Use focused channel commands when only one channel area changed:
@@ -81,6 +83,8 @@ murph policy set --profile yolo
 ```
 
 Use policy commands to inspect or switch the local autonomy profile and default execution mode. New sessions inherit policy mode unless you choose a temporary session override. For custom profiles, prefer `murph agent`; direct file editing lives in `~/.murph/policies/*.md`.
+
+Policy changes also refresh active config-bound sessions. Sessions started with an explicit policy override keep that explicit policy.
 
 ## Maintenance commands
 

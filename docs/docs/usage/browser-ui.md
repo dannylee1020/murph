@@ -28,6 +28,8 @@ If `5173` is occupied, stop the other process or choose a port intentionally wit
 
 Use the setup wizard to configure the AI provider, Slack or Discord connection, OAuth owner identity, watched channels, schedule, and policy profile.
 
+Changes made through setup refresh active config-bound sessions automatically. If a request is already running, Murph applies the refresh at the next run boundary.
+
 ## Status
 
 Use status views to confirm provider setup, channel connection state, and runtime readiness before starting a handoff.
@@ -37,6 +39,8 @@ Use status views to confirm provider setup, channel connection state, and runtim
 Use sessions when you want Murph to watch selected channels during a bounded offline window.
 
 The stop time is interpreted in the selected timezone and enforced by the local runtime. Murph expires the session at that workday start time, with heartbeat reconciliation as a backup if the process sleeps or restarts.
+
+Sessions started from current config continue to track policy and setup changes. Sessions created with explicit policy or channel-scope overrides keep those explicit choices.
 
 ## Triage
 

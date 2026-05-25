@@ -77,12 +77,23 @@ ai:
 
 ## Storage
 
-Murph uses local SQLite by default. The path is stored in `~/.murph/config.yaml`:
+Murph uses local SQLite by default. SQLite is the transactional source of truth for sessions, runs, events, tool calls, policy decisions, and action results.
+
+The SQLite path is stored in `~/.murph/config.yaml`:
 
 ```yaml
 app:
   sqlitePath: data/murph.sqlite
 ```
+
+Murph also writes generated markdown memory for stable follow-up recall. Configure that path in the same file:
+
+```yaml
+app:
+  memoryPath: ~/.murph/memory
+```
+
+Generated memory is not configuration. It is rebuilt from SQLite run history and lives under the configured `memoryPath`, usually as `index.md`, `threads/...`, and `sessions/...`. See [Memory](/docs/memory) for the runtime behavior.
 
 Secrets are stored locally in plaintext at `~/.murph/.credentials` with owner-only file permissions. Runtime credential reads come from that file, not SQLite.
 
@@ -105,6 +116,12 @@ setup:
   channelProvider: slack
   channelScopeMode: selected
 ```
+
+## Runtime refresh
+
+After local config or capability changes, Murph refreshes runtime state for active sessions that inherit config. This includes policy, setup defaults, integration connections, workspace capabilities, scoped plugin reloads, channel setup, provider config, and skills.
+
+Config-bound sessions receive the updated policy, channel scope, and runtime revision. Sessions with explicit policy or explicit channel-scope overrides keep those choices. If a request is already running, Murph marks refresh as pending and applies it at the next run boundary. See [Core Concepts](/docs/core-concepts) for the runtime model.
 
 ## Advanced process overrides
 
