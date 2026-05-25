@@ -361,8 +361,8 @@ function isWithin(candidate, root) {
 function allowedWriteRoots() {
     return [
         path.join(murphHome, 'plugins'),
-        path.join(appDir, 'policies'),
-        path.join(appDir, 'skills'),
+        path.join(murphHome, 'policies'),
+        path.join(murphHome, 'skills'),
     ];
 }
 
@@ -661,7 +661,9 @@ function searchMurphArchitecture(query, limit) {
             path.join(appDir, 'src', 'lib'),
             path.join(appDir, 'scripts'),
             path.join(appDir, 'policies'),
+            path.join(murphHome, 'policies'),
             path.join(appDir, 'skills'),
+            path.join(murphHome, 'skills'),
             path.join(appDir, 'docs', 'docs', 'core-concepts.md'),
             path.join(appDir, 'docs', 'docs', 'plugins.md'),
             path.join(appDir, 'docs', 'docs', 'channels.md'),
@@ -1234,7 +1236,7 @@ function murphSystemPrompt(sourceEdits) {
         'Built-in Murph Agent skills are Pi skills for this local setup/coding agent. They are separate from Murph runtime skills used by the async messenger runtime.',
         'Use relevant Murph Agent skills for workflow guidance. Use murph_docs_search for user-facing docs questions and murph_architecture_search for runtime, plugin, channel, policy, and config architecture questions before falling back to generic grep.',
         'Prefer Murph custom tools for setup, integration status, plugin reload, and policy changes before editing files by hand.',
-        'For custom policy changes, inspect the current policy with murph_policy_get/profiles, edit or create policies/*.md, preview changes with murph_policy_preview, then select the profile with murph_policy_set.',
+        'For custom policy changes, inspect the current policy with murph_policy_get/profiles, edit or create ~/.murph/policies/*.md, preview changes with murph_policy_preview, then select the profile with murph_policy_set.',
         'For new capabilities, prefer category-scoped plugin packages under ~/.murph/plugins/{channels,tools,skills,context,bundles}/<id>.',
         'For custom messaging providers, create channel plugins under ~/.murph/plugins/channels/<id>; do not edit Murph core runtime files.',
         'When creating a searchable connector, implement it as an integrations/*.mjs module and include a read-only { query, limit } search tool with retrievalEligible: true and retrieval.profile set to the closest preset.',

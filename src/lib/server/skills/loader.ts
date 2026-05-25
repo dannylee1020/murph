@@ -3,9 +3,38 @@ import path from 'node:path';
 import { SKILLS_ROOT } from '#lib/config';
 import { listRegisteredPluginSkills } from '#lib/server/capabilities/plugins';
 import { listScopedPluginSkills } from '#lib/server/plugins/skill-registry';
+import { userSkillRoot } from '#lib/server/setup/paths';
 import type { SkillManifest } from '#lib/types';
 
 export async function loadSkills(root = SKILLS_ROOT): Promise<SkillManifest[]> {
+  const fileSkills = await loadFileSkills(root);
+  const merged = new Map(fileSkills.map((skill) => [skill.name, skill]));
+
+  for (const skill of listRegisteredPluginSkills()) {
+    merged.set(skill.name, skill);
+  }
+  for (const skill of listScopedPluginSkills()) {
+    merged.set(skill.name, skill);
+  }
+
+  return [...merged.values()].sort((a, b) => b.priority - a.priority);
+}
+
+function skillRoots(root: string): string[] {
+  return root === SKILLS_ROOT ? [SKILLS_ROOT, userSkillRoot()] : [root];
+}
+
+async function loadFileSkills(root: string): Promise<SkillManifest[]> {
+  const skills = new Map<string, SkillManifest>();
+  for (const skillRoot of skillRoots(root)) {
+    for (const skill of await loadFileSkillsFromRoot(skillRoot)) {
+      skills.set(skill.name, skill);
+    }
+  }
+  return [...skills.values()];
+}
+
+async function loadFileSkillsFromRoot(root: string): Promise<SkillManifest[]> {
   try {
     const entries = await readdir(root);
     const fileSkills = await Promise.all(
@@ -13,19 +42,9 @@ export async function loadSkills(root = SKILLS_ROOT): Promise<SkillManifest[]> {
         .filter((entry) => entry.endsWith('.md'))
         .map(async (entry) => parseSkillFile(path.join(root, entry)))
     );
-    const skills = fileSkills.filter((skill): skill is SkillManifest => skill !== null);
-    const merged = new Map(skills.map((skill) => [skill.name, skill]));
-
-    for (const skill of listRegisteredPluginSkills()) {
-      merged.set(skill.name, skill);
-    }
-    for (const skill of listScopedPluginSkills()) {
-      merged.set(skill.name, skill);
-    }
-
-    return [...merged.values()].sort((a, b) => b.priority - a.priority);
+    return fileSkills.filter((skill): skill is SkillManifest => skill !== null);
   } catch {
-    return [...listRegisteredPluginSkills(), ...listScopedPluginSkills()].sort((a, b) => b.priority - a.priority);
+    return [];
   }
 }
 

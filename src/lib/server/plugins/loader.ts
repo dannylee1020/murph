@@ -1,12 +1,11 @@
 import { access, readdir, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { PLUGINS_ROOT } from '#lib/config';
 import { registerAdapter, unregisterAdaptersBySource } from '#lib/server/integrations/adapter-registry';
 import type { IntegrationAdapter } from '#lib/server/integrations/adapter';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { parseSkillFile } from '#lib/server/skills/loader';
+import { userPluginRoot } from '#lib/server/setup/paths';
 import type { ChannelPlugin, SkillManifest } from '#lib/types';
 import { clearScopedPluginSkills, registerScopedPluginSkill } from './skill-registry.js';
 
@@ -46,12 +45,8 @@ let loaded = false;
 let importVersion = 0;
 let statuses: ScopedPluginLoadStatus[] = [];
 
-function murphHome(): string {
-  return process.env.MURPH_HOME || path.join(homedir(), '.murph');
-}
-
 export function getScopedPluginRoots(): string[] {
-  return [path.join(murphHome(), PLUGINS_ROOT)];
+  return [userPluginRoot()];
 }
 
 function manifestPath(root: string): string {

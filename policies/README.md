@@ -1,8 +1,8 @@
 # Policy Profiles
 
-Policy profiles in this directory define the reusable rules Murph uses to decide whether it may send, queue, or abstain from a drafted continuity action.
+Policy profiles in this directory are the shipped defaults Murph uses to decide whether it may send, queue, or abstain from a drafted continuity action.
 
-These files are profile inputs, not a separate policy engine. The runtime loads `policies/*.md`, parses the metadata header plus the body, and compiles the result into the same `CompiledPolicy` shape used everywhere else.
+These files are profile inputs, not a separate policy engine. The runtime loads shipped `policies/*.md` first, then user profiles from `~/.murph/policies/*.md`. A user profile with the same normalized name overrides the shipped profile. Murph parses the metadata header plus the body and compiles the result into the same `CompiledPolicy` shape used everywhere else.
 
 ## File Shape
 
@@ -54,7 +54,7 @@ Effective policy precedence is:
 2. The local policy mode and profile selected in Admin or `murph policy set`
 3. Built-in manual-review fallback
 
-Admin selects an existing local profile and the default execution mode. For custom policy, use `murph agent` first; direct profile-file editing is the fallback when you want to manage `policies/*.md` yourself.
+Admin selects an existing local profile and the default execution mode. For custom policy, use `murph agent` first; direct profile-file editing is the fallback when you want to manage `~/.murph/policies/*.md` yourself.
 
 ## Scoped Rules
 

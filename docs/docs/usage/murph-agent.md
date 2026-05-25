@@ -123,7 +123,7 @@ Tool logs are quiet by default. Turn them on when you need detailed debugging.
 
 ## Policy customization
 
-Murph Agent is the preferred way to create or adjust custom policy. Ask it to inspect the current profiles, create or edit a file under `policies/`, preview the result, and select the profile.
+Murph Agent is the preferred way to create or adjust custom policy. Ask it to inspect the current profiles, create or edit a file under `~/.murph/policies/`, preview the result, and select the profile.
 
 Policy files are part of the default Plugin+Config write scope, so source-edit mode is not required for normal policy customization.
 

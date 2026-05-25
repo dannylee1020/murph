@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
 import type { PolicyExecutionMode, ProviderName, SetupDefaults } from '#lib/types';
 import { normalizePolicyExecutionMode } from '#lib/server/runtime/policy-compiler';
+import { murphHome } from '#lib/server/setup/paths';
 
 export const MURPH_CONFIG_FILE = 'config.yaml';
 
@@ -113,10 +113,6 @@ const CONFIG_KEY_CLEARERS: Record<string, (config: Record<string, unknown>) => v
   MURPH_POLICY_MODEL: (config) => deletePath(config, ['ai', 'policy', 'model']),
   OBSIDIAN_VAULT_PATH: (config) => deletePath(config, ['integrations', 'obsidian', 'vaultPath'])
 };
-
-function murphHome(): string {
-  return process.env.MURPH_HOME || path.join(homedir(), '.murph');
-}
 
 export function murphConfigPath(): string {
   return process.env.MURPH_CONFIG_PATH || path.join(murphHome(), MURPH_CONFIG_FILE);

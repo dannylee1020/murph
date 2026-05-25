@@ -7,6 +7,16 @@ description: Add source-specific instructions that guide Murph's runtime behavio
 
 Skills are Markdown instruction files with frontmatter. They teach Murph when and how to use a source, tool, workflow, or evidence type.
 
+## File location
+
+Shipped runtime skills live in the app's `skills/` directory. User-created runtime skills live in:
+
+```text
+~/.murph/skills/*.md
+```
+
+Murph loads shipped skills first, then user skills. A user skill with the same `name` overrides the shipped skill.
+
 ## File shape
 
 ```md
@@ -67,4 +77,3 @@ The body should be operational, not promotional. Include:
 - source-specific terms users are likely to use.
 
 Keep one skill focused on one source or workflow. Create separate skills when priorities, risk, or grounding expectations differ.
-

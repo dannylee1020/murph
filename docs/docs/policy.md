@@ -24,16 +24,14 @@ Murph ships role-oriented profiles:
 - `default`
 - `engineering`
 - `product`
-- `sales`
-- `marketing`
-- `leadership`
+- `investor`
 - `yolo`
 
 The role profiles are conservative and keep auto-send off. `yolo` is the maximum-autonomy preset for trusted local runs after you have verified setup and behavior. Runtime grounding still checks that required read/context work happens before answering.
 
 ## Custom profile files
 
-Profiles live in `policies/*.md` and use a metadata header plus body notes:
+Shipped profiles live in the app's `policies/` directory. Custom profiles live in `~/.murph/policies/*.md` and use a metadata header plus body notes:
 
 ```md
 name: custom

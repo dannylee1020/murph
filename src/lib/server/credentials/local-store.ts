@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { murphHome } from '#lib/server/setup/paths';
 
 export interface CredentialRecord {
   provider: string;
@@ -27,10 +28,6 @@ export interface SecretRef {
 
 export interface WriteSecretOptions extends SecretRef {
   metadata?: Record<string, unknown>;
-}
-
-function murphHome(): string {
-  return process.env.MURPH_HOME || path.join(homedir(), '.murph');
 }
 
 export function credentialsPath(): string {

@@ -36,6 +36,7 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-session-route-'));
   process.env.MURPH_APP_DIR = root;
+  process.env.MURPH_HOME = root;
   process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
@@ -105,13 +106,25 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
 }
 
 describe('POST /api/gateway/sessions channel membership gating', () => {
+  const originalMurphHome = process.env.MURPH_HOME;
+
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+    if (originalMurphHome === undefined) {
+      delete process.env.MURPH_HOME;
+    } else {
+      process.env.MURPH_HOME = originalMurphHome;
+    }
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    if (originalMurphHome === undefined) {
+      delete process.env.MURPH_HOME;
+    } else {
+      process.env.MURPH_HOME = originalMurphHome;
+    }
   });
 
   it('creates a session and reports auto-joined public channels', async () => {
@@ -199,7 +212,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
       { channelId: 'C1', name: 'product-eng', status: 'already_member' }
     ]);
 
-    store.upsertAppSettings({ policyProfileName: 'leadership' });
+    store.upsertAppSettings({ policyProfileName: 'investor' });
 
     const response = await post({
       ownerUserId: 'UOWNER',
@@ -211,7 +224,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     const memory = store.getOrCreateUserMemory(workspace.id, 'UOWNER');
     const session = store.listActiveSessions(workspace.id)[0];
     expect('policy' in memory).toBe(false);
-    expect(session.policyProfileName).toBe('leadership');
+    expect(session.policyProfileName).toBe('investor');
     expect(session.policy?.compiled.alwaysQueueTopics).toContain('company commitments');
     expect(session.policy?.compiled.allowAutoSend).toBe(false);
   });

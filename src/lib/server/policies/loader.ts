@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { POLICIES_ROOT } from '#lib/config';
+import { userPolicyRoot } from '#lib/server/setup/paths';
 import {
   normalizeCompiledPolicy,
   normalizePolicyExecutionMode,
@@ -10,8 +11,11 @@ import {
 import type { CompiledPolicy, PolicyProfile } from '#lib/types';
 
 const POLICY_PROFILE_ALIASES: Record<string, string> = {
-  'founder-coverage': 'leadership',
-  'product-coverage': 'product'
+  'founder-coverage': 'investor',
+  leadership: 'investor',
+  marketing: 'default',
+  'product-coverage': 'product',
+  sales: 'default'
 };
 
 export function normalizePolicyProfileName(name?: string): string | undefined {
@@ -93,7 +97,11 @@ async function parsePolicyFile(filePath: string): Promise<PolicyProfile | null> 
   };
 }
 
-export async function loadPolicyProfiles(root = POLICIES_ROOT): Promise<PolicyProfile[]> {
+function policyProfileRoots(root: string): string[] {
+  return root === POLICIES_ROOT ? [POLICIES_ROOT, userPolicyRoot()] : [root];
+}
+
+async function loadPolicyProfilesFromRoot(root: string): Promise<PolicyProfile[]> {
   try {
     const entries = await readdir(root);
     const profiles = await Promise.all(
@@ -101,17 +109,22 @@ export async function loadPolicyProfiles(root = POLICIES_ROOT): Promise<PolicyPr
         .filter((entry) => entry.endsWith('.md') && entry.toLowerCase() !== 'readme.md')
         .map(async (entry) => parsePolicyFile(path.join(root, entry)))
     );
-    const uniqueProfiles = new Map<string, PolicyProfile>();
-    profiles
-      .filter((profile): profile is PolicyProfile => profile !== null)
-      .forEach((profile) => {
-        const normalizedName = normalizePolicyProfileName(profile.name)!;
-        if (!uniqueProfiles.has(normalizedName)) {
-          uniqueProfiles.set(normalizedName, { ...profile, name: normalizedName });
-        }
-      });
-    return [...uniqueProfiles.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return profiles.filter((profile): profile is PolicyProfile => profile !== null);
   } catch {
     return [];
   }
+}
+
+export async function loadPolicyProfiles(root = POLICIES_ROOT): Promise<PolicyProfile[]> {
+  const uniqueProfiles = new Map<string, PolicyProfile>();
+
+  for (const profileRoot of policyProfileRoots(root)) {
+    const profiles = await loadPolicyProfilesFromRoot(profileRoot);
+    for (const profile of profiles) {
+      const normalizedName = normalizePolicyProfileName(profile.name)!;
+      uniqueProfiles.set(normalizedName, { ...profile, name: normalizedName });
+    }
+  }
+
+  return [...uniqueProfiles.values()].sort((a, b) => a.name.localeCompare(b.name));
 }

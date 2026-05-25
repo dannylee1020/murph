@@ -57,7 +57,7 @@ Murph retrieves relevant context before drafting. The runtime prefers evidence f
 
 ## Policy
 
-Policy decides whether Murph may send, queue, or abstain from a drafted action. Operational hard stops still happen before the agent, but policy classification runs after the main agent drafts so queued items can include useful work. Grounding is separate runtime behavior, not a factuality score. Built-in role profiles are conservative; `yolo` is available as an explicit maximum-autonomy preset. Custom profiles are best created with Murph Agent or by editing `policies/*.md`.
+Policy decides whether Murph may send, queue, or abstain from a drafted action. Operational hard stops still happen before the agent, but policy classification runs after the main agent drafts so queued items can include useful work. Grounding is separate runtime behavior, not a factuality score. Built-in role profiles are conservative; `yolo` is available as an explicit maximum-autonomy preset. Custom profiles are best created with Murph Agent or by editing `~/.murph/policies/*.md`.
 
 ## Triage and audit
 

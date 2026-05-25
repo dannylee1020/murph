@@ -171,9 +171,7 @@ Built-in profiles include:
 - `default`
 - `engineering`
 - `product`
-- `sales`
-- `marketing`
-- `leadership`
+- `investor`
 - `yolo`
 
 Role profiles are conservative by default and keep auto-send off. `yolo` is an explicit maximum-autonomy preset for trusted local runs; grounding still runs as a runtime obligation outside the policy gate. Use:
@@ -195,7 +193,7 @@ policy:
 
 New sessions inherit `policy.mode` by default. Use a session-level mode only for a temporary override such as dry-run or review-everything testing.
 
-Use [Policy](/docs/policy) for custom profiles. Murph Agent is the preferred path for creating or changing custom policy; profile files are the fallback when you want to edit directly.
+Use [Policy](/docs/policy) for custom profiles. Murph Agent is the preferred path for creating or changing custom policy; direct profile files live in `~/.murph/policies/*.md`.
 
 ## Local health
 

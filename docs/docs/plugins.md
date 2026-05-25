@@ -83,7 +83,7 @@ For a channel plugin:
 
 Use these directories:
 
-- `skills/*.md` for skill files referenced by `capabilities.skills`.
+- `skills/*.md` inside the plugin root for skill files referenced by `capabilities.skills`.
 - `integrations/*.mjs` for integration connector modules referenced by `capabilities.integrations`.
 - `channel.mjs` or `channels/*.mjs` for messaging providers referenced by `capabilities.channels`.
 

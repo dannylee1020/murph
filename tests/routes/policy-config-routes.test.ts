@@ -31,6 +31,7 @@ async function setup() {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-policy-config-route-'));
   process.env.MURPH_APP_DIR = workspaceDir;
+  process.env.MURPH_HOME = workspaceDir;
   process.env.MURPH_CONFIG_PATH = join(workspaceDir, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
@@ -68,6 +69,7 @@ describe('policy configuration routes', () => {
   const originalCwd = process.cwd();
   const originalAppDir = process.env.MURPH_APP_DIR;
   const originalConfigPath = process.env.MURPH_CONFIG_PATH;
+  const originalMurphHome = process.env.MURPH_HOME;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -81,6 +83,11 @@ describe('policy configuration routes', () => {
       delete process.env.MURPH_CONFIG_PATH;
     } else {
       process.env.MURPH_CONFIG_PATH = originalConfigPath;
+    }
+    if (originalMurphHome === undefined) {
+      delete process.env.MURPH_HOME;
+    } else {
+      process.env.MURPH_HOME = originalMurphHome;
     }
   });
 
@@ -96,6 +103,11 @@ describe('policy configuration routes', () => {
     } else {
       process.env.MURPH_CONFIG_PATH = originalConfigPath;
     }
+    if (originalMurphHome === undefined) {
+      delete process.env.MURPH_HOME;
+    } else {
+      process.env.MURPH_HOME = originalMurphHome;
+    }
   });
 
   it('returns local policy config with profiles and compiled fallback', async () => {
@@ -108,10 +120,8 @@ describe('policy configuration routes', () => {
     expect(response.body.profiles.map((profile: { name: string }) => profile.name)).toEqual(expect.arrayContaining([
       'default',
       'engineering',
-      'leadership',
-      'marketing',
+      'investor',
       'product',
-      'sales',
       'yolo'
     ]));
     expect(response.body.selectedProfileName).toBe('builtin-manual_review');

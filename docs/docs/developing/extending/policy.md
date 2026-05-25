@@ -14,10 +14,10 @@ Use policy when the question is "may Murph send this?" Use skills when the quest
 Policy profiles live in:
 
 ```text
-policies/*.md
+~/.murph/policies/*.md
 ```
 
-Murph loads Markdown files in that directory and ignores `README.md`.
+Murph loads the shipped app profiles first, then Markdown files in `~/.murph/policies`. A user profile with the same normalized name overrides the shipped profile. `README.md` is ignored.
 
 ## File shape
 
@@ -99,4 +99,3 @@ murph policy set --mode auto_send_low_risk
 ```
 
 Use `yolo` only when you intentionally want maximum local autonomy. It does not disable runtime grounding.
-

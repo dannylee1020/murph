@@ -1,19 +1,15 @@
 import { access, readdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { userIntegrationRoot } from '#lib/server/setup/paths';
 import { registerAdapter, recordAdapterLoadFailure } from './adapter-registry.js';
 import type { IntegrationAdapter } from './adapter.js';
 
 let loaded = false;
 
-function murphHome(): string {
-  return process.env.MURPH_HOME || path.join(homedir(), '.murph');
-}
-
 export function getIntegrationAdapterDirs(): string[] {
   return [
-    path.join(murphHome(), 'integrations'),
+    userIntegrationRoot(),
     path.resolve(process.cwd(), 'integrations')
   ];
 }
