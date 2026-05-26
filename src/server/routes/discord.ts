@@ -88,7 +88,7 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
     }
   ];
 
-  store.upsertUser({
+  const user = store.upsertUser({
     workspaceId: result.workspace.id,
     externalUserId: result.authedUser.id,
     displayName: result.authedUser.displayName || result.authedUser.id,
@@ -96,6 +96,21 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
     workdayStartHour: currentDefaults.workdayStartHour,
     workdayEndHour: currentDefaults.workdayEndHour
   });
+  if (getRuntimeEnv().productMode === 'channel') {
+    const workspaceChannelDefaults = currentDefaults.workspaceChannels?.find(
+      (entry) => entry.workspaceId === result.workspace.id
+    );
+    store.ensureWorkspaceSubscriptionForUser(user, {
+      provider: 'discord',
+      status: 'active',
+      channelScopeMode:
+        workspaceChannelDefaults?.channelScopeMode ?? currentDefaults.channelScopeMode ?? 'all_accessible',
+      channelScope:
+        workspaceChannelDefaults?.selectedChannels.map((channel) => channel.id) ??
+        currentDefaults.selectedChannels?.map((channel) => channel.id) ??
+        []
+    });
+  }
   updateMurphSetupDefaults({
     ...currentDefaults,
     workspaceOwners: nextOwners

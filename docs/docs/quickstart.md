@@ -5,7 +5,7 @@ description: Get Murph installed, configured, and running.
 
 # Quickstart
 
-Murph is a local-first handoff agent for handling messaging channels while you are offline. It is extensible and flexible by design. Your choice of channels, data sources, running on your machine.
+Murph is a self-hosted, local-first handoff agent for handling messaging channels while you are offline. It is extensible by design: you choose the runtime host, channels, data sources, and policy.
 
 ## 1. Install
 
@@ -35,7 +35,7 @@ Start Murph:
 murph start
 ```
 
-Murph runs locally at `http://localhost:5173` by default. If that port is already in use, Murph stops with a port-conflict message instead of switching ports automatically, because OAuth callbacks and local tunnels must match the configured origin. To use another port, start Murph with `MURPH_PORT=<port>` and update any provider callback URLs to match.
+Murph runs at `http://localhost:5173` on the runtime host by default. If that port is already in use, Murph stops with a port-conflict message instead of switching ports automatically, because OAuth callbacks and tunnels must match the configured origin. To use another port, start Murph with `MURPH_PORT=<port>` and update any provider callback URLs to match.
 
 ## 4. Check
 

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { getStore } from '#lib/server/persistence/store';
 import { getDiscordService } from '#lib/server/channels/discord/service';
-import type { AutopilotSession, ChannelAdapter, ChannelThreadRef, ContinuityTask } from '#lib/types';
+import { resolvePersonalDirectTarget, type PersonalDirectIgnoredReason } from '#lib/server/channels/personal-routing';
+import type { AutopilotSession, ChannelAdapter, ChannelThreadRef, ContinuityTask, WorkspaceSubscription } from '#lib/types';
 
 export type DiscordIgnoredReason =
   | 'missing_workspace'
@@ -9,7 +10,8 @@ export type DiscordIgnoredReason =
   | 'bot_message'
   | 'missing_thread'
   | 'no_mentioned_session_owner'
-  | 'ambiguous_session_target';
+  | 'ambiguous_session_target'
+  | PersonalDirectIgnoredReason;
 
 export type DiscordNormalizeResult =
   | { task: ContinuityTask; ignoredReason?: never }
@@ -36,6 +38,20 @@ function isScopedToChannel(session: AutopilotSession, channelId: string): boolea
 
 function activeSessionForUser(sessions: AutopilotSession[], userId: string | undefined): AutopilotSession | undefined {
   return userId ? sessions.find((session) => session.ownerUserId === userId) : undefined;
+}
+
+function filterSubscribedSessions(
+  sessions: AutopilotSession[],
+  subscribedUserIds: Set<string>
+): AutopilotSession[] {
+  return sessions.filter((session) => subscribedUserIds.has(session.ownerUserId));
+}
+
+function subscriptionAllowsChannel(
+  subscription: WorkspaceSubscription,
+  channelId: string
+): boolean {
+  return subscription.channelScopeMode === 'all_accessible' || subscription.channelScope.includes(channelId);
 }
 
 function buildThreadRef(event: Record<string, unknown>): ChannelThreadRef | null {
@@ -95,19 +111,63 @@ export function normalizeDiscordEventWithReason(
   envelope?: { eventId?: string; teamId?: string }
 ): DiscordNormalizeResult {
   const workspaceId = envelope?.teamId ?? (typeof event.guild_id === 'string' ? event.guild_id : undefined);
+  const store = getStore();
+  const workspace = workspaceId
+    ? store.getWorkspaceByExternalId('discord', workspaceId) ?? store.getWorkspaceById(workspaceId)
+    : undefined;
+  const actorUserId = typeof event.author === 'object' && event.author && typeof (event.author as { id?: unknown }).id === 'string'
+    ? (event.author as { id: string }).id
+    : undefined;
+  if (!workspaceId && actorUserId) {
+    const target = resolvePersonalDirectTarget('discord', actorUserId);
+    if (!target.ok) {
+      return { ignoredReason: target.ignoredReason };
+    }
+
+    if (actorUserId === target.workspace.botUserId) {
+      return { ignoredReason: 'bot_message' };
+    }
+
+    const thread = buildThreadRef(event);
+    if (!thread) {
+      return { ignoredReason: 'missing_thread' };
+    }
+
+    const text = typeof event.content === 'string' ? event.content : '';
+    store.upsertDirectConversation({
+      provider: 'discord',
+      workspaceId: target.workspace.id,
+      externalUserId: actorUserId,
+      channelId: thread.channelId,
+      lastSelectedWorkspaceId: target.workspace.id
+    });
+
+    return {
+      task: {
+        id: randomUUID(),
+        source: 'discord_event',
+        workspaceId: target.workspace.id,
+        thread,
+        conversationKind: 'direct',
+        triggerMessage: buildTriggerMessage(thread, actorUserId, text, event),
+        targetUserId: target.ownerUserId,
+        actorUserId,
+        rawEventId: envelope?.eventId,
+        eventType: 'MESSAGE_CREATE',
+        dedupeKey: `discord:direct:${envelope?.eventId ?? `${thread.channelId}:${thread.threadTs}`}`,
+        receivedAt: new Date().toISOString()
+      }
+    };
+  }
+
   if (!workspaceId) {
     return { ignoredReason: 'missing_workspace' };
   }
 
-  const store = getStore();
-  const workspace = store.getWorkspaceByExternalId('discord', workspaceId) ?? store.getWorkspaceById(workspaceId);
   if (!workspace) {
     return { ignoredReason: 'workspace_not_installed' };
   }
 
-  const actorUserId = typeof event.author === 'object' && event.author && typeof (event.author as { id?: unknown }).id === 'string'
-    ? (event.author as { id: string }).id
-    : undefined;
   if (!actorUserId || actorUserId === workspace.botUserId) {
     return { ignoredReason: 'bot_message' };
   }
@@ -119,18 +179,25 @@ export function normalizeDiscordEventWithReason(
 
   const text = typeof event.content === 'string' ? event.content : '';
   const scopedSessions = store.listActiveSessions(workspace.id).filter((session) => isScopedToChannel(session, thread.channelId));
+  const subscriptions = store.listWorkspaceSubscriptions(workspace.id);
+  const subscribedUserIds = new Set(
+    subscriptions
+      .filter((subscription) => subscription.status === 'active' && subscriptionAllowsChannel(subscription, thread.channelId))
+      .map((subscription) => subscription.externalUserId)
+  );
+  const eligibleSessions = filterSubscribedSessions(scopedSessions, subscribedUserIds);
   const allMentionedUsers = parseMentionedUsersFromEvent(event, text);
   const mentionedUsers = allMentionedUsers.filter((userId) => userId !== actorUserId && userId !== workspace.botUserId);
-  const mentionedSessionTarget = mentionedUsers.find((userId) => activeSessionForUser(scopedSessions, userId));
+  const mentionedSessionTarget = mentionedUsers.find((userId) => activeSessionForUser(eligibleSessions, userId));
   const storedTarget = store.getThreadState(workspace.id, thread.channelId, thread.threadTs)?.targetUserId;
-  const storedSessionTarget = activeSessionForUser(scopedSessions, storedTarget)?.ownerUserId;
+  const storedSessionTarget = activeSessionForUser(eligibleSessions, storedTarget)?.ownerUserId;
   const botDirected = Boolean(workspace.botUserId && allMentionedUsers.includes(workspace.botUserId));
-  const singleSessionTarget = scopedSessions.length === 1 ? scopedSessions[0].ownerUserId : undefined;
+  const singleSessionTarget = eligibleSessions.length === 1 ? eligibleSessions[0].ownerUserId : undefined;
   const targetUserId = mentionedSessionTarget ?? storedSessionTarget ?? (botDirected ? singleSessionTarget : undefined);
 
   if (!targetUserId) {
     return {
-      ignoredReason: botDirected && scopedSessions.length > 1 ? 'ambiguous_session_target' : 'no_mentioned_session_owner'
+      ignoredReason: botDirected && eligibleSessions.length > 1 ? 'ambiguous_session_target' : 'no_mentioned_session_owner'
     };
   }
 
@@ -140,6 +207,7 @@ export function normalizeDiscordEventWithReason(
       source: 'discord_event',
       workspaceId,
       thread,
+      conversationKind: 'channel',
       triggerMessage: buildTriggerMessage(thread, actorUserId, text, event),
       targetUserId,
       actorUserId,

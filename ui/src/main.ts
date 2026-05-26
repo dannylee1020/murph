@@ -119,6 +119,7 @@ type SetupDoctorPayload = {
 };
 
 type SetupStatusPayload = {
+    productMode: 'personal' | 'channel';
     slack: {
         installed: boolean;
         oauthConfigured: boolean;
@@ -563,6 +564,7 @@ function setSidebarWatchingCount(count: number): void {
 
 type SetupWizardState = {
     currentStep: number;
+    productMode: 'personal' | 'channel';
     selectedProviders: Array<'slack' | 'discord'>;
     providerSelections: Record<
         string,
@@ -600,6 +602,7 @@ const SETUP_CHANNEL_PROVIDERS: SetupChannelProvider[] = ['slack', 'discord'];
 
 let setupWizardState: SetupWizardState = {
     currentStep: 0,
+    productMode: 'channel',
     selectedProviders: [],
     providerSelections: {},
     discordRedirectConfirmed: false,
@@ -799,6 +802,7 @@ function ensureSetupProviderState(
     setup: SetupStatusPayload,
     defaults: SetupDefaultsPayload,
 ): void {
+    setupWizardState.productMode = setup.productMode ?? setupWizardState.productMode;
     if (setupWizardState.selectedProviders.length === 0) {
         setupWizardState.selectedProviders = inferSetupProviders(
             setup,
@@ -852,10 +856,11 @@ function setupStepKeys(): SetupStepKey[] {
         'ai',
         'providers',
         ...setupWizardState.selectedProviders.flatMap((provider) => {
-            const selection = setupWizardState.providerSelections[provider];
             return [
                 `connect:${provider}` as const,
-                `channels:${provider}` as const,
+                ...(setupWizardState.productMode === 'personal'
+                    ? []
+                    : [`channels:${provider}` as const]),
             ];
         }),
         'schedule',
@@ -2417,7 +2422,21 @@ async function renderSetup(): Promise<void> {
         stepContent = `
       <div class="wizard-step">
         <h1>Set up Murph</h1>
-        <p>The installer got the server running. Finish setup here or use <code>murph setup</code> from your terminal.</p>
+        <p>The installer got the server running. Choose how Murph should listen, then finish setup here or use <code>murph setup</code> from your terminal.</p>
+        <form class="form" id="product-mode-form">
+          <div class="mode-selector">
+            <label class="mode-radio">
+              <input type="radio" name="productMode" value="personal" ${setup.productMode === 'personal' ? 'checked' : ''} />
+              <span class="mode-label">Personal bot</span>
+              <span class="mode-description">Message Murph directly for drafts and tool-backed help</span>
+            </label>
+            <label class="mode-radio">
+              <input type="radio" name="productMode" value="channel" ${setup.productMode !== 'personal' ? 'checked' : ''} />
+              <span class="mode-label">Channel handoff</span>
+              <span class="mode-description">Watch selected Slack or Discord channels during sessions</span>
+            </label>
+          </div>
+        </form>
         ${setupCheckList(doctor.checks)}
         <div class="wizard-actions">
           <button type="button" id="wizard-next">Get started</button>
@@ -2487,7 +2506,9 @@ async function renderSetup(): Promise<void> {
         stepContent = `
       <div class="wizard-step">
         <h1>Choose channel providers</h1>
-        <p>Select the places Murph should watch by default. You can configure Slack, Discord, or both.</p>
+        <p>${setup.productMode === 'personal'
+            ? 'Choose the bot you will message directly. You can configure Slack, Discord, or both.'
+            : 'Select the places Murph should watch by default. You can configure Slack, Discord, or both.'}</p>
         <div class="member-list provider-list">${providerCards}</div>
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
@@ -2850,6 +2871,21 @@ async function renderSetup(): Promise<void> {
         async () => {
             setupWizardState.errorMessage = '';
             try {
+            if (stepKey === 'intro') {
+                const form =
+                    app.querySelector<HTMLFormElement>('#product-mode-form');
+                const formData = form ? new FormData(form) : new FormData();
+                const productMode =
+                    String(formData.get('productMode') ?? setup.productMode) ===
+                    'personal'
+                        ? 'personal'
+                        : 'channel';
+                setupWizardState.productMode = productMode;
+                await postJson('/api/setup/config', {
+                    MURPH_PRODUCT_MODE: productMode,
+                });
+            }
+
             if (stepKey === 'ai') {
                 const form =
                     app.querySelector<HTMLFormElement>('#ai-provider-form');
@@ -3110,6 +3146,57 @@ async function renderDashboard(): Promise<void> {
     const currentUser = data.users.find(
         (u) => u.externalUserId === currentUserId,
     );
+    if (setupStatus.productMode === 'personal') {
+        const workspaces = adminChannelWorkspaces(setupStatus);
+        const botTargets = workspaces.length
+            ? workspaces.map((workspace) => workspaceOptionLabel(workspace)).join(', ')
+            : 'Connect Slack or Discord';
+        const providerBanner = !setupStatus.provider.configured
+            ? `<div class="setup-banner">
+        <p>Connect an AI provider to let Murph draft replies for you.</p>
+        <a class="button secondary" href="/admin">Configure</a>
+      </div>`
+            : '';
+
+        shell(`
+    <section class="page-head console-head">
+      <div>
+        <p class="eyebrow">${escapeHtml(formatToday())} · Personal bot</p>
+        <h1>Home</h1>
+        <p>Message Murph directly in Slack or Discord. Murph will use your connected tools, then reply or queue drafts according to policy.</p>
+      </div>
+      ${consoleStateHtml(setupStatus.provider.configured && workspaces.length > 0 ? 'Ready' : 'Setup needed', setupStatus.provider.configured && workspaces.length > 0 ? 'ok' : 'off')}
+    </section>
+
+    ${providerBanner}
+    ${sessionFeedbackHtml()}
+    ${sessionErrorHtml()}
+
+    <section class="launch-section">
+      <article class="panel go-to-sleep-card">
+        <h2>Personal bot</h2>
+        <dl class="go-to-sleep-summary">
+          <div class="summary-cell">
+            <dt>Mode</dt>
+            <dd>Direct messages</dd>
+          </div>
+          <div class="summary-cell">
+            <dt>Bot</dt>
+            <dd>${escapeHtml(botTargets)}</dd>
+          </div>
+          <div class="summary-cell">
+            <dt>Policy</dt>
+            <dd>${escapeHtml(policyExecutionModeLabel(policyConfig.mode))}</dd>
+          </div>
+        </dl>
+        ${workspaces.length === 0
+            ? '<div class="notice warning"><strong>Connect a bot</strong><p>Finish Slack or Discord setup before using personal mode.</p></div>'
+            : '<p class="empty">Send Murph a direct message from your connected owner account to start a personal request.</p>'}
+      </article>
+    </section>
+  `);
+        return;
+    }
     const workspaces = adminChannelWorkspaces(setupStatus);
     const channelStates = await Promise.all(
         workspaces.map(
@@ -3219,6 +3306,8 @@ async function renderDashboard(): Promise<void> {
         setupWizardState.workdayStartHour;
     const estimatedHours = calculateDurationHours(userStartHour, userTz);
     const policyModeLabel = policyExecutionModeLabel(policyConfig.mode);
+    const hasActiveSessions = data.sessions.length > 0;
+    const watchButtonLabel = hasActiveSessions ? 'Stop watching' : 'Start watching';
     const providerBanner = !setupStatus.provider.configured
         ? `<div class="setup-banner">
         <p>Connect an AI provider to let Murph draft replies for you.</p>
@@ -3260,7 +3349,7 @@ async function renderDashboard(): Promise<void> {
             </div>
           </dl>
           ${ownerNotice}
-          <button type="submit" class="primary-large">Start watching</button>
+          <button type="submit" class="primary-large">${watchButtonLabel}</button>
 
           <details class="customize-section">
             <summary>Customize</summary>
@@ -3408,13 +3497,14 @@ async function renderDashboard(): Promise<void> {
         if (submitButton) {
             const enabledStates = nextStates.filter((state) => state.enabled);
             submitButton.disabled =
-                enabledStates.length === 0 ||
-                enabledStates.some((state) => !state.selectedOwnerId) ||
-                enabledStates.some(
-                    (state) =>
-                        state.mode === 'selected' &&
-                        state.selectedChannels.length === 0,
-                );
+                !hasActiveSessions &&
+                (enabledStates.length === 0 ||
+                    enabledStates.some((state) => !state.selectedOwnerId) ||
+                    enabledStates.some(
+                        (state) =>
+                            state.mode === 'selected' &&
+                            state.selectedChannels.length === 0,
+                    ));
         }
     };
 
@@ -3557,6 +3647,20 @@ async function renderDashboard(): Promise<void> {
         async (event) => {
             event.preventDefault();
             const form = event.currentTarget as HTMLFormElement;
+            if (hasActiveSessions) {
+                await Promise.all(
+                    data.sessions.map((session) =>
+                        postJson(`/api/gateway/sessions/${session.id}/stop`),
+                    ),
+                );
+                dashboardNotice =
+                    data.sessions.length === 1
+                        ? 'Session stopped.'
+                        : 'Sessions stopped.';
+                await renderDashboard();
+                return;
+            }
+
             const formData = new FormData(form);
 
             const mode = String(formData.get('mode') ?? 'manual_review');

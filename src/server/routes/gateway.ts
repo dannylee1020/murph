@@ -26,7 +26,16 @@ import { requireMatchingSetupOwner } from '#lib/server/setup/owner-identity';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { readMurphConfig, updateMurphPolicyConfig } from '#lib/server/setup/config-file';
 import { refreshRuntimeState } from '#lib/server/runtime/refresh';
-import type { AgentUser, ChannelEnsureMemberResult, ChannelSetupMember, PolicyExecutionMode, SessionMode, Workspace } from '#lib/types';
+import type {
+  AgentUser,
+  ChannelEnsureMemberResult,
+  ChannelSetupMember,
+  PolicyExecutionMode,
+  SessionMode,
+  Workspace,
+  WorkspaceSubscriptionChannelScopeMode,
+  WorkspaceSubscriptionStatus
+} from '#lib/types';
 
 const gateway = getGateway();
 
@@ -94,6 +103,20 @@ function workspaceDescriptor(workspace: Workspace) {
   };
 }
 
+function normalizeSubscriptionStatus(value: unknown): WorkspaceSubscriptionStatus | undefined {
+  return value === 'active' || value === 'paused' ? value : undefined;
+}
+
+function normalizeChannelScopeMode(value: unknown): WorkspaceSubscriptionChannelScopeMode | undefined {
+  return value === 'selected' || value === 'all_accessible' ? value : undefined;
+}
+
+function channelScopeFromBody(value: unknown): string[] | undefined {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean))]
+    : undefined;
+}
+
 function updateConfirmedChannels(
   workspace: Workspace,
   channelScope: string[],
@@ -139,6 +162,18 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
   | { ok: true; target: PreparedSessionTarget }
   | { ok: false; status: number; payload: Record<string, unknown> }
 > {
+  if (getRuntimeEnv().productMode === 'personal') {
+    return {
+      ok: false,
+      status: 409,
+      payload: {
+        ok: false,
+        error: 'channel_mode_required',
+        message: 'Watching channel sessions are only available in channel mode.'
+      }
+    };
+  }
+
   const workspace = resolveRequestWorkspace(input.workspaceId);
 
   if (!workspace) {
@@ -158,17 +193,32 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
     return { ok: false, status: 400, payload: { ok: false, error: 'owner_required', workspace: workspaceDescriptor(workspace) } };
   }
 
-  const ownerCheck = requireMatchingSetupOwner(workspace, ownerUserId);
-  if (!ownerCheck.ok) {
+  const store = getStore();
+  const existingSubscription = store.getWorkspaceSubscription(workspace.id, ownerUserId);
+  if (existingSubscription?.status !== 'active') {
     return {
       ok: false,
-      status: 400,
+      status: 403,
       payload: {
         ok: false,
-        error: ownerCheck.error,
+        error: 'subscription_required',
+        workspace: workspaceDescriptor(workspace),
+        ownerUserId
+      }
+    };
+  }
+
+  const requestedChannelScope = input.channelScope ?? [];
+  if (!store.subscriptionAllowsChannelScope(existingSubscription, requestedChannelScope)) {
+    return {
+      ok: false,
+      status: 403,
+      payload: {
+        ok: false,
+        error: 'subscription_channel_scope_mismatch',
         workspace: workspaceDescriptor(workspace),
         ownerUserId,
-        owner: ownerCheck.owner
+        channelScope: requestedChannelScope
       }
     };
   }
@@ -583,6 +633,125 @@ export const gatewayRoutes: Route[] = [
       )
     });
   }),
+  route('GET', '/api/gateway/subscriptions', ({ res, url }) => {
+    const workspaceId = url.searchParams.get('workspaceId') ?? undefined;
+    const status = normalizeSubscriptionStatus(url.searchParams.get('status'));
+    sendJson(res, {
+      subscriptions: getStore().listWorkspaceSubscriptions(workspaceId, status)
+    });
+  }),
+  route('PUT', '/api/gateway/subscriptions/:userId', async ({ req, res, params }) => {
+    const body = await readJson<{
+      workspaceId?: string;
+      displayName?: string;
+      status?: unknown;
+      channelScopeMode?: unknown;
+      channelScope?: unknown;
+      timezone?: string;
+      workdayStartHour?: number;
+      workdayEndHour?: number;
+      policyProfileName?: string;
+    }>(req);
+    const store = getStore();
+    const workspace = resolveRequestWorkspace(body.workspaceId);
+
+    if (!workspace) {
+      sendJson(res, {
+        ok: false,
+        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
+      }, 400);
+      return;
+    }
+
+    let member: ChannelSetupMember;
+    try {
+      member = await getChannelRegistry().getMember(workspace, params.userId);
+    } catch (error) {
+      sendJson(res, {
+        ok: false,
+        error: 'subscriber_not_found',
+        workspace: workspaceDescriptor(workspace),
+        ownerUserId: params.userId,
+        message: error instanceof Error ? error.message : 'Subscriber user was not found in this workspace'
+      }, 400);
+      return;
+    }
+
+    const existingSubscription = store.getWorkspaceSubscription(workspace.id, params.userId);
+    const channelScopeMode =
+      normalizeChannelScopeMode(body.channelScopeMode) ?? existingSubscription?.channelScopeMode ?? 'all_accessible';
+    const channelScope = channelScopeMode === 'all_accessible'
+      ? []
+      : channelScopeFromBody(body.channelScope) ?? existingSubscription?.channelScope ?? [];
+    if (channelScopeMode === 'selected' && channelScope.length === 0) {
+      sendJson(res, {
+        ok: false,
+        error: 'subscription_channel_scope_required',
+        workspace: workspaceDescriptor(workspace),
+        ownerUserId: params.userId
+      }, 400);
+      return;
+    }
+    const membershipResults: ChannelEnsureMemberResult[] = [];
+
+    if (channelScopeMode === 'selected') {
+      for (const channelId of channelScope) {
+        membershipResults.push(await getChannelRegistry().ensureMember(workspace, workspace.provider, channelId));
+      }
+    }
+
+    const autoJoined = membershipResults
+      .filter((result) => result.status === 'joined')
+      .map((result) => ({ id: result.channelId, name: result.name }));
+    const requiresInvitation = membershipResults
+      .filter((result) => result.status === 'requires_invitation')
+      .map((result) => ({
+        id: result.channelId,
+        name: result.name,
+        action: inviteAction({ id: result.channelId, name: result.name })
+      }));
+    const reinstallRequired = membershipResults.some((result) => result.status === 'reinstall_required');
+    const errors = membershipResults
+      .filter((result) => result.status === 'error')
+      .map((result) => ({
+        id: result.channelId,
+        name: result.name,
+        reason: result.reason ?? 'Channel membership check failed'
+      }));
+
+    if (requiresInvitation.length > 0 || reinstallRequired || errors.length > 0) {
+      updateConfirmedChannels(workspace, channelScope, membershipResults);
+      sendJson(res, {
+        ok: false,
+        error: 'channels_require_action',
+        workspace: workspaceDescriptor(workspace),
+        autoJoined,
+        requiresInvitation,
+        reinstallRequired,
+        errors
+      }, 409);
+      return;
+    }
+
+    updateConfirmedChannels(workspace, channelScope, membershipResults);
+    const user = store.upsertUser({
+      workspaceId: workspace.id,
+      externalUserId: params.userId,
+      displayName: body.displayName ?? member.displayName ?? params.userId,
+      timezone: body.timezone,
+      workdayStartHour: body.workdayStartHour,
+      workdayEndHour: body.workdayEndHour
+    });
+    const subscription = store.ensureWorkspaceSubscriptionForUser(user, {
+      provider: workspace.provider,
+      status: normalizeSubscriptionStatus(body.status) ?? existingSubscription?.status ?? 'active',
+      channelScopeMode,
+      channelScope,
+      policyProfileName: body.policyProfileName ?? existingSubscription?.policyProfileName
+    });
+
+    sendJson(res, { ok: true, subscription, autoJoined }, 200);
+  }),
   route('PUT', '/api/gateway/users/:userId/schedule', async ({ req, res, params }) => {
     const body = await readJson<{
       workspaceId?: string;
@@ -602,15 +771,14 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    const ownerCheck = requireMatchingSetupOwner(workspace, params.userId);
-    if (!ownerCheck.ok) {
+    const existingSubscription = store.getWorkspaceSubscription(workspace.id, params.userId);
+    if (existingSubscription?.status !== 'active') {
       sendJson(res, {
         ok: false,
-        error: ownerCheck.error,
+        error: 'subscription_required',
         workspace: workspaceDescriptor(workspace),
-        ownerUserId: params.userId,
-        owner: ownerCheck.owner
-      }, 400);
+        ownerUserId: params.userId
+      }, 403);
       return;
     }
 
@@ -622,6 +790,16 @@ export const gatewayRoutes: Route[] = [
       workdayStartHour: body.workdayStartHour,
       workdayEndHour: body.workdayEndHour
     });
+    if (existingSubscription) {
+      store.ensureWorkspaceSubscriptionForUser(user, {
+        provider: workspace.provider,
+        status: existingSubscription.status,
+        channelScopeMode: existingSubscription.channelScopeMode,
+        channelScope: existingSubscription.channelScope,
+        policyProfileName: existingSubscription.policyProfileName,
+        dashboardTokenHash: existingSubscription.dashboardTokenHash
+      });
+    }
     sendJson(res, { ok: true, user });
   }),
   route('GET', '/api/gateway/recurring-jobs', ({ res, url }) => {

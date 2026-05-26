@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import type { PolicyExecutionMode, ProviderName, SetupDefaults } from '#lib/types';
+import type { PolicyExecutionMode, ProductMode, ProviderName, SetupDefaults } from '#lib/types';
 import { normalizePolicyExecutionMode } from '#lib/server/runtime/policy-compiler';
 import { murphHome } from '#lib/server/setup/paths';
 
@@ -9,6 +9,7 @@ export const MURPH_CONFIG_FILE = 'config.yaml';
 
 export interface MurphConfig {
   app?: {
+    productMode?: ProductMode;
     url?: string;
     sqlitePath?: string;
     memoryPath?: string;
@@ -73,6 +74,7 @@ export interface MurphConfig {
 }
 
 const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value: string) => void> = {
+  MURPH_PRODUCT_MODE: (config, value) => setPath(config, ['app', 'productMode'], productModeFromString(value)),
   MURPH_APP_URL: (config, value) => setPath(config, ['app', 'url'], value),
   MURPH_SQLITE_PATH: (config, value) => setPath(config, ['app', 'sqlitePath'], value),
   MURPH_MEMORY_PATH: (config, value) => setPath(config, ['app', 'memoryPath'], value),
@@ -179,6 +181,16 @@ function numberValue(value: unknown): number | undefined {
 
 function providerValue(value: unknown): ProviderName | undefined {
   return value === 'anthropic' ? 'anthropic' : value === 'openai' ? 'openai' : undefined;
+}
+
+export function normalizeProductMode(value: unknown): ProductMode | undefined {
+  return value === 'personal' ? 'personal' : value === 'channel' ? 'channel' : undefined;
+}
+
+function productModeFromString(value: string): ProductMode {
+  const normalized = normalizeProductMode(value);
+  if (normalized) return normalized;
+  throw new Error(`Expected product mode to be personal or channel, received: ${value}`);
 }
 
 function stringArray(value: unknown): string[] | undefined {
@@ -290,6 +302,7 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
 
   return {
     app: {
+      productMode: normalizeProductMode(process.env.MURPH_PRODUCT_MODE) ?? normalizeProductMode(app.productMode),
       url: stringValue(app.url),
       sqlitePath: stringValue(app.sqlitePath),
       memoryPath: stringValue(app.memoryPath),

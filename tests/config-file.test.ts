@@ -9,6 +9,7 @@ const envKeys = [
   'MURPH_CONFIG_PATH',
   'MURPH_CREDENTIALS_PATH',
   'MURPH_APP_URL',
+  'MURPH_PRODUCT_MODE',
   'MURPH_DEFAULT_PROVIDER',
   'MURPH_DEFAULT_MODEL',
   'MURPH_AGENT_PROVIDER',
@@ -50,6 +51,7 @@ describe('murph config file', () => {
     writeFileSync('config.yaml', [
       'app:',
       '  url: https://murph.example',
+      '  productMode: personal',
       'ai:',
       '  defaultProvider: anthropic',
       '  defaultModel: claude-opus-4-7',
@@ -71,6 +73,7 @@ describe('murph config file', () => {
     const env = getRuntimeEnv();
 
     expect(env.appUrl).toBe('https://murph.example');
+    expect(env.productMode).toBe('personal');
     expect(env.defaultProvider).toBe('anthropic');
     expect(env.defaultModel).toBe('claude-opus-4-7');
     expect(env.agentProvider).toBe('anthropic');
@@ -124,6 +127,7 @@ describe('murph config file', () => {
       ''
     ].join('\n'));
     process.env.MURPH_APP_URL = 'https://override.example';
+    process.env.MURPH_PRODUCT_MODE = 'personal';
     process.env.MURPH_AGENT_PROVIDER = 'openai';
     process.env.MURPH_AGENT_MODEL = 'gpt-5.5';
 
@@ -131,6 +135,7 @@ describe('murph config file', () => {
     const env = getRuntimeEnv();
 
     expect(env.appUrl).toBe('https://override.example');
+    expect(env.productMode).toBe('personal');
     expect(env.agentProvider).toBe('openai');
     expect(env.agentModel).toBe('gpt-5.5');
   });
@@ -152,6 +157,7 @@ describe('murph config file', () => {
 
     const result = updateMurphConfigValues({
       MURPH_APP_URL: 'https://murph.example',
+      MURPH_PRODUCT_MODE: 'personal',
       MURPH_DEFAULT_MODEL: 'gpt-5.5',
       MURPH_AGENT_MODEL: 'claude-opus-4-7',
       GITHUB_REPOSITORIES: 'acme/app,acme/api',
@@ -159,9 +165,10 @@ describe('murph config file', () => {
     });
 
     const raw = readFileSync('config.yaml', 'utf8');
-    expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES', 'OBSIDIAN_VAULT_PATH']);
+    expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_PRODUCT_MODE', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES', 'OBSIDIAN_VAULT_PATH']);
     expect(raw).toContain('keep: true');
     expect(raw).toContain('url: https://murph.example');
+    expect(raw).toContain('productMode: personal');
     expect(raw).toContain('defaultModel: gpt-5.5');
     expect(raw).toContain('model: claude-opus-4-7');
     expect(raw).toContain('- acme/app');

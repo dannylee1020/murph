@@ -69,7 +69,7 @@ After rebuilding, `murph update` applies the same install-payload pruning as the
 murph uninstall
 ```
 
-This reverses the default local install: it stops Murph, removes `~/.murph`, removes the `murph` CLI link from `~/.local/bin`, and clears Murph-owned local credentials, logs, managed deps, and SQLite data. Preview first with:
+This reverses the default local install: it stops Murph, removes `~/.murph`, removes the `murph` CLI link from `~/.local/bin`, and clears Murph-owned runtime-host credentials, logs, managed deps, and SQLite data. Preview first with:
 
 ```bash
 murph uninstall --dry-run

@@ -5,7 +5,9 @@ description: Configure providers, policy, storage, and runtime defaults.
 
 # Configuration
 
-Murph stores non-secret local settings in `~/.murph/config.yaml`, local secrets in `~/.murph/.credentials`, and runtime state in SQLite. Setup does not read or write `.env` files. Environment variables are an advanced override path for process control, development, and hosted deployments.
+Murph stores non-secret runtime-host settings in `~/.murph/config.yaml`, runtime-host secrets in `~/.murph/.credentials`, generated memory under `app.memoryPath`, and runtime state in SQLite. Setup does not read or write `.env` files. Environment variables are an advanced override path for process control, development, and hosted deployments.
+
+The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, generated memory, bot ingress, and agent execution are colocated on that host.
 
 ## Setup wizard
 
@@ -15,7 +17,7 @@ Use the CLI setup wizard for normal configuration:
 murph setup
 ```
 
-Inspect local credentials with:
+Inspect runtime-host credentials with:
 
 ```bash
 murph credentials doctor
@@ -79,7 +81,7 @@ ai:
 
 Murph uses local SQLite by default. SQLite is the transactional source of truth for sessions, runs, events, tool calls, policy decisions, and action results.
 
-The SQLite path is stored in `~/.murph/config.yaml`:
+The SQLite path is stored in the runtime host's `~/.murph/config.yaml`:
 
 ```yaml
 app:
@@ -95,13 +97,13 @@ app:
 
 Generated memory is not configuration. It is rebuilt from SQLite run history and lives under the configured `memoryPath`, usually as `index.md`, `threads/...`, and `sessions/...`. See [Memory](/docs/memory) for the runtime behavior.
 
-Secrets are stored locally in plaintext at `~/.murph/.credentials` with owner-only file permissions. Runtime credential reads come from that file, not SQLite.
+Secrets are stored in plaintext at `~/.murph/.credentials` on the runtime host with owner-only file permissions. Runtime credential reads come from that file, not SQLite.
 
-> **Local credential storage**
+> **Runtime-host credential storage**
 >
-> Murph writes `~/.murph/.credentials` with `0600` permissions, so only your local user account can read it. Credentials are not uploaded to Murph servers. They only leave your machine when Murph uses them to call the providers you connected, such as Slack, GitHub, Google, OpenAI, or Anthropic.
+> Murph writes `~/.murph/.credentials` with `0600` permissions, so only the runtime-host user account can read it. For self-hosted installs, credentials are not uploaded to Murph-run servers. They only leave the runtime host when Murph uses them to call the providers you connected, such as Slack, GitHub, Google, OpenAI, or Anthropic. If you run Murph on a VPS or cloud VM, that machine is the runtime host and must be trusted with the configured credentials.
 
-## Core local settings
+## Core runtime-host settings
 
 Normal setup writes these values into `~/.murph/config.yaml`:
 
@@ -125,7 +127,7 @@ Config-bound sessions receive the updated policy, channel scope, and runtime rev
 
 ## Advanced process overrides
 
-For local setup, prefer `~/.murph/config.yaml` and `~/.murph/.credentials`. Environment variables are still supported when you need to control one process, point the CLI at a different local server, isolate a test home directory, or run Murph in a hosted deployment.
+For normal setup, prefer `~/.murph/config.yaml` and `~/.murph/.credentials` on the runtime host. Environment variables are still supported when you need to control one process, point the CLI at a different runtime, isolate a test home directory, or run Murph in a hosted deployment.
 
 Common process-control overrides:
 
@@ -173,7 +175,7 @@ integrations:
     backend: brave
 ```
 
-Store the Brave key through setup or the browser UI. It is saved as a local credential in `~/.murph/.credentials`.
+Store the Brave key through setup or the browser UI. It is saved as a runtime-host credential in `~/.murph/.credentials`.
 
 For development or hosted deployments, `BRAVE_SEARCH_API_KEY` and `MURPH_WEB_SEARCH_BACKEND` still work as explicit runtime overrides.
 

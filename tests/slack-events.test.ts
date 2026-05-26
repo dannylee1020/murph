@@ -39,6 +39,15 @@ async function setup() {
     externalUserId: 'UOWNER',
     displayName: 'Owner'
   });
+  store.upsertWorkspaceSubscription({
+    workspaceId: workspace.id,
+    provider: 'slack',
+    externalUserId: 'UOWNER',
+    displayName: 'Owner',
+    status: 'active',
+    channelScopeMode: 'selected',
+    channelScope: ['C1']
+  });
 
   store.createSession({
     workspaceId: workspace.id,

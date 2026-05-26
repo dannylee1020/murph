@@ -190,6 +190,73 @@ function workspaceChannelsConfigured(defaults: SetupDefaults): boolean {
   return defaults.channelScopeMode === 'all_accessible' || (defaults.selectedChannels?.length ?? 0) > 0;
 }
 
+function subscriptionScopeForWorkspace(
+  workspace: Workspace,
+  defaults: SetupDefaults
+): { channelScopeMode: 'selected' | 'all_accessible'; channelScope: string[] } | undefined {
+  const workspaceChannels = defaults.workspaceChannels?.find((entry) => entry.workspaceId === workspace.id);
+  if (workspaceChannels) {
+    return {
+      channelScopeMode: workspaceChannels.channelScopeMode,
+      channelScope: workspaceChannels.channelScopeMode === 'selected'
+        ? workspaceChannels.selectedChannels.map((channel) => channel.id)
+        : []
+    };
+  }
+
+  if (defaults.workspaceId !== workspace.id) {
+    return undefined;
+  }
+
+  const channelScopeMode = defaults.channelScopeMode ?? 'selected';
+  return {
+    channelScopeMode,
+    channelScope: channelScopeMode === 'selected'
+      ? (defaults.selectedChannels ?? []).map((channel) => channel.id)
+      : []
+  };
+}
+
+function syncSetupSubscriptions(defaults: SetupDefaults): void {
+  const store = getStore();
+  const owners = new Map<string, { ownerUserId: string; ownerDisplayName?: string }>();
+
+  if (defaults.workspaceId && defaults.ownerUserId) {
+    owners.set(defaults.workspaceId, {
+      ownerUserId: defaults.ownerUserId,
+      ownerDisplayName: defaults.ownerDisplayName
+    });
+  }
+  for (const owner of defaults.workspaceOwners ?? []) {
+    owners.set(owner.workspaceId, {
+      ownerUserId: owner.ownerUserId,
+      ownerDisplayName: owner.ownerDisplayName
+    });
+  }
+
+  for (const [workspaceId, owner] of owners) {
+    const ownerWorkspace = store.getWorkspaceById(workspaceId);
+    if (!ownerWorkspace) continue;
+    const scope = subscriptionScopeForWorkspace(ownerWorkspace, defaults);
+    if (!scope || (scope.channelScopeMode === 'selected' && scope.channelScope.length === 0)) continue;
+
+    const user = store.upsertUser({
+      workspaceId: ownerWorkspace.id,
+      externalUserId: owner.ownerUserId,
+      displayName: owner.ownerDisplayName ?? owner.ownerUserId,
+      timezone: defaults.timezone,
+      workdayStartHour: defaults.workdayStartHour,
+      workdayEndHour: defaults.workdayEndHour
+    });
+    store.ensureWorkspaceSubscriptionForUser(user, {
+      provider: ownerWorkspace.provider,
+      status: 'active',
+      channelScopeMode: scope.channelScopeMode,
+      channelScope: scope.channelScope
+    });
+  }
+}
+
 function sendOwnerIdentityError(
   res: Parameters<typeof sendJson>[0],
   check: Exclude<ReturnType<typeof requireMatchingSetupOwner>, { ok: true }>
@@ -350,6 +417,7 @@ export const systemRoutes: Route[] = [
 
     sendJson(res, {
       ok: true,
+      productMode: env.productMode,
       slack: {
         installed: Boolean(slackWorkspace),
         oauthConfigured: Boolean(env.slackClientId && env.slackClientSecret),
@@ -403,7 +471,7 @@ export const systemRoutes: Route[] = [
       userConfigured: summary.userCount > 0 && Boolean(
         setupDefaults?.ownerUserId || (setupDefaults?.workspaceOwners?.length ?? 0) > 0
       ),
-      channelsConfigured: workspaceChannelsConfigured(setupDefaults)
+      channelsConfigured: env.productMode === 'personal' ? channelWorkspaces.length > 0 : workspaceChannelsConfigured(setupDefaults)
     });
   }),
   route('GET', '/api/setup/defaults', async ({ res, url }) => {
@@ -514,6 +582,7 @@ export const systemRoutes: Route[] = [
       });
     }
 
+    syncSetupSubscriptions(defaults);
     updateMurphSetupDefaults(defaults);
     const refresh = await refreshRuntimeState({
       reason: 'setup_defaults_updated',

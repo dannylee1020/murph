@@ -28,7 +28,7 @@ integrations:
     backend: brave
 ```
 
-Store the Brave key through setup or the browser UI. Murph saves it as a local credential in `~/.murph/.credentials`.
+Store the Brave key through setup or the browser UI. Murph saves it as a runtime-host credential in `~/.murph/.credentials`.
 
 `web.fetch` is intentionally lightweight for now and does not run a browser crawler by default.
 

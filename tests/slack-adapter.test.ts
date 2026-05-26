@@ -17,7 +17,8 @@ async function loadStore() {
   return getStore();
 }
 
-async function setup(): Promise<SlackAdapterTestContext> {
+async function setup(input: { subscribeOwner?: boolean } = {}): Promise<SlackAdapterTestContext> {
+  const subscribeOwner = input.subscribeOwner ?? true;
   const store = await loadStore();
   const { normalizeSlackEvent } = await import('../src/lib/server/channels/slack/adapter');
   const workspace = store.saveInstall({
@@ -32,6 +33,17 @@ async function setup(): Promise<SlackAdapterTestContext> {
     externalUserId: 'UOWNER',
     displayName: 'Owner'
   });
+  if (subscribeOwner) {
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
+    });
+  }
 
   const session = store.createSession({
     workspaceId: workspace.id,
@@ -59,8 +71,11 @@ function slackEvent(input: Record<string, unknown>): Record<string, unknown> {
 describe('normalizeSlackEvent', () => {
   beforeEach(() => {
     vi.resetModules();
-    process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-adapter-')), 'murph.sqlite');
+    const root = mkdtempSync(join(tmpdir(), 'murph-slack-adapter-'));
+    process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
+    process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
+    delete process.env.MURPH_PRODUCT_MODE;
   });
 
   it('routes ordinary channel messages that mention an active session owner', async () => {
@@ -79,7 +94,53 @@ describe('normalizeSlackEvent', () => {
     });
   });
 
-  it('uses the single scoped session fallback only for bot-directed messages', async () => {
+  it('does not route an active session owner without an active subscription', async () => {
+    const { normalizeSlackEvent } = await setup({ subscribeOwner: false });
+
+    const result = normalizeSlackEvent(slackEvent({}), { eventId: 'Ev12', teamId: 'T1' });
+
+    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
+  });
+
+  it('routes owner direct messages in personal mode without a channel session or subscription', async () => {
+    process.env.MURPH_PRODUCT_MODE = 'personal';
+    const { store, workspace, normalizeSlackEvent } = await setup({ subscribeOwner: false });
+    store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
+    const { updateMurphSetupDefaults } = await import('../src/lib/server/setup/config-file');
+    updateMurphSetupDefaults({
+      channelProvider: 'slack',
+      workspaceId: workspace.id,
+      workspaceOwners: [
+        {
+          workspaceId: workspace.id,
+          ownerUserId: 'UOWNER',
+          ownerDisplayName: 'Owner'
+        }
+      ]
+    });
+
+    const result = normalizeSlackEvent(slackEvent({
+      channel: 'D1',
+      channel_type: 'im',
+      user: 'UOWNER',
+      text: 'draft a reply',
+      ts: '222.333'
+    }), { eventId: 'EvDm', teamId: 'T1' });
+
+    expect(result.task).toMatchObject({
+      workspaceId: 'T1',
+      conversationKind: 'direct',
+      targetUserId: 'UOWNER',
+      actorUserId: 'UOWNER',
+      thread: { provider: 'slack', channelId: 'D1', threadTs: '222.333' }
+    });
+    expect(store.getDirectConversationByChannel('slack', 'D1')).toMatchObject({
+      workspaceId: workspace.id,
+      externalUserId: 'UOWNER'
+    });
+  });
+
+  it('uses the single scoped subscribed session fallback only for bot-directed messages', async () => {
     const { normalizeSlackEvent } = await setup();
 
     const result = normalizeSlackEvent(slackEvent({ type: 'app_mention', text: '<@UTZBOT> help' }), {
@@ -90,12 +151,38 @@ describe('normalizeSlackEvent', () => {
     expect(result.task?.targetUserId).toBe('UOWNER');
   });
 
+  it('ignores a mentioned session owner when subscriptions exist and the owner is not subscribed to the channel', async () => {
+    const { store, workspace, normalizeSlackEvent } = await setup();
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C2']
+    });
+
+    const result = normalizeSlackEvent(slackEvent({}), { eventId: 'Ev11', teamId: 'T1' });
+
+    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
+  });
+
   it('treats bot-directed fallback as ambiguous when multiple sessions are scoped to the channel', async () => {
     const { store, workspace, normalizeSlackEvent } = await setup();
     store.upsertUser({
       workspaceId: workspace.id,
       externalUserId: 'UOTHER',
       displayName: 'Other Owner'
+    });
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOTHER',
+      displayName: 'Other Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
     });
     store.createSession({
       workspaceId: workspace.id,

@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-async function setup() {
+async function setup(input: { subscribeOwner?: boolean } = {}) {
+  const subscribeOwner = input.subscribeOwner ?? true;
   const { getStore } = await import('../src/lib/server/persistence/store');
   const { normalizeDiscordEventWithReason } = await import('../src/lib/server/channels/discord/adapter');
   const store = getStore();
@@ -18,6 +19,17 @@ async function setup() {
     externalUserId: '123',
     displayName: 'Owner'
   });
+  if (subscribeOwner) {
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'discord',
+      externalUserId: '123',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
+    });
+  }
   store.createSession({
     workspaceId: workspace.id,
     ownerUserId: '123',
@@ -43,8 +55,11 @@ function discordEvent(input: Record<string, unknown>): Record<string, unknown> {
 describe('normalizeDiscordEventWithReason', () => {
   beforeEach(() => {
     vi.resetModules();
-    process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-discord-adapter-')), 'murph.sqlite');
+    const root = mkdtempSync(join(tmpdir(), 'murph-discord-adapter-'));
+    process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
+    process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
+    delete process.env.MURPH_PRODUCT_MODE;
   });
 
   it('routes structured Discord mentions even when message content is empty', async () => {
@@ -66,7 +81,55 @@ describe('normalizeDiscordEventWithReason', () => {
     });
   });
 
-  it('uses the single scoped session fallback for bot-directed messages', async () => {
+  it('does not route an active session owner without an active subscription', async () => {
+    const { normalizeDiscordEventWithReason } = await setup({ subscribeOwner: false });
+
+    const result = normalizeDiscordEventWithReason(discordEvent({
+      content: '',
+      mentions: [{ id: '123' }]
+    }), { eventId: 'M5', teamId: 'G1' });
+
+    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
+  });
+
+  it('routes owner direct messages in personal mode without a channel session or subscription', async () => {
+    process.env.MURPH_PRODUCT_MODE = 'personal';
+    const { store, workspace, normalizeDiscordEventWithReason } = await setup({ subscribeOwner: false });
+    store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
+    const { updateMurphSetupDefaults } = await import('../src/lib/server/setup/config-file');
+    updateMurphSetupDefaults({
+      channelProvider: 'discord',
+      workspaceId: workspace.id,
+      workspaceOwners: [
+        {
+          workspaceId: workspace.id,
+          ownerUserId: '123',
+          ownerDisplayName: 'Owner'
+        }
+      ]
+    });
+
+    const result = normalizeDiscordEventWithReason(discordEvent({
+      guild_id: undefined,
+      channel_id: 'DM1',
+      author: { id: '123' },
+      content: 'draft this'
+    }), { eventId: 'Dm1' });
+
+    expect(result.task).toMatchObject({
+      workspaceId: workspace.id,
+      conversationKind: 'direct',
+      targetUserId: '123',
+      actorUserId: '123',
+      thread: { provider: 'discord', channelId: 'DM1', threadTs: 'M1' }
+    });
+    expect(store.getDirectConversationByChannel('discord', 'DM1')).toMatchObject({
+      workspaceId: workspace.id,
+      externalUserId: '123'
+    });
+  });
+
+  it('uses the single scoped subscribed session fallback for bot-directed messages', async () => {
     const { normalizeDiscordEventWithReason } = await setup();
 
     const result = normalizeDiscordEventWithReason(discordEvent({
@@ -74,6 +137,23 @@ describe('normalizeDiscordEventWithReason', () => {
     }), { eventId: 'M2', teamId: 'G1' });
 
     expect(result.task?.targetUserId).toBe('123');
+  });
+
+  it('ignores a mentioned session owner when subscriptions exist and the owner is not subscribed to the channel', async () => {
+    const { store, workspace, normalizeDiscordEventWithReason } = await setup();
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'discord',
+      externalUserId: '123',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C2']
+    });
+
+    const result = normalizeDiscordEventWithReason(discordEvent({}), { eventId: 'M4', teamId: 'G1' });
+
+    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
   });
 
   it('returns ignored reasons for messages that do not target a session', async () => {

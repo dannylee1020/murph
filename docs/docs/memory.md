@@ -5,13 +5,15 @@ description: Understand Murph's local recall layer.
 
 # Memory
 
-Murph keeps two local memory layers with different jobs.
+Murph keeps two runtime-host memory layers with different jobs.
 
 SQLite is the transactional source of truth. It stores sessions, runs, events, tool calls, policy decisions, and action results.
 
 The markdown memory directory is a generated recall layer. It gives Murph a compact way to remember what happened in earlier runs without re-reading every event from SQLite on every request.
 
 ## Configure memory
+
+Memory lives on the same machine as the Murph runtime. If you run Murph on your laptop, that is your laptop. If you run Murph on a VPS or home server, that host owns SQLite and generated markdown memory.
 
 Normal configuration belongs in `~/.murph/config.yaml`:
 
@@ -21,7 +23,7 @@ app:
   memoryPath: ~/.murph/memory
 ```
 
-`sqlitePath` controls the transactional database. `memoryPath` controls where Murph writes generated markdown memory.
+`sqlitePath` controls the transactional database on the runtime host. `memoryPath` controls where Murph writes generated markdown memory on that same host.
 
 ## Generated files
 

@@ -4,6 +4,7 @@ import { handleSlackEventEnvelope, verifySlackHttpSignature } from '#lib/server/
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getStore } from '#lib/server/persistence/store';
+import { getRuntimeEnv } from '#lib/server/util/env';
 import { readMurphConfig, updateMurphSetupDefaults } from '#lib/server/setup/config-file';
 import { readBody, redirect, sendJson, toHeaders } from '../http.js';
 import { route, type Route } from '../router.js';
@@ -35,7 +36,7 @@ function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
   };
   const ownerDisplayName = result.authedUser.displayName || result.authedUser.id;
 
-  store.upsertUser({
+  const user = store.upsertUser({
     workspaceId: result.workspace.id,
     externalUserId: result.authedUser.id,
     displayName: ownerDisplayName,
@@ -43,6 +44,21 @@ function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
     workdayStartHour: currentDefaults.workdayStartHour,
     workdayEndHour: currentDefaults.workdayEndHour
   });
+  if (getRuntimeEnv().productMode === 'channel') {
+    const workspaceChannelDefaults = currentDefaults.workspaceChannels?.find(
+      (entry) => entry.workspaceId === result.workspace.id
+    );
+    store.ensureWorkspaceSubscriptionForUser(user, {
+      provider: 'slack',
+      status: 'active',
+      channelScopeMode:
+        workspaceChannelDefaults?.channelScopeMode ?? currentDefaults.channelScopeMode ?? 'all_accessible',
+      channelScope:
+        workspaceChannelDefaults?.selectedChannels.map((channel) => channel.id) ??
+        currentDefaults.selectedChannels?.map((channel) => channel.id) ??
+        []
+    });
+  }
 
   const workspaceOwners = [
     ...(currentDefaults.workspaceOwners ?? []).filter((owner) => owner.workspaceId !== result.workspace.id),

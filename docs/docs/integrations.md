@@ -7,7 +7,9 @@ description: Connect external work sources Murph can use for context.
 
 Integrations are connected work sources Murph can use for context while grounding replies.
 
-Connect default integrations from setup or the local UI. Murph stores secrets in `~/.murph/.credentials` and stores non-secret local settings, such as repository scope or vault paths, in `~/.murph/config.yaml`.
+Connect default integrations from setup or the browser UI. Murph stores runtime-host secrets in `~/.murph/.credentials` and stores non-secret runtime-host settings, such as repository scope or vault paths, in `~/.murph/config.yaml`.
+
+In V1, integration credentials are runtime-level credentials. In shared-bot mode, a connected integration is available to the Murph runtime only when that runtime host has the credential configured. Subscriber-local private credentials and local worker execution are future architecture, not the current integration model.
 
 ## Connect Default Integrations
 

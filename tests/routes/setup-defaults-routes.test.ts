@@ -27,7 +27,7 @@ function jsonResponse(): any & { result: () => { status: number; body: any } } {
   };
 }
 
-async function setup() {
+async function setup(input: { productMode?: 'personal' | 'channel' } = {}) {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
   process.env.MURPH_APP_DIR = workspaceDir;
@@ -40,6 +40,11 @@ async function setup() {
   process.env.SLACK_APP_TOKEN = 'xapp-test';
   process.env.SLACK_CLIENT_ID = 'client-id';
   process.env.SLACK_CLIENT_SECRET = 'client-secret';
+  if (input.productMode) {
+    process.env.MURPH_PRODUCT_MODE = input.productMode;
+  } else {
+    delete process.env.MURPH_PRODUCT_MODE;
+  }
   delete process.env.DISCORD_BOT_TOKEN;
   delete process.env.DISCORD_CLIENT_ID;
   delete process.env.DISCORD_CLIENT_SECRET;
@@ -162,9 +167,59 @@ describe('setup defaults routes', () => {
       workdayStartHour: 8,
       workdayEndHour: 16
     });
+    expect(store.getWorkspaceSubscription(workspace.id, 'U1')).toEqual(expect.objectContaining({
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
+    }));
     expect(store.getAppSettings().setupDefaults).toBeUndefined();
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('ownerUserId: U1');
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('displayName: "#product"');
+  });
+
+  it('does not create a selected-empty subscription before channels are configured', async () => {
+    const { request, store, workspace } = await setup();
+    await seedWorkspaceOwner(workspace);
+
+    const response = await request('PUT', '/api/setup/defaults', {
+      ownerUserId: 'U1',
+      ownerDisplayName: 'Daniel',
+      timezone: 'America/Los_Angeles',
+      workdayStartHour: 8,
+      workdayEndHour: 16
+    });
+
+    expect(response.status).toBe(200);
+    expect(store.getUser(workspace.id, 'U1')).toBeDefined();
+    expect(store.getWorkspaceSubscription(workspace.id, 'U1')).toBeUndefined();
+  });
+
+  it('updates an existing owner subscription when setup channel defaults change', async () => {
+    const { request, store, workspace } = await setup();
+    await seedWorkspaceOwner(workspace);
+
+    await request('PUT', '/api/setup/defaults', {
+      ownerUserId: 'U1',
+      ownerDisplayName: 'Daniel',
+      channelScopeMode: 'all_accessible'
+    });
+    expect(store.getWorkspaceSubscription(workspace.id, 'U1')).toEqual(expect.objectContaining({
+      channelScopeMode: 'all_accessible',
+      channelScope: []
+    }));
+
+    const response = await request('PUT', '/api/setup/defaults', {
+      ownerUserId: 'U1',
+      ownerDisplayName: 'Daniel',
+      channelScopeMode: 'selected',
+      selectedChannels: [{ id: 'C2', displayName: '#support' }]
+    });
+
+    expect(response.status).toBe(200);
+    expect(store.getWorkspaceSubscription(workspace.id, 'U1')).toEqual(expect.objectContaining({
+      channelScopeMode: 'selected',
+      channelScope: ['C2']
+    }));
   });
 
   it('marks setup ready only after identity and channels are configured', async () => {
@@ -221,6 +276,14 @@ describe('setup defaults routes', () => {
       workspaceOwners: [
         { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
         { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
+      ],
+      workspaceChannels: [
+        { workspaceId: workspace.id, channelScopeMode: 'all_accessible', selectedChannels: [] },
+        {
+          workspaceId: discordWorkspace.id,
+          channelScopeMode: 'selected',
+          selectedChannels: [{ id: 'D1', displayName: '#standup' }]
+        }
       ]
     });
     expect(response.status).toBe(200);
@@ -235,6 +298,14 @@ describe('setup defaults routes', () => {
     expect(slackDefaults.body.defaults.ownerUserId).toBe('USLACK');
     expect(discordDefaults.body.defaults.ownerUserId).toBe('1234567890');
     expect(store.getUser(discordWorkspace.id, '1234567890')?.displayName).toBe('Discord Daniel');
+    expect(store.getWorkspaceSubscription(workspace.id, 'USLACK')).toEqual(expect.objectContaining({
+      channelScopeMode: 'all_accessible',
+      channelScope: []
+    }));
+    expect(store.getWorkspaceSubscription(discordWorkspace.id, '1234567890')).toEqual(expect.objectContaining({
+      channelScopeMode: 'selected',
+      channelScope: ['D1']
+    }));
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('workspaceOwners:');
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('ownerUserId: "1234567890"');
   });
@@ -324,6 +395,16 @@ describe('setup defaults routes', () => {
       externalWorkspaceId: 'T1',
       name: 'Test Workspace'
     }));
+  });
+
+  it('reports personal mode as channel-ready when a bot workspace is connected', async () => {
+    const { request } = await setup({ productMode: 'personal' });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.productMode).toBe('personal');
+    expect(response.body.channelsConfigured).toBe(true);
   });
 
   it('returns all channel workspaces and Discord setup metadata in setup status', async () => {

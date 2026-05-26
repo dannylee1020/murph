@@ -64,6 +64,7 @@ const color = {
 };
 const SECTION_PURPOSES = {
   Core: 'Create local config defaults and the data directory.',
+  Mode: 'Choose personal direct-message mode or shared channel mode.',
   'AI provider': 'Choose the runtime model and API key.',
   'Murph Agent model': 'Choose whether the local setup agent inherits runtime defaults.',
   'Channel provider': 'Choose the channel Murph should connect first.',
@@ -82,6 +83,7 @@ const DEFAULT_PROVIDER_MODEL = {
 const DEFAULT_AGENT_MODEL = DEFAULT_PROVIDER_MODEL;
 const CONFIG_KEY_SETTERS = {
   MURPH_APP_URL: (config, value) => setPath(config, ['app', 'url'], value),
+  MURPH_PRODUCT_MODE: (config, value) => setPath(config, ['app', 'productMode'], normalizeProductMode(value)),
   MURPH_SQLITE_PATH: (config, value) => setPath(config, ['app', 'sqlitePath'], value),
   MURPH_DEFAULT_PROVIDER: (config, value) => setPath(config, ['ai', 'defaultProvider'], normalizeProvider(value)),
   MURPH_DEFAULT_MODEL: (config, value) => setPath(config, ['ai', 'defaultModel'], value),
@@ -142,6 +144,7 @@ function usage() {
 
 Sections:
   core        Create core local config values and data directory.
+  mode        Choose personal direct-message mode or shared channel mode.
   provider    Configure the runtime AI provider, then Murph Agent.
   ai          Alias for provider.
   slack       Configure Slack app credentials and OAuth install.
@@ -385,6 +388,7 @@ function getPath(target, parts) {
 function readConfigValue(key) {
   const config = readConfigFile();
   if (key === 'MURPH_APP_URL') return getPath(config, ['app', 'url']);
+  if (key === 'MURPH_PRODUCT_MODE') return getPath(config, ['app', 'productMode']);
   if (key === 'MURPH_SQLITE_PATH') return getPath(config, ['app', 'sqlitePath']);
   if (key === 'MURPH_DEFAULT_PROVIDER') return getPath(config, ['ai', 'defaultProvider']);
   if (key === 'MURPH_DEFAULT_MODEL') return getPath(config, ['ai', 'defaultModel']);
@@ -488,6 +492,14 @@ function mask(value) {
 
 function normalizeProvider(value, fallback = 'openai') {
   return value === 'anthropic' ? 'anthropic' : fallback === 'anthropic' ? 'anthropic' : 'openai';
+}
+
+function normalizeProductMode(value) {
+  return value === 'personal' ? 'personal' : 'channel';
+}
+
+function currentProductMode() {
+  return normalizeProductMode(readSetupValue('MURPH_PRODUCT_MODE') || process.env.MURPH_PRODUCT_MODE || 'channel');
 }
 
 function currentDefaultProvider() {
@@ -1318,6 +1330,27 @@ async function setupCore() {
   }
 }
 
+async function setupProductMode() {
+  sectionTitle('Mode');
+  const current = currentProductMode();
+  if (options.quick || options.nonInteractive) {
+    success(`Product mode is configured: ${current}.`);
+    return current;
+  }
+
+  const choice = await askChoice(
+    'Mode: [1] Personal bot  [2] Channel handoff',
+    ['1', '2', 'personal', 'channel'],
+    current === 'personal' ? '1' : '2'
+  );
+  const mode = choice === '1' || choice.toLowerCase() === 'personal' ? 'personal' : 'channel';
+  const values = { MURPH_PRODUCT_MODE: mode };
+  writeSetupValues(values);
+  await postSetupConfig(values);
+  success(`Selected product mode: ${mode}.`);
+  return mode;
+}
+
 async function setupAi() {
   sectionTitle('AI provider');
   const currentProvider = currentDefaultProvider();
@@ -1542,6 +1575,10 @@ async function setupIdentity() {
 
 async function setupChannels() {
   sectionTitle('Channels');
+  if (currentProductMode() === 'personal') {
+    success('Personal mode uses direct messages, so watched channel defaults are not needed.');
+    return (await getDefaults()).defaults;
+  }
   const provider = currentChannelProvider();
   const workspaceId = currentWorkspaceId();
   const current = await getDefaults();
@@ -1702,6 +1739,7 @@ async function setupStatus() {
     agentProvider: currentAgentProvider(currentDefaultProvider()),
     agentModel: currentAgentModel(currentAgentProvider(currentDefaultProvider())),
     agentInheritsRuntime: !hasAgentOverride(),
+    productMode: currentProductMode(),
     channelProvider: currentChannelProvider(),
     workspaceId: currentWorkspaceId(),
     slackConfig: Boolean(readSetupValue('SLACK_APP_TOKEN') && readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET')),
@@ -1730,6 +1768,8 @@ async function setupStatus() {
   statusLine('Murph Agent model', localStatus.agentModel ? 'ok' : 'missing', localStatus.agentInheritsRuntime
     ? `inherits runtime (${localStatus.agentProvider}/${localStatus.agentModel})`
     : `${localStatus.agentProvider}/${localStatus.agentModel}`);
+  statusGroup('Mode');
+  statusLine('Product mode', 'ok', localStatus.productMode);
   statusGroup('Slack');
   statusLine('Slack app config', localStatus.slackConfig ? 'ok' : 'missing', localStatus.slackConfig ? 'configured' : 'missing');
   statusGroup('Discord');
@@ -1747,6 +1787,7 @@ async function setupStatus() {
 async function runAll() {
   banner();
   await setupCore();
+  await setupProductMode();
   await setupAi();
   const provider = await setupChannelProvider();
   if (provider === 'discord') {
@@ -1755,7 +1796,9 @@ async function runAll() {
     await setupSlack();
   }
   await setupIdentity();
-  await setupChannels();
+  if (currentProductMode() === 'channel') {
+    await setupChannels();
+  }
   await setupSchedule();
   await setupPolicy();
   await setupStatus();
@@ -1772,6 +1815,9 @@ try {
       break;
     case 'core':
       await setupCore();
+      break;
+    case 'mode':
+      await setupProductMode();
       break;
     case 'ai':
     case 'provider':

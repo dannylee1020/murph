@@ -129,7 +129,9 @@ export class DiscordGatewayClient {
     const task = normalized.task;
 
     const store = getStore();
-    const workspace = guildId ? store.getWorkspaceByExternalId('discord', guildId) : undefined;
+    const workspace = guildId
+      ? store.getWorkspaceByExternalId('discord', guildId)
+      : store.getWorkspaceById(task.workspaceId);
     if (!workspace) {
       markIngressIgnored('discord', 'workspace_not_installed');
       return;

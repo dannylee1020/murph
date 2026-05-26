@@ -62,14 +62,14 @@ Use `murph doctor` after setup changes or when a channel, provider, or runtime c
 
 ## Credential commands
 
-Murph stores local secrets in `~/.murph/.credentials`.
+Murph stores runtime-host secrets in `~/.murph/.credentials`.
 
 ```bash
 murph credentials doctor
 murph credentials list
 ```
 
-Use these commands to inspect local credential readiness without printing secret values.
+Use these commands to inspect runtime-host credential readiness without printing secret values.
 
 ## Policy commands
 
@@ -94,4 +94,4 @@ murph uninstall --dry-run
 murph uninstall
 ```
 
-Use `murph uninstall --dry-run` before removing Murph-owned local files. `murph uninstall` removes `~/.murph`, the installed CLI link, local credentials, logs, managed deps, and SQLite data, but leaves unrelated system tools alone.
+Use `murph uninstall --dry-run` before removing Murph-owned local files. `murph uninstall` removes `~/.murph`, the installed CLI link, runtime-host credentials, logs, managed deps, and SQLite data, but leaves unrelated system tools alone.

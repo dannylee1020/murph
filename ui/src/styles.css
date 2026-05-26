@@ -8,9 +8,10 @@
   --faint: #a99a7d;
   --rule: rgb(13 13 11 / 14%);
   --rule-strong: rgb(13 13 11 / 28%);
-  --paper: #f3ebdd;
-  --surface: #fbf6ea;
-  --tint: #efe4d0;
+  --paper: oklch(97.8% 0.01 78);
+  --surface: oklch(98.8% 0.006 78);
+  --sidebar: #f3ebdd;
+  --tint: oklch(94.6% 0.018 76);
 
   /* Accent — aged amber, used rarely as action punctuation. */
   --accent: #d49a4a;
@@ -59,6 +60,7 @@
   --rule-strong: rgb(232 216 184 / 32%);
   --paper: #0d0d0b;
   --surface: #1a1a17;
+  --sidebar: var(--surface);
   --tint: #24231f;
 
   --accent: #d49a4a;
@@ -260,7 +262,7 @@ input[type="time"] {
   height: 100dvh;
   padding: 30px 28px 24px;
   border-right: 1px solid var(--rule);
-  background: var(--surface);
+  background: var(--sidebar);
   display: flex;
   flex-direction: column;
 }

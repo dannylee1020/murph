@@ -11,15 +11,15 @@ It is not an always-on chatbot. The product is built around explicit sessions, l
 
 ## Local-first model
 
-Murph runs on your machine and keeps operational state in your Murph home.
+Murph runs as one deployable runtime bundle. The machine running that bundle is the Murph runtime host: it can be your laptop, a VPS, a home server, or another host you control. That host owns the runtime's config, credentials, SQLite database, generated memory, bot ingress, and agent execution.
 
-- SQLite stores sessions, runs, events, tool calls, policy decisions, action results, and indexing state.
-- `~/.murph/config.yaml` stores non-secret setup and runtime configuration.
-- `~/.murph/.credentials` stores local secrets with owner-only permissions.
-- `~/.murph/memory` stores generated markdown recall pages when configured through `app.memoryPath`.
-- The browser UI, CLI, and Murph Agent all control the same local runtime.
+- SQLite stores sessions, subscriptions, runs, events, tool calls, policy decisions, action results, and indexing state.
+- `~/.murph/config.yaml` stores non-secret setup and runtime configuration on the runtime host.
+- `~/.murph/.credentials` stores runtime-host secrets with owner-only permissions.
+- `~/.murph/memory` stores generated markdown recall pages on the runtime host when configured through `app.memoryPath`.
+- The browser UI, CLI, and Murph Agent all control the same runtime.
 
-Credentials are not uploaded to Murph servers. They only leave your machine when Murph uses them to call the providers, channels, or integrations you connected.
+For a self-hosted install, credentials are not uploaded to Murph-run servers. They stay on the runtime host and only leave that host when Murph uses them to call the providers, channels, or integrations you connected. If you run Murph on a VPS or cloud VM, that machine is the runtime host and must be trusted with the bot and integration credentials configured there.
 
 ## Agent runtime
 

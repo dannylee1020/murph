@@ -22,6 +22,8 @@ import type {
   UserMemory,
   Workspace,
   WorkspaceMemory,
+  WorkspaceSubscription,
+  WorkspaceSubscriptionStatus,
   WorkspaceSummary
 } from '#lib/types';
 import * as action from './stores/action.js';
@@ -37,6 +39,8 @@ import * as reminder from './stores/reminder.js';
 import * as run from './stores/run.js';
 import * as runtimeRefresh from './stores/runtime-refresh.js';
 import * as session from './stores/session.js';
+import * as subscription from './stores/subscription.js';
+import * as directConversation from './stores/direct-conversation.js';
 import * as threadState from './stores/thread-state.js';
 import * as user from './stores/user.js';
 import * as workspace from './stores/workspace.js';
@@ -84,6 +88,37 @@ export class Store {
   }
   listUsers(workspaceId?: string): AgentUser[] {
     return user.listUsers(this.db, workspaceId);
+  }
+
+  // Workspace subscriptions
+  upsertWorkspaceSubscription(input: subscription.WorkspaceSubscriptionInput): WorkspaceSubscription {
+    return subscription.upsertWorkspaceSubscription(this.db, input);
+  }
+  ensureWorkspaceSubscriptionForUser(
+    targetUser: AgentUser,
+    input: Omit<subscription.WorkspaceSubscriptionInput, 'workspaceId' | 'externalUserId' | 'displayName' | 'schedule'>
+  ): WorkspaceSubscription {
+    return subscription.ensureWorkspaceSubscriptionForUser(this.db, targetUser, input);
+  }
+  getWorkspaceSubscription(workspaceId: string, externalUserId: string): WorkspaceSubscription | undefined {
+    return subscription.getWorkspaceSubscription(this.db, workspaceId, externalUserId);
+  }
+  listWorkspaceSubscriptions(workspaceId?: string, status?: WorkspaceSubscriptionStatus): WorkspaceSubscription[] {
+    return subscription.listWorkspaceSubscriptions(this.db, workspaceId, status);
+  }
+  listActiveWorkspaceSubscriptionsForChannel(workspaceId: string, channelId: string): WorkspaceSubscription[] {
+    return subscription.listActiveWorkspaceSubscriptionsForChannel(this.db, workspaceId, channelId);
+  }
+  subscriptionAllowsChannelScope(target: WorkspaceSubscription, channelScope: string[]): boolean {
+    return subscription.subscriptionAllowsChannelScope(target, channelScope);
+  }
+
+  // Direct conversations
+  upsertDirectConversation(input: directConversation.DirectConversationInput) {
+    return directConversation.upsertDirectConversation(this.db, input);
+  }
+  getDirectConversationByChannel(provider: string, channelId: string) {
+    return directConversation.getDirectConversationByChannel(this.db, provider, channelId);
   }
 
   // Memory (user/workspace/thread/feedback)

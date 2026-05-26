@@ -4,7 +4,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-b96f22.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-murph--agent.com-b96f22.svg)](https://murph-agent.com/docs)
 
-Murph is a local-first handoff agent for the hours you are away.
+Murph is a self-hosted, local-first handoff agent for the hours you are away.
 
 Start a session before you log off. Murph watches the channels you choose, pulls context from connected integrations and tools, drafts grounded replies, applies your policy, and leaves a review trail for every decision.
 
@@ -14,7 +14,7 @@ Start a session before you log off. Murph watches the channels you choose, pulls
 | **Keep control explicit** | Sends safe work, queues risky work, and skips anything it should not answer |
 | **Use your real context** | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
 | **Review what happened** | Shows what was sent, queued, skipped, and why |
-| **Run it yourself** | Stores runtime state locally with SQLite and local credentials |
+| **Run it yourself** | Keeps SQLite state, generated memory, config, and credentials on the Murph runtime host you control |
 
 
 Murph is built for people who want async continuity without handing over control: indie developers, founders, operators, and distributed teams.
@@ -45,7 +45,7 @@ murph start
 | --- | --- |
 | [Quickstart](https://murph-agent.com/docs/quickstart) | Install Murph, run setup, start the local server, and check health. |
 | [Installation](https://murph-agent.com/docs/installation) | Installer behavior, local setup, and manual install paths. |
-| [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and local runtime settings. |
+| [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and runtime-host settings. |
 | [Policy](https://murph-agent.com/docs/policy) | Create custom policy profiles with Murph Agent or local profile files. |
 | [Usage](https://murph-agent.com/docs/usage) | Use `murph`, the browser UI, and `murph agent` for setup, sessions, review, and daily operation. |
 | [Plugins](https://murph-agent.com/docs/plugins) | Create scoped plugins with custom integrations, skills, and read-only tools. |

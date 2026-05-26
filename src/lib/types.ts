@@ -38,6 +38,8 @@ export type SessionChannelScopeBinding = 'setup_defaults' | 'explicit';
 
 export type ToolSideEffectClass = 'read' | 'write' | 'external_write';
 
+export type ProductMode = 'personal' | 'channel';
+
 export interface Workspace {
     id: string;
     provider: ChannelProvider;
@@ -63,6 +65,36 @@ export interface AgentUser {
 }
 
 export type ChannelProvider = 'slack' | string;
+
+export type WorkspaceSubscriptionStatus = 'active' | 'paused';
+
+export type WorkspaceSubscriptionChannelScopeMode = 'selected' | 'all_accessible';
+
+export interface WorkspaceSubscription {
+    id: string;
+    workspaceId: string;
+    provider: ChannelProvider;
+    externalUserId: string;
+    displayName: string;
+    status: WorkspaceSubscriptionStatus;
+    channelScopeMode: WorkspaceSubscriptionChannelScopeMode;
+    channelScope: string[];
+    schedule?: UserSchedule;
+    policyProfileName?: string;
+    dashboardTokenHash?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface DirectConversation {
+    id: string;
+    provider: ChannelProvider;
+    workspaceId?: string;
+    externalUserId: string;
+    channelId: string;
+    lastSelectedWorkspaceId?: string;
+    lastSeenAt: string;
+}
 
 export interface ChannelThreadRef {
     provider?: ChannelProvider;
@@ -275,6 +307,7 @@ export interface ContinuityTask {
     workspaceId: string;
     sessionId?: string;
     thread: ThreadRef;
+    conversationKind?: 'direct' | 'channel';
     triggerMessage?: ChannelMessage;
     targetUserId: string;
     actorUserId?: string;

@@ -75,8 +75,8 @@ export function getSetupDoctor(): SetupDoctorPayload {
 
   checks.push(
     hasCredentialsFile || listSecrets().length > 0
-      ? check('credentials_file', 'Local credentials', 'ok', `Credentials are stored at ${credentialsPath()}.`)
-      : check('credentials_file', 'Local credentials', 'warning', 'No local credentials file exists yet.', 'Run murph setup to save credentials locally.')
+      ? check('credentials_file', 'Runtime credentials', 'ok', `Credentials are stored at ${credentialsPath()}.`)
+      : check('credentials_file', 'Runtime credentials', 'warning', 'No runtime credentials file exists yet.', 'Run murph setup to save credentials on this Murph host.')
   );
 
   checks.push(
@@ -107,7 +107,7 @@ export function getSetupDoctor(): SetupDoctorPayload {
     slackWorkspace
       ? check('slack_installed', 'Slack workspace', 'ok', `${slackWorkspace.name} is connected.`)
       : slackReconnectRequired
-        ? check('slack_installed', 'Slack workspace', 'action_required', 'Reconnect Slack. The saved Slack token is not available in local credentials.', 'Use the Connect Slack button again.')
+        ? check('slack_installed', 'Slack workspace', 'action_required', 'Reconnect Slack. The saved Slack token is not available in runtime credentials.', 'Use the Connect Slack button again.')
       : check('slack_installed', 'Slack workspace', 'action_required', 'Connect a Slack workspace.', 'Use the Connect Slack button after Slack config is ready.')
   );
 
@@ -146,10 +146,15 @@ export function getSetupDoctor(): SetupDoctorPayload {
   );
 
   const channelTargetCount = configuredChannelTargetCount(setupDefaults);
+  const connectedChannelCount = Number(Boolean(slackWorkspace)) + Number(Boolean(hasDiscordWorkspace && discordConfigured));
   checks.push(
-    channelTargetCount > 0
-      ? check('channels', 'Watched channels', 'ok', `${channelTargetCount} workspace channel default${channelTargetCount === 1 ? '' : 's'} configured.`)
-      : check('channels', 'Watched channels', 'action_required', 'Choose channels or explicitly allow all accessible channels.')
+    env.productMode === 'personal'
+      ? connectedChannelCount > 0
+        ? check('channels', 'Personal bot', 'ok', 'A bot connection is ready for direct messages.')
+        : check('channels', 'Personal bot', 'action_required', 'Connect Slack or Discord so you can message Murph directly.')
+      : channelTargetCount > 0
+        ? check('channels', 'Watched channels', 'ok', `${channelTargetCount} workspace channel default${channelTargetCount === 1 ? '' : 's'} configured.`)
+        : check('channels', 'Watched channels', 'action_required', 'Choose channels or explicitly allow all accessible channels.')
   );
 
   const notion = getNotionStatus();

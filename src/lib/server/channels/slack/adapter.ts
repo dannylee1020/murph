@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
-import type { AutopilotSession, ChannelAdapter, ChannelThreadRef, ContinuityTask } from '#lib/types';
+import { resolvePersonalDirectTarget, type PersonalDirectIgnoredReason } from '#lib/server/channels/personal-routing';
+import type { AutopilotSession, ChannelAdapter, ChannelThreadRef, ContinuityTask, WorkspaceSubscription } from '#lib/types';
 
 export type SlackIgnoredReason =
   | 'unsupported_event_subtype'
@@ -11,7 +12,8 @@ export type SlackIgnoredReason =
   | 'missing_channel'
   | 'missing_thread_ts'
   | 'no_mentioned_session_owner'
-  | 'ambiguous_session_target';
+  | 'ambiguous_session_target'
+  | PersonalDirectIgnoredReason;
 
 export type SlackNormalizeResult =
   | { task: ContinuityTask; ignoredReason?: never }
@@ -50,6 +52,20 @@ function activeSessionForUser(sessions: AutopilotSession[], userId: string | und
   return userId ? sessions.find((session) => session.ownerUserId === userId) : undefined;
 }
 
+function filterSubscribedSessions(
+  sessions: AutopilotSession[],
+  subscribedUserIds: Set<string>
+): AutopilotSession[] {
+  return sessions.filter((session) => subscribedUserIds.has(session.ownerUserId));
+}
+
+function subscriptionAllowsChannel(
+  subscription: WorkspaceSubscription,
+  channelId: string
+): boolean {
+  return subscription.channelScopeMode === 'all_accessible' || subscription.channelScope.includes(channelId);
+}
+
 export function normalizeSlackEvent(
   event: Record<string, unknown>,
   envelope?: { eventId?: string; teamId?: string }
@@ -67,6 +83,7 @@ export function normalizeSlackEvent(
   const text = typeof event.text === 'string' ? event.text : '';
   const subtype = typeof event.subtype === 'string' ? event.subtype : undefined;
   const botId = typeof event.bot_id === 'string' ? event.bot_id : undefined;
+  const isDirectMessage = event.channel_type === 'im' || Boolean(channelId?.startsWith('D'));
   const store = getStore();
 
   if (subtype) {
@@ -78,12 +95,16 @@ export function normalizeSlackEvent(
   }
 
   if (!workspaceId) {
-    return { ignoredReason: 'missing_workspace' };
+    if (!isDirectMessage) {
+      return { ignoredReason: 'missing_workspace' };
+    }
   }
 
-  const workspace = store.getWorkspaceByExternalId('slack', workspaceId) ?? store.getWorkspaceById(workspaceId);
+  const workspace = workspaceId
+    ? store.getWorkspaceByExternalId('slack', workspaceId) ?? store.getWorkspaceById(workspaceId)
+    : undefined;
 
-  if (!workspace) {
+  if (!workspace && !isDirectMessage) {
     return { ignoredReason: 'workspace_not_installed' };
   }
 
@@ -95,39 +116,87 @@ export function normalizeSlackEvent(
     return { ignoredReason: 'missing_thread_ts' };
   }
 
-  if (!actorUserId || actorUserId === workspace.botUserId) {
+  if (!actorUserId || actorUserId === workspace?.botUserId) {
     return { ignoredReason: 'bot_message' };
   }
 
+  if (isDirectMessage) {
+    const target = resolvePersonalDirectTarget('slack', actorUserId);
+    if (!target.ok) {
+      return { ignoredReason: target.ignoredReason };
+    }
+    if (workspace && workspace.id !== target.workspace.id) {
+      return { ignoredReason: 'workspace_not_installed' };
+    }
+
+    store.upsertDirectConversation({
+      provider: 'slack',
+      workspaceId: target.workspace.id,
+      externalUserId: actorUserId,
+      channelId,
+      lastSelectedWorkspaceId: target.workspace.id
+    });
+
+    return {
+      task: {
+        id: randomUUID(),
+        source: 'slack_event',
+        workspaceId: target.workspace.externalWorkspaceId,
+        thread: buildThreadRef(channelId, threadTs),
+        conversationKind: 'direct',
+        triggerMessage: buildTriggerMessage(channelId, threadTs, actorUserId, text),
+        targetUserId: target.ownerUserId,
+        actorUserId,
+        rawEventId: envelope?.eventId,
+        eventType,
+        dedupeKey: `${target.workspace.externalWorkspaceId}:${envelope?.eventId ?? `${channelId}:${threadTs}:${eventType}`}`,
+        receivedAt: new Date().toISOString()
+      }
+    };
+  }
+
+  if (!workspace) {
+    return { ignoredReason: 'workspace_not_installed' };
+  }
+
   const scopedSessions = store.listActiveSessions(workspace.id).filter((session) => isScopedToChannel(session, channelId));
+  const subscriptions = store.listWorkspaceSubscriptions(workspace.id);
+  const subscribedUserIds = new Set(
+    subscriptions
+      .filter((subscription) => subscription.status === 'active' && subscriptionAllowsChannel(subscription, channelId))
+      .map((subscription) => subscription.externalUserId)
+  );
+  const eligibleSessions = filterSubscribedSessions(scopedSessions, subscribedUserIds);
   const ignoredMentionIds = new Set([actorUserId, workspace.botUserId].filter((id): id is string => Boolean(id)));
   const mentionedUsers = parseMentionedUsers(text).filter((userId) => !ignoredMentionIds.has(userId));
-  const mentionedSessionTarget = mentionedUsers.find((userId) => activeSessionForUser(scopedSessions, userId));
+  const mentionedSessionTarget = mentionedUsers.find((userId) => activeSessionForUser(eligibleSessions, userId));
   const storedTarget = store.getThreadState(workspace.id, channelId, threadTs)?.targetUserId;
-  const storedSessionTarget = activeSessionForUser(scopedSessions, storedTarget)?.ownerUserId;
+  const storedSessionTarget = activeSessionForUser(eligibleSessions, storedTarget)?.ownerUserId;
   const botDirected = Boolean(workspace.botUserId && parseMentionedUsers(text).includes(workspace.botUserId));
-  const singleSessionTarget = scopedSessions.length === 1 ? scopedSessions[0].ownerUserId : undefined;
+  const singleSessionTarget = eligibleSessions.length === 1 ? eligibleSessions[0].ownerUserId : undefined;
   const fallbackTarget = botDirected ? singleSessionTarget : undefined;
   const targetUserId = mentionedSessionTarget ?? storedSessionTarget ?? fallbackTarget;
 
   if (!targetUserId) {
     return {
-      ignoredReason: botDirected && scopedSessions.length > 1 ? 'ambiguous_session_target' : 'no_mentioned_session_owner'
+      ignoredReason: botDirected && eligibleSessions.length > 1 ? 'ambiguous_session_target' : 'no_mentioned_session_owner'
     };
   }
 
+  const externalWorkspaceId = workspace.externalWorkspaceId;
   return {
     task: {
       id: randomUUID(),
       source: 'slack_event',
-      workspaceId,
+      workspaceId: externalWorkspaceId,
       thread: buildThreadRef(channelId, threadTs),
+      conversationKind: 'channel',
       triggerMessage: buildTriggerMessage(channelId, threadTs, actorUserId, text),
       targetUserId,
       actorUserId,
       rawEventId: envelope?.eventId,
       eventType,
-      dedupeKey: `${workspaceId}:${envelope?.eventId ?? `${channelId}:${threadTs}:${eventType}`}`,
+      dedupeKey: `${externalWorkspaceId}:${envelope?.eventId ?? `${channelId}:${threadTs}:${eventType}`}`,
       receivedAt: new Date().toISOString()
     }
   };

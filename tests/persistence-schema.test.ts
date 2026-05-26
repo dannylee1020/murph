@@ -34,12 +34,15 @@ describe('sqlite schema cleanup', () => {
     expect(tableExists(db, 'channel_events')).toBe(true);
     expect(tableExists(db, 'integration_connections')).toBe(true);
     expect(tableExists(db, 'schema_migrations')).toBe(true);
+    expect(tableExists(db, 'workspace_subscriptions')).toBe(true);
+    expect(tableExists(db, 'direct_conversations')).toBe(true);
     expect(migrationIds(db)).toEqual([
       '001_create_current_schema',
       '002_simplify_local_first_schema',
       '003_add_channel_events',
       '004_add_memory_index_runs',
-      '005_add_runtime_refresh_state'
+      '005_add_runtime_refresh_state',
+      '006_add_workspace_subscriptions'
     ]);
     expect(tableExists(db, 'runtime_refresh_state')).toBe(true);
     expect(columns(db, 'autopilot_sessions')).toEqual(expect.arrayContaining([
@@ -55,7 +58,8 @@ describe('sqlite schema cleanup', () => {
       '002_simplify_local_first_schema',
       '003_add_channel_events',
       '004_add_memory_index_runs',
-      '005_add_runtime_refresh_state'
+      '005_add_runtime_refresh_state',
+      '006_add_workspace_subscriptions'
     ]);
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(false);
   });
@@ -197,6 +201,8 @@ describe('sqlite schema cleanup', () => {
     ]));
     expect(columns(migrated, 'integration_connections')).not.toContain('credential_encrypted');
     expect(tableExists(migrated, 'runtime_refresh_state')).toBe(true);
+    expect(tableExists(migrated, 'workspace_subscriptions')).toBe(true);
+    expect(tableExists(migrated, 'direct_conversations')).toBe(true);
     expect(tableExists(migrated, 'integration_credentials')).toBe(false);
     expect(tableExists(migrated, 'user_memory')).toBe(false);
     expect(tableExists(migrated, 'feedback_memory')).toBe(false);
@@ -205,8 +211,12 @@ describe('sqlite schema cleanup', () => {
       '002_simplify_local_first_schema',
       '003_add_channel_events',
       '004_add_memory_index_runs',
-      '005_add_runtime_refresh_state'
+      '005_add_runtime_refresh_state',
+      '006_add_workspace_subscriptions'
     ]);
+    expect(
+      migrated.prepare(`SELECT * FROM workspace_subscriptions WHERE workspace_id = ? AND external_user_id = ?`).get('workspace-1', 'U1')
+    ).toBeUndefined();
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(true);
     (migrated as unknown as { close?: () => void }).close?.();
   });

@@ -9,9 +9,9 @@ type JsonResponse = {
   body: any;
 };
 
-function jsonRequest(body: unknown): any {
+function jsonRequest(body: unknown, method = 'POST'): any {
   const req = Readable.from([JSON.stringify(body)]) as any;
-  req.method = 'POST';
+  req.method = method;
   req.headers = {};
   return req;
 }
@@ -32,7 +32,10 @@ function jsonResponse(): any & { result: () => JsonResponse } {
   };
 }
 
-async function setup(results: Array<{ channelId: string; name?: string; status: string; reason?: string }>) {
+async function setup(
+  results: Array<{ channelId: string; name?: string; status: string; reason?: string }>,
+  input: { productMode?: 'personal' | 'channel' } = {}
+) {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-session-route-'));
   process.env.MURPH_APP_DIR = root;
@@ -41,6 +44,11 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
+  if (input.productMode) {
+    process.env.MURPH_PRODUCT_MODE = input.productMode;
+  } else {
+    delete process.env.MURPH_PRODUCT_MODE;
+  }
   const ensureMember = vi.fn();
   const getMember = vi.fn(async (_workspace: unknown, userId: string) => ({
     id: userId,
@@ -76,6 +84,24 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
     workspaceId: workspace.id,
     externalWorkspaceId: workspace.externalWorkspaceId
   });
+  store.upsertWorkspaceSubscription({
+    workspaceId: workspace.id,
+    provider: 'slack',
+    externalUserId: 'UOWNER',
+    displayName: 'Owner',
+    status: 'active',
+    channelScopeMode: 'all_accessible',
+    channelScope: []
+  });
+  store.upsertWorkspaceSubscription({
+    workspaceId: discordWorkspace.id,
+    provider: 'discord',
+    externalUserId: '1234567890',
+    displayName: 'Discord Owner',
+    status: 'active',
+    channelScopeMode: 'all_accessible',
+    channelScope: []
+  });
   const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
   updateMurphSetupDefaults({
     channelProvider: 'slack',
@@ -102,7 +128,18 @@ async function setup(results: Array<{ channelId: string; name?: string; status: 
     return res.result();
   }
 
-  return { post, store, workspace, discordWorkspace, gateway: getGateway(), ensureMember, getMember };
+  async function put(body: unknown, path: string) {
+    const req = jsonRequest(body, 'PUT');
+    const res = jsonResponse();
+    await dispatchRoute(gatewayRoutes, {
+      req,
+      res,
+      url: new URL(path, 'http://localhost')
+    });
+    return res.result();
+  }
+
+  return { post, put, store, workspace, discordWorkspace, gateway: getGateway(), ensureMember, getMember };
 }
 
 describe('POST /api/gateway/sessions channel membership gating', () => {
@@ -142,6 +179,23 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(response.status).toBe(201);
     expect(response.body.autoJoined).toEqual([{ id: 'C2', name: 'launch' }]);
     expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
+  });
+
+  it('blocks watched channel sessions in personal mode', async () => {
+    const { post, store, workspace } = await setup([], { productMode: 'personal' });
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1'],
+      mode: 'manual_review'
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'channel_mode_required'
+    });
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
   });
 
   it('blocks session creation when a scoped private channel requires invitation', async () => {
@@ -351,7 +405,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(store.listActiveSessions(discordWorkspace.id)[0].ownerUserId).toBe('1234567890');
   });
 
-  it('rejects an owner ID that does not match the OAuth owner for the target workspace', async () => {
+  it('rejects an owner ID without an active subscription for the target workspace', async () => {
     const { post, store, workspace, discordWorkspace } = await setup([
       { channelId: 'D1', name: 'support', status: 'already_member' }
     ]);
@@ -369,15 +423,196 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
       error: 'session_targets_failed',
       targets: [
         expect.objectContaining({
-          error: 'owner_identity_mismatch',
+          error: 'subscription_required',
           workspace: expect.objectContaining({ provider: 'discord' }),
-          ownerUserId: 'UOWNER',
-          owner: expect.objectContaining({ ownerUserId: '1234567890' })
+          ownerUserId: 'UOWNER'
         })
       ]
     });
     expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
     expect(store.listActiveSessions(discordWorkspace.id)).toHaveLength(0);
+  });
+
+  it('requires an active subscription before creating a session', async () => {
+    const { post, store, workspace } = await setup([]);
+
+    const response = await post({
+      ownerUserId: 'UNSUBSCRIBED',
+      channelScope: ['C1'],
+      mode: 'manual_review'
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'subscription_required',
+      ownerUserId: 'UNSUBSCRIBED'
+    });
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
+  });
+
+  it('rejects paused subscriptions when creating a session', async () => {
+    const { post, store, workspace } = await setup([]);
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UPAUSED',
+      displayName: 'Paused Subscriber',
+      status: 'paused',
+      channelScopeMode: 'all_accessible',
+      channelScope: []
+    });
+
+    const response = await post({
+      ownerUserId: 'UPAUSED',
+      channelScope: ['C1'],
+      mode: 'manual_review'
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'subscription_required',
+      ownerUserId: 'UPAUSED'
+    });
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
+  });
+
+  it('lets an active subscribed non-owner create a session for allowed channels', async () => {
+    const { post, store, workspace } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
+    ]);
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UTEAM',
+      displayName: 'Team Subscriber',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
+    });
+
+    const response = await post({
+      ownerUserId: 'UTEAM',
+      channelScope: ['C1'],
+      mode: 'manual_review'
+    });
+
+    expect(response.status).toBe(201);
+    expect(store.listActiveSessions(workspace.id)[0]).toEqual(expect.objectContaining({
+      ownerUserId: 'UTEAM',
+      channelScope: ['C1']
+    }));
+  });
+
+  it('blocks an active subscribed non-owner from creating a session outside selected channels', async () => {
+    const { post, store, workspace, ensureMember } = await setup([]);
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UTEAM',
+      displayName: 'Team Subscriber',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
+    });
+
+    const response = await post({
+      ownerUserId: 'UTEAM',
+      channelScope: ['C2'],
+      mode: 'manual_review'
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'subscription_channel_scope_mismatch',
+      ownerUserId: 'UTEAM',
+      channelScope: ['C2']
+    });
+    expect(ensureMember).not.toHaveBeenCalled();
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
+  });
+
+  it('updates schedules only for active subscribers', async () => {
+    const { put, store, workspace } = await setup([]);
+
+    const response = await put({
+      workspaceId: workspace.id,
+      timezone: 'America/New_York',
+      workdayStartHour: 10,
+      workdayEndHour: 18
+    }, '/api/gateway/users/UOWNER/schedule');
+
+    expect(response.status).toBe(200);
+    expect(store.getUser(workspace.id, 'UOWNER')?.schedule).toEqual({
+      timezone: 'America/New_York',
+      workdayStartHour: 10,
+      workdayEndHour: 18
+    });
+    expect(store.getWorkspaceSubscription(workspace.id, 'UOWNER')?.schedule).toEqual({
+      timezone: 'America/New_York',
+      workdayStartHour: 10,
+      workdayEndHour: 18
+    });
+  });
+
+  it('defaults new subscriptions to all accessible channels when scope is omitted', async () => {
+    const { put, store, workspace } = await setup([]);
+
+    const response = await put({
+      workspaceId: workspace.id,
+      displayName: 'Team Subscriber'
+    }, '/api/gateway/subscriptions/UTEAM');
+
+    expect(response.status).toBe(200);
+    expect(response.body.subscription).toEqual(expect.objectContaining({
+      externalUserId: 'UTEAM',
+      status: 'active',
+      channelScopeMode: 'all_accessible',
+      channelScope: []
+    }));
+    expect(store.getWorkspaceSubscription(workspace.id, 'UTEAM')).toEqual(expect.objectContaining({
+      channelScopeMode: 'all_accessible',
+      channelScope: []
+    }));
+  });
+
+  it('rejects selected subscriptions without at least one channel', async () => {
+    const { put, store, workspace } = await setup([]);
+
+    const response = await put({
+      workspaceId: workspace.id,
+      channelScopeMode: 'selected',
+      channelScope: []
+    }, '/api/gateway/subscriptions/UTEAM');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'subscription_channel_scope_required',
+      ownerUserId: 'UTEAM'
+    });
+    expect(store.getWorkspaceSubscription(workspace.id, 'UTEAM')).toBeUndefined();
+  });
+
+  it('rejects schedule updates for users without an active subscription', async () => {
+    const { put, store, workspace } = await setup([]);
+
+    const response = await put({
+      workspaceId: workspace.id,
+      timezone: 'America/New_York',
+      workdayStartHour: 10,
+      workdayEndHour: 18
+    }, '/api/gateway/users/UNSUBSCRIBED/schedule');
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'subscription_required',
+      ownerUserId: 'UNSUBSCRIBED'
+    });
+    expect(store.getUser(workspace.id, 'UNSUBSCRIBED')).toBeUndefined();
   });
 
   it('returns workspace-specific failures for bulk session channel checks', async () => {

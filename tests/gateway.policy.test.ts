@@ -118,6 +118,7 @@ async function setup(
     recentMessages?: ContextAssembly['thread']['recentMessages'];
     sessionMode?: 'manual_review' | 'auto_send_low_risk';
     policyExecution?: { execution: 'send' | 'queue' | 'abstain'; reason?: string; confidence?: number };
+    subscribeOwner?: boolean;
   } = {}
 ) {
   vi.resetModules();
@@ -176,7 +177,18 @@ async function setup(
     workdayStartHour: 0,
     workdayEndHour: 23
   });
-  store.createSession({
+  if (overrides.subscribeOwner !== false) {
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
+    });
+  }
+  const session = store.createSession({
     workspaceId: workspace.id,
     ownerUserId: 'UOWNER',
     title: 'Coverage',
@@ -201,7 +213,7 @@ async function setup(
   });
   const runSpy = vi.spyOn(AgentRuntime.prototype, 'run').mockImplementation(async (input) => runResult(input, workspace.id, overrides));
 
-  return { store, gateway: getGateway(), workspace, runSpy, classifyPolicyExecution, postReply, postMessage };
+  return { store, gateway: getGateway(), workspace, session, runSpy, classifyPolicyExecution, postReply, postMessage };
 }
 
 describe('Gateway session-first policy', () => {
@@ -302,6 +314,54 @@ describe('Gateway session-first policy', () => {
     expect(runSpy).not.toHaveBeenCalled();
     expect(audit.disposition).toBe('abstained');
     expect(audit.policyReason).toBe('Event actor is the session owner');
+  });
+
+  it('abstains before the agent when the session owner has no subscription', async () => {
+    const { gateway, runSpy } = await setup({ subscribeOwner: false });
+
+    const audit = await gateway.handleTask(task());
+
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(audit.disposition).toBe('abstained');
+    expect(audit.policyReason).toBe('No active subscription matched this thread');
+  });
+
+  it('abstains before the agent when the subscription excludes the channel', async () => {
+    const { gateway, store, workspace, runSpy } = await setup();
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C2']
+    });
+
+    const audit = await gateway.handleTask(task());
+
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(audit.disposition).toBe('abstained');
+    expect(audit.policyReason).toBe('No active subscription matched this thread');
+  });
+
+  it('does not let explicit session ids bypass subscription scope', async () => {
+    const { gateway, store, workspace, session, runSpy } = await setup();
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C2']
+    });
+
+    const audit = await gateway.handleTask(task({ sessionId: session.id }));
+
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(audit.disposition).toBe('abstained');
+    expect(audit.policyReason).toBe('No active subscription matched this thread');
   });
 
   it('runs the main agent before policy execution abstains', async () => {

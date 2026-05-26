@@ -10,9 +10,16 @@ import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { evaluatePolicy } from '#lib/server/runtime/policy';
+import {
+  buildUserPolicyProfile,
+  builtinPolicyProfile,
+  resolveEffectivePolicy
+} from '#lib/server/runtime/policy-compiler';
 import { classifyPolicyExecution } from '#lib/server/runtime/policy-classifier';
 import { outputSummary } from '#lib/server/runtime/tool-output';
 import { refreshRuntimeState, withRuntimeRunLock } from '#lib/server/runtime/refresh';
+import { loadPolicyProfiles, normalizePolicyProfileName } from '#lib/server/policies/loader';
+import { readMurphConfig } from '#lib/server/setup/config-file';
 import type {
   ActionContextSnapshot,
   AgentToolResult,
@@ -377,18 +384,39 @@ export class Gateway {
   private async handleTaskForWorkspace(task: ContinuityTask, workspace: Workspace): Promise<AuditRecord> {
     const workspaceMemory = this.memory.getWorkspaceMemory(workspace.id);
 
-    const session = this.resolveSession(task, workspace.id);
+    let session = this.resolveSession(task, workspace.id);
+    let createdDirectSessionId: string | undefined;
 
     if (!session) {
+      if (this.isPersonalDirectTask(task)) {
+        session = await this.createPersonalDirectSession(workspace, task);
+        createdDirectSessionId = session.id;
+        emitControlPlaneEvent({ type: 'session.updated', session });
+      } else {
+        return this.recordAudit({
+          task,
+          workspaceId: workspace.id,
+          sessionId: undefined,
+          threadTs: task.thread.threadTs,
+          action: 'abstain',
+          disposition: 'abstained',
+          policyReason: 'No active autopilot session matched this thread',
+          modelReason: 'Session scope not active',
+          confidence: 1
+        });
+      }
+    }
+
+    if (!this.isPersonalDirectTask(task) && !this.subscriptionAllowsTask(workspace, session, task)) {
       return this.recordAudit({
         task,
         workspaceId: workspace.id,
-        sessionId: undefined,
+        sessionId: session.id,
         threadTs: task.thread.threadTs,
         action: 'abstain',
         disposition: 'abstained',
-        policyReason: 'No active autopilot session matched this thread',
-        modelReason: 'Session scope not active',
+        policyReason: 'No active subscription matched this thread',
+        modelReason: 'Subscription scope not active',
         confidence: 1
       });
     }
@@ -410,7 +438,7 @@ export class Gateway {
       });
     }
 
-    if (task.actorUserId && task.actorUserId === session.ownerUserId) {
+    if (!this.isPersonalDirectTask(task) && task.actorUserId && task.actorUserId === session.ownerUserId) {
       return this.recordAudit({
         task,
         workspaceId: workspace.id,
@@ -446,6 +474,7 @@ export class Gateway {
       if (failedRun) {
         emitControlPlaneEvent({ type: 'agent.run.updated', run: failedRun });
       }
+      this.stopCreatedDirectSession(createdDirectSessionId);
       throw error;
     }
 
@@ -613,6 +642,7 @@ export class Gateway {
         provider: runtimeProviderName()
       });
       emitControlPlaneEvent({ type: 'audit.created', audit });
+      this.stopCreatedDirectSession(createdDirectSessionId);
       return audit;
     }
 
@@ -681,6 +711,7 @@ export class Gateway {
       emitControlPlaneEvent({ type: 'agent.run.updated', run: completedRun });
     }
     this.queueMemoryIndex(run.id, indexSource);
+    this.stopCreatedDirectSession(createdDirectSessionId);
 
     const audit = this.recordAudit({
       task,
@@ -701,7 +732,12 @@ export class Gateway {
   private resolveSession(task: ContinuityTask, workspaceId: string): AutopilotSession | undefined {
     const explicit = task.sessionId ? this.store.getSessionById(task.sessionId) : undefined;
 
-    if (explicit?.status === 'active' && explicit.endsAt > new Date().toISOString()) {
+    if (
+      explicit?.status === 'active' &&
+      explicit.workspaceId === workspaceId &&
+      explicit.ownerUserId === task.targetUserId &&
+      explicit.endsAt > new Date().toISOString()
+    ) {
       return explicit;
     }
 
@@ -713,6 +749,73 @@ export class Gateway {
     }
 
     return session;
+  }
+
+  private isPersonalDirectTask(task: ContinuityTask): boolean {
+    return task.conversationKind === 'direct' && getRuntimeEnv().productMode === 'personal';
+  }
+
+  private async createPersonalDirectSession(workspace: Workspace, task: ContinuityTask): Promise<AutopilotSession> {
+    const existingUser = this.store.getUser(workspace.id, task.targetUserId);
+    if (!existingUser) {
+      this.store.upsertUser({
+        workspaceId: workspace.id,
+        externalUserId: task.targetUserId,
+        displayName: task.targetUserId
+      });
+    }
+
+    const config = readMurphConfig();
+    const profiles = await loadPolicyProfiles();
+    const selectedName = normalizePolicyProfileName(config.policy?.profile || this.store.getAppSettings().policyProfileName);
+    const selectedProfile = selectedName
+      ? profiles.find((profile) => profile.name === selectedName)
+      : undefined;
+    const baseProfile = selectedProfile ?? builtinPolicyProfile('manual_review');
+    const policyMode = config.policy?.mode ?? baseProfile.compiled.executionMode;
+    const mode = policyMode;
+    const effective = resolveEffectivePolicy({
+      mode,
+      executionMode: policyMode,
+      baseProfile
+    });
+    const policyProfile = buildUserPolicyProfile({
+      mode,
+      profileName: baseProfile.source === 'builtin' ? undefined : baseProfile.name,
+      compiled: effective.compiled,
+      source: baseProfile.source === 'builtin' ? 'default' : 'profile'
+    });
+
+    return this.store.createSession({
+      workspaceId: workspace.id,
+      ownerUserId: task.targetUserId,
+      title: 'Personal request',
+      mode,
+      channelScope: [task.thread.channelId],
+      policyProfileName: policyProfile.profileName,
+      policyOverrideRaw: policyProfile.overrideRaw,
+      policy: policyProfile,
+      policyBinding: 'config',
+      channelScopeBinding: 'explicit',
+      endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+    });
+  }
+
+  private stopCreatedDirectSession(sessionId: string | undefined): void {
+    if (!sessionId) return;
+    this.store.stopSession(sessionId, 'stopped');
+    const session = this.store.getSessionById(sessionId);
+    if (session) {
+      emitControlPlaneEvent({ type: 'session.updated', session });
+    }
+  }
+
+  private subscriptionAllowsTask(workspace: Workspace, session: AutopilotSession, task: ContinuityTask): boolean {
+    const subscription = this.store.getWorkspaceSubscription(workspace.id, session.ownerUserId);
+    return Boolean(
+      subscription?.status === 'active' &&
+      this.store.subscriptionAllowsChannelScope(subscription, [task.thread.channelId])
+    );
   }
 
   private reviewThreadRef(item: ReviewItem, workspace: Workspace): ChannelThreadRef {
