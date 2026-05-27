@@ -13,6 +13,8 @@ export type SlackIgnoredReason =
   | 'missing_thread_ts'
   | 'no_mentioned_session_owner'
   | 'ambiguous_session_target'
+  | 'channel_bot_direct_message'
+  | 'personal_bot_channel_message'
   | PersonalDirectIgnoredReason;
 
 export type SlackNormalizeResult =
@@ -68,7 +70,7 @@ function subscriptionAllowsChannel(
 
 export function normalizeSlackEvent(
   event: Record<string, unknown>,
-  envelope?: { eventId?: string; teamId?: string }
+  envelope?: { eventId?: string; teamId?: string; botRole?: 'personal' | 'channel'; botInstallationId?: string }
 ): SlackNormalizeResult {
   const workspaceId = envelope?.teamId ?? (typeof event.team_id === 'string' ? event.team_id : null);
   const channelId = typeof event.channel === 'string' ? event.channel : null;
@@ -84,6 +86,7 @@ export function normalizeSlackEvent(
   const subtype = typeof event.subtype === 'string' ? event.subtype : undefined;
   const botId = typeof event.bot_id === 'string' ? event.bot_id : undefined;
   const isDirectMessage = event.channel_type === 'im' || Boolean(channelId?.startsWith('D'));
+  const botRole = envelope?.botRole ?? 'channel';
   const store = getStore();
 
   if (subtype) {
@@ -121,7 +124,13 @@ export function normalizeSlackEvent(
   }
 
   if (isDirectMessage) {
-    const target = resolvePersonalDirectTarget('slack', actorUserId);
+    if (botRole !== 'personal') {
+      return { ignoredReason: 'channel_bot_direct_message' };
+    }
+    const target = resolvePersonalDirectTarget('slack', actorUserId, {
+      botInstallationId: envelope?.botInstallationId,
+      externalWorkspaceId: workspaceId ?? undefined
+    });
     if (!target.ok) {
       return { ignoredReason: target.ignoredReason };
     }
@@ -131,6 +140,7 @@ export function normalizeSlackEvent(
 
     store.upsertDirectConversation({
       provider: 'slack',
+      botInstallationId: envelope?.botInstallationId,
       workspaceId: target.workspace.id,
       externalUserId: actorUserId,
       channelId,
@@ -142,7 +152,9 @@ export function normalizeSlackEvent(
         id: randomUUID(),
         source: 'slack_event',
         workspaceId: target.workspace.externalWorkspaceId,
-        thread: buildThreadRef(channelId, threadTs),
+        botRole,
+        botInstallationId: envelope?.botInstallationId,
+        thread: { ...buildThreadRef(channelId, threadTs), botRole, botInstallationId: envelope?.botInstallationId },
         conversationKind: 'direct',
         triggerMessage: buildTriggerMessage(channelId, threadTs, actorUserId, text),
         targetUserId: target.ownerUserId,
@@ -157,6 +169,9 @@ export function normalizeSlackEvent(
 
   if (!workspace) {
     return { ignoredReason: 'workspace_not_installed' };
+  }
+  if (botRole === 'personal') {
+    return { ignoredReason: 'personal_bot_channel_message' };
   }
 
   const scopedSessions = store.listActiveSessions(workspace.id).filter((session) => isScopedToChannel(session, channelId));
@@ -189,7 +204,9 @@ export function normalizeSlackEvent(
       id: randomUUID(),
       source: 'slack_event',
       workspaceId: externalWorkspaceId,
-      thread: buildThreadRef(channelId, threadTs),
+      botRole: 'channel',
+      botInstallationId: envelope?.botInstallationId,
+      thread: { ...buildThreadRef(channelId, threadTs), botRole: 'channel', botInstallationId: envelope?.botInstallationId },
       conversationKind: 'channel',
       triggerMessage: buildTriggerMessage(channelId, threadTs, actorUserId, text),
       targetUserId,

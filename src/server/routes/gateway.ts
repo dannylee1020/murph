@@ -162,18 +162,6 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
   | { ok: true; target: PreparedSessionTarget }
   | { ok: false; status: number; payload: Record<string, unknown> }
 > {
-  if (getRuntimeEnv().productMode === 'personal') {
-    return {
-      ok: false,
-      status: 409,
-      payload: {
-        ok: false,
-        error: 'channel_mode_required',
-        message: 'Watching channel sessions are only available in channel mode.'
-      }
-    };
-  }
-
   const workspace = resolveRequestWorkspace(input.workspaceId);
 
   if (!workspace) {

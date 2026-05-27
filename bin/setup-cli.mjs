@@ -27,14 +27,22 @@ const discordPermissionLabels = [
   'Read Message History',
   'Send Messages in Threads'
 ];
+const SETUP_BOT_ROLES = ['channel', 'personal'];
+const SETUP_CHANNEL_PROVIDERS = ['slack', 'discord'];
 const rl = readline.createInterface({ input, output });
 
 const args = process.argv.slice(2);
+function optionValue(name) {
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
 const options = {
   quick: args.includes('--quick'),
   nonInteractive: args.includes('--non-interactive'),
   json: args.includes('--json'),
-  reconnectSearch: args.includes('--reconnect-search')
+  reconnectSearch: args.includes('--reconnect-search'),
+  role: optionValue('--role')
 };
 const section = args.find((arg) => !arg.startsWith('--')) || 'all';
 const colorEnabled = !process.env.NO_COLOR && (process.stdout.isTTY || Boolean(process.env.FORCE_COLOR));
@@ -64,10 +72,11 @@ const color = {
 };
 const SECTION_PURPOSES = {
   Core: 'Create local config defaults and the data directory.',
-  Mode: 'Choose personal direct-message mode or shared channel mode.',
+  Mode: 'Legacy compatibility; one runtime can now run personal and channel bots together.',
   'AI provider': 'Choose the runtime model and API key.',
   'Murph Agent model': 'Choose whether the local setup agent inherits runtime defaults.',
-  'Channel provider': 'Choose the channel Murph should connect first.',
+  'Bot roles': 'Choose personal DMs, shared channel handoff, or both.',
+  'Channel providers': 'Choose Slack, Discord, or both.',
   Slack: 'Create the Slack app config and connect the workspace.',
   Discord: 'Connect a Discord bot to a server.',
   Identity: 'Confirm the user Murph should watch for.',
@@ -92,10 +101,17 @@ const CONFIG_KEY_SETTERS = {
   SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
   SLACK_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'clientId'], value),
   SLACK_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'appId'], value),
+  SLACK_CHANNEL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'channel', 'clientId'], value),
+  SLACK_CHANNEL_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'channel', 'appId'], value),
+  SLACK_PERSONAL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'personal', 'clientId'], value),
+  SLACK_PERSONAL_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'personal', 'appId'], value),
   SLACK_TEAM_ID: (config, value) => setPath(config, ['channels', 'slack', 'teamId'], value),
   SLACK_TEAM_NAME: (config, value) => setPath(config, ['channels', 'slack', 'teamName'], value),
   DISCORD_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'clientId'], value),
-  DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value)
+  DISCORD_CHANNEL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'channel', 'clientId'], value),
+  DISCORD_PERSONAL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'personal', 'clientId'], value),
+  DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value),
+  MURPH_BOT_ROLES: (config, value) => setPath(config, ['setup', 'botRoles'], normalizeBotRoles(value))
 };
 const CONFIG_KEYS = new Set(Object.keys(CONFIG_KEY_SETTERS));
 const CONFIG_KEY_CLEARERS = {
@@ -108,8 +124,18 @@ const SECRET_KEY_MAP = {
   SLACK_APP_TOKEN: ['slack', 'app_token'],
   SLACK_CLIENT_SECRET: ['slack', 'client_secret'],
   SLACK_SIGNING_SECRET: ['slack', 'signing_secret'],
+  SLACK_CHANNEL_APP_TOKEN: ['slack', 'channel_app_token'],
+  SLACK_CHANNEL_CLIENT_SECRET: ['slack', 'channel_client_secret'],
+  SLACK_CHANNEL_SIGNING_SECRET: ['slack', 'channel_signing_secret'],
+  SLACK_PERSONAL_APP_TOKEN: ['slack', 'personal_app_token'],
+  SLACK_PERSONAL_CLIENT_SECRET: ['slack', 'personal_client_secret'],
+  SLACK_PERSONAL_SIGNING_SECRET: ['slack', 'personal_signing_secret'],
   DISCORD_BOT_TOKEN: ['discord', 'bot_token'],
   DISCORD_CLIENT_SECRET: ['discord', 'client_secret'],
+  DISCORD_CHANNEL_BOT_TOKEN: ['discord', 'channel_bot_token'],
+  DISCORD_CHANNEL_CLIENT_SECRET: ['discord', 'channel_client_secret'],
+  DISCORD_PERSONAL_BOT_TOKEN: ['discord', 'personal_bot_token'],
+  DISCORD_PERSONAL_CLIENT_SECRET: ['discord', 'personal_client_secret'],
   GOOGLE_ACCESS_TOKEN: ['google', 'access_token'],
   GOOGLE_CLIENT_SECRET: ['google', 'client_secret'],
   GITHUB_PAT: ['github', 'api_key'],
@@ -144,9 +170,11 @@ function usage() {
 
 Sections:
   core        Create core local config values and data directory.
-  mode        Choose personal direct-message mode or shared channel mode.
+  roles       Choose personal and/or channel bot roles.
+  mode        Alias for roles.
   provider    Configure the runtime AI provider, then Murph Agent.
   ai          Alias for provider.
+  providers   Choose Slack, Discord, or both.
   slack       Configure Slack app credentials and OAuth install.
   discord     Configure Discord bot credentials and server install.
   identity    Pick the user Murph watches for.
@@ -157,6 +185,7 @@ Sections:
 
 Options:
   --quick            Skip sections that are already configured.
+  --role <role>      Configure channel, personal, or both for slack/discord.
   --reconnect-search Re-run Slack OAuth to refresh search:read user consent.
   --non-interactive  Do not prompt; report missing setup and exit nonzero.
   --json             JSON output for status.
@@ -397,10 +426,22 @@ function readConfigValue(key) {
   if (key === 'SLACK_EVENTS_MODE') return getPath(config, ['channels', 'slack', 'eventsMode']);
   if (key === 'SLACK_CLIENT_ID') return getPath(config, ['channels', 'slack', 'clientId']);
   if (key === 'SLACK_APP_ID') return getPath(config, ['channels', 'slack', 'appId']);
+  if (key === 'SLACK_CHANNEL_CLIENT_ID') return getPath(config, ['channels', 'slack', 'bots', 'channel', 'clientId']);
+  if (key === 'SLACK_CHANNEL_APP_ID') return getPath(config, ['channels', 'slack', 'bots', 'channel', 'appId']);
+  if (key === 'SLACK_PERSONAL_CLIENT_ID') return getPath(config, ['channels', 'slack', 'bots', 'personal', 'clientId']);
+  if (key === 'SLACK_PERSONAL_APP_ID') return getPath(config, ['channels', 'slack', 'bots', 'personal', 'appId']);
   if (key === 'SLACK_TEAM_ID') return getPath(config, ['channels', 'slack', 'teamId']);
   if (key === 'SLACK_TEAM_NAME') return getPath(config, ['channels', 'slack', 'teamName']);
   if (key === 'DISCORD_CLIENT_ID') return getPath(config, ['channels', 'discord', 'clientId']);
+  if (key === 'DISCORD_CHANNEL_CLIENT_ID') return getPath(config, ['channels', 'discord', 'bots', 'channel', 'clientId']);
+  if (key === 'DISCORD_PERSONAL_CLIENT_ID') return getPath(config, ['channels', 'discord', 'bots', 'personal', 'clientId']);
   if (key === 'DISCORD_REDIRECT_URI') return getPath(config, ['channels', 'discord', 'redirectUri']);
+  if (key === 'MURPH_BOT_ROLES') {
+    const roles = config.setup && typeof config.setup === 'object' && Array.isArray(config.setup.botRoles)
+      ? config.setup.botRoles
+      : [];
+    return roles.filter((role) => SETUP_BOT_ROLES.includes(role)).join(',');
+  }
   return '';
 }
 
@@ -502,6 +543,44 @@ function currentProductMode() {
   return normalizeProductMode(readSetupValue('MURPH_PRODUCT_MODE') || process.env.MURPH_PRODUCT_MODE || 'channel');
 }
 
+function normalizeBotRole(value) {
+  return value === 'personal' ? 'personal' : value === 'both' ? 'both' : 'channel';
+}
+
+function normalizeBotRoles(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value || '')
+        .split(',')
+        .map((entry) => entry.trim());
+  const roles = raw
+    .flatMap((entry) => normalizeBotRole(String(entry).toLowerCase()) === 'both' ? SETUP_BOT_ROLES : [normalizeBotRole(String(entry).toLowerCase())])
+    .filter((role) => SETUP_BOT_ROLES.includes(role));
+  const unique = Array.from(new Set(roles));
+  return unique.length > 0 ? unique : ['channel'];
+}
+
+function currentBotRoles() {
+  const configured = readSetupValue('MURPH_BOT_ROLES') || process.env.MURPH_BOT_ROLES;
+  return normalizeBotRoles(configured || ['channel']);
+}
+
+function roleOptionRoles() {
+  return normalizeBotRoles(options.role || currentBotRoles());
+}
+
+function roleLabel(role) {
+  return role === 'personal' ? 'personal' : 'channel';
+}
+
+function roleEnvPrefix(role) {
+  return role === 'personal' ? 'PERSONAL' : 'CHANNEL';
+}
+
+function setupRolesCsv(roles) {
+  return normalizeBotRoles(roles).join(',');
+}
+
 function currentDefaultProvider() {
   return readSetupValue('MURPH_DEFAULT_PROVIDER') ||
     (readSetupValue('OPENAI_API_KEY') ? 'openai' : readSetupValue('ANTHROPIC_API_KEY') ? 'anthropic' : 'openai');
@@ -581,12 +660,25 @@ function slackRedirectUrl() {
   return `${murphUrl}/api/slack/oauth/callback`;
 }
 
-function slackAppConfigured() {
-  return Boolean(readSetupValue('SLACK_APP_TOKEN') && readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET'));
+function slackRoleKey(role, suffix) {
+  return `SLACK_${roleEnvPrefix(role)}_${suffix}`;
 }
 
-function slackOAuthConfigured() {
-  return Boolean(readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET'));
+function slackReadRoleValue(role, suffix) {
+  return readSetupValue(slackRoleKey(role, suffix)) ||
+    (role === 'channel' ? readSetupValue(`SLACK_${suffix}`) : '');
+}
+
+function slackAppConfigured(role = 'channel') {
+  return Boolean(
+    slackReadRoleValue(role, 'APP_TOKEN') &&
+    slackReadRoleValue(role, 'CLIENT_ID') &&
+    slackReadRoleValue(role, 'CLIENT_SECRET')
+  );
+}
+
+function slackOAuthConfigured(role = 'channel') {
+  return Boolean(slackReadRoleValue(role, 'CLIENT_ID') && slackReadRoleValue(role, 'CLIENT_SECRET'));
 }
 
 function isSlackAppLevelToken(value) {
@@ -697,7 +789,7 @@ function renderSlackManifest() {
   return manifest;
 }
 
-function slackCredentialsFromPayload(payload) {
+function slackCredentialsFromPayload(payload, role = 'channel') {
   const app = payload?.app && typeof payload.app === 'object' ? payload.app : {};
   const credentials = payload?.credentials && typeof payload.credentials === 'object'
     ? payload.credentials
@@ -705,11 +797,11 @@ function slackCredentialsFromPayload(payload) {
       ? app.credentials
       : {};
   return {
-    appId: payload?.app_id || payload?.appId || app.id || app.app_id || credentials.app_id || readSetupValue('SLACK_APP_ID'),
-    clientId: credentials.client_id || credentials.clientId || app.client_id || payload?.client_id || readSetupValue('SLACK_CLIENT_ID'),
-    clientSecret: credentials.client_secret || credentials.clientSecret || app.client_secret || payload?.client_secret || readSetupValue('SLACK_CLIENT_SECRET'),
-    signingSecret: credentials.signing_secret || credentials.signingSecret || app.signing_secret || payload?.signing_secret || readSetupValue('SLACK_SIGNING_SECRET'),
-    appToken: credentials.app_token || credentials.appToken || app.app_token || payload?.app_token || payload?.appToken || readSetupValue('SLACK_APP_TOKEN'),
+    appId: payload?.app_id || payload?.appId || app.id || app.app_id || credentials.app_id || slackReadRoleValue(role, 'APP_ID'),
+    clientId: credentials.client_id || credentials.clientId || app.client_id || payload?.client_id || slackReadRoleValue(role, 'CLIENT_ID'),
+    clientSecret: credentials.client_secret || credentials.clientSecret || app.client_secret || payload?.client_secret || slackReadRoleValue(role, 'CLIENT_SECRET'),
+    signingSecret: credentials.signing_secret || credentials.signingSecret || app.signing_secret || payload?.signing_secret || slackReadRoleValue(role, 'SIGNING_SECRET'),
+    appToken: credentials.app_token || credentials.appToken || app.app_token || payload?.app_token || payload?.appToken || slackReadRoleValue(role, 'APP_TOKEN'),
     teamId: payload?.team_id || payload?.teamId || app.team_id || app.teamId || credentials.team_id || readSetupValue('SLACK_TEAM_ID'),
     teamName: payload?.team_name || payload?.teamName || app.team_name || app.teamName || credentials.team_name || readSetupValue('SLACK_TEAM_NAME')
   };
@@ -761,7 +853,7 @@ function slackManifestAppMissing(error) {
   ].some((marker) => message.includes(marker));
 }
 
-async function tryUpdateExistingSlackApp(appId, token, manifestBody) {
+async function tryUpdateExistingSlackApp(appId, token, manifestBody, role = 'channel') {
   if (!appId) return null;
 
   try {
@@ -779,7 +871,7 @@ async function tryUpdateExistingSlackApp(appId, token, manifestBody) {
     app_id: appId,
     manifest: manifestBody
   });
-  return slackCredentialsFromPayload({ ...payload, app_id: appId });
+  return slackCredentialsFromPayload({ ...payload, app_id: appId }, role);
 }
 
 function printSlackAppSettingsUrl(appId) {
@@ -789,24 +881,31 @@ function printSlackAppSettingsUrl(appId) {
   callout('Slack app settings', settingsUrl);
 }
 
-async function saveSlackAppConfig(credentials, workspace = null) {
+async function saveSlackAppConfig(credentials, workspace = null, role = 'channel') {
   const values = {
     SLACK_EVENTS_MODE: 'socket',
-    SLACK_CLIENT_ID: credentials.clientId,
-    SLACK_CLIENT_SECRET: credentials.clientSecret
+    [slackRoleKey(role, 'CLIENT_ID')]: credentials.clientId,
+    [slackRoleKey(role, 'CLIENT_SECRET')]: credentials.clientSecret
   };
-  if (credentials.appId) values.SLACK_APP_ID = credentials.appId;
-  if (credentials.signingSecret) values.SLACK_SIGNING_SECRET = credentials.signingSecret;
-  if (credentials.appToken) values.SLACK_APP_TOKEN = credentials.appToken;
+  if (credentials.appId) values[slackRoleKey(role, 'APP_ID')] = credentials.appId;
+  if (credentials.signingSecret) values[slackRoleKey(role, 'SIGNING_SECRET')] = credentials.signingSecret;
+  if (credentials.appToken) values[slackRoleKey(role, 'APP_TOKEN')] = credentials.appToken;
+  if (role === 'channel') {
+    values.SLACK_CLIENT_ID = credentials.clientId;
+    values.SLACK_CLIENT_SECRET = credentials.clientSecret;
+    if (credentials.appId) values.SLACK_APP_ID = credentials.appId;
+    if (credentials.signingSecret) values.SLACK_SIGNING_SECRET = credentials.signingSecret;
+    if (credentials.appToken) values.SLACK_APP_TOKEN = credentials.appToken;
+  }
   if (credentials.teamId || workspace?.id) values.SLACK_TEAM_ID = credentials.teamId || workspace.id;
   if (credentials.teamName || workspace?.name) values.SLACK_TEAM_NAME = credentials.teamName || workspace.name;
   const updated = writeSetupValues(values);
   await postSetupConfig(values);
-  success(`Saved Slack app config: ${updated.join(', ')}`);
+  success(`Saved Slack ${roleLabel(role)} app config: ${updated.join(', ')}`);
 }
 
-async function trySlackManifestAutomation(workspace = null) {
-  if (slackAppConfigured()) return true;
+async function trySlackManifestAutomation(workspace = null, role = 'channel') {
+  if (slackAppConfigured(role)) return true;
   if (haveCommand('slack')) {
     info('Slack CLI detected. Murph will use it where possible and fall back to manual setup if needed.');
   } else {
@@ -814,7 +913,7 @@ async function trySlackManifestAutomation(workspace = null) {
   }
 
   const workspaceLabel = workspace?.id ? ` for ${workspace.name || workspace.id}` : '';
-  info(`Provide a Slack app configuration token${workspaceLabel}. Murph uses it once to create the app from the manifest, then discards it.`);
+  info(`Provide a Slack app configuration token for the ${roleLabel(role)} bot${workspaceLabel}. Murph uses it once to create the app from the manifest, then discards it.`);
   const existingToken = process.env.MURPH_SLACK_CONFIG_TOKEN || '';
   const token = existingToken || await askSecret(`Slack app configuration token${workspaceLabel} (blank for manual setup)`);
   if (!token.trim()) {
@@ -822,134 +921,175 @@ async function trySlackManifestAutomation(workspace = null) {
   }
   if (isSlackAppLevelToken(token)) {
     warn('That looks like a Slack app-level token, not an app configuration token.');
-    const values = { SLACK_APP_TOKEN: token.trim() };
+    const values = { [slackRoleKey(role, 'APP_TOKEN')]: token.trim() };
+    if (role === 'channel') values.SLACK_APP_TOKEN = token.trim();
     writeSetupValues(values);
     await postSetupConfig(values);
-    fail('Saved it as SLACK_APP_TOKEN. Slack app OAuth credentials are still missing.');
+    fail(`Saved it as ${slackRoleKey(role, 'APP_TOKEN')}. Slack app OAuth credentials are still missing.`);
   }
 
   const manifest = renderSlackManifest();
   const manifestBody = JSON.stringify(manifest);
-  const existingAppId = readSetupValue('SLACK_APP_ID');
-  const credentials = await tryUpdateExistingSlackApp(existingAppId, token.trim(), manifestBody) ?? slackCredentialsFromPayload(
-    await slackManifestApi('apps.manifest.create', token.trim(), { manifest: manifestBody })
+  const existingAppId = slackReadRoleValue(role, 'APP_ID');
+  const credentials = await tryUpdateExistingSlackApp(existingAppId, token.trim(), manifestBody, role) ?? slackCredentialsFromPayload(
+    await slackManifestApi('apps.manifest.create', token.trim(), { manifest: manifestBody }),
+    role
   );
   if (!credentials.clientId || !credentials.clientSecret) {
     if (existingAppId && credentials.appId === existingAppId) {
       warn(`Slack app ${existingAppId} exists, but setup is missing OAuth credentials.`);
       printSlackAppSettingsUrl(existingAppId);
-      await promptManualSlackConfig();
+      await promptManualSlackConfig(role);
       return true;
     }
     fail('Slack manifest response did not include client credentials.');
   }
 
-  await saveSlackAppConfig(credentials, workspace);
+  await saveSlackAppConfig(credentials, workspace, role);
   return true;
 }
 
-async function promptSlackAppToken(appId = readSetupValue('SLACK_APP_ID')) {
-  if (readSetupValue('SLACK_APP_TOKEN')) return;
+async function promptSlackAppToken(role = 'channel', appId = slackReadRoleValue(role, 'APP_ID')) {
+  if (slackReadRoleValue(role, 'APP_TOKEN')) return;
   if (options.nonInteractive) {
-    fail('Missing Slack app-level token. Set SLACK_APP_TOKEN, or run murph setup slack interactively.');
+    fail(`Missing Slack app-level token. Set ${slackRoleKey(role, 'APP_TOKEN')}, or run murph setup slack interactively.`);
   }
   if (appId) {
     printSlackAppSettingsUrl(appId);
     info('Create or copy the app-level token (xapp-...), then paste it here.');
   }
-  const token = await askRequired('Slack app-level token (xapp-...)', readSetupValue('SLACK_APP_TOKEN'));
-  const values = { SLACK_APP_TOKEN: token };
+  const token = await askRequired('Slack app-level token (xapp-...)', slackReadRoleValue(role, 'APP_TOKEN'));
+  const values = { [slackRoleKey(role, 'APP_TOKEN')]: token };
+  if (role === 'channel') values.SLACK_APP_TOKEN = token;
   writeSetupValues(values);
   await postSetupConfig(values);
   success(`Saved Slack app-level token (${mask(token)}).`);
 }
 
-async function promptManualSlackConfig() {
+async function promptManualSlackConfig(role = 'channel') {
   if (options.nonInteractive) {
-    fail('Missing Slack app settings. Set SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET.');
+    fail(`Missing Slack app settings. Set ${slackRoleKey(role, 'APP_TOKEN')}, ${slackRoleKey(role, 'CLIENT_ID')}, and ${slackRoleKey(role, 'CLIENT_SECRET')}.`);
   }
   info('Use docs/public/slack-manifest.yaml and this redirect URL:');
   callout('Redirect URL', slackRedirectUrl());
   const values = { SLACK_EVENTS_MODE: 'socket' };
-  if (!readSetupValue('SLACK_APP_TOKEN')) {
-    values.SLACK_APP_TOKEN = await askRequired('Slack app-level token (xapp-...)');
+  if (!slackReadRoleValue(role, 'APP_TOKEN')) {
+    values[slackRoleKey(role, 'APP_TOKEN')] = await askRequired('Slack app-level token (xapp-...)');
   }
-  if (!readSetupValue('SLACK_CLIENT_ID')) {
-    values.SLACK_CLIENT_ID = await askRequired('Slack client ID');
+  if (!slackReadRoleValue(role, 'CLIENT_ID')) {
+    values[slackRoleKey(role, 'CLIENT_ID')] = await askRequired('Slack client ID');
   }
-  if (!readSetupValue('SLACK_CLIENT_SECRET')) {
-    values.SLACK_CLIENT_SECRET = await askRequired('Slack client secret');
+  if (!slackReadRoleValue(role, 'CLIENT_SECRET')) {
+    values[slackRoleKey(role, 'CLIENT_SECRET')] = await askRequired('Slack client secret');
   }
-  if (!readSetupValue('SLACK_SIGNING_SECRET')) {
+  if (!slackReadRoleValue(role, 'SIGNING_SECRET')) {
     const signingSecret = await askSecret('Slack signing secret (optional)');
-    if (signingSecret.trim()) values.SLACK_SIGNING_SECRET = signingSecret.trim();
+    if (signingSecret.trim()) values[slackRoleKey(role, 'SIGNING_SECRET')] = signingSecret.trim();
+  }
+  if (role === 'channel') {
+    if (values.SLACK_CHANNEL_APP_TOKEN) values.SLACK_APP_TOKEN = values.SLACK_CHANNEL_APP_TOKEN;
+    if (values.SLACK_CHANNEL_CLIENT_ID) values.SLACK_CLIENT_ID = values.SLACK_CHANNEL_CLIENT_ID;
+    if (values.SLACK_CHANNEL_CLIENT_SECRET) values.SLACK_CLIENT_SECRET = values.SLACK_CHANNEL_CLIENT_SECRET;
+    if (values.SLACK_CHANNEL_SIGNING_SECRET) values.SLACK_SIGNING_SECRET = values.SLACK_CHANNEL_SIGNING_SECRET;
   }
   writeSetupValues(values);
   await postSetupConfig(values);
 }
 
-async function ensureSlackAppConfig(workspace = null) {
-  if (slackAppConfigured()) {
-    success('Slack app settings are configured.');
+async function ensureSlackAppConfig(workspace = null, role = 'channel') {
+  if (slackAppConfigured(role)) {
+    success(`Slack ${roleLabel(role)} app settings are configured.`);
     return;
   }
   if (options.quick) {
     if (options.nonInteractive) {
-      fail('Missing Slack app settings. Set SLACK_APP_TOKEN, SLACK_CLIENT_ID, and SLACK_CLIENT_SECRET.');
+      fail(`Missing Slack app settings. Set ${slackRoleKey(role, 'APP_TOKEN')}, ${slackRoleKey(role, 'CLIENT_ID')}, and ${slackRoleKey(role, 'CLIENT_SECRET')}.`);
     }
     info('Slack app settings are incomplete.');
   }
-  if (slackOAuthConfigured()) {
-    await promptSlackAppToken();
-    if (slackAppConfigured()) return;
+  if (slackOAuthConfigured(role)) {
+    await promptSlackAppToken(role);
+    if (slackAppConfigured(role)) return;
   }
 
   try {
-    await trySlackManifestAutomation(workspace);
-    await promptSlackAppToken();
+    await trySlackManifestAutomation(workspace, role);
+    await promptSlackAppToken(role);
   } catch (error) {
     warn(`Slack app automation failed: ${error instanceof Error ? error.message : String(error)}`);
     if (options.nonInteractive) {
       fail('Slack setup cannot continue non-interactively without complete Slack app settings.');
     }
     warn('Falling back to manual Slack app setup.');
-    await promptManualSlackConfig();
+    await promptManualSlackConfig(role);
   }
 
-  if (!slackAppConfigured()) {
-    await promptManualSlackConfig();
+  if (!slackAppConfigured(role)) {
+    await promptManualSlackConfig(role);
   }
-  if (!slackAppConfigured()) {
+  if (!slackAppConfigured(role)) {
     fail('Slack app settings are still incomplete.');
   }
 }
 
-function slackInstallUrl(workspace = null) {
+function slackInstallUrl(workspace = null, role = 'channel') {
   const teamId = workspace?.id || readSetupValue('SLACK_TEAM_ID');
   const params = new URLSearchParams({ source: 'cli' });
   if (teamId) params.set('team', teamId);
-  return `${murphUrl}/api/slack/install?${params.toString()}`;
+  return `${murphUrl}/api/slack/${role}/install?${params.toString()}`;
 }
 
-function slackWorkspaceMatches(status, workspace = null) {
+function slackRoleStatus(status, role = 'channel') {
+  return status.slack?.roles?.[role] || {};
+}
+
+function botInstallationWorkspace(status, provider, role = 'channel') {
+  const installation = (status.botInstallations || []).find((entry) => (
+    entry.provider === provider && entry.role === role && entry.status === 'active'
+  ));
+  if (!installation?.workspaceId) return null;
+  return {
+    id: installation.workspaceId,
+    provider,
+    externalWorkspaceId: installation.externalWorkspaceId,
+    name: installation.externalWorkspaceId || installation.workspaceId,
+    botUserId: installation.botUserId
+  };
+}
+
+function slackWorkspaceMatches(status, workspace = null, role = 'channel') {
   const targetTeamId = workspace?.id || readSetupValue('SLACK_TEAM_ID');
-  if (!targetTeamId || !status.slack?.installed) return Boolean(status.slack?.installed);
-  const connectedTeamId = status.slack?.workspace?.externalWorkspaceId;
+  const roleInstalled = slackRoleStatus(status, role).installed ?? (role === 'channel' ? status.slack?.installed : false);
+  if (!targetTeamId || !roleInstalled) return Boolean(roleInstalled);
+  const connectedTeamId = slackRoleStatus(status, role).workspace?.externalWorkspaceId ||
+    status.slack?.workspace?.externalWorkspaceId ||
+    botInstallationWorkspace(status, 'slack', role)?.externalWorkspaceId;
   return !connectedTeamId || connectedTeamId === targetTeamId;
 }
 
-function assertSlackWorkspaceMatch(status, workspace = null) {
+function assertSlackWorkspaceMatch(status, workspace = null, role = 'channel') {
   const targetTeamId = workspace?.id || readSetupValue('SLACK_TEAM_ID');
-  const connectedTeamId = status.slack?.workspace?.externalWorkspaceId;
+  const connectedTeamId = slackRoleStatus(status, role).workspace?.externalWorkspaceId ||
+    status.slack?.workspace?.externalWorkspaceId ||
+    botInstallationWorkspace(status, 'slack', role)?.externalWorkspaceId;
   if (targetTeamId && connectedTeamId && connectedTeamId !== targetTeamId) {
     fail(`Connected Slack workspace ${connectedTeamId}, but setup selected ${targetTeamId}. Re-run murph setup slack and connect the selected workspace.`);
   }
 }
 
-function discordInstallUrl(clientId = readSetupValue('DISCORD_CLIENT_ID')) {
+function discordRoleKey(role, suffix) {
+  return `DISCORD_${roleEnvPrefix(role)}_${suffix}`;
+}
+
+function discordReadRoleValue(role, suffix) {
+  return readSetupValue(discordRoleKey(role, suffix)) ||
+    (role === 'channel' ? readSetupValue(`DISCORD_${suffix}`) : '');
+}
+
+function discordInstallUrl(clientId = readSetupValue('DISCORD_CLIENT_ID'), role = 'channel') {
   if (!clientId) return '';
   const params = new URLSearchParams({ source: 'setup' });
-  return `${murphUrl}/api/discord/install?${params.toString()}`;
+  return `${murphUrl}/api/discord/${role}/install?${params.toString()}`;
 }
 
 function discordRedirectUrl() {
@@ -1331,24 +1471,44 @@ async function setupCore() {
 }
 
 async function setupProductMode() {
-  sectionTitle('Mode');
-  const current = currentProductMode();
-  if (options.quick || options.nonInteractive) {
-    success(`Product mode is configured: ${current}.`);
+  return setupBotRoles();
+}
+
+async function setupBotRoles() {
+  sectionTitle('Bot roles');
+  const current = currentBotRoles();
+  if (options.quick && current.length > 0) {
+    success(`Bot roles are configured: ${current.join(', ')}.`);
     return current;
   }
+  if (options.nonInteractive) {
+    const roles = normalizeBotRoles(options.role || current);
+    writeSetupValues({ MURPH_BOT_ROLES: setupRolesCsv(roles) });
+    await postSetupConfig({ MURPH_BOT_ROLES: setupRolesCsv(roles) });
+    success(`Bot roles: ${roles.join(', ')}.`);
+    return roles;
+  }
 
+  const defaultChoice = current.includes('channel') && current.includes('personal')
+    ? '3'
+    : current.includes('personal')
+      ? '2'
+      : '1';
   const choice = await askChoice(
-    'Mode: [1] Personal bot  [2] Channel handoff',
-    ['1', '2', 'personal', 'channel'],
-    current === 'personal' ? '1' : '2'
+    'Bot roles: [1] Channel  [2] Personal  [3] Both',
+    ['1', '2', '3', 'channel', 'personal', 'both'],
+    defaultChoice
   );
-  const mode = choice === '1' || choice.toLowerCase() === 'personal' ? 'personal' : 'channel';
-  const values = { MURPH_PRODUCT_MODE: mode };
+  const roles = choice === '2' || choice.toLowerCase() === 'personal'
+    ? ['personal']
+    : choice === '3' || choice.toLowerCase() === 'both'
+      ? ['channel', 'personal']
+      : ['channel'];
+  const values = { MURPH_BOT_ROLES: setupRolesCsv(roles) };
   writeSetupValues(values);
   await postSetupConfig(values);
-  success(`Selected product mode: ${mode}.`);
-  return mode;
+  success(`Selected bot roles: ${roles.join(', ')}.`);
+  return roles;
 }
 
 async function setupAi() {
@@ -1386,43 +1546,55 @@ async function setupAi() {
 }
 
 async function setupChannelProvider() {
-  sectionTitle('Channel provider');
+  const providers = await setupChannelProviders();
+  return providers[0] || 'slack';
+}
+
+async function setupChannelProviders() {
+  sectionTitle('Channel providers');
   const current = currentChannelProvider();
   if (options.quick && current) {
     selectedChannelProvider = current;
     success(`Channel provider is configured: ${current}.`);
-    return current;
+    return [current];
   }
   if (options.nonInteractive) {
     selectedChannelProvider = current;
-    return current;
+    return [current];
   }
-  const choice = await askChoice('Channel: [1] Slack  [2] Discord', ['1', '2', 'slack', 'discord'], current === 'discord' ? '2' : '1');
-  const provider = choice === '2' || choice.toLowerCase() === 'discord' ? 'discord' : 'slack';
-  selectedChannelProvider = provider;
-  writeLocalSetupDefaults({ channelProvider: provider });
-  success(`Selected channel provider: ${provider}.`);
-  return provider;
+  const defaultChoice = current === 'discord' ? '2' : '1';
+  const choice = await askChoice('Providers: [1] Slack  [2] Discord  [3] Both', ['1', '2', '3', 'slack', 'discord', 'both'], defaultChoice);
+  const providers = choice === '2' || choice.toLowerCase() === 'discord'
+    ? ['discord']
+    : choice === '3' || choice.toLowerCase() === 'both'
+      ? ['slack', 'discord']
+      : ['slack'];
+  selectedChannelProvider = providers[0];
+  writeLocalSetupDefaults({ channelProvider: selectedChannelProvider });
+  success(`Selected channel provider${providers.length > 1 ? 's' : ''}: ${providers.join(', ')}.`);
+  return providers;
 }
 
-async function setupSlack() {
+async function setupSlack(role = 'channel') {
   selectedChannelProvider = 'slack';
-  sectionTitle('Slack');
+  sectionTitle(`Slack ${roleLabel(role)} bot`);
   const workspace = await ensureSlackWorkspaceContext();
-  await ensureSlackAppConfig(workspace);
+  await ensureSlackAppConfig(workspace, role);
 
   await ensureServer();
   let status = await request('/api/setup/status');
-  assertSlackWorkspaceMatch(status, workspace);
-  if (slackWorkspaceMatches(status, workspace) && !options.reconnectSearch) {
-    const label = status.slack?.workspace?.name || workspace?.name || 'Slack workspace';
-    await rememberSetupWorkspace('slack', status.slack?.workspace?.id);
-    success(`${label} is connected.`);
+  assertSlackWorkspaceMatch(status, workspace, role);
+  if (slackWorkspaceMatches(status, workspace, role) && !options.reconnectSearch) {
+    const roleStatus = slackRoleStatus(status, role);
+    const installationWorkspace = botInstallationWorkspace(status, 'slack', role);
+    const label = roleStatus.workspace?.name || status.slack?.workspace?.name || workspace?.name || installationWorkspace?.name || 'Slack workspace';
+    await rememberSetupWorkspace('slack', roleStatus.workspace?.id || status.slack?.workspace?.id || installationWorkspace?.id);
+    success(`${label} ${roleLabel(role)} bot is connected.`);
     return;
   }
 
-  const installUrl = slackInstallUrl(workspace);
-  info('Slack app config is saved. Opening this URL to install Murph in your Slack workspace:');
+  const installUrl = slackInstallUrl(workspace, role);
+  info(`Slack ${roleLabel(role)} app config is saved. Opening this URL to install Murph in your Slack workspace:`);
   callout('Slack install URL', installUrl);
   openBrowserUrl(installUrl);
   if (options.nonInteractive) {
@@ -1431,53 +1603,66 @@ async function setupSlack() {
   await ask('Press Enter after Slack app installation finishes.');
   for (let i = 0; i < 20; i += 1) {
     status = await request('/api/setup/status');
-    assertSlackWorkspaceMatch(status, workspace);
-    if (slackWorkspaceMatches(status, workspace)) {
-      const label = status.slack?.workspace?.name || workspace?.name || 'Slack workspace';
-      await rememberSetupWorkspace('slack', status.slack?.workspace?.id);
-      success(`${label} connected.`);
+    assertSlackWorkspaceMatch(status, workspace, role);
+    if (slackWorkspaceMatches(status, workspace, role)) {
+      const roleStatus = slackRoleStatus(status, role);
+      const installationWorkspace = botInstallationWorkspace(status, 'slack', role);
+      const label = roleStatus.workspace?.name || status.slack?.workspace?.name || workspace?.name || installationWorkspace?.name || 'Slack workspace';
+      await rememberSetupWorkspace('slack', roleStatus.workspace?.id || status.slack?.workspace?.id || installationWorkspace?.id);
+      success(`${label} ${roleLabel(role)} bot connected.`);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  fail('Slack app installation did not complete yet. Re-run: murph setup slack');
+  fail(`Slack ${roleLabel(role)} app installation did not complete yet. Re-run: murph setup slack --role ${role}`);
 }
 
-async function setupDiscord() {
+async function setupDiscord(role = 'channel') {
   selectedChannelProvider = 'discord';
-  sectionTitle('Discord');
-  const existingToken = readSetupValue('DISCORD_BOT_TOKEN');
+  sectionTitle(`Discord ${roleLabel(role)} bot`);
+  const existingToken = discordReadRoleValue(role, 'BOT_TOKEN');
   if (options.nonInteractive && !existingToken) {
-    fail('Missing Discord bot token. Set DISCORD_BOT_TOKEN, or run murph setup discord interactively.');
+    fail(`Missing Discord bot token. Set ${discordRoleKey(role, 'BOT_TOKEN')}, or run murph setup discord interactively.`);
   }
-  const token = process.env.DISCORD_BOT_TOKEN
-    ? process.env.DISCORD_BOT_TOKEN.trim()
+  const envToken = process.env[discordRoleKey(role, 'BOT_TOKEN')] || (role === 'channel' ? process.env.DISCORD_BOT_TOKEN : '');
+  const token = envToken
+    ? envToken.trim()
     : await askRequired('Discord bot token', existingToken);
-  const existingClientSecret = readSetupValue('DISCORD_CLIENT_SECRET');
+  const existingClientSecret = discordReadRoleValue(role, 'CLIENT_SECRET');
   if (options.nonInteractive && !existingClientSecret) {
-    fail('Missing Discord client secret. Set DISCORD_CLIENT_SECRET, or run murph setup discord interactively.');
+    fail(`Missing Discord client secret. Set ${discordRoleKey(role, 'CLIENT_SECRET')}, or run murph setup discord interactively.`);
   }
-  const clientSecret = process.env.DISCORD_CLIENT_SECRET
-    ? process.env.DISCORD_CLIENT_SECRET.trim()
+  const envClientSecret = process.env[discordRoleKey(role, 'CLIENT_SECRET')] || (role === 'channel' ? process.env.DISCORD_CLIENT_SECRET : '');
+  const clientSecret = envClientSecret
+    ? envClientSecret.trim()
     : await askRequired('Discord client secret', existingClientSecret);
   const bot = await validateDiscordBotToken(token);
   const values = {
-    DISCORD_BOT_TOKEN: token,
-    DISCORD_CLIENT_ID: bot.applicationId,
-    DISCORD_CLIENT_SECRET: clientSecret
+    [discordRoleKey(role, 'BOT_TOKEN')]: token,
+    [discordRoleKey(role, 'CLIENT_ID')]: bot.applicationId,
+    [discordRoleKey(role, 'CLIENT_SECRET')]: clientSecret
   };
+  if (role === 'channel') {
+    values.DISCORD_BOT_TOKEN = token;
+    values.DISCORD_CLIENT_ID = bot.applicationId;
+    values.DISCORD_CLIENT_SECRET = clientSecret;
+  }
   writeSetupValues(values);
   await postSetupConfig(values);
-  success(`Discord bot validated: ${bot.botName} (${bot.botUserId}).`);
+  success(`Discord ${roleLabel(role)} bot validated: ${bot.botName} (${bot.botUserId}).`);
   const configuredApp = await configureDiscordApplication(token, bot.applicationFlags);
 
   await ensureServer();
   let status = await request('/api/setup/status');
-  if (status.discord?.installed && status.discord?.ownerConfigured !== false) {
-    await rememberSetupWorkspace('discord', status.discord.workspace?.id);
-    success(`${status.discord.workspace?.name || 'Discord server'} is connected.`);
+  const roleStatus = status.discord?.roles?.[role] || {};
+  const roleInstalled = roleStatus.installed ?? (role === 'channel' ? status.discord?.installed : false);
+  const ownerConfigured = roleStatus.representedOwnerConfigured ?? status.discord?.ownerConfigured;
+  if (roleInstalled && ownerConfigured !== false) {
+    const installationWorkspace = botInstallationWorkspace(status, 'discord', role);
+    await rememberSetupWorkspace('discord', roleStatus.workspace?.id || status.discord?.workspace?.id || installationWorkspace?.id);
+    success(`${roleStatus.workspace?.name || status.discord?.workspace?.name || installationWorkspace?.name || 'Discord server'} ${roleLabel(role)} bot is connected.`);
     if (configuredApp) {
-      const reinstallUrl = discordInstallUrl(bot.applicationId);
+      const reinstallUrl = discordInstallUrl(bot.applicationId, role);
       if (reinstallUrl) {
         info('If this bot was installed before setup configured permissions, re-open the Discord install URL and approve the updated server permissions.');
         callout('Discord install URL', reinstallUrl);
@@ -1486,7 +1671,7 @@ async function setupDiscord() {
     return;
   }
 
-  const installUrl = discordInstallUrl(bot.applicationId);
+  const installUrl = discordInstallUrl(bot.applicationId, role);
   if (!installUrl) {
     fail('Discord application ID is missing.');
   }
@@ -1511,16 +1696,23 @@ async function setupDiscord() {
   const pollAttempts = skipInstallConfirm ? 1 : 40;
   for (let i = 0; i < pollAttempts; i += 1) {
     status = await request('/api/setup/status');
-    if (status.discord?.installed) {
-      await rememberSetupWorkspace('discord', status.discord.workspace?.id);
-      if (status.discord?.ownerConfigured !== false) {
-        success(`${status.discord.workspace?.name || 'Discord server'} connected and owner identified.`);
+    const currentRoleStatus = status.discord?.roles?.[role] || {};
+    const currentInstalled = currentRoleStatus.installed ?? (role === 'channel' ? status.discord?.installed : false);
+    const currentOwnerConfigured = currentRoleStatus.representedOwnerConfigured ?? status.discord?.ownerConfigured;
+    if (currentInstalled) {
+      const installationWorkspace = botInstallationWorkspace(status, 'discord', role);
+      await rememberSetupWorkspace('discord', currentRoleStatus.workspace?.id || status.discord?.workspace?.id || installationWorkspace?.id);
+      if (currentOwnerConfigured !== false) {
+        success(`${currentRoleStatus.workspace?.name || status.discord?.workspace?.name || installationWorkspace?.name || 'Discord server'} ${roleLabel(role)} bot connected and owner identified.`);
         return;
       }
-      warn(`${status.discord.workspace?.name || 'Discord server'} connected, but Murph did not receive the Discord user identity.`);
+      warn(`${currentRoleStatus.workspace?.name || status.discord?.workspace?.name || installationWorkspace?.name || 'Discord server'} connected, but Murph did not receive the Discord user identity.`);
       break;
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (role === 'personal') {
+    fail(`Discord personal bot authorization did not complete yet. Re-run: murph setup discord --role personal`);
   }
   info('Checking Discord servers for the installed bot...');
   const discoveredGuilds = await discoverDiscordGuilds(token);
@@ -1573,13 +1765,10 @@ async function setupIdentity() {
   fail('Missing owner identity. Reconnect Slack or Discord through OAuth so Murph can identify your account.');
 }
 
-async function setupChannels() {
+async function setupChannels(providerOverride = currentChannelProvider()) {
   sectionTitle('Channels');
-  if (currentProductMode() === 'personal') {
-    success('Personal mode uses direct messages, so watched channel defaults are not needed.');
-    return (await getDefaults()).defaults;
-  }
-  const provider = currentChannelProvider();
+  const provider = providerOverride;
+  selectedChannelProvider = provider;
   const workspaceId = currentWorkspaceId();
   const current = await getDefaults();
   const hasChannels = current.defaults?.channelScopeMode === 'all_accessible' ||
@@ -1635,7 +1824,7 @@ async function setupChannels() {
 async function setupDiscordChannelsManually(current, workspaceId, cause) {
   warn(`Discord channel list is unavailable: ${cause instanceof Error ? cause.message : String(cause)}`);
   warn('Likely causes: the bot is not installed in this server, lacks View Channels, or needs re-approval after permission changes.');
-  const installUrl = discordInstallUrl();
+  const installUrl = discordInstallUrl(undefined, 'channel');
   if (installUrl) {
     info('Ask a server admin to re-open this install URL and approve the requested permissions.');
     callout('Discord install URL', installUrl);
@@ -1680,8 +1869,8 @@ async function setupSchedule() {
   if (options.nonInteractive && (!current.defaults?.timezone || current.defaults?.workdayStartHour === undefined)) {
     fail('Missing schedule defaults. Run murph setup schedule.');
   }
-  if (!current.defaults?.ownerUserId) {
-    fail('Choose an owner first: murph setup identity');
+  if (!current.defaults?.ownerUserId && !(current.defaults?.workspaceOwners?.length > 0)) {
+    fail('Connect a bot through OAuth first so Murph can identify the represented owner.');
   }
 
   const timezone = await ask('Timezone', current.defaults.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles');
@@ -1730,6 +1919,7 @@ async function setupPolicy() {
 }
 
 async function setupStatus() {
+  const botRoles = currentBotRoles();
   const localStatus = {
     configFile: existsSync(configPath),
     credentialsFile: existsSync(credentialsPath),
@@ -1739,11 +1929,19 @@ async function setupStatus() {
     agentProvider: currentAgentProvider(currentDefaultProvider()),
     agentModel: currentAgentModel(currentAgentProvider(currentDefaultProvider())),
     agentInheritsRuntime: !hasAgentOverride(),
-    productMode: currentProductMode(),
+    botRoles,
     channelProvider: currentChannelProvider(),
     workspaceId: currentWorkspaceId(),
-    slackConfig: Boolean(readSetupValue('SLACK_APP_TOKEN') && readSetupValue('SLACK_CLIENT_ID') && readSetupValue('SLACK_CLIENT_SECRET')),
-    discordConfig: Boolean(readSetupValue('DISCORD_BOT_TOKEN') && readSetupValue('DISCORD_CLIENT_ID'))
+    slackConfig: slackAppConfigured('channel'),
+    slackRoleConfig: {
+      channel: slackAppConfigured('channel'),
+      personal: slackAppConfigured('personal')
+    },
+    discordConfig: Boolean(discordReadRoleValue('channel', 'BOT_TOKEN') && discordReadRoleValue('channel', 'CLIENT_ID')),
+    discordRoleConfig: {
+      channel: Boolean(discordReadRoleValue('channel', 'BOT_TOKEN') && discordReadRoleValue('channel', 'CLIENT_ID')),
+      personal: Boolean(discordReadRoleValue('personal', 'BOT_TOKEN') && discordReadRoleValue('personal', 'CLIENT_ID'))
+    }
   };
   let server = null;
   if (await health()) {
@@ -1768,12 +1966,14 @@ async function setupStatus() {
   statusLine('Murph Agent model', localStatus.agentModel ? 'ok' : 'missing', localStatus.agentInheritsRuntime
     ? `inherits runtime (${localStatus.agentProvider}/${localStatus.agentModel})`
     : `${localStatus.agentProvider}/${localStatus.agentModel}`);
-  statusGroup('Mode');
-  statusLine('Product mode', 'ok', localStatus.productMode);
+  statusGroup('Bot roles');
+  statusLine('Selected roles', localStatus.botRoles.length > 0 ? 'ok' : 'missing', localStatus.botRoles.join(', '));
   statusGroup('Slack');
-  statusLine('Slack app config', localStatus.slackConfig ? 'ok' : 'missing', localStatus.slackConfig ? 'configured' : 'missing');
+  statusLine('Slack channel bot', localStatus.slackRoleConfig.channel ? 'ok' : 'missing', localStatus.slackRoleConfig.channel ? 'configured' : 'missing');
+  statusLine('Slack personal bot', localStatus.slackRoleConfig.personal ? 'ok' : 'warning', localStatus.slackRoleConfig.personal ? 'configured' : 'not selected or missing');
   statusGroup('Discord');
-  statusLine('Discord bot config', localStatus.discordConfig ? 'ok' : 'missing', localStatus.discordConfig ? 'configured' : 'missing');
+  statusLine('Discord channel bot', localStatus.discordRoleConfig.channel ? 'ok' : 'missing', localStatus.discordRoleConfig.channel ? 'configured' : 'missing');
+  statusLine('Discord personal bot', localStatus.discordRoleConfig.personal ? 'ok' : 'warning', localStatus.discordRoleConfig.personal ? 'configured' : 'not selected or missing');
   if (server) {
     statusGroup('Doctor');
     for (const check of server.doctor.checks) {
@@ -1787,17 +1987,20 @@ async function setupStatus() {
 async function runAll() {
   banner();
   await setupCore();
-  await setupProductMode();
   await setupAi();
-  const provider = await setupChannelProvider();
-  if (provider === 'discord') {
-    await setupDiscord();
-  } else {
-    await setupSlack();
-  }
-  await setupIdentity();
-  if (currentProductMode() === 'channel') {
-    await setupChannels();
+  const roles = await setupBotRoles();
+  const providers = await setupChannelProviders();
+  for (const provider of providers) {
+    for (const role of roles) {
+      if (provider === 'discord') {
+        await setupDiscord(role);
+      } else {
+        await setupSlack(role);
+      }
+    }
+    if (roles.includes('channel')) {
+      await setupChannels(provider);
+    }
   }
   await setupSchedule();
   await setupPolicy();
@@ -1817,17 +2020,25 @@ try {
       await setupCore();
       break;
     case 'mode':
+    case 'roles':
       await setupProductMode();
       break;
     case 'ai':
     case 'provider':
       await setupAi();
       break;
+    case 'providers':
+      await setupChannelProviders();
+      break;
     case 'slack':
-      await setupSlack();
+      for (const role of roleOptionRoles()) {
+        await setupSlack(role);
+      }
       break;
     case 'discord':
-      await setupDiscord();
+      for (const role of roleOptionRoles()) {
+        await setupDiscord(role);
+      }
       break;
     case 'identity':
       await setupIdentity();

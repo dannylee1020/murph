@@ -370,10 +370,10 @@ describe('setup CLI Slack app setup', () => {
     });
 
     expect(result.status, result.stderr + result.stdout).toBe(0);
-    expect(result.stdout).toContain('http://murph.test/api/slack/install?source=cli&team=T123');
+    expect(result.stdout).toContain('http://murph.test/api/slack/channel/install?source=cli&team=T123');
     expect(result.stdout).toContain('Opening this URL to install Murph');
     expect(result.stdout).toContain('Press Enter after Slack app installation finishes.');
-    expect(readFileSync(openedUrlPath!, 'utf8').trim()).toBe('http://murph.test/api/slack/install?source=cli&team=T123');
+    expect(readFileSync(openedUrlPath!, 'utf8').trim()).toBe('http://murph.test/api/slack/channel/install?source=cli&team=T123');
   });
 
   it('lets the user select one Slack CLI workspace when multiple are available', async () => {

@@ -10,7 +10,7 @@ import { readJson, redirect, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 import { readMurphConfig, updateMurphSetupDefaults } from '#lib/server/setup/config-file';
 import type { DiscordInstallResult } from '#lib/server/channels/discord/service';
-import type { SetupDefaults } from '#lib/types';
+import type { BotRole, SetupDefaults } from '#lib/types';
 
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -33,8 +33,12 @@ function signStateBody(body: string): string {
   return createHmac('sha256', discordStateSecret()).update(body).digest('base64url');
 }
 
-function encodeDiscordState(source = 'settings'): string {
-  const body = Buffer.from(JSON.stringify({ source, ts: Date.now() }), 'utf8').toString('base64url');
+function parseBotRole(value: string | null | undefined): BotRole {
+  return value === 'personal' ? 'personal' : 'channel';
+}
+
+function encodeDiscordState(source = 'settings', role: BotRole = 'channel'): string {
+  const body = Buffer.from(JSON.stringify({ source, role, ts: Date.now() }), 'utf8').toString('base64url');
   return `${body}.${signStateBody(body)}`;
 }
 
@@ -59,6 +63,18 @@ function discordStateSource(state: string | null): 'settings' | 'setup' {
     return parsed.source === 'setup' ? 'setup' : 'settings';
   } catch {
     return 'settings';
+  }
+}
+
+function discordStateRole(state: string | null): BotRole {
+  if (!state) return 'channel';
+  const [body] = state.split('.');
+  if (!body) return 'channel';
+  try {
+    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as { role?: string };
+    return parseBotRole(parsed.role);
+  } catch {
+    return 'channel';
   }
 }
 
@@ -96,7 +112,7 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
     workdayStartHour: currentDefaults.workdayStartHour,
     workdayEndHour: currentDefaults.workdayEndHour
   });
-  if (getRuntimeEnv().productMode === 'channel') {
+  if (result.role === 'channel') {
     const workspaceChannelDefaults = currentDefaults.workspaceChannels?.find(
       (entry) => entry.workspaceId === result.workspace.id
     );
@@ -119,15 +135,30 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
 
 export const discordRoutes: Route[] = [
   route('GET', '/api/discord/install', ({ req, res, url: requestUrl }) => {
-    const env = getRuntimeEnv();
+    const role = parseBotRole(requestUrl.searchParams.get('role'));
     const source = requestUrl.searchParams.get('source') === 'setup' ? 'setup' : 'settings';
-    if (!env.discordClientSecret) {
+    if (!getDiscordService().isRoleConfigured(role)) {
       redirect(res, discordReturnPath(source, '?error=discord_client_secret_required'));
       return;
     }
     const url = getDiscordService().buildInstallUrl({
       appUrl: publicAppUrl(req, requestUrl),
-      source: encodeDiscordState(source)
+      source: encodeDiscordState(source, role),
+      role
+    });
+    redirect(res, url ?? discordReturnPath(source, '?error=discord_not_configured'));
+  }),
+  route('GET', '/api/discord/:botRole/install', ({ req, res, url: requestUrl, params }) => {
+    const role = parseBotRole(params.botRole);
+    const source = requestUrl.searchParams.get('source') === 'setup' ? 'setup' : 'settings';
+    if (!getDiscordService().isRoleConfigured(role)) {
+      redirect(res, discordReturnPath(source, '?error=discord_client_secret_required'));
+      return;
+    }
+    const url = getDiscordService().buildInstallUrl({
+      appUrl: publicAppUrl(req, requestUrl),
+      source: encodeDiscordState(source, role),
+      role
     });
     redirect(res, url ?? discordReturnPath(source, '?error=discord_not_configured'));
   }),
@@ -143,6 +174,7 @@ export const discordRoutes: Route[] = [
     const guildId = url.searchParams.get('guild_id') ?? undefined;
     const state = url.searchParams.get('state');
     const source = discordStateSource(state);
+    const role = discordStateRole(state);
 
     if (!code) {
       redirect(res, discordReturnPath(source, '?error=missing_code'));
@@ -157,7 +189,7 @@ export const discordRoutes: Route[] = [
       await ensureRuntimeInitialized();
       const env = getRuntimeEnv();
       const redirectUri = env.discordRedirectUri ?? `${publicAppUrl(req, url)}/api/discord/oauth/callback`;
-      const install = await getDiscordService().exchangeCode(code, guildId, redirectUri);
+      const install = await getDiscordService().exchangeCode(code, guildId, redirectUri, role);
       const { workspace } = install;
       saveAuthedDiscordUserAsWorkspaceOwner(install);
       await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
@@ -186,7 +218,7 @@ export const discordRoutes: Route[] = [
     try {
       await ensureRuntimeInitialized();
       const guild = await getDiscordService().fetchGuild(guildId);
-      const workspace = await getDiscordService().saveGuildWorkspace(guild);
+      const workspace = await getDiscordService().saveGuildWorkspace(guild, 'channel');
       await getChannelRegistry().getIngress('discord')?.start?.({ provider: 'discord' });
       const refresh = await refreshRuntimeState({
         reason: 'channel_setup_updated',

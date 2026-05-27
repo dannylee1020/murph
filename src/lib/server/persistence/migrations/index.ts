@@ -4,6 +4,7 @@ import { addChannelEvents } from './003_add_channel_events.js';
 import { addMemoryIndexRuns } from './004_add_memory_index_runs.js';
 import { addRuntimeRefreshState } from './005_add_runtime_refresh_state.js';
 import { addWorkspaceSubscriptions } from './006_add_workspace_subscriptions.js';
+import { addBotInstallations } from './007_add_bot_installations.js';
 import type { Migration } from './types.js';
 
 export const migrations: Migration[] = [
@@ -12,5 +13,6 @@ export const migrations: Migration[] = [
   addChannelEvents,
   addMemoryIndexRuns,
   addRuntimeRefreshState,
-  addWorkspaceSubscriptions
+  addWorkspaceSubscriptions,
+  addBotInstallations
 ];

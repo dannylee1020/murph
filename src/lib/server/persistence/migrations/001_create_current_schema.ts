@@ -15,6 +15,21 @@ export const createCurrentSchema: Migration = {
         UNIQUE(provider, external_workspace_id)
       );
 
+      CREATE TABLE IF NOT EXISTS bot_installations (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        role TEXT NOT NULL,
+        external_workspace_id TEXT NOT NULL,
+        bot_user_id TEXT,
+        app_id TEXT,
+        represented_user_id TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        installed_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(provider, external_workspace_id, role)
+      );
+
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL,

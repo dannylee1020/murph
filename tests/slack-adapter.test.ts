@@ -102,10 +102,17 @@ describe('normalizeSlackEvent', () => {
     expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
   });
 
-  it('routes owner direct messages in personal mode without a channel session or subscription', async () => {
-    process.env.MURPH_PRODUCT_MODE = 'personal';
+  it('routes teammate direct messages to the represented owner through a personal bot', async () => {
     const { store, workspace, normalizeSlackEvent } = await setup({ subscribeOwner: false });
     store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
+    const personalInstall = store.upsertBotInstallation({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      role: 'personal',
+      botUserId: 'UPERSONALBOT',
+      representedUserId: 'UOWNER'
+    });
     const { updateMurphSetupDefaults } = await import('../src/lib/server/setup/config-file');
     updateMurphSetupDefaults({
       channelProvider: 'slack',
@@ -122,21 +129,24 @@ describe('normalizeSlackEvent', () => {
     const result = normalizeSlackEvent(slackEvent({
       channel: 'D1',
       channel_type: 'im',
-      user: 'UOWNER',
+      user: 'UASKER',
       text: 'draft a reply',
       ts: '222.333'
-    }), { eventId: 'EvDm', teamId: 'T1' });
+    }), { eventId: 'EvDm', teamId: 'T1', botRole: 'personal', botInstallationId: personalInstall.id });
 
     expect(result.task).toMatchObject({
       workspaceId: 'T1',
+      botRole: 'personal',
+      botInstallationId: personalInstall.id,
       conversationKind: 'direct',
       targetUserId: 'UOWNER',
-      actorUserId: 'UOWNER',
+      actorUserId: 'UASKER',
       thread: { provider: 'slack', channelId: 'D1', threadTs: '222.333' }
     });
     expect(store.getDirectConversationByChannel('slack', 'D1')).toMatchObject({
       workspaceId: workspace.id,
-      externalUserId: 'UOWNER'
+      externalUserId: 'UASKER',
+      botInstallationId: personalInstall.id
     });
   });
 

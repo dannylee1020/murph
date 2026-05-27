@@ -7,6 +7,8 @@ description: Connect Slack as a Murph channel.
 
 Slack setup can create the Murph Slack app from a manifest, or you can configure the app manually in Slack's dashboard. Do the Slack dashboard steps first when manual setup is needed, then run `murph setup slack` to validate credentials, open OAuth, save your workspace, and choose watched channels.
 
+For both personal and channel behavior in one runtime, create two Slack apps: one personal bot for DMs and one channel bot for watched-channel handoff. Use `/api/slack/personal/install`, `/api/slack/personal/events`, and `SLACK_PERSONAL_*` variables for the personal app. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for the channel app. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
+
 ## What You Need
 
 - Access to the [Slack apps dashboard](https://api.slack.com/apps).
@@ -113,6 +115,13 @@ Run:
 
 ```bash
 murph setup slack
+```
+
+To configure one role explicitly:
+
+```bash
+murph setup slack --role channel
+murph setup slack --role personal
 ```
 
 You can also choose Slack during the full setup flow:

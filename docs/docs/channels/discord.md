@@ -7,6 +7,8 @@ description: Connect Discord as a Murph channel.
 
 Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup discord` validate the app, open the authorization flow, and save the server, your OAuth identity, and watched channels.
 
+For both personal and channel behavior in one runtime, create two Discord applications: one personal bot for DMs and one channel bot for watched-channel handoff. Use `/api/discord/personal/install` and `DISCORD_PERSONAL_*` variables for the personal bot. Use `/api/discord/channel/install` and `DISCORD_CHANNEL_*` variables for the channel bot. The unqualified `/api/discord/install` endpoint and legacy `DISCORD_*` variables remain compatibility aliases for the channel bot.
+
 ## What You Need
 
 - Access to the [Discord Developer Portal](https://discord.com/developers/applications).
@@ -68,6 +70,13 @@ Run:
 
 ```bash
 murph setup discord
+```
+
+To configure one role explicitly:
+
+```bash
+murph setup discord --role channel
+murph setup discord --role personal
 ```
 
 Setup will ask for:

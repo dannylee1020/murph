@@ -40,6 +40,8 @@ export type ToolSideEffectClass = 'read' | 'write' | 'external_write';
 
 export type ProductMode = 'personal' | 'channel';
 
+export type BotRole = 'personal' | 'channel';
+
 export interface Workspace {
     id: string;
     provider: ChannelProvider;
@@ -47,6 +49,20 @@ export interface Workspace {
     name: string;
     botUserId?: string;
     installedAt?: string;
+}
+
+export interface BotInstallation {
+    id: string;
+    workspaceId: string;
+    provider: ChannelProvider;
+    role: BotRole;
+    externalWorkspaceId: string;
+    botUserId?: string;
+    appId?: string;
+    representedUserId?: string;
+    status: 'active' | 'paused';
+    installedAt: string;
+    updatedAt: string;
 }
 
 export interface UserSchedule {
@@ -89,6 +105,7 @@ export interface WorkspaceSubscription {
 export interface DirectConversation {
     id: string;
     provider: ChannelProvider;
+    botInstallationId?: string;
     workspaceId?: string;
     externalUserId: string;
     channelId: string;
@@ -98,6 +115,8 @@ export interface DirectConversation {
 
 export interface ChannelThreadRef {
     provider?: ChannelProvider;
+    botRole?: BotRole;
+    botInstallationId?: string;
     channelId: string;
     threadTs: string;
     threadChannelId?: string;
@@ -211,6 +230,7 @@ export interface WorkspaceMemory {
 }
 
 export interface SetupDefaults {
+    botRoles?: BotRole[];
     channelProvider?: ChannelProvider;
     workspaceId?: string;
     ownerUserId?: string;
@@ -305,6 +325,8 @@ export interface ContinuityTask {
     id: string;
     source: TaskSource;
     workspaceId: string;
+    botRole?: BotRole;
+    botInstallationId?: string;
     sessionId?: string;
     thread: ThreadRef;
     conversationKind?: 'direct' | 'channel';
@@ -330,7 +352,7 @@ export interface ChannelAdapter {
     >;
     normalizeEvent(
         event: Record<string, unknown>,
-        envelope?: { eventId?: string; teamId?: string },
+        envelope?: { eventId?: string; teamId?: string; botRole?: BotRole; botInstallationId?: string },
     ): ContinuityTask | null;
     fetchThread(
         workspace: Workspace,

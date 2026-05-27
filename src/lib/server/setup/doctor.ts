@@ -148,13 +148,11 @@ export function getSetupDoctor(): SetupDoctorPayload {
   const channelTargetCount = configuredChannelTargetCount(setupDefaults);
   const connectedChannelCount = Number(Boolean(slackWorkspace)) + Number(Boolean(hasDiscordWorkspace && discordConfigured));
   checks.push(
-    env.productMode === 'personal'
-      ? connectedChannelCount > 0
-        ? check('channels', 'Personal bot', 'ok', 'A bot connection is ready for direct messages.')
-        : check('channels', 'Personal bot', 'action_required', 'Connect Slack or Discord so you can message Murph directly.')
-      : channelTargetCount > 0
-        ? check('channels', 'Watched channels', 'ok', `${channelTargetCount} workspace channel default${channelTargetCount === 1 ? '' : 's'} configured.`)
-        : check('channels', 'Watched channels', 'action_required', 'Choose channels or explicitly allow all accessible channels.')
+    channelTargetCount > 0
+      ? check('channels', 'Watched channels', 'ok', `${channelTargetCount} workspace channel default${channelTargetCount === 1 ? '' : 's'} configured.`)
+      : connectedChannelCount > 0
+        ? check('channels', 'Bot connections', 'warning', 'A bot is connected, but watched-channel defaults are not configured yet.', 'Choose channels if this runtime should run channel handoffs.')
+        : check('channels', 'Bot connections', 'action_required', 'Connect Slack or Discord, then choose channels or explicitly allow all accessible channels.')
   );
 
   const notion = getNotionStatus();

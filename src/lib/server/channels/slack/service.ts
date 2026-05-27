@@ -3,7 +3,8 @@ import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { readSecret, writeSecret } from '#lib/server/credentials/local-store';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#lib/server/integrations/capabilities';
-import type { ChannelMessage, ThreadRef, Workspace } from '#lib/types';
+import { readMurphConfig } from '#lib/server/setup/config-file';
+import type { BotInstallation, BotRole, ChannelMessage, ThreadRef, Workspace } from '#lib/types';
 
 interface OAuthExchangeResponse {
   ok: boolean;
@@ -139,24 +140,58 @@ export interface SlackSearchResult {
 
 export interface SlackInstallResult {
   workspace: Workspace;
+  role: BotRole;
+  botInstallation?: BotInstallation;
   authedUser?: SlackMember;
 }
 
 export class SlackService {
-  private readonly store = getStore();
+  private get store() {
+    return getStore();
+  }
 
   private get env() {
     return getRuntimeEnv();
   }
 
-  buildInstallUrl(appUrl = this.env.appUrl, teamId?: string, source?: string): string | undefined {
-    if (!this.env.slackClientId) {
+  private clientId(role: BotRole): string | undefined {
+    const config = readMurphConfig();
+    return role === 'personal'
+      ? process.env.SLACK_PERSONAL_CLIENT_ID ?? config.channels?.slack?.bots?.personal?.clientId
+      : process.env.SLACK_CHANNEL_CLIENT_ID ?? config.channels?.slack?.bots?.channel?.clientId ?? this.env.slackClientId;
+  }
+
+  private clientSecret(role: BotRole): string | undefined {
+    return role === 'personal'
+      ? process.env.SLACK_PERSONAL_CLIENT_SECRET ?? readSecret('slack', 'personal_client_secret')
+      : process.env.SLACK_CHANNEL_CLIENT_SECRET ?? readSecret('slack', 'channel_client_secret') ?? this.env.slackClientSecret;
+  }
+
+  private signingSecret(role: BotRole): string | undefined {
+    return role === 'personal'
+      ? process.env.SLACK_PERSONAL_SIGNING_SECRET ?? readSecret('slack', 'personal_signing_secret')
+      : process.env.SLACK_CHANNEL_SIGNING_SECRET ?? readSecret('slack', 'channel_signing_secret') ?? this.env.slackSigningSecret;
+  }
+
+  appToken(role: BotRole = 'channel'): string | undefined {
+    return role === 'personal'
+      ? process.env.SLACK_PERSONAL_APP_TOKEN ?? readSecret('slack', 'personal_app_token')
+      : process.env.SLACK_CHANNEL_APP_TOKEN ?? readSecret('slack', 'channel_app_token') ?? this.env.slackAppToken;
+  }
+
+  isRoleConfigured(role: BotRole = 'channel'): boolean {
+    return Boolean(this.clientId(role) && this.clientSecret(role) && (this.env.slackEventsMode === 'http' || this.appToken(role)));
+  }
+
+  buildInstallUrl(appUrl = this.env.appUrl, teamId?: string, source?: string, role: BotRole = 'channel'): string | undefined {
+    const clientId = this.clientId(role);
+    if (!clientId) {
       return undefined;
     }
 
     const redirectUri = `${appUrl}/api/slack/oauth/callback`;
     const params = new URLSearchParams({
-      client_id: this.env.slackClientId,
+      client_id: clientId,
       scope:
         'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read,im:history,mpim:history',
       user_scope: 'search:read',
@@ -165,15 +200,17 @@ export class SlackService {
     if (teamId?.trim()) {
       params.set('team', teamId.trim());
     }
-    if (source === 'cli') {
-      params.set('state', 'cli');
+    if (source === 'cli' || role === 'personal') {
+      params.set('state', role === 'personal' ? `personal:${source ?? 'settings'}` : source ?? 'settings');
     }
 
     return `https://slack.com/oauth/v2/authorize?${params.toString()}`;
   }
 
-  async exchangeCode(code: string, appUrl = this.env.appUrl): Promise<SlackInstallResult> {
-    if (!this.env.slackClientId || !this.env.slackClientSecret) {
+  async exchangeCode(code: string, appUrl = this.env.appUrl, role: BotRole = 'channel'): Promise<SlackInstallResult> {
+    const clientId = this.clientId(role);
+    const clientSecret = this.clientSecret(role);
+    if (!clientId || !clientSecret) {
       throw new Error('Slack OAuth is not configured');
     }
 
@@ -181,8 +218,8 @@ export class SlackService {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: this.env.slackClientId,
-        client_secret: this.env.slackClientSecret,
+        client_id: clientId,
+        client_secret: clientSecret,
         code,
         redirect_uri: `${appUrl}/api/slack/oauth/callback`
       })
@@ -197,14 +234,18 @@ export class SlackService {
       provider: 'slack',
       externalWorkspaceId: payload.team.id,
       name: payload.team.name ?? payload.team.id,
-      botUserId: payload.bot_user_id
+      botUserId: payload.bot_user_id,
+      role
     });
+    let botInstallation = this.store.getBotInstallation('slack', workspace.externalWorkspaceId, role);
     writeSecret('slack', 'bot_token', payload.access_token, {
       workspaceId: workspace.id,
       externalWorkspaceId: workspace.externalWorkspaceId,
+      botInstallationId: botInstallation?.id,
       metadata: {
         teamName: workspace.name,
         botUserId: payload.bot_user_id,
+        botRole: role,
         validatedAt: new Date().toISOString()
       }
     });
@@ -228,11 +269,23 @@ export class SlackService {
         }))
       : undefined;
 
-    return { workspace, authedUser };
+    if (role === 'personal' && authedUser?.id) {
+      botInstallation = this.store.upsertBotInstallation({
+        workspaceId: workspace.id,
+        provider: 'slack',
+        role,
+        externalWorkspaceId: workspace.externalWorkspaceId,
+        botUserId: workspace.botUserId,
+        representedUserId: authedUser.id
+      });
+    }
+
+    return { workspace, role, botInstallation, authedUser };
   }
 
-  verifySignature(headers: Headers, rawBody: string): boolean {
-    if (!this.env.slackSigningSecret) {
+  verifySignature(headers: Headers, rawBody: string, role: BotRole = 'channel'): boolean {
+    const signingSecret = this.signingSecret(role);
+    if (!signingSecret) {
       return true;
     }
 
@@ -246,7 +299,7 @@ export class SlackService {
     const base = `v0:${timestamp}:${rawBody}`;
     const expected =
       'v0=' +
-      createHmac('sha256', this.env.slackSigningSecret).update(base).digest('hex');
+      createHmac('sha256', signingSecret).update(base).digest('hex');
 
     const expectedBuffer = Buffer.from(expected);
     const actualBuffer = Buffer.from(signature);
@@ -258,11 +311,18 @@ export class SlackService {
     return timingSafeEqual(expectedBuffer, actualBuffer);
   }
 
-  getBotToken(workspaceIdOrTeamId: string): string {
+  getBotToken(workspaceIdOrTeamId: string, botInstallationId?: string): string {
     const workspace =
       this.store.getWorkspaceById(workspaceIdOrTeamId) ??
       this.store.getWorkspaceByExternalId('slack', workspaceIdOrTeamId) ??
       this.store.getFirstWorkspace();
+
+    const scopedToken = botInstallationId
+      ? readSecret('slack', 'bot_token', { botInstallationId })
+      : undefined;
+    if (scopedToken) {
+      return scopedToken;
+    }
 
     const token = workspace
       ? readSecret('slack', 'bot_token', {
@@ -318,7 +378,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.replies', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.id)}`,
+        authorization: `Bearer ${this.getBotToken(workspace.id, thread.botInstallationId)}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
@@ -384,14 +444,14 @@ export class SlackService {
   }
 
   async postReply(workspace: Workspace, thread: ThreadRef, text: string): Promise<void> {
-    await this.postMessage(workspace, thread.channelId, text, thread.threadTs);
+    await this.postMessage(workspace, thread.channelId, text, thread.threadTs, thread.botInstallationId);
   }
 
-  async postMessage(workspace: Workspace, channelId: string, text: string, threadTs?: string): Promise<{ ts?: string }> {
+  async postMessage(workspace: Workspace, channelId: string, text: string, threadTs?: string, botInstallationId?: string): Promise<{ ts?: string }> {
     const response = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId, botInstallationId)}`,
         'content-type': 'application/json; charset=utf-8'
       },
       body: JSON.stringify({

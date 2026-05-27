@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Workspace } from '#lib/types';
+import type { BotRole, Workspace } from '#lib/types';
 import type { Db } from './_shared.js';
 
 export interface InstallInput {
@@ -7,6 +7,9 @@ export interface InstallInput {
   externalWorkspaceId?: string;
   name: string;
   botUserId?: string;
+  role?: BotRole;
+  appId?: string;
+  representedUserId?: string;
 }
 
 export interface SlackEventInput {

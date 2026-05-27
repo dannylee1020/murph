@@ -3,6 +3,7 @@ import { normalizeSlackEvent, type SlackIgnoredReason } from '#lib/server/channe
 import { getGateway } from '#lib/server/runtime/gateway';
 import { getStore } from '#lib/server/persistence/store';
 import { markIngressIgnored } from '#lib/server/channels/ingress-health';
+import type { BotRole } from '#lib/types';
 
 export interface SlackEnvelopeHandleResult {
   ok: boolean;
@@ -36,6 +37,8 @@ export async function handleSlackEventEnvelope(
     rawPayload?: string;
     envelopeId?: string;
     source?: 'http' | 'socket';
+    botRole?: BotRole;
+    botInstallationId?: string;
   } = {}
 ): Promise<SlackEnvelopeHandleResult> {
   const event = eventFromPayload(payload);
@@ -43,7 +46,10 @@ export async function handleSlackEventEnvelope(
   const teamId = firstString(payload.team_id, payload.authorizations && Array.isArray(payload.authorizations)
     ? (payload.authorizations[0] as { team_id?: unknown } | undefined)?.team_id
     : undefined);
-  const normalized = normalizeSlackEvent(event, { eventId, teamId });
+  const botRole = options.botRole ?? 'channel';
+  const botInstallationId = options.botInstallationId ??
+    (teamId ? getStore().getBotInstallation('slack', teamId, botRole)?.id : undefined);
+  const normalized = normalizeSlackEvent(event, { eventId, teamId, botRole, botInstallationId });
 
   if (!normalized.task) {
     markIngressIgnored('slack', normalized.ignoredReason);
@@ -107,6 +113,6 @@ export async function handleSlackEventEnvelope(
   return { ok: true, taskId: routedTask.id, audit };
 }
 
-export function verifySlackHttpSignature(headers: Headers, rawBody: string): boolean {
-  return getSlackService().verifySignature(headers, rawBody);
+export function verifySlackHttpSignature(headers: Headers, rawBody: string, role: BotRole = 'channel'): boolean {
+  return getSlackService().verifySignature(headers, rawBody, role);
 }

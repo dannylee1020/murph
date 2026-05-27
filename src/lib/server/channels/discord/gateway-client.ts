@@ -3,6 +3,7 @@ import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getGateway } from '#lib/server/runtime/gateway';
 import { getStore } from '#lib/server/persistence/store';
 import { normalizeDiscordEventWithReason } from '#lib/server/channels/discord/adapter';
+import type { BotRole } from '#lib/types';
 import {
   markIngressClosed,
   markIngressConfigured,
@@ -17,15 +18,18 @@ const DISCORD_GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
 const INTENTS = (1 << 0) | (1 << 9) | (1 << 15);
 
 export class DiscordGatewayClient {
+  constructor(private readonly role: BotRole = 'channel') {}
+
   private socket: WebSocket | null = null;
   private heartbeatHandle: NodeJS.Timeout | null = null;
   private sequence: number | null = null;
   private started = false;
 
   ensureStarted(): void {
-    const hasDiscordWorkspace = getStore().listWorkspaces().some((workspace) => workspace.provider === 'discord');
-    if (this.started || !hasDiscordWorkspace || !getDiscordService().isConfigured()) {
-      markIngressConfigured('discord', hasDiscordWorkspace && getDiscordService().isConfigured());
+    const hasDiscordWorkspace = getStore().listBotInstallations({ provider: 'discord', role: this.role }).length > 0;
+    const configured = Boolean(getDiscordService().botToken(this.role));
+    if (this.started || !hasDiscordWorkspace || !configured) {
+      markIngressConfigured('discord', hasDiscordWorkspace && configured);
       return;
     }
     this.started = true;
@@ -82,7 +86,7 @@ export class DiscordGatewayClient {
       this.send({
         op: 2,
         d: {
-          token: getDiscordService().getBotToken(),
+          token: getDiscordService().getBotToken(this.role),
           intents: INTENTS,
           properties: {
             os: process.platform,
@@ -111,9 +115,14 @@ export class DiscordGatewayClient {
 
     markIngressEvent('discord');
     const guildId = typeof payload.d.guild_id === 'string' ? payload.d.guild_id : undefined;
+    const botInstallation = guildId
+      ? getStore().getBotInstallation('discord', guildId, this.role)
+      : getStore().listBotInstallations({ provider: 'discord', role: this.role })[0];
     const normalized = normalizeDiscordEventWithReason(payload.d as Record<string, unknown>, {
       eventId: typeof payload.d.id === 'string' ? payload.d.id : undefined,
-      teamId: guildId
+      teamId: guildId,
+      botRole: this.role,
+      botInstallationId: botInstallation?.id
     });
     if (!normalized.task) {
       markIngressIgnored('discord', normalized.ignoredReason);
@@ -171,7 +180,7 @@ export class DiscordGatewayClient {
       const guild = name
         ? { id, name }
         : await getDiscordService().fetchGuild(id);
-      await getDiscordService().saveGuildWorkspace(guild);
+      await getDiscordService().saveGuildWorkspace(guild, this.role);
     } catch (error) {
       console.warn('[discord] failed to save guild workspace:', error instanceof Error ? error.message : error);
     }
@@ -191,11 +200,14 @@ export class DiscordGatewayClient {
   }
 }
 
-let client: DiscordGatewayClient | null = null;
+const clients = new Map<BotRole, DiscordGatewayClient>();
 
-export function getDiscordGatewayClient(): DiscordGatewayClient {
+export function getDiscordGatewayClient(role: BotRole = 'channel'): DiscordGatewayClient {
+  const client = clients.get(role);
   if (!client) {
-    client = new DiscordGatewayClient();
+    const next = new DiscordGatewayClient(role);
+    clients.set(role, next);
+    return next;
   }
   return client;
 }

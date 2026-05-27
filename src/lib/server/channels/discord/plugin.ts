@@ -60,7 +60,8 @@ export function createDiscordChannelPlugin(): ChannelPlugin {
     },
     ingress: {
       start() {
-        getDiscordGatewayClient().ensureStarted();
+        getDiscordGatewayClient('channel').ensureStarted();
+        getDiscordGatewayClient('personal').ensureStarted();
       }
     }
   };

@@ -11,6 +11,8 @@ export type DiscordIgnoredReason =
   | 'missing_thread'
   | 'no_mentioned_session_owner'
   | 'ambiguous_session_target'
+  | 'channel_bot_direct_message'
+  | 'personal_bot_channel_message'
   | PersonalDirectIgnoredReason;
 
 export type DiscordNormalizeResult =
@@ -101,14 +103,14 @@ function buildTriggerMessage(
 
 export function normalizeDiscordEvent(
   event: Record<string, unknown>,
-  envelope?: { eventId?: string; teamId?: string }
+  envelope?: { eventId?: string; teamId?: string; botRole?: 'personal' | 'channel'; botInstallationId?: string }
 ): ContinuityTask | null {
   return normalizeDiscordEventWithReason(event, envelope).task ?? null;
 }
 
 export function normalizeDiscordEventWithReason(
   event: Record<string, unknown>,
-  envelope?: { eventId?: string; teamId?: string }
+  envelope?: { eventId?: string; teamId?: string; botRole?: 'personal' | 'channel'; botInstallationId?: string }
 ): DiscordNormalizeResult {
   const workspaceId = envelope?.teamId ?? (typeof event.guild_id === 'string' ? event.guild_id : undefined);
   const store = getStore();
@@ -118,8 +120,14 @@ export function normalizeDiscordEventWithReason(
   const actorUserId = typeof event.author === 'object' && event.author && typeof (event.author as { id?: unknown }).id === 'string'
     ? (event.author as { id: string }).id
     : undefined;
+  const botRole = envelope?.botRole ?? 'channel';
   if (!workspaceId && actorUserId) {
-    const target = resolvePersonalDirectTarget('discord', actorUserId);
+    if (botRole !== 'personal') {
+      return { ignoredReason: 'channel_bot_direct_message' };
+    }
+    const target = resolvePersonalDirectTarget('discord', actorUserId, {
+      botInstallationId: envelope?.botInstallationId
+    });
     if (!target.ok) {
       return { ignoredReason: target.ignoredReason };
     }
@@ -136,6 +144,7 @@ export function normalizeDiscordEventWithReason(
     const text = typeof event.content === 'string' ? event.content : '';
     store.upsertDirectConversation({
       provider: 'discord',
+      botInstallationId: envelope?.botInstallationId,
       workspaceId: target.workspace.id,
       externalUserId: actorUserId,
       channelId: thread.channelId,
@@ -147,7 +156,9 @@ export function normalizeDiscordEventWithReason(
         id: randomUUID(),
         source: 'discord_event',
         workspaceId: target.workspace.id,
-        thread,
+        botRole,
+        botInstallationId: envelope?.botInstallationId,
+        thread: { ...thread, botRole, botInstallationId: envelope?.botInstallationId },
         conversationKind: 'direct',
         triggerMessage: buildTriggerMessage(thread, actorUserId, text, event),
         targetUserId: target.ownerUserId,
@@ -166,6 +177,9 @@ export function normalizeDiscordEventWithReason(
 
   if (!workspace) {
     return { ignoredReason: 'workspace_not_installed' };
+  }
+  if (botRole === 'personal') {
+    return { ignoredReason: 'personal_bot_channel_message' };
   }
 
   if (!actorUserId || actorUserId === workspace.botUserId) {
@@ -206,7 +220,9 @@ export function normalizeDiscordEventWithReason(
       id: randomUUID(),
       source: 'discord_event',
       workspaceId,
-      thread,
+      botRole: 'channel',
+      botInstallationId: envelope?.botInstallationId,
+      thread: { ...thread, botRole: 'channel', botInstallationId: envelope?.botInstallationId },
       conversationKind: 'channel',
       triggerMessage: buildTriggerMessage(thread, actorUserId, text, event),
       targetUserId,

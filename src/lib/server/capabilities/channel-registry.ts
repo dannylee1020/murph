@@ -80,7 +80,7 @@ export class ChannelRegistry {
   normalizeEvent(
     provider: ChannelProvider,
     event: Record<string, unknown>,
-    envelope?: { eventId?: string; teamId?: string }
+    envelope?: { eventId?: string; teamId?: string; botRole?: 'personal' | 'channel'; botInstallationId?: string }
   ): ContinuityTask | null {
     return this.get(provider).normalizeEvent(event, envelope);
   }

@@ -4,6 +4,7 @@ import type { Db } from './_shared.js';
 
 export interface DirectConversationInput {
   provider: ChannelProvider;
+  botInstallationId?: string;
   workspaceId?: string;
   externalUserId: string;
   channelId: string;
@@ -14,6 +15,7 @@ export interface DirectConversationInput {
 interface DirectConversationRow {
   id: string;
   provider: ChannelProvider;
+  bot_installation_id?: string;
   workspace_id?: string;
   external_user_id: string;
   channel_id: string;
@@ -25,6 +27,7 @@ function mapDirectConversation(row: DirectConversationRow): DirectConversation {
   return {
     id: row.id,
     provider: row.provider,
+    botInstallationId: row.bot_installation_id ?? undefined,
     workspaceId: row.workspace_id ?? undefined,
     externalUserId: row.external_user_id,
     channelId: row.channel_id,
@@ -47,10 +50,11 @@ export function upsertDirectConversation(db: Db, input: DirectConversationInput)
 
   db.prepare(
     `INSERT INTO direct_conversations (
-      id, provider, workspace_id, external_user_id, channel_id,
+      id, provider, bot_installation_id, workspace_id, external_user_id, channel_id,
       last_selected_workspace_id, last_seen_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(provider, channel_id) DO UPDATE SET
+      bot_installation_id = excluded.bot_installation_id,
       workspace_id = excluded.workspace_id,
       external_user_id = excluded.external_user_id,
       last_selected_workspace_id = excluded.last_selected_workspace_id,
@@ -58,6 +62,7 @@ export function upsertDirectConversation(db: Db, input: DirectConversationInput)
   ).run(
     id,
     input.provider,
+    input.botInstallationId ?? null,
     input.workspaceId ?? null,
     input.externalUserId,
     input.channelId,
@@ -78,4 +83,3 @@ export function getDirectConversationByChannel(
     .get(provider, channelId) as DirectConversationRow | undefined;
   return row ? mapDirectConversation(row) : undefined;
 }
-

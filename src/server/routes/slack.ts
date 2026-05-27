@@ -4,11 +4,11 @@ import { handleSlackEventEnvelope, verifySlackHttpSignature } from '#lib/server/
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getStore } from '#lib/server/persistence/store';
-import { getRuntimeEnv } from '#lib/server/util/env';
 import { readMurphConfig, updateMurphSetupDefaults } from '#lib/server/setup/config-file';
 import { readBody, redirect, sendJson, toHeaders } from '../http.js';
 import { route, type Route } from '../router.js';
 import type { SlackInstallResult } from '#lib/server/channels/slack/service';
+import type { BotRole } from '#lib/types';
 
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -24,6 +24,17 @@ function publicAppUrl(req: Parameters<typeof toHeaders>[0], url: URL): string {
 
 function getSlackWorkspace() {
   return getSlackService().getUsableWorkspace();
+}
+
+function parseBotRole(value: string | null | undefined): BotRole {
+  return value === 'personal' ? 'personal' : 'channel';
+}
+
+function parseSlackState(state: string | null): { role: BotRole; source?: string } {
+  if (state?.startsWith('personal:')) {
+    return { role: 'personal', source: state.slice('personal:'.length) || undefined };
+  }
+  return { role: 'channel', source: state ?? undefined };
 }
 
 function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
@@ -44,7 +55,7 @@ function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
     workdayStartHour: currentDefaults.workdayStartHour,
     workdayEndHour: currentDefaults.workdayEndHour
   });
-  if (getRuntimeEnv().productMode === 'channel') {
+  if (result.role === 'channel') {
     const workspaceChannelDefaults = currentDefaults.workspaceChannels?.find(
       (entry) => entry.workspaceId === result.workspace.id
     );
@@ -86,7 +97,7 @@ export const slackRoutes: Route[] = [
     await ensureRuntimeInitialized();
     const rawBody = await readBody(req);
 
-    if (!verifySlackHttpSignature(toHeaders(req), rawBody)) {
+    if (!verifySlackHttpSignature(toHeaders(req), rawBody, 'channel')) {
       console.warn('[slack] rejected event: invalid_signature');
       sendJson(res, { ok: false, error: 'invalid_signature' }, 401);
       return;
@@ -99,20 +110,54 @@ export const slackRoutes: Route[] = [
       return;
     }
 
-    const result = await handleSlackEventEnvelope(payload, { rawPayload: rawBody, source: 'http' });
+    const result = await handleSlackEventEnvelope(payload, { rawPayload: rawBody, source: 'http', botRole: 'channel' });
+    sendJson(res, result);
+  }),
+  route('POST', '/api/slack/:botRole/events', async ({ req, res, params }) => {
+    await ensureRuntimeInitialized();
+    const botRole = parseBotRole(params.botRole);
+    const rawBody = await readBody(req);
+
+    if (!verifySlackHttpSignature(toHeaders(req), rawBody, botRole)) {
+      console.warn('[slack] rejected event: invalid_signature');
+      sendJson(res, { ok: false, error: 'invalid_signature' }, 401);
+      return;
+    }
+
+    const payload = JSON.parse(rawBody) as Record<string, unknown>;
+
+    if (payload.type === 'url_verification' && typeof payload.challenge === 'string') {
+      sendJson(res, { challenge: payload.challenge });
+      return;
+    }
+
+    const result = await handleSlackEventEnvelope(payload, { rawPayload: rawBody, source: 'http', botRole });
     sendJson(res, result);
   }),
   route('GET', '/api/slack/install', ({ req, res, url: requestUrl }) => {
+    const role = parseBotRole(requestUrl.searchParams.get('role'));
     const url = getSlackService().buildInstallUrl(
       publicAppUrl(req, requestUrl),
       requestUrl.searchParams.get('team') ?? undefined,
-      requestUrl.searchParams.get('source') ?? undefined
+      requestUrl.searchParams.get('source') ?? undefined,
+      role
+    );
+    redirect(res, url ?? '/settings?error=slack_not_configured');
+  }),
+  route('GET', '/api/slack/:botRole/install', ({ req, res, url: requestUrl, params }) => {
+    const role = parseBotRole(params.botRole);
+    const url = getSlackService().buildInstallUrl(
+      publicAppUrl(req, requestUrl),
+      requestUrl.searchParams.get('team') ?? undefined,
+      requestUrl.searchParams.get('source') ?? undefined,
+      role
     );
     redirect(res, url ?? '/settings?error=slack_not_configured');
   }),
   route('GET', '/api/slack/oauth/callback', async ({ req, res, url }) => {
     const code = url.searchParams.get('code');
-    const source = url.searchParams.get('state');
+    const state = parseSlackState(url.searchParams.get('state'));
+    const source = state.source;
     const sourceSuffix = source === 'cli' ? '&source=cli' : '';
 
     if (!code) {
@@ -122,7 +167,7 @@ export const slackRoutes: Route[] = [
 
     try {
       await ensureRuntimeInitialized();
-      const install = await getSlackService().exchangeCode(code, publicAppUrl(req, url));
+      const install = await getSlackService().exchangeCode(code, publicAppUrl(req, url), state.role);
       const { workspace } = install;
       saveAuthedUserAsSetupOwner(install);
       await getChannelRegistry().getIngress('slack')?.start?.({ provider: 'slack' });

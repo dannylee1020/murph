@@ -22,6 +22,13 @@ import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getIngressHealth } from '#lib/server/channels/ingress-health';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import {
+  buildSetupRoleStatus,
+  normalizeSetupBotRoles,
+  selectedSetupBotRoles,
+  selectedSetupRolesReady,
+  workspaceChannelsConfigured
+} from '#lib/server/setup/bot-roles';
+import {
   providerLocksOwnerIdentity,
   requireMatchingSetupOwner,
   setupOwnerForWorkspace
@@ -83,6 +90,7 @@ function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
     } => Boolean(entry.workspaceId && (entry.channelScopeMode === 'all_accessible' || entry.selectedChannels.length > 0)));
 
   return {
+    botRoles: normalizeSetupBotRoles(value.botRoles),
     channelProvider: value.channelProvider?.trim() || undefined,
     workspaceId: value.workspaceId?.trim() || undefined,
     ownerUserId: value.ownerUserId?.trim() || undefined,
@@ -178,16 +186,6 @@ function resolveSetupDefaultsForWorkspace(workspace: Workspace | undefined, defa
         ownerDisplayName: undefined,
         ...channelDefaults
       };
-}
-
-function workspaceChannelsConfigured(defaults: SetupDefaults): boolean {
-  if (defaults.workspaceChannels?.length) {
-    return defaults.workspaceChannels.every((entry) => (
-      entry.channelScopeMode === 'all_accessible' || entry.selectedChannels.length > 0
-    ));
-  }
-
-  return defaults.channelScopeMode === 'all_accessible' || (defaults.selectedChannels?.length ?? 0) > 0;
 }
 
 function subscriptionScopeForWorkspace(
@@ -383,6 +381,7 @@ export const systemRoutes: Route[] = [
     const summary = getStore().getWorkspaceSummary();
     const setupDefaults = effectiveSetupDefaults();
     const workspaces = getStore().listWorkspaces();
+    const botInstallations = getStore().listBotInstallations();
     const slackWorkspace = getSlackService().getUsableWorkspace();
     const slackOwnerConfigured = Boolean(
       slackWorkspace && resolveSetupDefaultsForWorkspace(slackWorkspace, setupDefaults).ownerUserId
@@ -414,16 +413,49 @@ export const systemRoutes: Route[] = [
       process.env.MURPH_AGENT_MODEL === undefined &&
       !config.ai?.agent?.provider &&
       !config.ai?.agent?.model;
+    const userConfigured = summary.userCount > 0 && Boolean(
+      setupDefaults?.ownerUserId || (setupDefaults?.workspaceOwners?.length ?? 0) > 0
+    );
+    const botRoles = selectedSetupBotRoles(setupDefaults);
+    const roleStatus = buildSetupRoleStatus({
+      defaults: setupDefaults,
+      botInstallations,
+      userConfigured
+    });
 
     sendJson(res, {
       ok: true,
       productMode: env.productMode,
+      botRoles,
+      roleStatus,
+      rolesReady: selectedSetupRolesReady(roleStatus),
+      botInstallations: botInstallations.map((installation) => ({
+        id: installation.id,
+        workspaceId: installation.workspaceId,
+        provider: installation.provider,
+        role: installation.role,
+        externalWorkspaceId: installation.externalWorkspaceId,
+        botUserId: installation.botUserId,
+        representedUserId: installation.representedUserId,
+        status: installation.status
+      })),
       slack: {
         installed: Boolean(slackWorkspace),
         oauthConfigured: Boolean(env.slackClientId && env.slackClientSecret),
         signingSecretConfigured: Boolean(env.slackSigningSecret),
         eventsMode: env.slackEventsMode,
         socketConfigured: Boolean(env.slackAppToken),
+        roles: {
+          channel: {
+            configured: getSlackService().isRoleConfigured('channel'),
+            installed: botInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'channel' && installation.status === 'active')
+          },
+          personal: {
+            configured: getSlackService().isRoleConfigured('personal'),
+            installed: botInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'personal' && installation.status === 'active'),
+            representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId))
+          }
+        },
         ingress: getIngressHealth('slack'),
         userSearchConfigured: Boolean(slackWorkspace && getSlackService().getUserSearchToken(slackWorkspace)),
         ownerConfigured: slackOwnerConfigured,
@@ -441,6 +473,17 @@ export const systemRoutes: Route[] = [
         clientIdConfigured: Boolean(env.discordClientId),
         clientSecretConfigured: Boolean(env.discordClientSecret),
         oauthConfigured: Boolean(env.discordClientId && env.discordClientSecret),
+        roles: {
+          channel: {
+            configured: getDiscordService().isRoleConfigured('channel'),
+            installed: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'channel' && installation.status === 'active')
+          },
+          personal: {
+            configured: getDiscordService().isRoleConfigured('personal'),
+            installed: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active'),
+            representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId))
+          }
+        },
         ownerConfigured: discordOwnerConfigured,
         ingress: getIngressHealth('discord'),
         workspace: discordWorkspace
@@ -468,10 +511,8 @@ export const systemRoutes: Route[] = [
       },
       channelWorkspaces,
       notion: getNotionStatus(),
-      userConfigured: summary.userCount > 0 && Boolean(
-        setupDefaults?.ownerUserId || (setupDefaults?.workspaceOwners?.length ?? 0) > 0
-      ),
-      channelsConfigured: env.productMode === 'personal' ? channelWorkspaces.length > 0 : workspaceChannelsConfigured(setupDefaults)
+      userConfigured,
+      channelsConfigured: workspaceChannelsConfigured(setupDefaults)
     });
   }),
   route('GET', '/api/setup/defaults', async ({ res, url }) => {
@@ -596,16 +637,20 @@ export const systemRoutes: Route[] = [
     sendJson(res, getSetupDoctor());
   }),
   route('POST', '/api/setup/discord/prepare', async ({ req, res, url }) => {
-    const body = await readJson<{ botToken?: string; clientSecret?: string }>(req);
+    const body = await readJson<{ botToken?: string; clientSecret?: string; role?: string }>(req);
+    const role = body.role === 'personal' ? 'personal' : 'channel';
     const discord = getDiscordService();
     const botToken = body.botToken?.trim() || (() => {
       try {
-        return discord.getBotToken();
+        return discord.getBotToken(role);
       } catch {
         return undefined;
       }
     })();
-    const clientSecret = body.clientSecret?.trim() || getRuntimeEnv().discordClientSecret;
+    const clientSecret = body.clientSecret?.trim() ||
+      (role === 'personal'
+        ? process.env.DISCORD_PERSONAL_CLIENT_SECRET
+        : process.env.DISCORD_CHANNEL_CLIENT_SECRET ?? getRuntimeEnv().discordClientSecret);
 
     if (!botToken) {
       sendJson(res, { ok: false, error: 'Discord bot token is required.' }, 400);
@@ -619,9 +664,20 @@ export const systemRoutes: Route[] = [
     try {
       const bot = await discord.validateBotToken(botToken);
       updateSetupConfigValues({
-        DISCORD_BOT_TOKEN: botToken,
-        DISCORD_CLIENT_ID: bot.applicationId,
-        DISCORD_CLIENT_SECRET: clientSecret
+        ...(role === 'personal'
+          ? {
+              DISCORD_PERSONAL_BOT_TOKEN: botToken,
+              DISCORD_PERSONAL_CLIENT_ID: bot.applicationId,
+              DISCORD_PERSONAL_CLIENT_SECRET: clientSecret
+            }
+          : {
+              DISCORD_CHANNEL_BOT_TOKEN: botToken,
+              DISCORD_CHANNEL_CLIENT_ID: bot.applicationId,
+              DISCORD_CHANNEL_CLIENT_SECRET: clientSecret,
+              DISCORD_BOT_TOKEN: botToken,
+              DISCORD_CLIENT_ID: bot.applicationId,
+              DISCORD_CLIENT_SECRET: clientSecret
+            })
       });
       const configuration = await discord.configureApplication(botToken);
       const appUrl = publicAppUrl(req, url);
@@ -643,7 +699,7 @@ export const systemRoutes: Route[] = [
         permissionsConfigured: configuration.permissionsConfigured,
         intentsConfigured: configuration.intentsConfigured,
         configurationError: configuration.error,
-        installUrl: '/api/discord/install?source=setup'
+        installUrl: role === 'personal' ? '/api/discord/personal/install?source=setup' : '/api/discord/channel/install?source=setup'
       });
     } catch (error) {
       sendJson(res, {

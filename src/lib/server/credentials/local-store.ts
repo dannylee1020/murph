@@ -9,6 +9,7 @@ export interface CredentialRecord {
   value: string;
   workspaceId?: string;
   externalWorkspaceId?: string;
+  botInstallationId?: string;
   userId?: string;
   metadata?: Record<string, unknown>;
   createdAt: string;
@@ -23,6 +24,7 @@ interface CredentialFile {
 export interface SecretRef {
   workspaceId?: string;
   externalWorkspaceId?: string;
+  botInstallationId?: string;
   userId?: string;
 }
 
@@ -82,13 +84,22 @@ function writeCredentialFile(file: CredentialFile): void {
 }
 
 function refMatches(record: CredentialRecord, ref: SecretRef = {}): boolean {
-  if (ref.workspaceId === undefined && ref.externalWorkspaceId === undefined && ref.userId === undefined) {
-    return record.workspaceId === undefined && record.externalWorkspaceId === undefined && record.userId === undefined;
+  if (
+    ref.workspaceId === undefined &&
+    ref.externalWorkspaceId === undefined &&
+    ref.botInstallationId === undefined &&
+    ref.userId === undefined
+  ) {
+    return record.workspaceId === undefined &&
+      record.externalWorkspaceId === undefined &&
+      record.botInstallationId === undefined &&
+      record.userId === undefined;
   }
 
   return (
     (ref.workspaceId === undefined || record.workspaceId === ref.workspaceId) &&
     (ref.externalWorkspaceId === undefined || record.externalWorkspaceId === ref.externalWorkspaceId) &&
+    (ref.botInstallationId === undefined || record.botInstallationId === ref.botInstallationId) &&
     (ref.userId === undefined || record.userId === ref.userId)
   );
 }
@@ -97,6 +108,7 @@ function exactRefMatches(record: CredentialRecord, ref: SecretRef = {}): boolean
   return (
     (record.workspaceId ?? '') === (ref.workspaceId ?? '') &&
     (record.externalWorkspaceId ?? '') === (ref.externalWorkspaceId ?? '') &&
+    (record.botInstallationId ?? '') === (ref.botInstallationId ?? '') &&
     (record.userId ?? '') === (ref.userId ?? '')
   );
 }
@@ -110,8 +122,8 @@ export function readSecret(provider: string, key: string, ref: SecretRef = {}): 
     .filter((record) => record.provider === provider && record.key === key && refMatches(record, ref));
 
   candidates.sort((a, b) => {
-    const aScore = Number(Boolean(a.workspaceId)) + Number(Boolean(a.externalWorkspaceId)) + Number(Boolean(a.userId));
-    const bScore = Number(Boolean(b.workspaceId)) + Number(Boolean(b.externalWorkspaceId)) + Number(Boolean(b.userId));
+    const aScore = Number(Boolean(a.workspaceId)) + Number(Boolean(a.externalWorkspaceId)) + Number(Boolean(a.botInstallationId)) + Number(Boolean(a.userId));
+    const bScore = Number(Boolean(b.workspaceId)) + Number(Boolean(b.externalWorkspaceId)) + Number(Boolean(b.botInstallationId)) + Number(Boolean(b.userId));
     return bScore - aScore;
   });
 
@@ -148,6 +160,7 @@ export function writeSecret(provider: string, key: string, value: string, option
     value: trimmed,
     workspaceId: options.workspaceId,
     externalWorkspaceId: options.externalWorkspaceId,
+    botInstallationId: options.botInstallationId,
     userId: options.userId,
     metadata: options.metadata,
     createdAt: existing?.createdAt ?? now,

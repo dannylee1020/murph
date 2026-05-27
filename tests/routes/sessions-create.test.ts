@@ -181,8 +181,10 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
   });
 
-  it('blocks watched channel sessions in personal mode', async () => {
-    const { post, store, workspace } = await setup([], { productMode: 'personal' });
+  it('allows watched channel sessions while a personal bot is also configured', async () => {
+    const { post, store, workspace } = await setup([
+      { channelId: 'C1', name: 'general', status: 'already_member' }
+    ], { productMode: 'personal' });
 
     const response = await post({
       ownerUserId: 'UOWNER',
@@ -190,12 +192,8 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
       mode: 'manual_review'
     });
 
-    expect(response.status).toBe(409);
-    expect(response.body).toMatchObject({
-      ok: false,
-      error: 'channel_mode_required'
-    });
-    expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
+    expect(response.status).toBe(201);
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
   });
 
   it('blocks session creation when a scoped private channel requires invitation', async () => {

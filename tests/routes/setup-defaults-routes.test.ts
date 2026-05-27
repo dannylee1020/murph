@@ -27,7 +27,7 @@ function jsonResponse(): any & { result: () => { status: number; body: any } } {
   };
 }
 
-async function setup(input: { productMode?: 'personal' | 'channel' } = {}) {
+async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?: string } = {}) {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
   process.env.MURPH_APP_DIR = workspaceDir;
@@ -44,6 +44,11 @@ async function setup(input: { productMode?: 'personal' | 'channel' } = {}) {
     process.env.MURPH_PRODUCT_MODE = input.productMode;
   } else {
     delete process.env.MURPH_PRODUCT_MODE;
+  }
+  if (input.botRolesEnv) {
+    process.env.MURPH_BOT_ROLES = input.botRolesEnv;
+  } else {
+    delete process.env.MURPH_BOT_ROLES;
   }
   delete process.env.DISCORD_BOT_TOKEN;
   delete process.env.DISCORD_CLIENT_ID;
@@ -110,6 +115,7 @@ describe('setup defaults routes', () => {
   const originalCwd = process.cwd();
   const originalAppDir = process.env.MURPH_APP_DIR;
   const originalConfigPath = process.env.MURPH_CONFIG_PATH;
+  const originalBotRoles = process.env.MURPH_BOT_ROLES;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -123,6 +129,11 @@ describe('setup defaults routes', () => {
       delete process.env.MURPH_CONFIG_PATH;
     } else {
       process.env.MURPH_CONFIG_PATH = originalConfigPath;
+    }
+    if (originalBotRoles === undefined) {
+      delete process.env.MURPH_BOT_ROLES;
+    } else {
+      process.env.MURPH_BOT_ROLES = originalBotRoles;
     }
   });
 
@@ -138,6 +149,11 @@ describe('setup defaults routes', () => {
       delete process.env.MURPH_CONFIG_PATH;
     } else {
       process.env.MURPH_CONFIG_PATH = originalConfigPath;
+    }
+    if (originalBotRoles === undefined) {
+      delete process.env.MURPH_BOT_ROLES;
+    } else {
+      process.env.MURPH_BOT_ROLES = originalBotRoles;
     }
   });
 
@@ -397,14 +413,40 @@ describe('setup defaults routes', () => {
     }));
   });
 
-  it('reports personal mode as channel-ready when a bot workspace is connected', async () => {
+  it('reports bot installations in setup status independently of product mode', async () => {
     const { request } = await setup({ productMode: 'personal' });
 
     const response = await request('GET', '/api/setup/status');
 
     expect(response.status).toBe(200);
     expect(response.body.productMode).toBe('personal');
-    expect(response.body.channelsConfigured).toBe(true);
+    expect(response.body.botInstallations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: 'slack', role: 'channel', externalWorkspaceId: 'T1' })
+    ]));
+  });
+
+  it('honors MURPH_BOT_ROLES as an environment override in setup status', async () => {
+    const { request } = await setup({ botRolesEnv: 'personal' });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.botRoles).toEqual(['personal']);
+    expect(response.body.roleStatus.channel.selected).toBe(false);
+    expect(response.body.roleStatus.personal.selected).toBe(true);
+  });
+
+  it('uses config-backed bot roles when no environment override is set', async () => {
+    const { request } = await setup();
+    const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
+    updateMurphSetupDefaults({ botRoles: ['channel', 'personal'] });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.botRoles).toEqual(['channel', 'personal']);
+    expect(response.body.roleStatus.channel.selected).toBe(true);
+    expect(response.body.roleStatus.personal.selected).toBe(true);
   });
 
   it('returns all channel workspaces and Discord setup metadata in setup status', async () => {
@@ -475,7 +517,7 @@ describe('setup defaults routes', () => {
       redirectUriRegistered: true,
       permissionsConfigured: true,
       intentsConfigured: true,
-      installUrl: '/api/discord/install?source=setup'
+      installUrl: '/api/discord/channel/install?source=setup'
     }));
     const patch = calls.find((call) => call.url.includes('/applications/@me') && call.method === 'PATCH');
     expect(patch?.body).toEqual(expect.objectContaining({

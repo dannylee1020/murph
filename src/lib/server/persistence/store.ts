@@ -9,6 +9,8 @@ import type {
   AppSettings,
   AuditRecord,
   AutopilotSession,
+  BotInstallation,
+  BotRole,
   ContinuityActionType,
   MorningBriefing,
   ProviderSettings,
@@ -30,6 +32,7 @@ import * as action from './stores/action.js';
 import * as appSettings from './stores/app-settings.js';
 import * as audit from './stores/audit.js';
 import * as briefing from './stores/briefing.js';
+import * as botInstallation from './stores/bot-installation.js';
 import * as integrationCredentials from './stores/integration-credentials.js';
 import * as memoryIndex from './stores/memory-index.js';
 import * as memory from './stores/memory.js';
@@ -58,7 +61,17 @@ export class Store {
 
   // Workspace + slack events
   saveInstall(input: workspace.InstallInput): Workspace {
-    return workspace.saveInstall(this.db, input);
+    const saved = workspace.saveInstall(this.db, input);
+    botInstallation.upsertBotInstallation(this.db, {
+      workspaceId: saved.id,
+      provider: saved.provider,
+      role: input.role ?? 'channel',
+      externalWorkspaceId: saved.externalWorkspaceId,
+      botUserId: saved.botUserId,
+      appId: input.appId,
+      representedUserId: input.representedUserId
+    });
+    return saved;
   }
   getWorkspaceByExternalId(provider: string, externalWorkspaceId: string): Workspace | undefined {
     return workspace.getWorkspaceByExternalId(this.db, provider, externalWorkspaceId);
@@ -77,6 +90,20 @@ export class Store {
   }
   saveChannelEvent(input: workspace.ChannelEventInput): boolean {
     return workspace.saveChannelEvent(this.db, input);
+  }
+
+  // Bot installations
+  upsertBotInstallation(input: botInstallation.BotInstallationInput): BotInstallation {
+    return botInstallation.upsertBotInstallation(this.db, input);
+  }
+  getBotInstallation(provider: string, externalWorkspaceId: string, role: BotRole): BotInstallation | undefined {
+    return botInstallation.getBotInstallation(this.db, provider, externalWorkspaceId, role);
+  }
+  getBotInstallationById(id: string): BotInstallation | undefined {
+    return botInstallation.getBotInstallationById(this.db, id);
+  }
+  listBotInstallations(input: { provider?: string; role?: BotRole; workspaceId?: string } = {}): BotInstallation[] {
+    return botInstallation.listBotInstallations(this.db, input);
   }
 
   // User

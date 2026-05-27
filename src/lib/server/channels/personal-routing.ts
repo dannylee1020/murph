@@ -1,11 +1,10 @@
 import { getStore } from '#lib/server/persistence/store';
-import { getRuntimeEnv } from '#lib/server/util/env';
 import { mergedSetupDefaults, setupOwnerForWorkspace } from '#lib/server/setup/owner-identity';
 import type { SetupOwnerIdentity } from '#lib/server/setup/owner-identity';
 import type { ChannelProvider, Workspace } from '#lib/types';
 
 export type PersonalDirectIgnoredReason =
-  | 'personal_mode_disabled'
+  | 'owner_dm_unsupported'
   | 'personal_workspace_required'
   | 'personal_owner_required'
   | 'personal_owner_mismatch';
@@ -22,15 +21,36 @@ export type PersonalDirectTarget =
       ignoredReason: PersonalDirectIgnoredReason;
     };
 
-export function resolvePersonalDirectTarget(provider: ChannelProvider, actorUserId: string | undefined): PersonalDirectTarget {
-  if (getRuntimeEnv().productMode !== 'personal') {
-    return { ok: false, ignoredReason: 'personal_mode_disabled' };
-  }
+export function resolvePersonalDirectTarget(
+  provider: ChannelProvider,
+  actorUserId: string | undefined,
+  input: { botInstallationId?: string; externalWorkspaceId?: string } = {}
+): PersonalDirectTarget {
   if (!actorUserId) {
     return { ok: false, ignoredReason: 'personal_owner_required' };
   }
 
   const store = getStore();
+  const botInstallation = input.botInstallationId
+    ? store.getBotInstallationById(input.botInstallationId)
+    : input.externalWorkspaceId
+      ? store.getBotInstallation(provider, input.externalWorkspaceId, 'personal')
+      : undefined;
+  if (botInstallation?.representedUserId) {
+    if (botInstallation.representedUserId === actorUserId) {
+      return { ok: false, ignoredReason: 'owner_dm_unsupported' };
+    }
+    const workspace = store.getWorkspaceById(botInstallation.workspaceId);
+    if (!workspace) {
+      return { ok: false, ignoredReason: 'personal_workspace_required' };
+    }
+    return {
+      ok: true,
+      workspace,
+      ownerUserId: botInstallation.representedUserId
+    };
+  }
+
   const defaults = mergedSetupDefaults();
   const providerWorkspaces = store.listWorkspaces().filter((workspace) => workspace.provider === provider);
   const ownerTargets = providerWorkspaces
@@ -43,9 +63,14 @@ export function resolvePersonalDirectTarget(provider: ChannelProvider, actorUser
     return { ok: false, ignoredReason: 'personal_owner_required' };
   }
 
-  const matchingOwnerTargets = ownerTargets.filter((entry) => entry.owner.ownerUserId === actorUserId);
-  if (matchingOwnerTargets.length === 1) {
-    const target = matchingOwnerTargets[0];
+  const matchingWorkspaceTargets = input.externalWorkspaceId
+    ? ownerTargets.filter((entry) => entry.workspace.externalWorkspaceId === input.externalWorkspaceId)
+    : ownerTargets;
+  if (matchingWorkspaceTargets.length === 1) {
+    const target = matchingWorkspaceTargets[0];
+    if (target.owner.ownerUserId === actorUserId) {
+      return { ok: false, ignoredReason: 'owner_dm_unsupported' };
+    }
     return {
       ok: true,
       workspace: target.workspace,
@@ -56,6 +81,6 @@ export function resolvePersonalDirectTarget(provider: ChannelProvider, actorUser
 
   return {
     ok: false,
-    ignoredReason: matchingOwnerTargets.length > 1 ? 'personal_workspace_required' : 'personal_owner_mismatch'
+    ignoredReason: matchingWorkspaceTargets.length > 1 ? 'personal_workspace_required' : 'personal_owner_mismatch'
   };
 }

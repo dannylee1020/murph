@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import type { PolicyExecutionMode, ProductMode, ProviderName, SetupDefaults } from '#lib/types';
+import type { BotRole, PolicyExecutionMode, ProductMode, ProviderName, SetupDefaults } from '#lib/types';
 import { normalizePolicyExecutionMode } from '#lib/server/runtime/policy-compiler';
 import { murphHome } from '#lib/server/setup/paths';
 
@@ -37,10 +37,17 @@ export interface MurphConfig {
       appId?: string;
       teamId?: string;
       teamName?: string;
+      bots?: Partial<Record<BotRole, {
+        clientId?: string;
+        appId?: string;
+      }>>;
     };
     discord?: {
       clientId?: string;
       redirectUri?: string;
+      bots?: Partial<Record<BotRole, {
+        clientId?: string;
+      }>>;
     };
   };
   setup?: SetupDefaults;
@@ -91,10 +98,17 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
   SLACK_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'clientId'], value),
   SLACK_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'appId'], value),
+  SLACK_CHANNEL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'channel', 'clientId'], value),
+  SLACK_CHANNEL_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'channel', 'appId'], value),
+  SLACK_PERSONAL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'personal', 'clientId'], value),
+  SLACK_PERSONAL_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'personal', 'appId'], value),
   SLACK_TEAM_ID: (config, value) => setPath(config, ['channels', 'slack', 'teamId'], value),
   SLACK_TEAM_NAME: (config, value) => setPath(config, ['channels', 'slack', 'teamName'], value),
   DISCORD_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'clientId'], value),
+  DISCORD_CHANNEL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'channel', 'clientId'], value),
+  DISCORD_PERSONAL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'personal', 'clientId'], value),
   DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value),
+  MURPH_BOT_ROLES: (config, value) => setPath(config, ['setup', 'botRoles'], botRolesFromString(value)),
   NOTION_VERSION: (config, value) => setPath(config, ['integrations', 'notion', 'version'], value),
   NOTION_MAX_RESULTS: (config, value) => setPath(config, ['integrations', 'notion', 'maxResults'], numberFromString(value)),
   GITHUB_REPOSITORIES: (config, value) => setPath(config, ['integrations', 'github', 'repositories'], csvFromString(value)),
@@ -199,6 +213,26 @@ function stringArray(value: unknown): string[] | undefined {
   return values.length > 0 ? values : [];
 }
 
+function normalizeBotRole(value: unknown): BotRole | undefined {
+  return value === 'personal' ? 'personal' : value === 'channel' ? 'channel' : undefined;
+}
+
+function botRolesFromString(value: string): BotRole[] {
+  const roles = value
+    .split(',')
+    .map((entry) => normalizeBotRole(entry.trim()))
+    .filter((entry): entry is BotRole => Boolean(entry));
+  return Array.from(new Set(roles)).length > 0 ? Array.from(new Set(roles)) : ['channel'];
+}
+
+function botRolesValue(value: unknown): BotRole[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const roles = value
+    .map(normalizeBotRole)
+    .filter((entry): entry is BotRole => Boolean(entry));
+  return roles.length > 0 ? Array.from(new Set(roles)) : undefined;
+}
+
 function setupDefaultsValue(value: unknown): SetupDefaults | undefined {
   if (!isRecord(value)) return undefined;
   const selectedChannelsRaw = value.selectedChannels;
@@ -247,6 +281,7 @@ function setupDefaultsValue(value: unknown): SetupDefaults | undefined {
         .filter((entry) => entry.workspaceId && (entry.channelScopeMode === 'all_accessible' || entry.selectedChannels.length > 0))
     : undefined;
   return {
+    botRoles: botRolesValue(value.botRoles),
     channelProvider: stringValue(value.channelProvider),
     workspaceId: stringValue(value.workspaceId),
     ownerUserId: stringValue(value.ownerUserId),
@@ -258,6 +293,18 @@ function setupDefaultsValue(value: unknown): SetupDefaults | undefined {
     timezone: stringValue(value.timezone),
     workdayStartHour: numberValue(value.workdayStartHour),
     workdayEndHour: numberValue(value.workdayEndHour)
+  };
+}
+
+function setupDefaultsWithEnv(value: unknown): SetupDefaults | undefined {
+  const defaults = setupDefaultsValue(value) ?? {};
+  const envBotRoles = process.env.MURPH_BOT_ROLES?.trim();
+  if (!envBotRoles) {
+    return Object.keys(defaults).length > 0 ? defaults : undefined;
+  }
+  return {
+    ...defaults,
+    botRoles: botRolesFromString(envBotRoles)
   };
 }
 
@@ -290,7 +337,13 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
   const policyAi = isRecord(ai.policy) ? ai.policy : {};
   const channels = isRecord(raw.channels) ? raw.channels : {};
   const slack = isRecord(channels.slack) ? channels.slack : {};
+  const slackBots = isRecord(slack.bots) ? slack.bots : {};
+  const slackChannelBot = isRecord(slackBots.channel) ? slackBots.channel : {};
+  const slackPersonalBot = isRecord(slackBots.personal) ? slackBots.personal : {};
   const discord = isRecord(channels.discord) ? channels.discord : {};
+  const discordBots = isRecord(discord.bots) ? discord.bots : {};
+  const discordChannelBot = isRecord(discordBots.channel) ? discordBots.channel : {};
+  const discordPersonalBot = isRecord(discordBots.personal) ? discordBots.personal : {};
   const integrations = isRecord(raw.integrations) ? raw.integrations : {};
   const notion = isRecord(integrations.notion) ? integrations.notion : {};
   const github = isRecord(integrations.github) ? integrations.github : {};
@@ -329,14 +382,32 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
         clientId: stringValue(slack.clientId),
         appId: stringValue(slack.appId),
         teamId: stringValue(slack.teamId),
-        teamName: stringValue(slack.teamName)
+        teamName: stringValue(slack.teamName),
+        bots: {
+          channel: {
+            clientId: stringValue(slackChannelBot.clientId),
+            appId: stringValue(slackChannelBot.appId)
+          },
+          personal: {
+            clientId: stringValue(slackPersonalBot.clientId),
+            appId: stringValue(slackPersonalBot.appId)
+          }
+        }
       },
       discord: {
         clientId: stringValue(discord.clientId),
-        redirectUri: stringValue(discord.redirectUri)
+        redirectUri: stringValue(discord.redirectUri),
+        bots: {
+          channel: {
+            clientId: stringValue(discordChannelBot.clientId)
+          },
+          personal: {
+            clientId: stringValue(discordPersonalBot.clientId)
+          }
+        }
       }
     },
-    setup: setupDefaultsValue(raw.setup),
+    setup: setupDefaultsWithEnv(raw.setup),
     integrations: {
       notion: {
         version: stringValue(notion.version),

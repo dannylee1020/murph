@@ -120,6 +120,37 @@ type SetupDoctorPayload = {
 
 type SetupStatusPayload = {
     productMode: 'personal' | 'channel';
+    botRoles?: BotRole[];
+    rolesReady?: boolean;
+    roleStatus?: Record<BotRole, {
+        selected: boolean;
+        ready: boolean;
+        providers: Array<{
+            provider: string;
+            ready: boolean;
+            installations: Array<{
+                id: string;
+                workspaceId: string;
+                provider: string;
+                role: BotRole;
+                externalWorkspaceId: string;
+                botUserId?: string;
+                representedUserId?: string;
+                status: 'active' | 'paused';
+            }>;
+            reason?: string;
+        }>;
+    }>;
+    botInstallations?: Array<{
+        id: string;
+        workspaceId: string;
+        provider: string;
+        role: 'personal' | 'channel';
+        externalWorkspaceId: string;
+        botUserId?: string;
+        representedUserId?: string;
+        status: 'active' | 'paused';
+    }>;
     slack: {
         installed: boolean;
         oauthConfigured: boolean;
@@ -127,6 +158,11 @@ type SetupStatusPayload = {
         eventsMode: 'socket' | 'http';
         socketConfigured: boolean;
         ownerConfigured?: boolean;
+        roles?: Record<BotRole, {
+            configured: boolean;
+            installed: boolean;
+            representedOwnerConfigured?: boolean;
+        }>;
         workspace?: ChannelWorkspace;
     };
     discord: {
@@ -136,6 +172,11 @@ type SetupStatusPayload = {
         oauthConfigured?: boolean;
         botTokenConfigured: boolean;
         ownerConfigured?: boolean;
+        roles?: Record<BotRole, {
+            configured: boolean;
+            installed: boolean;
+            representedOwnerConfigured?: boolean;
+        }>;
         workspace?: ChannelWorkspace;
     };
     provider: {
@@ -155,6 +196,8 @@ type SetupStatusPayload = {
     userConfigured: boolean;
     channelsConfigured: boolean;
 };
+
+type BotRole = 'personal' | 'channel';
 
 type ChannelWorkspace = {
     id: string;
@@ -564,7 +607,7 @@ function setSidebarWatchingCount(count: number): void {
 
 type SetupWizardState = {
     currentStep: number;
-    productMode: 'personal' | 'channel';
+    botRoles: BotRole[];
     selectedProviders: Array<'slack' | 'discord'>;
     providerSelections: Record<
         string,
@@ -578,6 +621,7 @@ type SetupWizardState = {
         }
     >;
     discordPreparation?: DiscordSetupPreparePayload;
+    discordPreparationKey?: string;
     discordRedirectConfirmed: boolean;
     errorMessage: string;
     selectedUserId: string;
@@ -593,16 +637,18 @@ type SetupChannelProvider = 'slack' | 'discord';
 type SetupStepKey =
     | 'intro'
     | 'ai'
+    | 'botRoles'
     | 'providers'
     | 'schedule'
-    | `connect:${SetupChannelProvider}`
+    | `connect:${SetupChannelProvider}:${BotRole}`
     | `channels:${SetupChannelProvider}`;
 
 const SETUP_CHANNEL_PROVIDERS: SetupChannelProvider[] = ['slack', 'discord'];
+const SETUP_BOT_ROLES: BotRole[] = ['channel', 'personal'];
 
 let setupWizardState: SetupWizardState = {
     currentStep: 0,
-    productMode: 'channel',
+    botRoles: ['channel'],
     selectedProviders: [],
     providerSelections: {},
     discordRedirectConfirmed: false,
@@ -751,7 +797,17 @@ function setupErrorMessage(error: unknown, fallback: string): string {
 function setupProviderWorkspace(
     setup: SetupStatusPayload,
     provider: SetupChannelProvider,
+    role?: BotRole,
 ): ChannelWorkspace | undefined {
+    if (role) {
+        const installation = setup.botInstallations?.find(
+            (entry) => entry.provider === provider && entry.role === role,
+        );
+        const workspace = setup.channelWorkspaces?.find(
+            (entry) => entry.id === installation?.workspaceId,
+        );
+        if (workspace) return workspace;
+    }
     if (provider === 'slack') return setup.slack.workspace;
     return setup.discord.workspace;
 }
@@ -759,7 +815,11 @@ function setupProviderWorkspace(
 function setupProviderOwnerConfigured(
     setup: SetupStatusPayload,
     provider: SetupChannelProvider,
+    role?: BotRole,
 ): boolean {
+    if (role === 'personal') {
+        return Boolean(setup[provider].roles?.personal?.representedOwnerConfigured);
+    }
     const selection = setupWizardState.providerSelections[provider];
     if (selection?.ownerUserId) return true;
     return provider === 'slack'
@@ -802,7 +862,7 @@ function ensureSetupProviderState(
     setup: SetupStatusPayload,
     defaults: SetupDefaultsPayload,
 ): void {
-    setupWizardState.productMode = setup.productMode ?? setupWizardState.productMode;
+    setupWizardState.botRoles = setup.botRoles?.length ? setup.botRoles : setupWizardState.botRoles;
     if (setupWizardState.selectedProviders.length === 0) {
         setupWizardState.selectedProviders = inferSetupProviders(
             setup,
@@ -854,13 +914,14 @@ function setupStepKeys(): SetupStepKey[] {
     return [
         'intro',
         'ai',
+        'botRoles',
         'providers',
         ...setupWizardState.selectedProviders.flatMap((provider) => {
             return [
-                `connect:${provider}` as const,
-                ...(setupWizardState.productMode === 'personal'
-                    ? []
-                    : [`channels:${provider}` as const]),
+                ...setupWizardState.botRoles.map((role) => `connect:${provider}:${role}` as const),
+                ...(setupWizardState.botRoles.includes('channel')
+                    ? [`channels:${provider}` as const]
+                    : []),
             ];
         }),
         'schedule',
@@ -893,17 +954,13 @@ function advanceSetupStep(
 
 function splitSetupStep(
     stepKey: SetupStepKey,
-): { kind: SetupStepKey; provider?: SetupChannelProvider } {
+): { kind: SetupStepKey; provider?: SetupChannelProvider; role?: BotRole } {
     if (stepKey.startsWith('connect:')) {
+        const [, provider, role] = stepKey.split(':');
         return {
-            kind: 'connect:slack',
-            provider: stepKey.split(':')[1] as SetupChannelProvider,
-        };
-    }
-    if (stepKey.startsWith('identity:')) {
-        return {
-            kind: 'connect:slack',
-            provider: stepKey.split(':')[1] as SetupChannelProvider,
+            kind: 'connect:slack:channel',
+            provider: provider as SetupChannelProvider,
+            role: role === 'personal' ? 'personal' : 'channel',
         };
     }
     if (stepKey.startsWith('channels:')) {
@@ -2399,6 +2456,7 @@ async function renderSetup(): Promise<void> {
     const stepKey = stepKeys[step] ?? 'intro';
     const splitStep = splitSetupStep(stepKey);
     const stepProvider = splitStep.provider;
+    const stepRole = splitStep.role;
     const visibleStep = Math.max(1, step);
     const totalSteps = stepKeys.length - 1;
 
@@ -2422,21 +2480,7 @@ async function renderSetup(): Promise<void> {
         stepContent = `
       <div class="wizard-step">
         <h1>Set up Murph</h1>
-        <p>The installer got the server running. Choose how Murph should listen, then finish setup here or use <code>murph setup</code> from your terminal.</p>
-        <form class="form" id="product-mode-form">
-          <div class="mode-selector">
-            <label class="mode-radio">
-              <input type="radio" name="productMode" value="personal" ${setup.productMode === 'personal' ? 'checked' : ''} />
-              <span class="mode-label">Personal bot</span>
-              <span class="mode-description">Message Murph directly for drafts and tool-backed help</span>
-            </label>
-            <label class="mode-radio">
-              <input type="radio" name="productMode" value="channel" ${setup.productMode !== 'personal' ? 'checked' : ''} />
-              <span class="mode-label">Channel handoff</span>
-              <span class="mode-description">Watch selected Slack or Discord channels during sessions</span>
-            </label>
-          </div>
-        </form>
+        <p>The installer got the server running. Connect one or more bots, then choose the channels Murph can watch during handoff sessions. Personal bot DMs and channel handoffs can run from the same runtime.</p>
         ${setupCheckList(doctor.checks)}
         <div class="wizard-actions">
           <button type="button" id="wizard-next">Get started</button>
@@ -2479,6 +2523,33 @@ async function renderSetup(): Promise<void> {
         }
       </div>
     `;
+    } else if (stepKey === 'botRoles') {
+        const roleCards = SETUP_BOT_ROLES.map((role) => {
+            const checked = setupWizardState.botRoles.includes(role);
+            return `
+          <label class="member-item channel-item ${checked ? 'selected' : ''}">
+            <input type="checkbox" name="setupBotRole" value="${role}" ${checked ? 'checked' : ''} />
+            <span class="member-avatar-placeholder">${role === 'channel' ? '#' : '@'}</span>
+            <span class="channel-copy">
+              <strong>${role === 'channel' ? 'Channel bot' : 'Personal bot'}</strong>
+              <small>${role === 'channel'
+                  ? 'Watch subscribed Slack or Discord channels during handoff sessions'
+                  : 'Receive DMs as the represented owner while they are away'}</small>
+            </span>
+          </label>
+        `;
+        }).join('');
+        stepContent = `
+      <div class="wizard-step">
+        <h1>Choose bot roles</h1>
+        <p>Enable channel handoff, personal DM coverage, or both in this runtime.</p>
+        <div class="member-list provider-list">${roleCards}</div>
+        <div class="wizard-actions">
+          <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
+          <button type="button" id="wizard-next" ${setupWizardState.botRoles.length === 0 ? 'disabled' : ''}>Continue</button>
+        </div>
+      </div>
+    `;
     } else if (stepKey === 'providers') {
         const providerCards = SETUP_CHANNEL_PROVIDERS.map((provider) => {
             const workspace = setupProviderWorkspace(setup, provider);
@@ -2506,9 +2577,7 @@ async function renderSetup(): Promise<void> {
         stepContent = `
       <div class="wizard-step">
         <h1>Choose channel providers</h1>
-        <p>${setup.productMode === 'personal'
-            ? 'Choose the bot you will message directly. You can configure Slack, Discord, or both.'
-            : 'Select the places Murph should watch by default. You can configure Slack, Discord, or both.'}</p>
+        <p>Select the Slack or Discord bots this runtime should operate. Use separate personal and channel apps when you want both behaviors.</p>
         <div class="member-list provider-list">${providerCards}</div>
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
@@ -2518,56 +2587,71 @@ async function renderSetup(): Promise<void> {
     `;
     } else if (stepProvider && stepKey.startsWith('connect:')) {
         if (stepProvider === 'slack') {
-            const slackConfigured = setup.slack.socketConfigured && setup.slack.oauthConfigured;
-            const slackOwnerMissing = setup.slack.installed && !setupProviderOwnerConfigured(setup, 'slack');
+            const role = stepRole ?? 'channel';
+            const roleStatus = setup.slack.roles?.[role];
+            const slackConfigured = roleStatus?.configured ?? (setup.slack.socketConfigured && setup.slack.oauthConfigured);
+            const slackInstalled = roleStatus?.installed ?? setup.slack.installed;
+            const slackOwnerMissing = role === 'channel'
+                ? slackInstalled && !setupProviderOwnerConfigured(setup, 'slack', role)
+                : slackInstalled && !setupProviderOwnerConfigured(setup, 'slack', role);
             stepContent = `
       <div class="wizard-step">
-        <h1>Create the Slack app</h1>
-        <p>Use the manifest at <code>/slack-manifest.yaml</code>, enable Socket Mode, and confirm Slack lists <code>http://localhost:5173/api/slack/oauth/callback</code> under Redirect URLs.</p>
+        <h1>Create the Slack ${role === 'personal' ? 'personal' : 'channel'} bot</h1>
+        <p>Use a separate Slack app identity for this role. Confirm Slack lists <code>http://localhost:5173/api/slack/oauth/callback</code> under Redirect URLs.</p>
         ${
             slackConfigured
-                ? `<div class="setup-success">Slack app config is ready</div>`
+                ? `<div class="setup-success">Slack ${role} app config is ready</div>`
                 : `<form class="form" id="slack-config-form">
                <label>
                  <span>App-level token</span>
-                 <input type="password" name="appToken" placeholder="xapp-..." autocomplete="off" ${setup.slack.socketConfigured ? '' : 'required'} />
+	                 <input type="password" name="appToken" placeholder="xapp-..." autocomplete="off" required />
                </label>
                <label>
                  <span>Client ID</span>
-                 <input name="clientId" autocomplete="off" ${setup.slack.oauthConfigured ? '' : 'required'} />
+	                 <input name="clientId" autocomplete="off" required />
                </label>
                <label>
                  <span>Client secret</span>
-                 <input type="password" name="clientSecret" autocomplete="off" ${setup.slack.oauthConfigured ? '' : 'required'} />
+	                 <input type="password" name="clientSecret" autocomplete="off" required />
+               </label>
+               <label>
+                 <span>Signing secret</span>
+                 <input type="password" name="signingSecret" autocomplete="off" />
                </label>
              </form>`
         }
-        ${setup.slack.installed ? '<div class="setup-success">Slack connected</div>' : ''}
+        ${slackInstalled ? `<div class="setup-success">Slack ${role} bot connected</div>` : ''}
         ${
             slackOwnerMissing
-                ? '<div class="notice danger">Slack is connected, but Murph does not know your OAuth identity yet. Reconnect Slack from this setup flow so Murph can lock sessions to your Slack account.</div>'
+                ? '<div class="notice danger">Slack is connected, but Murph does not know the OAuth owner for this role yet. Reconnect Slack from this setup flow.</div>'
                 : ''
         }
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
           ${
               slackOwnerMissing
-                  ? '<a class="button" href="/api/slack/install">Reconnect Slack</a>'
-                  : setup.slack.installed
+                  ? `<a class="button" href="/api/slack/${role}/install">Reconnect Slack</a>`
+                  : slackInstalled
                   ? '<button type="button" id="wizard-next">Continue</button>'
                   : slackConfigured
-                    ? '<a class="button" href="/api/slack/install">Connect Slack workspace</a>'
+                    ? `<a class="button" href="/api/slack/${role}/install">Connect Slack ${role} bot</a>`
                     : '<button type="button" id="wizard-next">Save and continue</button>'
           }
         </div>
       </div>
     `;
         } else {
+            const role = stepRole ?? 'channel';
+            const roleStatus = setup.discord.roles?.[role];
             const configured =
-                setup.discord.botTokenConfigured &&
-                setup.discord.clientIdConfigured &&
-                setup.discord.clientSecretConfigured;
-            const prepared = setupWizardState.discordPreparation;
+                roleStatus?.configured ??
+                (setup.discord.botTokenConfigured &&
+                    setup.discord.clientIdConfigured &&
+                    setup.discord.clientSecretConfigured);
+            const preparationKey = `${stepProvider}:${role}`;
+            const prepared = setupWizardState.discordPreparationKey === preparationKey
+                ? setupWizardState.discordPreparation
+                : undefined;
             const canInstallDiscord =
                 prepared &&
                 (prepared.redirectUriRegistered === true ||
@@ -2576,14 +2660,15 @@ async function renderSetup(): Promise<void> {
             const canRecheckDiscord =
                 prepared?.redirectUriRegistered === false &&
                 setupWizardState.discordRedirectConfirmed;
-            const discordOwnerMissing = setup.discord.installed && !setupProviderOwnerConfigured(setup, 'discord');
+            const discordInstalled = roleStatus?.installed ?? setup.discord.installed;
+            const discordOwnerMissing = discordInstalled && !setupProviderOwnerConfigured(setup, 'discord', role);
             stepContent = `
       <div class="wizard-step">
-        <h1>Connect Discord</h1>
-        <p>Add the Discord bot token and client secret. Murph will derive the client ID, show the exact OAuth redirect URI, then open Discord authorization.</p>
+        <h1>Connect Discord ${role === 'personal' ? 'personal' : 'channel'} bot</h1>
+        <p>Add this Discord app's bot token and client secret. Murph will derive the client ID, show the exact OAuth redirect URI, then open Discord authorization.</p>
         ${
-            setup.discord.installed
-                ? '<div class="setup-success">Discord connected</div>'
+            discordInstalled
+                ? `<div class="setup-success">Discord ${role} bot connected</div>`
                 : prepared
                   ? discordPreparationDetails(prepared)
                   : configured
@@ -2602,15 +2687,15 @@ async function renderSetup(): Promise<void> {
         }
         ${
             discordOwnerMissing
-                ? '<div class="notice danger">Discord is connected, but Murph does not know your OAuth identity yet. Reconnect Discord from this setup flow so Murph can lock sessions to your Discord account.</div>'
+                ? '<div class="notice danger">Discord is connected, but Murph does not know the OAuth owner for this role yet. Reconnect Discord from this setup flow.</div>'
                 : ''
         }
         <div class="wizard-actions">
                <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
                ${
                    discordOwnerMissing
-                       ? '<a class="button" href="/api/discord/install?source=setup">Reconnect Discord server</a>'
-                       : setup.discord.installed
+                       ? `<a class="button" href="/api/discord/${role}/install?source=setup">Reconnect Discord ${role} bot</a>`
+                       : discordInstalled
                        ? '<button type="button" id="wizard-next">Continue</button>'
                        : prepared
                          ? canInstallDiscord
@@ -2625,7 +2710,7 @@ async function renderSetup(): Promise<void> {
     `;
         }
     } else if (stepProvider && stepKey.startsWith('channels:')) {
-        const ownerConfigured = setupProviderOwnerConfigured(setup, stepProvider);
+        const ownerConfigured = setupProviderOwnerConfigured(setup, stepProvider, 'channel');
         stepContent = `
       <div class="wizard-step">
         <h1>Which channels should Murph watch?</h1>
@@ -2695,6 +2780,30 @@ async function renderSetup(): Promise<void> {
         },
     );
 
+    if (stepKey === 'botRoles') {
+        const syncRoleSelection = () => {
+            const selected = Array.from(
+                app.querySelectorAll<HTMLInputElement>(
+                    'input[name="setupBotRole"]:checked',
+                ),
+            )
+                .map((input) => input.value)
+                .filter((role): role is BotRole =>
+                    role === 'channel' || role === 'personal',
+                );
+            setupWizardState.botRoles = selected;
+            const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
+            if (nextBtn) nextBtn.disabled = selected.length === 0;
+            app.querySelectorAll<HTMLLabelElement>('.provider-list .member-item')
+                .forEach((item) => {
+                    const input = item.querySelector<HTMLInputElement>('input');
+                    item.classList.toggle('selected', Boolean(input?.checked));
+                });
+        };
+        app.querySelectorAll<HTMLInputElement>('input[name="setupBotRole"]')
+            .forEach((input) => input.addEventListener('change', syncRoleSelection));
+    }
+
     if (stepKey === 'providers') {
         const syncProviderSelection = () => {
             const selected = Array.from(
@@ -2725,8 +2834,8 @@ async function renderSetup(): Promise<void> {
         );
         const nextBtn = app.querySelector<HTMLButtonElement>('#wizard-next');
         const selection = setupWizardState.providerSelections[stepProvider];
-        const workspace = setupProviderWorkspace(setup, stepProvider);
-        const ownerConfigured = setupProviderOwnerConfigured(setup, stepProvider);
+        const workspace = setupProviderWorkspace(setup, stepProvider, 'channel');
+        const ownerConfigured = setupProviderOwnerConfigured(setup, stepProvider, 'channel');
         try {
             if (!workspace) {
                 throw new Error(`${providerLabel(stepProvider)} is not connected yet.`);
@@ -2871,21 +2980,6 @@ async function renderSetup(): Promise<void> {
         async () => {
             setupWizardState.errorMessage = '';
             try {
-            if (stepKey === 'intro') {
-                const form =
-                    app.querySelector<HTMLFormElement>('#product-mode-form');
-                const formData = form ? new FormData(form) : new FormData();
-                const productMode =
-                    String(formData.get('productMode') ?? setup.productMode) ===
-                    'personal'
-                        ? 'personal'
-                        : 'channel';
-                setupWizardState.productMode = productMode;
-                await postJson('/api/setup/config', {
-                    MURPH_PRODUCT_MODE: productMode,
-                });
-            }
-
             if (stepKey === 'ai') {
                 const form =
                     app.querySelector<HTMLFormElement>('#ai-provider-form');
@@ -2924,6 +3018,13 @@ async function renderSetup(): Promise<void> {
                 });
             }
 
+            if (stepKey === 'botRoles') {
+                if (setupWizardState.botRoles.length === 0) return;
+                await postJson('/api/setup/config', {
+                    MURPH_BOT_ROLES: setupWizardState.botRoles.join(','),
+                });
+            }
+
             if (
                 stepProvider === 'slack' &&
                 stepKey.startsWith('connect:') &&
@@ -2937,17 +3038,29 @@ async function renderSetup(): Promise<void> {
                 const clientSecret = String(
                     formData.get('clientSecret') ?? '',
                 ).trim();
-                if (
-                    (!setup.slack.socketConfigured && !appToken) ||
-                    (!setup.slack.oauthConfigured &&
-                        (!clientId || !clientSecret))
-                )
-                    return;
+                const signingSecret = String(
+                    formData.get('signingSecret') ?? '',
+                ).trim();
+                if (!appToken || !clientId || !clientSecret) return;
+                const role = stepRole ?? 'channel';
                 await postJson('/api/setup/config', {
                     SLACK_EVENTS_MODE: 'socket',
-                    SLACK_APP_TOKEN: appToken,
-                    SLACK_CLIENT_ID: clientId,
-                    SLACK_CLIENT_SECRET: clientSecret,
+                    ...(role === 'personal'
+                        ? {
+                              SLACK_PERSONAL_APP_TOKEN: appToken,
+                              SLACK_PERSONAL_CLIENT_ID: clientId,
+                              SLACK_PERSONAL_CLIENT_SECRET: clientSecret,
+                              ...(signingSecret ? { SLACK_PERSONAL_SIGNING_SECRET: signingSecret } : {}),
+                          }
+                        : {
+                              SLACK_CHANNEL_APP_TOKEN: appToken,
+                              SLACK_CHANNEL_CLIENT_ID: clientId,
+                              SLACK_CHANNEL_CLIENT_SECRET: clientSecret,
+                              ...(signingSecret ? { SLACK_CHANNEL_SIGNING_SECRET: signingSecret } : {}),
+                              SLACK_APP_TOKEN: appToken,
+                              SLACK_CLIENT_ID: clientId,
+                              SLACK_CLIENT_SECRET: clientSecret,
+                          }),
                 });
                 await renderSetup();
                 return;
@@ -2956,9 +3069,13 @@ async function renderSetup(): Promise<void> {
             if (
                 stepProvider === 'discord' &&
                 stepKey.startsWith('connect:') &&
-                !setup.discord.installed
+                !(setup.discord.roles?.[stepRole ?? 'channel']?.installed ?? setup.discord.installed)
             ) {
-                const prepared = setupWizardState.discordPreparation;
+                const role = stepRole ?? 'channel';
+                const preparationKey = `${stepProvider}:${role}`;
+                const prepared = setupWizardState.discordPreparationKey === preparationKey
+                    ? setupWizardState.discordPreparation
+                    : undefined;
                 if (prepared) {
                     if (
                         prepared.redirectUriRegistered === true ||
@@ -2972,8 +3089,9 @@ async function renderSetup(): Promise<void> {
                     ) {
                         setupWizardState.discordPreparation = await postJson<DiscordSetupPreparePayload>(
                             '/api/setup/discord/prepare',
-                            {},
+                            { role },
                         );
+                        setupWizardState.discordPreparationKey = preparationKey;
                         setupWizardState.discordRedirectConfirmed =
                             setupWizardState.discordPreparation
                                 .redirectUriRegistered === true;
@@ -2989,18 +3107,19 @@ async function renderSetup(): Promise<void> {
                     formData.get('clientSecret') ?? '',
                 ).trim();
                 if (
-                    (!setup.discord.botTokenConfigured && !botToken) ||
-                    (!setup.discord.clientSecretConfigured && !clientSecret)
+                    !(setup.discord.roles?.[role]?.configured ?? setup.discord.botTokenConfigured) &&
+                    (!botToken || !clientSecret)
                 )
                     return;
-                const payload: { botToken?: string; clientSecret?: string } =
-                    {};
+                const payload: { botToken?: string; clientSecret?: string; role: BotRole } =
+                    { role };
                 if (botToken) payload.botToken = botToken;
                 if (clientSecret) payload.clientSecret = clientSecret;
                 setupWizardState.discordPreparation = await postJson<DiscordSetupPreparePayload>(
                     '/api/setup/discord/prepare',
                     payload,
                 );
+                setupWizardState.discordPreparationKey = preparationKey;
                 setupWizardState.discordRedirectConfirmed =
                     setupWizardState.discordPreparation.redirectUriRegistered ===
                     true;
@@ -3020,6 +3139,7 @@ async function renderSetup(): Promise<void> {
                 const selection = setupWizardState.providerSelections[stepProvider];
                 const primary = setupWizardState.providerSelections[setupPrimaryProvider()];
                 await putJson('/api/setup/defaults', {
+                    botRoles: setupWizardState.botRoles,
                     channelProvider: setupPrimaryProvider(),
                     workspaceId: primary.workspaceId,
                     ownerUserId: primary.ownerUserId,
@@ -3053,6 +3173,7 @@ async function renderSetup(): Promise<void> {
                 const primaryProvider = setupPrimaryProvider();
                 const primary = setupWizardState.providerSelections[primaryProvider];
                 await putJson('/api/setup/defaults', {
+                    botRoles: setupWizardState.botRoles,
                     channelProvider: primaryProvider,
                     workspaceId: primary.workspaceId,
                     ownerUserId: primary.ownerUserId,
@@ -3075,8 +3196,8 @@ async function renderSetup(): Promise<void> {
                         ? ['workspace connection']
                         : []),
                     ...(!setupStatus.userConfigured ? ['owner identity'] : []),
-                    ...(!setupStatus.channelsConfigured
-                        ? ['default channels']
+                    ...(!setupStatus.rolesReady
+                        ? ['selected bot roles']
                         : []),
                 ];
                 if (missing.length > 0) {
@@ -3146,57 +3267,6 @@ async function renderDashboard(): Promise<void> {
     const currentUser = data.users.find(
         (u) => u.externalUserId === currentUserId,
     );
-    if (setupStatus.productMode === 'personal') {
-        const workspaces = adminChannelWorkspaces(setupStatus);
-        const botTargets = workspaces.length
-            ? workspaces.map((workspace) => workspaceOptionLabel(workspace)).join(', ')
-            : 'Connect Slack or Discord';
-        const providerBanner = !setupStatus.provider.configured
-            ? `<div class="setup-banner">
-        <p>Connect an AI provider to let Murph draft replies for you.</p>
-        <a class="button secondary" href="/admin">Configure</a>
-      </div>`
-            : '';
-
-        shell(`
-    <section class="page-head console-head">
-      <div>
-        <p class="eyebrow">${escapeHtml(formatToday())} · Personal bot</p>
-        <h1>Home</h1>
-        <p>Message Murph directly in Slack or Discord. Murph will use your connected tools, then reply or queue drafts according to policy.</p>
-      </div>
-      ${consoleStateHtml(setupStatus.provider.configured && workspaces.length > 0 ? 'Ready' : 'Setup needed', setupStatus.provider.configured && workspaces.length > 0 ? 'ok' : 'off')}
-    </section>
-
-    ${providerBanner}
-    ${sessionFeedbackHtml()}
-    ${sessionErrorHtml()}
-
-    <section class="launch-section">
-      <article class="panel go-to-sleep-card">
-        <h2>Personal bot</h2>
-        <dl class="go-to-sleep-summary">
-          <div class="summary-cell">
-            <dt>Mode</dt>
-            <dd>Direct messages</dd>
-          </div>
-          <div class="summary-cell">
-            <dt>Bot</dt>
-            <dd>${escapeHtml(botTargets)}</dd>
-          </div>
-          <div class="summary-cell">
-            <dt>Policy</dt>
-            <dd>${escapeHtml(policyExecutionModeLabel(policyConfig.mode))}</dd>
-          </div>
-        </dl>
-        ${workspaces.length === 0
-            ? '<div class="notice warning"><strong>Connect a bot</strong><p>Finish Slack or Discord setup before using personal mode.</p></div>'
-            : '<p class="empty">Send Murph a direct message from your connected owner account to start a personal request.</p>'}
-      </article>
-    </section>
-  `);
-        return;
-    }
     const workspaces = adminChannelWorkspaces(setupStatus);
     const channelStates = await Promise.all(
         workspaces.map(
@@ -4949,7 +5019,7 @@ async function render(): Promise<void> {
         if (
             adminChannelWorkspaces(setupStatus).length === 0 ||
             !setupStatus.userConfigured ||
-            !setupStatus.channelsConfigured
+            !setupStatus.rolesReady
         ) {
             history.replaceState(null, '', '/setup');
             await renderSetup();

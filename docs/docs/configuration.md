@@ -27,19 +27,23 @@ murph credentials list
 You can re-run setup when credentials, channels, schedules, or policy choices change. The full wizard runs the same core sections as the CLI:
 
 ```text
-core -> provider -> channel provider -> slack/discord -> identity -> channels -> schedule -> policy -> status
+core -> provider -> bot roles -> channel providers -> bot app setup -> owner OAuth -> channels -> schedule -> policy -> status
 ```
 
 Use a focused section when only one part changed:
 
 ```bash
 murph setup provider
+murph setup roles
+murph setup providers
 murph setup slack
 murph setup discord
 murph setup channels
 murph setup policy
 murph setup status
 ```
+
+Use `murph setup slack --role personal`, `murph setup slack --role channel`, `murph setup discord --role personal`, or `murph setup discord --role channel` to focus one app identity. `--role both` runs both identities for the selected provider. The browser setup wizard uses the same order and skips channel selection when only personal bots are enabled.
 
 The schedule timezone is used when starting a session from Home. Murph computes the session stop time on the server and expires the session at the configured workday start in that timezone.
 
@@ -115,6 +119,8 @@ channels:
   slack:
     eventsMode: socket
 setup:
+  botRoles:
+    - channel
   channelProvider: slack
   channelScopeMode: selected
 ```
@@ -146,6 +152,32 @@ Most runtime config keys also have environment-variable equivalents, but those s
 ## Channel setup
 
 Slack and Discord both use OAuth to lock the owner identity. Murph watches for the account that authorized the app; setup does not list workspace/server members or let you pick another owner manually.
+
+Murph can run personal and channel bot roles in the same hosted runtime. Keep the unprefixed channel variables for the shared channel bot, or use explicit role-prefixed variables when you run separate app identities:
+
+```bash
+MURPH_BOT_ROLES=channel,personal
+
+SLACK_CHANNEL_CLIENT_ID=
+SLACK_CHANNEL_CLIENT_SECRET=
+SLACK_CHANNEL_SIGNING_SECRET=
+SLACK_CHANNEL_APP_TOKEN=
+
+SLACK_PERSONAL_CLIENT_ID=
+SLACK_PERSONAL_CLIENT_SECRET=
+SLACK_PERSONAL_SIGNING_SECRET=
+SLACK_PERSONAL_APP_TOKEN=
+
+DISCORD_CHANNEL_BOT_TOKEN=
+DISCORD_CHANNEL_CLIENT_ID=
+DISCORD_CHANNEL_CLIENT_SECRET=
+
+DISCORD_PERSONAL_BOT_TOKEN=
+DISCORD_PERSONAL_CLIENT_ID=
+DISCORD_PERSONAL_CLIENT_SECRET=
+```
+
+The legacy `SLACK_*` and `DISCORD_*` keys still act as channel-bot defaults.
 
 Channel defaults live under `setup` in `~/.murph/config.yaml`. The important fields are:
 

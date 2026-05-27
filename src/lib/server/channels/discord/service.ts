@@ -2,7 +2,8 @@ import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
 import { readSecret, writeSecret } from '#lib/server/credentials/local-store';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#lib/server/integrations/capabilities';
-import type { ChannelMessage, ChannelThreadRef, Workspace } from '#lib/types';
+import { readMurphConfig } from '#lib/server/setup/config-file';
+import type { BotInstallation, BotRole, ChannelMessage, ChannelThreadRef, Workspace } from '#lib/types';
 
 export const DISCORD_BOT_PERMISSIONS = '274877991936';
 export const DISCORD_REQUIRED_LIMITED_INTENT_FLAGS = {
@@ -106,22 +107,54 @@ export interface DiscordAppConfigurationResult {
 
 export interface DiscordInstallResult {
   workspace: Workspace;
+  role: BotRole;
+  botInstallation?: BotInstallation;
   authedUser?: DiscordMemberChoice;
 }
 
 export class DiscordService {
-  private readonly store = getStore();
+  private get store() {
+    return getStore();
+  }
 
   private get env() {
     return getRuntimeEnv();
   }
 
-  isConfigured(): boolean {
-    return Boolean(this.findBotToken());
+  private clientId(role: BotRole): string | undefined {
+    const config = readMurphConfig();
+    return role === 'personal'
+      ? process.env.DISCORD_PERSONAL_CLIENT_ID ?? config.channels?.discord?.bots?.personal?.clientId
+      : process.env.DISCORD_CHANNEL_CLIENT_ID ?? config.channels?.discord?.bots?.channel?.clientId ?? this.env.discordClientId;
   }
 
-  buildInstallUrl(options: { appUrl?: string; clientId?: string; source?: string } = {}): string | undefined {
-    const clientId = options.clientId ?? this.env.discordClientId;
+  private clientSecret(role: BotRole): string | undefined {
+    return role === 'personal'
+      ? process.env.DISCORD_PERSONAL_CLIENT_SECRET ?? readSecret('discord', 'personal_client_secret')
+      : process.env.DISCORD_CHANNEL_CLIENT_SECRET ?? readSecret('discord', 'channel_client_secret') ?? this.env.discordClientSecret;
+  }
+
+  botToken(role: BotRole = 'channel', botInstallationId?: string): string | undefined {
+    if (botInstallationId) {
+      const scoped = readSecret('discord', 'bot_token', { botInstallationId });
+      if (scoped) return scoped;
+    }
+    return role === 'personal'
+      ? process.env.DISCORD_PERSONAL_BOT_TOKEN ?? readSecret('discord', 'personal_bot_token')
+      : process.env.DISCORD_CHANNEL_BOT_TOKEN ?? readSecret('discord', 'channel_bot_token') ?? this.findBotToken();
+  }
+
+  isRoleConfigured(role: BotRole = 'channel'): boolean {
+    return Boolean(this.botToken(role) && this.clientId(role) && this.clientSecret(role));
+  }
+
+  isConfigured(): boolean {
+    return Boolean(this.botToken('channel') || this.botToken('personal'));
+  }
+
+  buildInstallUrl(options: { appUrl?: string; clientId?: string; source?: string; role?: BotRole } = {}): string | undefined {
+    const role = options.role ?? 'channel';
+    const clientId = options.clientId ?? this.clientId(role);
     if (!clientId) {
       return undefined;
     }
@@ -129,11 +162,13 @@ export class DiscordService {
     const redirectUri = this.resolveRedirectUri(options.appUrl);
     const params = new URLSearchParams({
       client_id: clientId,
-      scope: 'bot identify',
+      scope: role === 'personal' ? 'identify' : 'bot identify',
       response_type: 'code',
-      redirect_uri: redirectUri,
-      permissions: DISCORD_BOT_PERMISSIONS
+      redirect_uri: redirectUri
     });
+    if (role === 'channel') {
+      params.set('permissions', DISCORD_BOT_PERMISSIONS);
+    }
     if (options.source) {
       params.set('state', options.source);
     }
@@ -206,11 +241,13 @@ export class DiscordService {
     }
   }
 
-  async exchangeCode(code: string, guildId: string | undefined, redirectUri = this.resolveRedirectUri()): Promise<DiscordInstallResult> {
-    if (!this.env.discordClientId || !this.env.discordClientSecret) {
+  async exchangeCode(code: string, guildId: string | undefined, redirectUri = this.resolveRedirectUri(), role: BotRole = 'channel'): Promise<DiscordInstallResult> {
+    const clientId = this.clientId(role);
+    const clientSecret = this.clientSecret(role);
+    if (!clientId || !clientSecret) {
       throw new Error('Discord OAuth is not configured');
     }
-    if (!guildId) {
+    if (role === 'channel' && !guildId) {
       throw new Error('Discord OAuth callback is missing guild_id');
     }
 
@@ -218,8 +255,8 @@ export class DiscordService {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: this.env.discordClientId,
-        client_secret: this.env.discordClientSecret,
+        client_id: clientId,
+        client_secret: clientSecret,
         grant_type: 'authorization_code',
         code,
         redirect_uri: redirectUri
@@ -235,9 +272,42 @@ export class DiscordService {
       throw new Error('Discord OAuth exchange did not return an access token');
     }
 
+    const oauthUser = await this.fetchCurrentUser(tokenPayload.access_token);
+    const fallbackMember = {
+      id: oauthUser.id,
+      displayName: oauthUser.global_name ?? oauthUser.username ?? oauthUser.id
+    };
+
+    if (role === 'personal') {
+      const workspace = this.store.saveInstall({
+        provider: 'discord',
+        externalWorkspaceId: `personal:${oauthUser.id}`,
+        name: fallbackMember.displayName,
+        botUserId: await this.fetchBotUserId(role).catch(() => undefined),
+        role,
+        representedUserId: oauthUser.id
+      });
+      const botInstallation = this.store.getBotInstallation('discord', workspace.externalWorkspaceId, role);
+      const token = this.botToken(role);
+      if (token) {
+        writeSecret('discord', 'bot_token', token, {
+          workspaceId: workspace.id,
+          externalWorkspaceId: workspace.externalWorkspaceId,
+          botInstallationId: botInstallation?.id,
+          metadata: {
+            botRole: role,
+            representedUserId: oauthUser.id,
+            validatedAt: new Date().toISOString()
+          }
+        });
+      }
+      reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
+      return { workspace, role, botInstallation, authedUser: fallbackMember };
+    }
+
     const guildResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
       headers: {
-        authorization: `Bot ${this.getBotToken()}`
+        authorization: `Bot ${this.getBotToken('channel')}`
       }
     });
 
@@ -246,21 +316,22 @@ export class DiscordService {
     }
 
     const guild = (await guildResponse.json()) as DiscordGuild;
-    const workspace = await this.saveGuildWorkspace(guild);
-    const oauthUser = await this.fetchCurrentUser(tokenPayload.access_token);
-    const member = await this.getMember(workspace, oauthUser.id).catch(() => ({
-      id: oauthUser.id,
-      displayName: oauthUser.global_name ?? oauthUser.username ?? oauthUser.id
-    }));
-    return { workspace, authedUser: member };
+    const workspace = await this.saveGuildWorkspace(guild, 'channel');
+    const member = await this.getMember(workspace, oauthUser.id).catch(() => fallbackMember);
+    return {
+      workspace,
+      role,
+      botInstallation: this.store.getBotInstallation('discord', workspace.externalWorkspaceId, 'channel'),
+      authedUser: member
+    };
   }
 
   private resolveRedirectUri(appUrl = this.env.appUrl): string {
     return this.env.discordRedirectUri ?? `${appUrl}/api/discord/oauth/callback`;
   }
 
-  getBotToken(): string {
-    const token = this.findBotToken();
+  getBotToken(role: BotRole = 'channel', botInstallationId?: string): string {
+    const token = this.botToken(role, botInstallationId);
     if (token) {
       return token;
     }
@@ -293,21 +364,25 @@ export class DiscordService {
     return undefined;
   }
 
-  async saveGuildWorkspace(guild: DiscordGuild): Promise<Workspace> {
+  async saveGuildWorkspace(guild: DiscordGuild, role: BotRole = 'channel'): Promise<Workspace> {
     const workspace = this.store.saveInstall({
       provider: 'discord',
       externalWorkspaceId: guild.id,
       name: guild.name ?? guild.id,
-      botUserId: await this.fetchBotUserId()
+      botUserId: await this.fetchBotUserId(role),
+      role
     });
-    const token = this.env.discordBotToken ?? readSecret('discord', 'bot_token');
+    const botInstallation = this.store.getBotInstallation('discord', workspace.externalWorkspaceId, role);
+    const token = this.botToken(role);
     if (token) {
       writeSecret('discord', 'bot_token', token, {
         workspaceId: workspace.id,
         externalWorkspaceId: workspace.externalWorkspaceId,
+        botInstallationId: botInstallation?.id,
         metadata: {
           guildName: workspace.name,
           botUserId: workspace.botUserId,
+          botRole: role,
           validatedAt: new Date().toISOString()
         }
       });
@@ -374,9 +449,9 @@ export class DiscordService {
     return (await response.json()) as DiscordUser;
   }
 
-  private async fetchBotUserId(): Promise<string | undefined> {
+  private async fetchBotUserId(role: BotRole = 'channel'): Promise<string | undefined> {
     const response = await fetch('https://discord.com/api/v10/users/@me', {
-      headers: { authorization: `Bot ${this.getBotToken()}` }
+      headers: { authorization: `Bot ${this.getBotToken(role)}` }
     });
     if (!response.ok) {
       return undefined;
@@ -451,8 +526,8 @@ export class DiscordService {
 
   async fetchThreadMessages(_workspace: Workspace, thread: ChannelThreadRef): Promise<ChannelMessage[]> {
     const messages = thread.threadChannelId
-      ? await this.fetchChannelMessages(thread.threadChannelId, 50)
-      : await this.fetchChannelMessages(thread.channelId, 50, thread.rootMessageId ? { around: thread.rootMessageId } : undefined);
+      ? await this.fetchChannelMessages(thread.threadChannelId, 50, undefined, thread)
+      : await this.fetchChannelMessages(thread.channelId, 50, thread.rootMessageId ? { around: thread.rootMessageId } : undefined, thread);
 
     return messages
       .filter((message) => {
@@ -481,7 +556,7 @@ export class DiscordService {
     if (!thread.threadChannelId && thread.rootMessageId) {
       body.message_reference = { message_id: thread.rootMessageId, channel_id: thread.channelId };
     }
-    await this.createMessage(channelId, body);
+    await this.createMessage(channelId, body, thread);
   }
 
   async postMessage(_workspace: Workspace, channelId: string, text: string): Promise<{ ts?: string }> {
@@ -543,14 +618,15 @@ export class DiscordService {
   private async fetchChannelMessages(
     channelId: string,
     limit: number,
-    extra?: { around?: string }
+    extra?: { around?: string },
+    thread?: ChannelThreadRef
   ): Promise<DiscordMessage[]> {
     const params = new URLSearchParams({ limit: String(limit) });
     if (extra?.around) {
       params.set('around', extra.around);
     }
     const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages?${params.toString()}`, {
-      headers: { authorization: `Bot ${this.getBotToken()}` }
+      headers: { authorization: `Bot ${this.getBotToken(thread?.botRole ?? 'channel', thread?.botInstallationId)}` }
     });
     if (!response.ok) {
       throw new Error('Failed to fetch Discord channel messages');
@@ -558,11 +634,11 @@ export class DiscordService {
     return (await response.json()) as DiscordMessage[];
   }
 
-  private async createMessage(channelId: string, body: Record<string, unknown>): Promise<{ id?: string }> {
+  private async createMessage(channelId: string, body: Record<string, unknown>, thread?: ChannelThreadRef): Promise<{ id?: string }> {
     const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
       method: 'POST',
       headers: {
-        authorization: `Bot ${this.getBotToken()}`,
+        authorization: `Bot ${this.getBotToken(thread?.botRole ?? 'channel', thread?.botInstallationId)}`,
         'content-type': 'application/json; charset=utf-8'
       },
       body: JSON.stringify(body)

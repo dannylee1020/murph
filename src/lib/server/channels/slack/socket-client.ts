@@ -2,6 +2,7 @@ import { LogLevel, SocketModeClient } from '@slack/socket-mode';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { handleSlackEventEnvelope } from '#lib/server/channels/slack/events';
 import { getSlackService } from '#lib/server/channels/slack/service';
+import type { BotRole } from '#lib/types';
 import {
   markIngressConfigured,
   markIngressConnected,
@@ -32,13 +33,19 @@ function socketMessageText(data: unknown): string | undefined {
 }
 
 export class SlackSocketModeClient {
+  constructor(private readonly role: BotRole = 'channel') {}
+
   private client: SocketModeClient | null = null;
   private started = false;
   private restartTimer: NodeJS.Timeout | null = null;
 
   isConfigured(): boolean {
     const env = getRuntimeEnv();
-    return env.slackEventsMode !== 'http' && Boolean(env.slackAppToken);
+    return env.slackEventsMode !== 'http' && Boolean(this.appToken());
+  }
+
+  private appToken(): string | undefined {
+    return getSlackService().appToken(this.role);
   }
 
   ensureStarted(): void {
@@ -49,7 +56,8 @@ export class SlackSocketModeClient {
       return;
     }
 
-    if (!env.slackAppToken) {
+    const appToken = this.appToken();
+    if (!appToken) {
       markIngressConfigured('slack', false);
       return;
     }
@@ -62,7 +70,7 @@ export class SlackSocketModeClient {
     this.started = true;
     markIngressStarting('slack');
     this.client = new SocketModeClient({
-      appToken: env.slackAppToken,
+      appToken,
       logLevel: LogLevel.WARN
     });
     this.patchSocketModeDisconnectRace(this.client);
@@ -197,16 +205,20 @@ export class SlackSocketModeClient {
     await handleSlackEventEnvelope(envelope.body, {
       envelopeId: envelope.envelope_id,
       rawPayload: JSON.stringify(envelope.body),
-      source: 'socket'
+      source: 'socket',
+      botRole: this.role
     });
   }
 }
 
-let client: SlackSocketModeClient | null = null;
+const clients = new Map<BotRole, SlackSocketModeClient>();
 
-export function getSlackSocketModeClient(): SlackSocketModeClient {
+export function getSlackSocketModeClient(role: BotRole = 'channel'): SlackSocketModeClient {
+  const client = clients.get(role);
   if (!client) {
-    client = new SlackSocketModeClient();
+    const next = new SlackSocketModeClient(role);
+    clients.set(role, next);
+    return next;
   }
   return client;
 }

@@ -33,6 +33,7 @@ export const addWorkspaceSubscriptions: Migration = {
         CREATE TABLE direct_conversations (
           id TEXT PRIMARY KEY,
           provider TEXT NOT NULL,
+          bot_installation_id TEXT,
           workspace_id TEXT,
           external_user_id TEXT NOT NULL,
           channel_id TEXT NOT NULL,

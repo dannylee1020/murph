@@ -752,7 +752,7 @@ export class Gateway {
   }
 
   private isPersonalDirectTask(task: ContinuityTask): boolean {
-    return task.conversationKind === 'direct' && getRuntimeEnv().productMode === 'personal';
+    return task.conversationKind === 'direct';
   }
 
   private async createPersonalDirectSession(workspace: Workspace, task: ContinuityTask): Promise<AutopilotSession> {

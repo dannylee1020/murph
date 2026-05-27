@@ -55,7 +55,14 @@ export function createSlackChannelPlugin(): ChannelPlugin {
     ingress: {
       start() {
         if (slack.getUsableWorkspace()) {
-          getSlackSocketModeClient().ensureStarted();
+          const channelClient = getSlackSocketModeClient('channel');
+          const personalClient = getSlackSocketModeClient('personal');
+          if (channelClient.isConfigured()) {
+            channelClient.ensureStarted();
+          }
+          if (personalClient.isConfigured()) {
+            personalClient.ensureStarted();
+          }
         }
       },
       async handleWebhook({ rawBody, headers }) {

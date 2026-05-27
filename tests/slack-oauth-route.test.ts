@@ -53,7 +53,10 @@ async function setup(
     return Response.json(slackPayload);
   }));
   vi.doMock('#lib/server/channels/slack/socket-client', () => ({
-    getSlackSocketModeClient: () => ({ ensureStarted })
+    getSlackSocketModeClient: (role: 'channel' | 'personal' = 'channel') => ({
+      isConfigured: () => role === 'channel',
+      ensureStarted
+    })
   }));
 
   const { slackRoutes } = await import('../src/server/routes/slack');
