@@ -5,7 +5,7 @@ description: Connect Slack as a Murph channel.
 
 # Slack
 
-Slack setup can create the Murph Slack app from a manifest, or you can configure the app manually in Slack's dashboard. Do the Slack dashboard steps first when manual setup is needed, then run `murph setup slack` to validate credentials, open OAuth, save your workspace, and choose watched channels.
+Slack setup can create the Murph Slack app from a manifest, or you can configure the app manually in Slack's dashboard. The browser setup flow and `murph setup slack` both support manifest automation; manual dashboard setup is the fallback when automation is not available.
 
 For both personal and channel behavior in one runtime, create two Slack apps: one personal bot for DMs and one channel bot for watched-channel handoff. Use `/api/slack/personal/install`, `/api/slack/personal/events`, and `SLACK_PERSONAL_*` variables for the personal app. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for the channel app. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
 
@@ -48,7 +48,9 @@ The legacy public manifest is a channel-bot compatibility alias:
 
 The manifests set the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode. Use the channel manifest for watched-channel handoff and the personal manifest for 1:1 DMs to the personal bot.
 
-`murph setup slack --role channel` and `murph setup slack --role personal` can create or update the matching app from the matching manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it.
+The browser setup flow, `murph setup slack --role channel`, and `murph setup slack --role personal` can create or update the matching app from the matching manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it. If you select both channel and personal Slack coverage in browser setup, Murph reuses the token in memory only long enough to create the second selected Slack app.
+
+If you already created the Slack app, paste its app ID in browser setup before creating from the manifest. Murph checks that app first and updates it instead of creating a duplicate.
 
 Do not confuse the app configuration token with the app-level token. The app-level token starts with `xapp-` and is used for Socket Mode.
 

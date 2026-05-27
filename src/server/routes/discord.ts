@@ -230,13 +230,13 @@ export const discordRoutes: Route[] = [
       redirect(res, source === 'cli'
         ? discordCliReturnPath(role, 'success')
         : source === 'setup'
-          ? `/setup?step=discord&success=1&workspaceId=${encodeURIComponent(workspace.id)}`
+          ? `/setup?step=discord&role=${encodeURIComponent(role)}&success=1&workspaceId=${encodeURIComponent(workspace.id)}`
           : `/settings?installed=discord&workspaceId=${encodeURIComponent(workspace.id)}`);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'discord_oauth_failed';
       redirect(res, source === 'cli'
         ? discordCliReturnPath(role, 'error', reason)
-        : discordReturnPath(source, `?step=discord&error=discord_oauth_failed&reason=${encodeURIComponent(reason)}`));
+        : discordReturnPath(source, `?step=discord&role=${encodeURIComponent(role)}&error=discord_oauth_failed&reason=${encodeURIComponent(reason)}`));
     }
   }),
   route('POST', '/api/discord/guild', async ({ req, res }) => {

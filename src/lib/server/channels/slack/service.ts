@@ -179,6 +179,14 @@ export class SlackService {
       : process.env.SLACK_CHANNEL_APP_TOKEN ?? readSecret('slack', 'channel_app_token') ?? this.env.slackAppToken;
   }
 
+  isRoleOAuthConfigured(role: BotRole = 'channel'): boolean {
+    return Boolean(this.clientId(role) && this.clientSecret(role));
+  }
+
+  isRoleSocketConfigured(role: BotRole = 'channel'): boolean {
+    return Boolean(this.appToken(role));
+  }
+
   isRoleConfigured(role: BotRole = 'channel'): boolean {
     return Boolean(this.clientId(role) && this.clientSecret(role) && (this.env.slackEventsMode === 'http' || this.appToken(role)));
   }

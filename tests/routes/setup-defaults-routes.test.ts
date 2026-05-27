@@ -1,8 +1,50 @@
 import { Readable } from 'node:stream';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const channelManifest = [
+  'display_information:',
+  '  name: Murph',
+  'oauth_config:',
+  '  redirect_urls:',
+  '    - http://localhost:5173/api/slack/oauth/callback',
+  '  scopes:',
+  '    bot:',
+  '      - app_mentions:read',
+  '      - channels:history',
+  '      - chat:write',
+  '      - groups:history',
+  '    user:',
+  '      - search:read',
+  'settings:',
+  '  event_subscriptions:',
+  '    bot_events:',
+  '      - app_mention',
+  '      - message.channels',
+  '      - message.groups',
+  '  socket_mode_enabled: true',
+  ''
+].join('\n');
+
+const personalManifest = [
+  'display_information:',
+  '  name: Murph Personal',
+  'oauth_config:',
+  '  redirect_urls:',
+  '    - http://localhost:5173/api/slack/oauth/callback',
+  '  scopes:',
+  '    bot:',
+  '      - chat:write',
+  '      - im:history',
+  'settings:',
+  '  event_subscriptions:',
+  '    bot_events:',
+  '      - message.im',
+  '  socket_mode_enabled: true',
+  ''
+].join('\n');
 
 function jsonRequest(method: string, body?: unknown): any {
   const req = Readable.from(body === undefined ? [] : [JSON.stringify(body)]) as any;
@@ -48,6 +90,10 @@ function textResponse(): any & { result: () => { status: number; body: string; h
 async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?: string; skipSlackToken?: boolean } = {}) {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
+  mkdirSync(join(workspaceDir, 'docs/public'), { recursive: true });
+  writeFileSync(join(workspaceDir, 'docs/public/slack-manifest.yaml'), channelManifest);
+  writeFileSync(join(workspaceDir, 'docs/public/slack-channel-manifest.yaml'), channelManifest);
+  writeFileSync(join(workspaceDir, 'docs/public/slack-personal-manifest.yaml'), personalManifest);
   process.env.MURPH_APP_DIR = workspaceDir;
   process.env.MURPH_CONFIG_PATH = join(workspaceDir, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
@@ -58,6 +104,17 @@ async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?
   process.env.SLACK_APP_TOKEN = 'xapp-test';
   process.env.SLACK_CLIENT_ID = 'client-id';
   process.env.SLACK_CLIENT_SECRET = 'client-secret';
+  delete process.env.SLACK_APP_ID;
+  delete process.env.SLACK_CHANNEL_APP_ID;
+  delete process.env.SLACK_CHANNEL_APP_TOKEN;
+  delete process.env.SLACK_CHANNEL_CLIENT_ID;
+  delete process.env.SLACK_CHANNEL_CLIENT_SECRET;
+  delete process.env.SLACK_CHANNEL_SIGNING_SECRET;
+  delete process.env.SLACK_PERSONAL_APP_ID;
+  delete process.env.SLACK_PERSONAL_APP_TOKEN;
+  delete process.env.SLACK_PERSONAL_CLIENT_ID;
+  delete process.env.SLACK_PERSONAL_CLIENT_SECRET;
+  delete process.env.SLACK_PERSONAL_SIGNING_SECRET;
   if (input.productMode) {
     process.env.MURPH_PRODUCT_MODE = input.productMode;
   } else {
@@ -147,6 +204,7 @@ describe('setup defaults routes', () => {
   const originalAppDir = process.env.MURPH_APP_DIR;
   const originalConfigPath = process.env.MURPH_CONFIG_PATH;
   const originalBotRoles = process.env.MURPH_BOT_ROLES;
+  const originalSlackApiBase = process.env.MURPH_SLACK_API_BASE;
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -165,6 +223,11 @@ describe('setup defaults routes', () => {
       delete process.env.MURPH_BOT_ROLES;
     } else {
       process.env.MURPH_BOT_ROLES = originalBotRoles;
+    }
+    if (originalSlackApiBase === undefined) {
+      delete process.env.MURPH_SLACK_API_BASE;
+    } else {
+      process.env.MURPH_SLACK_API_BASE = originalSlackApiBase;
     }
   });
 
@@ -185,6 +248,11 @@ describe('setup defaults routes', () => {
       delete process.env.MURPH_BOT_ROLES;
     } else {
       process.env.MURPH_BOT_ROLES = originalBotRoles;
+    }
+    if (originalSlackApiBase === undefined) {
+      delete process.env.MURPH_SLACK_API_BASE;
+    } else {
+      process.env.MURPH_SLACK_API_BASE = originalSlackApiBase;
     }
   });
 
@@ -510,6 +578,239 @@ describe('setup defaults routes', () => {
     expect(response.body.botInstallations).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'slack', role: 'channel', externalWorkspaceId: 'T1' })
     ]));
+  });
+
+  it('prepares a Slack channel app from the channel manifest and saves returned credentials', async () => {
+    process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
+    const { request } = await setup();
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      const body = options.body ? JSON.parse(String(options.body)) : undefined;
+      calls.push({ url: String(url), body });
+      return Response.json({
+        ok: true,
+        app_id: 'A-channel',
+        credentials: {
+          client_id: 'channel-client-id',
+          client_secret: 'channel-client-secret',
+          signing_secret: 'channel-signing-secret',
+          app_token: 'xapp-channel'
+        },
+        team_id: 'T-channel',
+        team_name: 'Channel Workspace'
+      });
+    });
+
+    const response = await request('POST', '/api/setup/slack/prepare', {
+      role: 'channel',
+      configurationToken: 'xoxe-config'
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      ok: true,
+      role: 'channel',
+      appId: 'A-channel',
+      clientId: 'channel-client-id',
+      appTokenConfigured: true,
+      callbackUrl: 'http://localhost/api/slack/oauth/callback',
+      installUrl: '/api/slack/channel/install?source=setup'
+    }));
+    const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
+    expect(manifestCall).toBeTruthy();
+    const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
+    expect(manifestBody.oauth_config.redirect_urls).toEqual(['http://localhost/api/slack/oauth/callback']);
+    expect(manifestBody.oauth_config.scopes.bot).toEqual(expect.arrayContaining(['app_mentions:read', 'channels:history']));
+    expect(manifestBody.settings.socket_mode_enabled).toBe(true);
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('appId: A-channel');
+    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    expect(readSecret('slack', 'channel_client_secret')).toBe('channel-client-secret');
+    expect(readSecret('slack', 'client_secret')).toBe('channel-client-secret');
+    expect(readSecret('slack', 'channel_app_token')).toBe('xapp-channel');
+  });
+
+  it('prepares a Slack personal app from the personal manifest without writing legacy channel keys', async () => {
+    process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
+    const { request } = await setup();
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      const body = options.body ? JSON.parse(String(options.body)) : undefined;
+      calls.push({ url: String(url), body });
+      return Response.json({
+        ok: true,
+        app_id: 'A-personal',
+        credentials: {
+          client_id: 'personal-client-id',
+          client_secret: 'personal-client-secret',
+          signing_secret: 'personal-signing-secret'
+        }
+      });
+    });
+
+    const response = await request('POST', '/api/setup/slack/prepare', {
+      role: 'personal',
+      configurationToken: 'xoxe-config'
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      ok: true,
+      role: 'personal',
+      appId: 'A-personal',
+      clientId: 'personal-client-id',
+      appTokenConfigured: false,
+      installUrl: '/api/slack/personal/install?source=setup'
+    }));
+    const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
+    const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
+    expect(manifestBody.display_information.name).toBe('Murph Personal');
+    expect(manifestBody.oauth_config.scopes.bot).toEqual(['chat:write', 'im:history']);
+    expect(manifestBody.oauth_config.scopes.user).toBeUndefined();
+    const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
+    expect(config).toContain('personal:');
+    expect(config).toContain('appId: A-personal');
+    expect(config).not.toContain('appId: A-channel');
+    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    expect(readSecret('slack', 'personal_client_secret')).toBe('personal-client-secret');
+    expect(readSecret('slack', 'client_secret')).toBeUndefined();
+  });
+
+  it('updates a saved Slack app instead of creating a duplicate from UI setup', async () => {
+    process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
+    const { request } = await setup();
+    await request('POST', '/api/setup/config', {
+      SLACK_CHANNEL_APP_ID: 'A-existing'
+    });
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      const body = options.body ? JSON.parse(String(options.body)) : undefined;
+      calls.push({ url: String(url), body });
+      if (String(url).includes('/apps.manifest.export')) {
+        return Response.json({ ok: true, app_id: body?.app_id, manifest: {} });
+      }
+      return Response.json({
+        ok: true,
+        app_id: 'A-existing',
+        credentials: {
+          client_id: 'updated-client-id',
+          client_secret: 'updated-client-secret'
+        }
+      });
+    });
+
+    const response = await request('POST', '/api/setup/slack/prepare', {
+      role: 'channel',
+      configurationToken: 'xoxe-config'
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body.updatedExistingApp).toBe(true);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.export'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.update'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(false);
+  });
+
+  it('uses an explicitly provided existing Slack app ID before creating from UI setup', async () => {
+    process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
+    const { request } = await setup();
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      const body = options.body ? JSON.parse(String(options.body)) : undefined;
+      calls.push({ url: String(url), body });
+      if (String(url).includes('/apps.manifest.export')) {
+        return Response.json({ ok: true, app_id: body?.app_id, manifest: {} });
+      }
+      return Response.json({
+        ok: true,
+        app_id: 'A-provided',
+        credentials: {
+          client_id: 'provided-client-id',
+          client_secret: 'provided-client-secret'
+        }
+      });
+    });
+
+    const response = await request('POST', '/api/setup/slack/prepare', {
+      role: 'channel',
+      configurationToken: 'xoxe-config',
+      existingAppId: 'A-provided'
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body.updatedExistingApp).toBe(true);
+    expect(calls.find((call) => call.url.includes('/apps.manifest.export'))?.body).toEqual({
+      app_id: 'A-provided'
+    });
+    expect(calls.some((call) => call.url.includes('/apps.manifest.update'))).toBe(true);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(false);
+  });
+
+  it('does not create a new Slack app when an explicitly provided app ID is missing', async () => {
+    process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
+    const { request } = await setup();
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      calls.push(String(url));
+      if (String(url).includes('/apps.manifest.export')) {
+        return Response.json({ ok: false, error: 'invalid_app' });
+      }
+      return Response.json({ ok: true, app_id: 'A-new' });
+    });
+
+    const response = await request('POST', '/api/setup/slack/prepare', {
+      role: 'channel',
+      configurationToken: 'xoxe-config',
+      existingAppId: 'A-missing'
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('A-missing');
+    expect(calls.some((url) => url.includes('/apps.manifest.export'))).toBe(true);
+    expect(calls.some((url) => url.includes('/apps.manifest.create'))).toBe(false);
+  });
+
+  it('does not send pasted Slack app-level tokens to Manifest APIs from UI setup', async () => {
+    const { request } = await setup();
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      calls.push(String(url));
+      return Response.json({ ok: false, error: 'should_not_be_called' }, { status: 500 });
+    });
+
+    const response = await request('POST', '/api/setup/slack/prepare', {
+      role: 'channel',
+      configurationToken: 'xapp-mistaken'
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('app-level token');
+    expect(calls).toEqual([]);
+    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    expect(readSecret('slack', 'channel_app_token')).toBe('xapp-mistaken');
+    expect(readSecret('slack', 'app_token')).toBe('xapp-mistaken');
+  });
+
+  it('does not create a new Slack app when existing-app lookup is uncertain from UI setup', async () => {
+    process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
+    const { request } = await setup();
+    await request('POST', '/api/setup/config', {
+      SLACK_CHANNEL_APP_ID: 'A-existing'
+    });
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      calls.push(String(url));
+      return Response.json({ ok: false, error: 'ratelimited' });
+    });
+
+    const response = await request('POST', '/api/setup/slack/prepare', {
+      role: 'channel',
+      configurationToken: 'xoxe-config'
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('ratelimited');
+    expect(calls.some((url) => url.includes('/apps.manifest.export'))).toBe(true);
+    expect(calls.some((url) => url.includes('/apps.manifest.create'))).toBe(false);
   });
 
   it('honors MURPH_BOT_ROLES as an environment override in setup status', async () => {

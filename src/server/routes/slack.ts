@@ -56,6 +56,7 @@ function slackReturnPath(source: OAuthSource, role: BotRole, status: 'success' |
   if (source === 'setup') {
     const params = new URLSearchParams({
       step: 'slack',
+      role,
       ...(status === 'success'
         ? { success: '1' }
         : { error: 'slack_oauth_failed', reason: reason ?? 'slack_oauth_failed' })

@@ -189,7 +189,7 @@ describe('Slack OAuth callback route', () => {
     const result = await get('/api/slack/oauth/callback?code=abc&state=setup');
 
     expect(result.status).toBe(302);
-    expect(result.headers.location).toBe('/setup?step=slack&success=1');
+    expect(result.headers.location).toBe('/setup?step=slack&role=channel&success=1');
   });
 
   it('returns personal CLI installs to the terminal completion page with role context', async () => {

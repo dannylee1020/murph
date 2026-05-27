@@ -156,7 +156,7 @@ describe('Discord OAuth callback route', () => {
     const callbackResult = await get(`/api/discord/oauth/callback?code=abc&guild_id=G1&state=${state}`);
 
     expect(callbackResult.status).toBe(302);
-    expect(callbackResult.headers.location).toMatch(/^\/setup\?step=discord&success=1&workspaceId=/);
+    expect(callbackResult.headers.location).toMatch(/^\/setup\?step=discord&role=channel&success=1&workspaceId=/);
     expect(ensureStarted).toHaveBeenCalledOnce();
   });
 
