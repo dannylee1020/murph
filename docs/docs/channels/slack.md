@@ -9,6 +9,8 @@ Slack setup can create the Murph Slack app from a manifest, or you can configure
 
 For both personal and channel behavior in one runtime, create two Slack apps: one personal bot for DMs and one channel bot for watched-channel handoff. Use `/api/slack/personal/install`, `/api/slack/personal/events`, and `SLACK_PERSONAL_*` variables for the personal app. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for the channel app. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
 
+For the common both-role setup, install and authorize both Slack apps in the same workspace. If the Slack CLI selects one workspace but OAuth authorizes another, Murph treats the OAuth-connected workspace as the source of truth and asks whether to adopt it.
+
 ## What You Need
 
 - Access to the [Slack apps dashboard](https://api.slack.com/apps).
@@ -31,21 +33,22 @@ The fastest path is to create the app from Murph's manifest. Slack's manifest fl
 
 ## Step 2: Create From The Murph Manifest
 
-Use Murph's Slack manifest when Slack lets you create or update the app from a manifest:
+Use Murph's role-specific Slack manifests when Slack lets you create or update the app from a manifest:
 
 ```text
-docs/public/slack-manifest.yaml
+docs/public/slack-channel-manifest.yaml
+docs/public/slack-personal-manifest.yaml
 ```
 
-The public manifest is also available after install:
+The legacy public manifest is a channel-bot compatibility alias:
 
 ```text
 /slack-manifest.yaml
 ```
 
-The manifest sets the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode.
+The manifests set the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode. Use the channel manifest for watched-channel handoff and the personal manifest for 1:1 DMs to the personal bot.
 
-`murph setup slack` can also create or update the app from the manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it.
+`murph setup slack --role channel` and `murph setup slack --role personal` can create or update the matching app from the matching manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it.
 
 Do not confuse the app configuration token with the app-level token. The app-level token starts with `xapp-` and is used for Socket Mode.
 
@@ -61,9 +64,9 @@ Save the Slack app after adding it.
 
 Slack requires redirect URLs to match exactly. If setup prints a different URL because you use a custom Murph origin, add that exact URL instead.
 
-## Step 4: Check Scopes And Events
+## Step 4: Check Channel Bot Scopes And Events
 
-In **OAuth & Permissions** -> **Scopes**, verify these bot token scopes:
+For the channel bot, in **OAuth & Permissions** -> **Scopes**, verify these bot token scopes:
 
 - `app_mentions:read`
 - `channels:history`
@@ -72,24 +75,33 @@ In **OAuth & Permissions** -> **Scopes**, verify these bot token scopes:
 - `chat:write`
 - `groups:history`
 - `groups:read`
-- `im:history`
-- `mpim:history`
 
 Verify this user token scope:
 
 - `search:read`
 
-In **Event Subscriptions** -> **Subscribe to bot events**, verify these events:
+In **Event Subscriptions** -> **Subscribe to bot events**, verify these channel bot events:
 
 - `app_mention`
 - `message.channels`
 - `message.groups`
+
+## Step 5: Check Personal Bot Scopes And Events
+
+For the personal bot, verify these bot token scopes:
+
+- `chat:write`
+- `im:history`
+
+The personal bot does not need channel, group, MPIM, or user token scopes for v1.
+
+In **Event Subscriptions** -> **Subscribe to bot events**, verify this personal bot event:
+
 - `message.im`
-- `message.mpim`
 
 Socket Mode means local Murph installs do not need a public Slack Events Request URL.
 
-## Step 5: Enable Socket Mode And Create The App-Level Token
+## Step 6: Enable Socket Mode And Create The App-Level Token
 
 1. Go to **Socket Mode**.
 2. Enable Socket Mode.
@@ -99,7 +111,7 @@ Socket Mode means local Murph installs do not need a public Slack Events Request
 
 Murph uses this token to connect to Slack Socket Mode.
 
-## Step 6: Copy The App Credentials
+## Step 7: Copy The App Credentials
 
 Go to **Basic Information** -> **App Credentials** and keep these values ready for setup:
 
@@ -109,7 +121,7 @@ Go to **Basic Information** -> **App Credentials** and keep these values ready f
 
 Murph stores the Client Secret and Signing Secret locally in `~/.murph/.credentials`. Non-secret app and workspace defaults are stored in `~/.murph/config.yaml`.
 
-## Step 7: Run Slack Setup
+## Step 8: Run Slack Setup
 
 Run:
 
@@ -144,16 +156,16 @@ Then Murph will:
 - start or verify the local Murph server;
 - open the Slack install URL;
 - save the connected workspace after OAuth;
-- store bot and user-search tokens from the OAuth callback;
+- store the bot token, plus a user-search token for the channel bot when approved;
 - save the authorizing Slack user as Murph's owner identity;
 - start Socket Mode when the workspace is connected.
 
-## Step 8: Approve OAuth And Choose Channels
+## Step 9: Approve OAuth And Choose Channels
 
 When the browser opens:
 
 1. Choose the Slack workspace Murph should use.
-2. Approve the requested bot and user scopes.
+2. Approve the requested scopes for the selected bot role.
 3. Return to the terminal and continue setup.
 
 Murph uses the OAuth callback to save the Slack workspace and identify the Slack user who authorized the app. That user becomes the Slack owner Murph watches for by default.

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const envKeys = ['MURPH_APP_DIR', 'MURPH_CONFIG_PATH', 'MURPH_CREDENTIALS_PATH', 'SLACK_CLIENT_ID'] as const;
+const envKeys = ['MURPH_APP_DIR', 'MURPH_CONFIG_PATH', 'MURPH_CREDENTIALS_PATH', 'SLACK_CLIENT_ID', 'SLACK_PERSONAL_CLIENT_ID'] as const;
 const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 
 describe('Slack install URL', () => {
@@ -37,6 +37,7 @@ describe('Slack install URL', () => {
     expect(params.get('team')).toBe('T123');
     expect(params.get('user_scope')).toBe('search:read');
     expect(params.get('scope')).not.toContain('users:read');
+    expect(params.get('scope')).not.toContain('im:history');
     expect(params.get('state')).toBeNull();
   });
 
@@ -49,5 +50,31 @@ describe('Slack install URL', () => {
     const params = new URL(url!).searchParams;
     expect(params.get('team')).toBe('T123');
     expect(params.get('state')).toBe('cli');
+  });
+
+  it('marks setup-originated installs in OAuth state', async () => {
+    const { SlackService } = await import('../src/lib/server/channels/slack/service');
+
+    const url = new SlackService().buildInstallUrl('http://murph.test', 'T123', 'setup');
+
+    expect(url).toBeTruthy();
+    const params = new URL(url!).searchParams;
+    expect(params.get('team')).toBe('T123');
+    expect(params.get('state')).toBe('setup');
+  });
+
+  it('uses only DM scopes for personal installs', async () => {
+    process.env.SLACK_PERSONAL_CLIENT_ID = 'personal-client-id';
+    const { SlackService } = await import('../src/lib/server/channels/slack/service');
+
+    const url = new SlackService().buildInstallUrl('http://murph.test', 'T123', 'cli', 'personal');
+
+    expect(url).toBeTruthy();
+    const params = new URL(url!).searchParams;
+    expect(params.get('client_id')).toBe('personal-client-id');
+    expect(params.get('team')).toBe('T123');
+    expect(params.get('scope')).toBe('chat:write,im:history');
+    expect(params.get('user_scope')).toBeNull();
+    expect(params.get('state')).toBe('personal:cli');
   });
 });

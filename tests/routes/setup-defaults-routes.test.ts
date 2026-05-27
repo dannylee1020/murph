@@ -27,7 +27,25 @@ function jsonResponse(): any & { result: () => { status: number; body: any } } {
   };
 }
 
-async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?: string } = {}) {
+function textResponse(): any & { result: () => { status: number; body: string; headers: Record<string, string> } } {
+  let status = 200;
+  let payload = '';
+  let headers: Record<string, string> = {};
+  return {
+    writeHead(nextStatus: number, nextHeaders: Record<string, string>) {
+      status = nextStatus;
+      headers = nextHeaders;
+    },
+    end(nextPayload: string) {
+      payload = nextPayload;
+    },
+    result() {
+      return { status, body: payload, headers };
+    }
+  };
+}
+
+async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?: string; skipSlackToken?: boolean } = {}) {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
   process.env.MURPH_APP_DIR = workspaceDir;
@@ -69,10 +87,12 @@ async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?
     name: 'Test Workspace',
     botUserId: 'UTZBOT'
   });
-  writeSecret('slack', 'bot_token', 'xoxb-test', {
-    workspaceId: workspace.id,
-    externalWorkspaceId: workspace.externalWorkspaceId
-  });
+  if (!input.skipSlackToken) {
+    writeSecret('slack', 'bot_token', 'xoxb-test', {
+      workspaceId: workspace.id,
+      externalWorkspaceId: workspace.externalWorkspaceId
+    });
+  }
   const { systemRoutes } = await import('../../src/server/routes/system');
   const { dispatchRoute } = await import('../../src/server/router');
 
@@ -87,7 +107,18 @@ async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?
     return res.result();
   }
 
-  return { request, store, workspace };
+  async function requestText(method: string, path: string) {
+    const req = jsonRequest(method);
+    const res = textResponse();
+    await dispatchRoute(systemRoutes, {
+      req,
+      res,
+      url: new URL(path, 'http://localhost')
+    });
+    return res.result();
+  }
+
+  return { request, requestText, store, workspace };
 }
 
 async function seedWorkspaceOwner(
@@ -155,6 +186,18 @@ describe('setup defaults routes', () => {
     } else {
       process.env.MURPH_BOT_ROLES = originalBotRoles;
     }
+  });
+
+  it('renders a standalone CLI OAuth completion page without the setup app', async () => {
+    const { requestText } = await setup();
+
+    const response = await requestText('GET', '/oauth/cli-complete?provider=slack&role=personal&status=success');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe('text/html; charset=utf-8');
+    expect(response.body).toContain('slack connected');
+    expect(response.body).toContain('Return to your terminal');
+    expect(response.body).not.toContain('/api/setup/status');
   });
 
   it('saves owner, selected channels, and schedule as shared setup defaults', async () => {
@@ -410,6 +453,50 @@ describe('setup defaults routes', () => {
     expect(response.body.slack.workspace).toEqual(expect.objectContaining({
       externalWorkspaceId: 'T1',
       name: 'Test Workspace'
+    }));
+  });
+
+  it('does not mark Slack channel bot installed when the role token is missing', async () => {
+    const { request } = await setup({ skipSlackToken: true });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.slack.installed).toBe(false);
+    expect(response.body.slack.roles.channel.installed).toBe(false);
+  });
+
+  it('returns role-specific setup helper links in setup status', async () => {
+    const { request } = await setup();
+    await request('POST', '/api/setup/config', {
+      SLACK_CHANNEL_APP_ID: 'A-channel',
+      SLACK_PERSONAL_APP_ID: 'A-personal',
+      DISCORD_CHANNEL_CLIENT_ID: 'discord-channel-client',
+      DISCORD_PERSONAL_CLIENT_ID: 'discord-personal-client'
+    });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.slack.roles.channel.links).toEqual(expect.objectContaining({
+      callbackUrl: 'http://localhost/api/slack/oauth/callback',
+      manifestUrl: '/slack-channel-manifest.yaml',
+      appConfigUrl: 'https://api.slack.com/apps/A-channel/general',
+      oauthConfigUrl: 'https://api.slack.com/apps/A-channel/oauth',
+      eventsConfigUrl: 'https://api.slack.com/apps/A-channel/event-subscriptions'
+    }));
+    expect(response.body.slack.roles.personal.links).toEqual(expect.objectContaining({
+      manifestUrl: '/slack-personal-manifest.yaml',
+      appConfigUrl: 'https://api.slack.com/apps/A-personal/general'
+    }));
+    expect(response.body.discord.roles.channel.links).toEqual(expect.objectContaining({
+      redirectUri: 'http://localhost/api/discord/oauth/callback',
+      developerPortalUrl: 'https://discord.com/developers/applications/discord-channel-client/oauth2',
+      botConfigUrl: 'https://discord.com/developers/applications/discord-channel-client/bot'
+    }));
+    expect(response.body.discord.roles.personal.links).toEqual(expect.objectContaining({
+      developerPortalUrl: 'https://discord.com/developers/applications/discord-personal-client/oauth2',
+      botConfigUrl: 'https://discord.com/developers/applications/discord-personal-client/bot'
     }));
   });
 

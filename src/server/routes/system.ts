@@ -1,4 +1,4 @@
-import type { IncomingMessage } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readJson, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 import { DEFAULT_AGENT_MODEL } from '#lib/config';
@@ -35,6 +35,59 @@ import {
 } from '#lib/server/setup/owner-identity';
 import type { SetupDefaults, Workspace } from '#lib/types';
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function sendHtml(res: ServerResponse, body: string, status = 200): void {
+  res.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-length': Buffer.byteLength(body)
+  });
+  res.end(body);
+}
+
+function cliOAuthCompleteHtml(url: URL): string {
+  const provider = url.searchParams.get('provider') ?? 'provider';
+  const role = url.searchParams.get('role') ?? 'channel';
+  const status = url.searchParams.get('status') === 'error' ? 'error' : 'success';
+  const reason = url.searchParams.get('reason') ?? '';
+  const title = status === 'error'
+    ? `${provider} setup failed`
+    : `${provider} connected`;
+  const detail = status === 'error'
+    ? `${provider} ${role} bot setup failed${reason ? `: ${reason}` : '.'}`
+    : `${provider} ${role} bot is connected.`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #181816; background: #f7f5ef; }
+      main { min-height: 100vh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+      section { width: min(520px, 100%); border: 1px solid #ded8cb; background: #fffdf8; padding: 28px; box-sizing: border-box; }
+      h1 { margin: 0 0 12px; font-size: 24px; line-height: 1.2; }
+      p { margin: 0; color: #5c574d; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <h1>${escapeHtml(title)}</h1>
+        <p>${escapeHtml(detail)} Return to your terminal to finish setup.</p>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -49,6 +102,92 @@ function publicAppUrl(req: IncomingMessage, url: URL): string {
 
 function discordDeveloperPortalOAuthUrl(applicationId: string): string {
   return `https://discord.com/developers/applications/${encodeURIComponent(applicationId)}/oauth2`;
+}
+
+function discordDeveloperPortalBotUrl(applicationId: string): string {
+  return `https://discord.com/developers/applications/${encodeURIComponent(applicationId)}/bot`;
+}
+
+function slackAppUrl(appId: string, section: 'general' | 'oauth' | 'event-subscriptions' = 'general'): string {
+  return `https://api.slack.com/apps/${encodeURIComponent(appId)}/${section}`;
+}
+
+function slackRoleAppId(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal'): string | undefined {
+  return role === 'personal'
+    ? process.env.SLACK_PERSONAL_APP_ID ?? config.channels?.slack?.bots?.personal?.appId
+    : process.env.SLACK_CHANNEL_APP_ID ?? config.channels?.slack?.bots?.channel?.appId ?? process.env.SLACK_APP_ID ?? config.channels?.slack?.appId;
+}
+
+function discordRoleClientId(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal'): string | undefined {
+  return role === 'personal'
+    ? process.env.DISCORD_PERSONAL_CLIENT_ID ?? config.channels?.discord?.bots?.personal?.clientId
+    : process.env.DISCORD_CHANNEL_CLIENT_ID ?? config.channels?.discord?.bots?.channel?.clientId ?? process.env.DISCORD_CLIENT_ID ?? config.channels?.discord?.clientId;
+}
+
+function setupRoleWorkspace(
+  workspaces: Workspace[],
+  botInstallations: ReturnType<ReturnType<typeof getStore>['listBotInstallations']>,
+  provider: 'slack' | 'discord',
+  role: 'channel' | 'personal'
+) {
+  const match = setupRoleWorkspaceMatch(workspaces, botInstallations, provider, role);
+  return match
+    ? {
+        id: match.workspace.id,
+        provider: match.workspace.provider,
+        externalWorkspaceId: match.workspace.externalWorkspaceId,
+        name: match.workspace.name,
+        botUserId: match.workspace.botUserId,
+        installedAt: match.workspace.installedAt
+      }
+    : undefined;
+}
+
+function setupRoleWorkspaceMatch(
+  workspaces: Workspace[],
+  botInstallations: ReturnType<ReturnType<typeof getStore>['listBotInstallations']>,
+  provider: 'slack' | 'discord',
+  role: 'channel' | 'personal'
+) {
+  const installation = botInstallations.find((entry) => (
+    entry.provider === provider &&
+    entry.role === role &&
+    entry.status === 'active'
+  ));
+  if (!installation) return undefined;
+  const workspace = workspaces.find((entry) => entry.id === installation.workspaceId);
+  return workspace ? { installation, workspace } : undefined;
+}
+
+function setupSlackRoleInstalled(
+  workspaces: Workspace[],
+  botInstallations: ReturnType<ReturnType<typeof getStore>['listBotInstallations']>,
+  role: 'channel' | 'personal'
+): boolean {
+  const match = setupRoleWorkspaceMatch(workspaces, botInstallations, 'slack', role);
+  return Boolean(match && getSlackService().canReadBotToken(match.workspace, match.installation.id));
+}
+
+function slackRoleLinks(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal', appUrl: string) {
+  const appId = slackRoleAppId(config, role);
+  return {
+    callbackUrl: `${appUrl}/api/slack/oauth/callback`,
+    manifestUrl: role === 'personal' ? '/slack-personal-manifest.yaml' : '/slack-channel-manifest.yaml',
+    createAppUrl: 'https://api.slack.com/apps?new_app=1',
+    appConfigUrl: appId ? slackAppUrl(appId, 'general') : 'https://api.slack.com/apps',
+    oauthConfigUrl: appId ? slackAppUrl(appId, 'oauth') : undefined,
+    eventsConfigUrl: appId ? slackAppUrl(appId, 'event-subscriptions') : undefined
+  };
+}
+
+function discordRoleLinks(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal', appUrl: string) {
+  const clientId = discordRoleClientId(config, role);
+  const env = getRuntimeEnv();
+  return {
+    redirectUri: env.discordRedirectUri ?? `${appUrl}/api/discord/oauth/callback`,
+    developerPortalUrl: clientId ? discordDeveloperPortalOAuthUrl(clientId) : 'https://discord.com/developers/applications',
+    botConfigUrl: clientId ? discordDeveloperPortalBotUrl(clientId) : undefined
+  };
 }
 
 function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
@@ -359,6 +498,9 @@ function envOverrides(): string[] {
 }
 
 export const systemRoutes: Route[] = [
+  route('GET', '/oauth/cli-complete', ({ res, url }) => {
+    sendHtml(res, cliOAuthCompleteHtml(url));
+  }),
   route('GET', '/api/health', ({ res }) => {
     const summary = getStore().getWorkspaceSummary();
     return sendJson(res, {
@@ -375,9 +517,10 @@ export const systemRoutes: Route[] = [
       }
     });
   }),
-  route('GET', '/api/setup/status', async ({ res }) => {
+  route('GET', '/api/setup/status', async ({ req, res, url }) => {
     await ensureRuntimeInitialized();
     const env = getRuntimeEnv();
+    const appUrl = publicAppUrl(req, url);
     const summary = getStore().getWorkspaceSummary();
     const setupDefaults = effectiveSetupDefaults();
     const workspaces = getStore().listWorkspaces();
@@ -448,12 +591,17 @@ export const systemRoutes: Route[] = [
         roles: {
           channel: {
             configured: getSlackService().isRoleConfigured('channel'),
-            installed: botInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'channel' && installation.status === 'active')
+            installed: setupSlackRoleInstalled(workspaces, botInstallations, 'channel'),
+            ownerConfigured: slackOwnerConfigured,
+            workspace: setupRoleWorkspace(workspaces, botInstallations, 'slack', 'channel'),
+            links: slackRoleLinks(config, 'channel', appUrl)
           },
           personal: {
             configured: getSlackService().isRoleConfigured('personal'),
-            installed: botInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'personal' && installation.status === 'active'),
-            representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId))
+            installed: setupSlackRoleInstalled(workspaces, botInstallations, 'personal'),
+            representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId)),
+            workspace: setupRoleWorkspace(workspaces, botInstallations, 'slack', 'personal'),
+            links: slackRoleLinks(config, 'personal', appUrl)
           }
         },
         ingress: getIngressHealth('slack'),
@@ -476,12 +624,17 @@ export const systemRoutes: Route[] = [
         roles: {
           channel: {
             configured: getDiscordService().isRoleConfigured('channel'),
-            installed: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'channel' && installation.status === 'active')
+            installed: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'channel' && installation.status === 'active'),
+            ownerConfigured: discordOwnerConfigured,
+            workspace: setupRoleWorkspace(workspaces, botInstallations, 'discord', 'channel'),
+            links: discordRoleLinks(config, 'channel', appUrl)
           },
           personal: {
             configured: getDiscordService().isRoleConfigured('personal'),
             installed: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active'),
-            representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId))
+            representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId)),
+            workspace: setupRoleWorkspace(workspaces, botInstallations, 'discord', 'personal'),
+            links: discordRoleLinks(config, 'personal', appUrl)
           }
         },
         ownerConfigured: discordOwnerConfigured,

@@ -85,6 +85,8 @@ describe('Slack OAuth callback route', () => {
     delete process.env.MURPH_ENCRYPTION_KEY;
     delete process.env.SLACK_CLIENT_ID;
     delete process.env.SLACK_CLIENT_SECRET;
+    delete process.env.SLACK_PERSONAL_CLIENT_ID;
+    delete process.env.SLACK_PERSONAL_CLIENT_SECRET;
     delete process.env.OPENAI_API_KEY;
   });
 
@@ -151,7 +153,7 @@ describe('Slack OAuth callback route', () => {
     expect(config).toContain('ownerDisplayName: Daniel');
   });
 
-  it('preserves CLI source on successful workspace install', async () => {
+  it('returns CLI-sourced workspace installs to the terminal completion page', async () => {
     const { get } = await setup({
       ok: true,
       team: { id: 'T1', name: 'Murph Test' },
@@ -162,17 +164,48 @@ describe('Slack OAuth callback route', () => {
     const result = await get('/api/slack/oauth/callback?code=abc&state=cli');
 
     expect(result.status).toBe(302);
-    expect(result.headers.location).toBe('/setup?step=slack&success=1&source=cli');
+    expect(result.headers.location).toBe('/oauth/cli-complete?provider=slack&role=channel&status=success');
     expect(ensureStarted).toHaveBeenCalledOnce();
   });
 
-  it('redirects with the Slack OAuth reason and CLI source when install fails', async () => {
+  it('returns CLI-sourced Slack failures to the terminal completion page', async () => {
     const { get } = await setup({ ok: false, error: 'account_inactive' });
 
     const result = await get('/api/slack/oauth/callback?code=abc&state=cli');
 
     expect(result.status).toBe(302);
-    expect(result.headers.location).toBe('/setup?step=slack&error=slack_oauth_failed&reason=account_inactive&source=cli');
+    expect(result.headers.location).toBe('/oauth/cli-complete?provider=slack&role=channel&status=error&reason=account_inactive');
     expect(ensureStarted).not.toHaveBeenCalled();
+  });
+
+  it('returns setup-sourced Slack installs to the setup wizard', async () => {
+    const { get } = await setup({
+      ok: true,
+      team: { id: 'T1', name: 'Murph Test' },
+      access_token: 'xoxb-test',
+      bot_user_id: 'UTZBOT'
+    });
+
+    const result = await get('/api/slack/oauth/callback?code=abc&state=setup');
+
+    expect(result.status).toBe(302);
+    expect(result.headers.location).toBe('/setup?step=slack&success=1');
+  });
+
+  it('returns personal CLI installs to the terminal completion page with role context', async () => {
+    process.env.SLACK_PERSONAL_CLIENT_ID = 'personal-client-id';
+    process.env.SLACK_PERSONAL_CLIENT_SECRET = 'personal-client-secret';
+    const { get } = await setup({
+      ok: true,
+      team: { id: 'T1', name: 'Murph Test' },
+      access_token: 'xoxb-test',
+      bot_user_id: 'UTZBOT',
+      authed_user: { id: 'U1' }
+    });
+
+    const result = await get('/api/slack/oauth/callback?code=abc&state=personal:cli');
+
+    expect(result.status).toBe(302);
+    expect(result.headers.location).toBe('/oauth/cli-complete?provider=slack&role=personal&status=success');
   });
 });

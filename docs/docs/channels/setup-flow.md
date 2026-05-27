@@ -26,7 +26,7 @@ murph setup
 The full wizard runs these sections:
 
 ```text
-core -> provider -> bot roles -> channel providers -> bot app setup -> owner OAuth -> channels -> schedule -> policy -> status
+core -> provider -> coverage -> bot app setup -> owner OAuth -> channels -> schedule -> policy -> status
 ```
 
 Run channel-specific setup when only channel settings changed:
@@ -54,7 +54,7 @@ murph start
 murph open
 ```
 
-Use the setup wizard to choose bot roles, choose Slack and/or Discord, connect each selected app identity, authorize your own account through OAuth, and choose watched channels when the channel role is enabled. Owner identity is captured from the OAuth callback; Murph does not list workspace members or let you choose another user.
+Use the setup wizard to choose coverage in one step: Slack channel bot, Slack personal bot, Discord channel bot, Discord personal bot, or any combination of those identities. Each provider step shows app value state, bot install state, owner identity state, direct provider shortcuts, and the exact callback or redirect URI for the current Murph host. The wizard authorizes your own account through OAuth and only asks for watched channels when a channel bot is enabled. Owner identity is captured from the OAuth callback; Murph does not list workspace members or let you choose another user.
 
 Role-specific HTTP install and event endpoints are available for hosted setups:
 
@@ -67,7 +67,7 @@ Role-specific HTTP install and event endpoints are available for hosted setups:
 /api/discord/personal/install
 ```
 
-The unqualified Slack and Discord install URLs remain compatibility aliases for channel-bot setup.
+The unqualified Slack and Discord install URLs remain compatibility aliases for channel-bot setup. Setup links include a source marker so OAuth returns to the right surface: CLI setup uses `source=cli` and ends on a browser page that tells you to return to the terminal, while the browser setup wizard uses `source=setup` and returns to `/setup`.
 
 ## Local storage
 

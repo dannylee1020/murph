@@ -9,6 +9,8 @@ Discord setup has a few manual Developer Portal steps. Do those first, then let 
 
 For both personal and channel behavior in one runtime, create two Discord applications: one personal bot for DMs and one channel bot for watched-channel handoff. Use `/api/discord/personal/install` and `DISCORD_PERSONAL_*` variables for the personal bot. Use `/api/discord/channel/install` and `DISCORD_CHANNEL_*` variables for the channel bot. The unqualified `/api/discord/install` endpoint and legacy `DISCORD_*` variables remain compatibility aliases for the channel bot.
 
+The Discord channel bot installs into the server Murph should watch. The Discord personal bot uses OAuth identify to record the represented owner for personal DM handling; it is not the server channel reader.
+
 ## What You Need
 
 - Access to the [Discord Developer Portal](https://discord.com/developers/applications).

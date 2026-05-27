@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
 const setupCli = path.join(repoRoot, 'bin/setup-cli.mjs');
-const manifest = [
+const channelManifest = [
   'display_information:',
   '  name: Murph',
   'oauth_config:',
@@ -14,8 +14,35 @@ const manifest = [
   '    - http://localhost:5173/api/slack/oauth/callback',
   '  scopes:',
   '    bot:',
+  '      - app_mentions:read',
+  '      - channels:history',
   '      - chat:write',
+  '      - groups:history',
+  '    user:',
+  '      - search:read',
   'settings:',
+  '  event_subscriptions:',
+  '    bot_events:',
+  '      - app_mention',
+  '      - message.channels',
+  '      - message.groups',
+  '  socket_mode_enabled: true',
+  ''
+].join('\n');
+const personalManifest = [
+  'display_information:',
+  '  name: Murph Personal',
+  'oauth_config:',
+  '  redirect_urls:',
+  '    - http://localhost:5173/api/slack/oauth/callback',
+  '  scopes:',
+  '    bot:',
+  '      - chat:write',
+  '      - im:history',
+  'settings:',
+  '  event_subscriptions:',
+  '    bot_events:',
+  '      - message.im',
   '  socket_mode_enabled: true',
   ''
 ].join('\n');
@@ -23,7 +50,9 @@ const manifest = [
 function createAppDir(): string {
   const appDir = mkdtempSync(path.join(tmpdir(), 'murph-setup-cli-'));
   mkdirSync(path.join(appDir, 'docs/public'), { recursive: true });
-  writeFileSync(path.join(appDir, 'docs/public/slack-manifest.yaml'), manifest);
+  writeFileSync(path.join(appDir, 'docs/public/slack-manifest.yaml'), channelManifest);
+  writeFileSync(path.join(appDir, 'docs/public/slack-channel-manifest.yaml'), channelManifest);
+  writeFileSync(path.join(appDir, 'docs/public/slack-personal-manifest.yaml'), personalManifest);
   return appDir;
 }
 
@@ -188,6 +217,7 @@ describe('setup CLI Slack app setup', () => {
     });
 
     expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Channel bot: shared Slack app');
     const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
     expect(manifestCall).toBeTruthy();
     expect(typeof manifestCall?.body?.manifest).toBe('string');
@@ -200,6 +230,84 @@ describe('setup CLI Slack app setup', () => {
       expect.objectContaining({ provider: 'slack', key: 'app_token', value: 'xapp-returned' }),
       expect.objectContaining({ provider: 'slack', key: 'client_secret', value: 'client-secret' }),
       expect.objectContaining({ provider: 'slack', key: 'signing_secret', value: 'signing-secret' })
+    ]));
+  });
+
+  it('uses the channel Slack manifest for channel app automation', async () => {
+    const appDir = createAppDir();
+    const { result, calls } = runSetupSlack(appDir, '\n', {
+      ok: true,
+      app_id: 'A123',
+      credentials: {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        app_token: 'xapp-returned'
+      }
+    }, {
+      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config', SLACK_TEAM_ID: 'T123' },
+      setupStatusPayloads: [
+        { ok: true, slack: { installed: false } },
+        { ok: true, slack: { roles: { channel: { installed: true, workspace: { externalWorkspaceId: 'T123' } } } } }
+      ]
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
+    const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
+    expect(manifestBody.oauth_config.scopes.bot).toEqual(expect.arrayContaining([
+      'app_mentions:read',
+      'channels:history',
+      'groups:history',
+      'chat:write'
+    ]));
+    expect(manifestBody.oauth_config.scopes.user).toEqual(['search:read']);
+    expect(manifestBody.oauth_config.scopes.bot).not.toContain('im:history');
+    expect(manifestBody.settings.event_subscriptions.bot_events).toEqual(expect.arrayContaining([
+      'app_mention',
+      'message.channels',
+      'message.groups'
+    ]));
+    expect(manifestBody.settings.event_subscriptions.bot_events).not.toContain('message.im');
+  });
+
+  it('uses the personal Slack manifest and saves personal credentials for personal app automation', async () => {
+    const appDir = createAppDir();
+    const { result, calls } = runSetupSlack(appDir, '\n', {
+      ok: true,
+      app_id: 'APERSONAL',
+      credentials: {
+        client_id: 'personal-client-id',
+        client_secret: 'personal-client-secret',
+        signing_secret: 'personal-signing-secret',
+        app_token: 'xapp-personal'
+      }
+    }, {
+      args: ['slack', '--role', 'personal'],
+      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config', SLACK_TEAM_ID: 'T123' },
+      setupStatusPayloads: [
+        { ok: true, slack: { roles: { personal: { installed: false } } } },
+        { ok: true, slack: { roles: { personal: { installed: true, workspace: { externalWorkspaceId: 'T123' } } } } }
+      ]
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Personal bot: separate Slack app');
+    const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
+    const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
+    expect(manifestBody.display_information.name).toBe('Murph Personal');
+    expect(manifestBody.oauth_config.scopes.bot).toEqual(['chat:write', 'im:history']);
+    expect(manifestBody.oauth_config.scopes.user).toBeUndefined();
+    expect(manifestBody.settings.event_subscriptions.bot_events).toEqual(['message.im']);
+    expect(manifestBody.settings.event_subscriptions.bot_events).not.toContain('message.channels');
+    const config = readFileSync(path.join(appDir, 'config.yaml'), 'utf8');
+    expect(config).toContain('personal:');
+    expect(config).toContain('appId: APERSONAL');
+    expect(config).toContain('clientId: personal-client-id');
+    const credentials = JSON.parse(readFileSync(path.join(appDir, '.credentials'), 'utf8'));
+    expect(credentials.credentials).toEqual(expect.arrayContaining([
+      expect.objectContaining({ provider: 'slack', key: 'personal_app_token', value: 'xapp-personal' }),
+      expect.objectContaining({ provider: 'slack', key: 'personal_client_secret', value: 'personal-client-secret' }),
+      expect.objectContaining({ provider: 'slack', key: 'personal_signing_secret', value: 'personal-signing-secret' })
     ]));
   });
 
@@ -374,6 +482,79 @@ describe('setup CLI Slack app setup', () => {
     expect(result.stdout).toContain('Opening this URL to install Murph');
     expect(result.stdout).toContain('Press Enter after Slack app installation finishes.');
     expect(readFileSync(openedUrlPath!, 'utf8').trim()).toBe('http://murph.test/api/slack/channel/install?source=cli&team=T123');
+  });
+
+  it('does not block OAuth when an existing Slack workspace differs from the selected target', async () => {
+    const appDir = createAppDir();
+    const { result, openedUrlPath } = runSetupSlack(appDir, '\n', {
+      ok: true,
+      app_id: 'A123',
+      credentials: {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        app_token: 'xapp-returned'
+      }
+    }, {
+      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config', SLACK_TEAM_ID: 'T222', SLACK_TEAM_NAME: 'Selected Workspace' },
+      browserOpen: true,
+      setupStatusPayloads: [
+        { ok: true, slack: { installed: true, workspace: { id: 'ws-old', externalWorkspaceId: 'T111', name: 'Old Workspace' } } },
+        { ok: true, slack: { installed: true, workspace: { id: 'ws-new', externalWorkspaceId: 'T222', name: 'Selected Workspace' } } }
+      ]
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Existing Slack connection is T111');
+    expect(result.stdout).toContain('http://murph.test/api/slack/channel/install?source=cli&team=T222');
+    expect(readFileSync(openedUrlPath!, 'utf8').trim()).toBe('http://murph.test/api/slack/channel/install?source=cli&team=T222');
+  });
+
+  it('lets the user adopt a Slack workspace connected during OAuth when it differs from the selected target', async () => {
+    const appDir = createAppDir();
+    const { result } = runSetupSlack(appDir, '\n\n', {
+      ok: true,
+      app_id: 'A123',
+      credentials: {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        app_token: 'xapp-returned'
+      }
+    }, {
+      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config', SLACK_TEAM_ID: 'T222', SLACK_TEAM_NAME: 'Selected Workspace' },
+      setupStatusPayloads: [
+        { ok: true, slack: { installed: false } },
+        { ok: true, slack: { installed: true, workspace: { id: 'ws-connected', externalWorkspaceId: 'T111', name: 'Connected Workspace' } } }
+      ]
+    });
+
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Slack channel bot connected Connected Workspace (T111), but setup selected T222.');
+    expect(result.stdout).toContain('Slack setup now targets Connected Workspace.');
+    const config = readFileSync(path.join(appDir, 'config.yaml'), 'utf8');
+    expect(config).toContain('teamId: T111');
+    expect(config).toContain('teamName: Connected Workspace');
+  });
+
+  it('fails non-interactively when a connected Slack workspace differs from the selected target', async () => {
+    const appDir = createAppDir();
+    const { result } = runSetupSlack(appDir, '', {
+      ok: true,
+      app_id: 'A123',
+      credentials: {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        app_token: 'xapp-returned'
+      }
+    }, {
+      args: ['slack', '--non-interactive'],
+      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config', SLACK_TEAM_ID: 'T222' },
+      setupStatusPayloads: [
+        { ok: true, slack: { installed: true, workspace: { id: 'ws-old', externalWorkspaceId: 'T111', name: 'Old Workspace' } } }
+      ]
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr + result.stdout).toContain('connected workspace T111, but setup selected T222');
   });
 
   it('lets the user select one Slack CLI workspace when multiple are available', async () => {

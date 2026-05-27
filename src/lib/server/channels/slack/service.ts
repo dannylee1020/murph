@@ -190,17 +190,21 @@ export class SlackService {
     }
 
     const redirectUri = `${appUrl}/api/slack/oauth/callback`;
+    const scope = role === 'personal'
+      ? 'chat:write,im:history'
+      : 'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read';
     const params = new URLSearchParams({
       client_id: clientId,
-      scope:
-        'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read,im:history,mpim:history',
-      user_scope: 'search:read',
+      scope,
       redirect_uri: redirectUri
     });
+    if (role === 'channel') {
+      params.set('user_scope', 'search:read');
+    }
     if (teamId?.trim()) {
       params.set('team', teamId.trim());
     }
-    if (source === 'cli' || role === 'personal') {
+    if (source || role === 'personal') {
       params.set('state', role === 'personal' ? `personal:${source ?? 'settings'}` : source ?? 'settings');
     }
 
@@ -339,9 +343,9 @@ export class SlackService {
     throw new Error('Slack bot token is missing from local credentials. Reconnect Slack.');
   }
 
-  canReadBotToken(workspace: Workspace): boolean {
+  canReadBotToken(workspace: Workspace, botInstallationId?: string): boolean {
     try {
-      this.getBotToken(workspace.id);
+      this.getBotToken(workspace.id, botInstallationId);
       return true;
     } catch {
       return false;

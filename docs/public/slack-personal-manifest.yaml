@@ -1,29 +1,20 @@
 display_information:
-  name: Murph
+  name: Murph Personal
 features:
   bot_user:
-    display_name: Murph
+    display_name: Murph Personal
     always_online: false
 oauth_config:
   redirect_urls:
     - http://localhost:5173/api/slack/oauth/callback
   scopes:
     bot:
-      - app_mentions:read
-      - channels:history
-      - channels:join
-      - channels:read
       - chat:write
-      - groups:history
-      - groups:read
-    user:
-      - search:read
+      - im:history
 settings:
   event_subscriptions:
     bot_events:
-      - app_mention
-      - message.channels
-      - message.groups
+      - message.im
   interactivity:
     is_enabled: false
   org_deploy_enabled: false

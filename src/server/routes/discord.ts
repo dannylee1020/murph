@@ -12,6 +12,8 @@ import { readMurphConfig, updateMurphSetupDefaults } from '#lib/server/setup/con
 import type { DiscordInstallResult } from '#lib/server/channels/discord/service';
 import type { BotRole, SetupDefaults } from '#lib/types';
 
+type OAuthSource = 'cli' | 'setup' | 'settings';
+
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -37,7 +39,11 @@ function parseBotRole(value: string | null | undefined): BotRole {
   return value === 'personal' ? 'personal' : 'channel';
 }
 
-function encodeDiscordState(source = 'settings', role: BotRole = 'channel'): string {
+function parseOAuthSource(value: string | null | undefined): OAuthSource {
+  return value === 'cli' || value === 'setup' ? value : 'settings';
+}
+
+function encodeDiscordState(source: OAuthSource = 'settings', role: BotRole = 'channel'): string {
   const body = Buffer.from(JSON.stringify({ source, role, ts: Date.now() }), 'utf8').toString('base64url');
   return `${body}.${signStateBody(body)}`;
 }
@@ -54,13 +60,13 @@ function verifyDiscordState(state: string | null): boolean {
   }
 }
 
-function discordStateSource(state: string | null): 'settings' | 'setup' {
+function discordStateSource(state: string | null): OAuthSource {
   if (!state) return 'settings';
   const [body] = state.split('.');
   if (!body) return 'settings';
   try {
     const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as { source?: string };
-    return parsed.source === 'setup' ? 'setup' : 'settings';
+    return parseOAuthSource(parsed.source);
   } catch {
     return 'settings';
   }
@@ -78,8 +84,18 @@ function discordStateRole(state: string | null): BotRole {
   }
 }
 
-function discordReturnPath(source: 'settings' | 'setup', query: string): string {
+function discordReturnPath(source: OAuthSource, query: string): string {
   return source === 'setup' ? `/setup${query}` : `/settings${query}`;
+}
+
+function discordCliReturnPath(role: BotRole, status: 'success' | 'error', reason?: string): string {
+  const params = new URLSearchParams({
+    provider: 'discord',
+    role,
+    status
+  });
+  if (reason) params.set('reason', reason);
+  return `/oauth/cli-complete?${params.toString()}`;
 }
 
 function mergedSetupDefaults(): SetupDefaults {
@@ -136,9 +152,11 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
 export const discordRoutes: Route[] = [
   route('GET', '/api/discord/install', ({ req, res, url: requestUrl }) => {
     const role = parseBotRole(requestUrl.searchParams.get('role'));
-    const source = requestUrl.searchParams.get('source') === 'setup' ? 'setup' : 'settings';
+    const source = parseOAuthSource(requestUrl.searchParams.get('source'));
     if (!getDiscordService().isRoleConfigured(role)) {
-      redirect(res, discordReturnPath(source, '?error=discord_client_secret_required'));
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'error', 'discord_client_secret_required')
+        : discordReturnPath(source, '?error=discord_client_secret_required'));
       return;
     }
     const url = getDiscordService().buildInstallUrl({
@@ -146,13 +164,17 @@ export const discordRoutes: Route[] = [
       source: encodeDiscordState(source, role),
       role
     });
-    redirect(res, url ?? discordReturnPath(source, '?error=discord_not_configured'));
+    redirect(res, url ?? (source === 'cli'
+      ? discordCliReturnPath(role, 'error', 'discord_not_configured')
+      : discordReturnPath(source, '?error=discord_not_configured')));
   }),
   route('GET', '/api/discord/:botRole/install', ({ req, res, url: requestUrl, params }) => {
     const role = parseBotRole(params.botRole);
-    const source = requestUrl.searchParams.get('source') === 'setup' ? 'setup' : 'settings';
+    const source = parseOAuthSource(requestUrl.searchParams.get('source'));
     if (!getDiscordService().isRoleConfigured(role)) {
-      redirect(res, discordReturnPath(source, '?error=discord_client_secret_required'));
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'error', 'discord_client_secret_required')
+        : discordReturnPath(source, '?error=discord_client_secret_required'));
       return;
     }
     const url = getDiscordService().buildInstallUrl({
@@ -160,7 +182,9 @@ export const discordRoutes: Route[] = [
       source: encodeDiscordState(source, role),
       role
     });
-    redirect(res, url ?? discordReturnPath(source, '?error=discord_not_configured'));
+    redirect(res, url ?? (source === 'cli'
+      ? discordCliReturnPath(role, 'error', 'discord_not_configured')
+      : discordReturnPath(source, '?error=discord_not_configured')));
   }),
   route('GET', '/api/discord/guilds', async ({ res }) => {
     try {
@@ -177,11 +201,15 @@ export const discordRoutes: Route[] = [
     const role = discordStateRole(state);
 
     if (!code) {
-      redirect(res, discordReturnPath(source, '?error=missing_code'));
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'error', 'missing_code')
+        : discordReturnPath(source, '?error=missing_code'));
       return;
     }
     if (!verifyDiscordState(state)) {
-      redirect(res, discordReturnPath(source, '?error=discord_oauth_failed&reason=invalid_state'));
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'error', 'invalid_state')
+        : discordReturnPath(source, '?error=discord_oauth_failed&reason=invalid_state'));
       return;
     }
 
@@ -199,12 +227,16 @@ export const discordRoutes: Route[] = [
         deferIfRunActive: true
       });
 
-      redirect(res, source === 'setup'
-        ? `/setup?step=discord&success=1&workspaceId=${encodeURIComponent(workspace.id)}`
-        : `/settings?installed=discord&workspaceId=${encodeURIComponent(workspace.id)}`);
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'success')
+        : source === 'setup'
+          ? `/setup?step=discord&success=1&workspaceId=${encodeURIComponent(workspace.id)}`
+          : `/settings?installed=discord&workspaceId=${encodeURIComponent(workspace.id)}`);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'discord_oauth_failed';
-      redirect(res, discordReturnPath(source, `?step=discord&error=discord_oauth_failed&reason=${encodeURIComponent(reason)}`));
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'error', reason)
+        : discordReturnPath(source, `?step=discord&error=discord_oauth_failed&reason=${encodeURIComponent(reason)}`));
     }
   }),
   route('POST', '/api/discord/guild', async ({ req, res }) => {

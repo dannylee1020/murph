@@ -10,6 +10,8 @@ import { route, type Route } from '../router.js';
 import type { SlackInstallResult } from '#lib/server/channels/slack/service';
 import type { BotRole } from '#lib/types';
 
+type OAuthSource = 'cli' | 'setup' | 'settings';
+
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -30,11 +32,42 @@ function parseBotRole(value: string | null | undefined): BotRole {
   return value === 'personal' ? 'personal' : 'channel';
 }
 
-function parseSlackState(state: string | null): { role: BotRole; source?: string } {
+function parseOAuthSource(value: string | null | undefined): OAuthSource {
+  return value === 'cli' || value === 'setup' ? value : 'settings';
+}
+
+function parseSlackState(state: string | null): { role: BotRole; source: OAuthSource } {
   if (state?.startsWith('personal:')) {
-    return { role: 'personal', source: state.slice('personal:'.length) || undefined };
+    return { role: 'personal', source: parseOAuthSource(state.slice('personal:'.length)) };
   }
-  return { role: 'channel', source: state ?? undefined };
+  return { role: 'channel', source: parseOAuthSource(state) };
+}
+
+function slackReturnPath(source: OAuthSource, role: BotRole, status: 'success' | 'error', reason?: string): string {
+  if (source === 'cli') {
+    const params = new URLSearchParams({
+      provider: 'slack',
+      role,
+      status
+    });
+    if (reason) params.set('reason', reason);
+    return `/oauth/cli-complete?${params.toString()}`;
+  }
+  if (source === 'setup') {
+    const params = new URLSearchParams({
+      step: 'slack',
+      ...(status === 'success'
+        ? { success: '1' }
+        : { error: 'slack_oauth_failed', reason: reason ?? 'slack_oauth_failed' })
+    });
+    return `/setup?${params.toString()}`;
+  }
+  const params = new URLSearchParams(
+    status === 'success'
+      ? { installed: 'slack' }
+      : { error: 'slack_oauth_failed', reason: reason ?? 'slack_oauth_failed' }
+  );
+  return `/settings?${params.toString()}`;
 }
 
 function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
@@ -158,10 +191,9 @@ export const slackRoutes: Route[] = [
     const code = url.searchParams.get('code');
     const state = parseSlackState(url.searchParams.get('state'));
     const source = state.source;
-    const sourceSuffix = source === 'cli' ? '&source=cli' : '';
 
     if (!code) {
-      redirect(res, '/settings?error=missing_code');
+      redirect(res, slackReturnPath(source, state.role, 'error', 'missing_code'));
       return;
     }
 
@@ -177,10 +209,10 @@ export const slackRoutes: Route[] = [
         deferIfRunActive: true
       });
 
-      redirect(res, `/setup?step=slack&success=1${sourceSuffix}`);
+      redirect(res, slackReturnPath(source, state.role, 'success'));
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'slack_oauth_failed';
-      redirect(res, `/setup?step=slack&error=slack_oauth_failed&reason=${encodeURIComponent(reason)}${sourceSuffix}`);
+      redirect(res, slackReturnPath(source, state.role, 'error', reason));
     }
   }),
   route('GET', '/api/slack/members', async ({ res }) => {

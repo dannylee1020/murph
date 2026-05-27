@@ -198,6 +198,7 @@ describe('setup CLI Discord setup', () => {
     });
 
     expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain('Channel bot: Discord server bot');
     expect(result.stdout).toContain('Murph Guild channel bot is connected.');
 
     const config = readFileSync(path.join(appDir, 'config.yaml'), 'utf8');
@@ -289,7 +290,7 @@ describe('setup CLI Discord setup', () => {
     });
 
     expect(result.status, result.stderr + result.stdout).toBe(0);
-    expect(result.stdout).toContain('http://murph.test/api/discord/channel/install?source=setup');
+    expect(result.stdout).toContain('http://murph.test/api/discord/channel/install?source=cli');
     expect(result.stdout).toContain('Checking Discord servers for the installed bot...');
     expect(result.stdout).toContain('Manual Guild connected.');
     expect(readFileSync(path.join(appDir, 'config.yaml'), 'utf8')).toContain('workspaceId: ws-manual');
