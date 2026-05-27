@@ -18,12 +18,14 @@ async function setup() {
     botUserId: 'UTZBOT'
   });
   const { writeSecret } = await import('#lib/server/credentials/local-store');
+  const channelInstallation = store.getBotInstallation('slack', workspace.externalWorkspaceId, 'channel');
   writeSecret('slack', 'bot_token', 'xoxb-test', {
     workspaceId: workspace.id,
-    externalWorkspaceId: workspace.externalWorkspaceId
+    externalWorkspaceId: workspace.externalWorkspaceId,
+    botInstallationId: channelInstallation?.id
   });
 
-  return { adapter: createSlackChannelAdapter(), workspace };
+  return { adapter: createSlackChannelAdapter(), store, workspace, writeSecret };
 }
 
 function mockSlackResponses(...payloads: unknown[]) {
@@ -85,6 +87,37 @@ describe('Slack membership checks', () => {
       name: 'product-eng',
       status: 'reinstall_required'
     });
+  });
+
+  it('uses the channel bot token for membership checks when a personal bot is also installed', async () => {
+    const { adapter, store, workspace, writeSecret } = await setup();
+    const personalInstallation = store.upsertBotInstallation({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      role: 'personal',
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      botUserId: 'UPERSONAL',
+      representedUserId: 'UOWNER'
+    });
+    writeSecret('slack', 'bot_token', 'xoxb-personal', {
+      workspaceId: workspace.id,
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      botInstallationId: personalInstallation.id
+    });
+    const fetchMock = mockSlackResponses({
+      ok: true,
+      channel: { id: 'C1', name: 'product-eng', is_member: true, is_private: false }
+    });
+
+    await expect(adapter.ensureMember!(workspace, 'C1')).resolves.toMatchObject({
+      channelId: 'C1',
+      status: 'already_member'
+    });
+    expect(fetchMock).toHaveBeenCalledWith('https://slack.com/api/conversations.info', expect.objectContaining({
+      headers: expect.objectContaining({
+        authorization: 'Bearer xoxb-test'
+      })
+    }));
   });
 
 });

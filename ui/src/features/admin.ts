@@ -191,31 +191,31 @@ export async function renderSettings(): Promise<void> {
       ${metric('Discord', setup.discord.installed ? 'Connected' : 'Not connected')}
     </dl>
 
-    <section class="grid three service-grid">
-      <article class="panel panel-status">
+    <section class="grid three service-grid setup-entry-grid">
+      <article class="panel panel-status setup-entry-card">
         <h2><span class="status-dot ${setup.slack.installed && setup.slack.oauthConfigured ? 'ok' : 'off'}" aria-hidden="true"></span>Slack</h2>
-        <p>Let Murph watch Slack channels and prepare replies while you are away.</p>
+        <p>Launch the guided setup for Slack channel or personal coverage.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.slack.installed ? 'Connected' : 'Not connected'}</dd></div>
           <div><dt>Events</dt><dd>${setup.slack.eventsMode === 'socket' ? 'Socket Mode' : 'HTTP'}</dd></div>
           <div><dt>Setup</dt><dd>${setup.slack.oauthConfigured && setup.slack.socketConfigured ? 'Ready to install' : 'Missing app settings'}</dd></div>
         </dl>
         <div class="actions">
-          <a class="button" href="/setup?provider=slack">${setup.slack.installed ? 'Reconnect Slack' : 'Set up Slack'}</a>
+          <a class="button" href="/setup?provider=slack">${setup.slack.installed ? 'Reconnect Slack' : 'Connect Slack'}</a>
         </div>
       </article>
-      <article class="panel panel-status">
+      <article class="panel panel-status setup-entry-card">
         <h2><span class="status-dot ${setup.discord.installed && setup.discord.botTokenConfigured ? 'ok' : 'off'}" aria-hidden="true"></span>Discord</h2>
-        <p>Connect Discord if this workspace also needs async coverage there.</p>
+        <p>Launch the guided setup for Discord channel or personal coverage.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.discord.installed ? 'Connected' : 'Not connected'}</dd></div>
           <div><dt>Setup</dt><dd>${discordSetupDetail}</dd></div>
         </dl>
         <div class="actions">
-          <a class="button" href="/setup?provider=discord">${setup.discord.installed ? 'Reconnect Discord' : 'Set up Discord'}</a>
+          <a class="button" href="/setup?provider=discord">${setup.discord.installed ? 'Reconnect Discord' : 'Connect Discord'}</a>
         </div>
       </article>
-      <article class="panel panel-status">
+      <article class="panel panel-status setup-entry-card">
         <h2><span class="status-dot ${setup.provider.configured ? 'ok' : 'off'}" aria-hidden="true"></span>AI provider</h2>
         <p>Add an OpenAI or Anthropic key so Murph can draft replies.</p>
         <dl class="details">

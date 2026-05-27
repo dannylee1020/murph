@@ -196,6 +196,49 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
   });
 
+  it('starts selected-channel sessions from the saved subscription without refetching the owner from Slack', async () => {
+    const { post, store, workspace, ensureMember, getMember } = await setup([
+      { channelId: 'C1', name: 'general', status: 'already_member' }
+    ]);
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Saved Owner',
+      status: 'active',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
+    });
+    getMember.mockRejectedValueOnce(new Error('missing_scope'));
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1'],
+      mode: 'manual_review'
+    });
+
+    expect(response.status).toBe(201);
+    expect(getMember).not.toHaveBeenCalled();
+    expect(ensureMember).toHaveBeenCalledWith(workspace, 'slack', 'C1');
+    expect(store.getUser(workspace.id, 'UOWNER')?.displayName).toBe('Saved Owner');
+  });
+
+  it('starts bulk sessions for all-accessible subscriptions without per-channel membership checks', async () => {
+    const { post, store, workspace, ensureMember } = await setup([]);
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      mode: 'manual_review',
+      targets: [
+        { workspaceId: workspace.id, ownerUserId: 'UOWNER', channelScope: [] }
+      ]
+    }, '/api/gateway/sessions/bulk');
+
+    expect(response.status).toBe(201);
+    expect(ensureMember).not.toHaveBeenCalled();
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
+  });
+
   it('blocks session creation when a scoped private channel requires invitation', async () => {
     const { post, store, workspace, gateway } = await setup([
       { channelId: 'G1', name: 'launch-war-room', status: 'requires_invitation' }
@@ -236,6 +279,9 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.reinstallRequired).toBe(true);
+    expect(response.body.reinstallRequiredChannels).toEqual([
+      { id: 'C1', name: 'product-eng', reason: 'missing_scope' }
+    ]);
     expect(store.listActiveSessions(workspace.id)).toHaveLength(0);
   });
 

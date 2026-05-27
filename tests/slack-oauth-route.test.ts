@@ -195,7 +195,7 @@ describe('Slack OAuth callback route', () => {
   it('returns personal CLI installs to the terminal completion page with role context', async () => {
     process.env.SLACK_PERSONAL_CLIENT_ID = 'personal-client-id';
     process.env.SLACK_PERSONAL_CLIENT_SECRET = 'personal-client-secret';
-    const { get } = await setup({
+    const { get, store } = await setup({
       ok: true,
       team: { id: 'T1', name: 'Murph Test' },
       access_token: 'xoxb-test',
@@ -207,5 +207,8 @@ describe('Slack OAuth callback route', () => {
 
     expect(result.status).toBe(302);
     expect(result.headers.location).toBe('/oauth/cli-complete?provider=slack&role=personal&status=success');
+    const install = store.getBotInstallation('slack', 'T1', 'personal');
+    const { readSecret } = await import('../src/lib/server/credentials/local-store');
+    expect(readSecret('slack', 'bot_token', { botInstallationId: install?.id })).toBe('xoxb-test');
   });
 });

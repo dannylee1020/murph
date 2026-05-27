@@ -428,9 +428,12 @@ export function sessionErrorHtml(): string {
 
 export function sessionCreateErrorHtml(payload: SessionCreateResponse): string {
     if (payload.targets?.length) {
+        const hasChannelActionTarget = payload.targets.some(
+            (target) => target.error === 'channels_require_action',
+        );
         return `
       <div class="notice danger">
-        <strong>Channel access required</strong>
+        <strong>${hasChannelActionTarget ? 'Channel access required' : 'Could not start watching'}</strong>
         ${payload.targets
             .map(
                 (target) => `
@@ -489,6 +492,33 @@ export function sessionCreateErrorDetails(payload: SessionCreateResponse): strin
       `,
         )
         .join('');
+    const reinstallRows = (payload.reinstallRequiredChannels ?? [])
+        .map(
+            (item) => `
+        <div class="action-row">
+          <span>${escapeHtml(channelName(item))}</span>
+          <code>${escapeHtml(item.reason ?? 'Slack app scopes need to be updated')}</code>
+        </div>
+      `,
+        )
+        .join('');
+    const hasDetails = Boolean(payload.reinstallRequired || inviteRows || reinstallRows || errorRows);
+    const fallbackMessage =
+        payload.message ??
+        (payload.error === 'subscription_channel_scope_mismatch'
+            ? 'The selected channels do not match the saved setup. Save channel selection and try again.'
+            : undefined) ??
+        (payload.error === 'subscription_required'
+            ? 'This user is not subscribed in the selected workspace.'
+            : undefined) ??
+        (payload.error === 'owner_required'
+            ? 'Choose an owner before starting a watch session.'
+            : undefined) ??
+        (payload.error === 'workspace_not_installed'
+            ? 'Connect this workspace before starting a watch session.'
+            : undefined) ??
+        payload.error ??
+        'Murph could not start watching this workspace.';
 
     return `
     ${
@@ -497,7 +527,13 @@ export function sessionCreateErrorDetails(payload: SessionCreateResponse): strin
             : ''
     }
     ${inviteRows ? `<div class="action-list">${inviteRows}</div>` : ''}
+    ${reinstallRows ? `<div class="action-list">${reinstallRows}</div>` : ''}
     ${errorRows ? `<div class="action-list">${errorRows}</div>` : ''}
+    ${
+        hasDetails
+            ? ''
+            : `<p>${escapeHtml(fallbackMessage)}</p>`
+    }
   `;
 }
 

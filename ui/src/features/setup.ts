@@ -443,6 +443,59 @@ function setupStepKeys(setup?: SetupStatusPayload): SetupStepKey[] {
     ];
 }
 
+function setupStepLabel(stepKey: SetupStepKey): string {
+    if (stepKey === 'ai') return 'AI model';
+    if (stepKey === 'coverage') return 'Channel and mode';
+    if (stepKey === 'finish') return 'Finish setup';
+    const split = splitSetupStep(stepKey);
+    if (split.provider && split.role) {
+        return `${providerLabel(split.provider)} ${roleLabel(split.role)}`;
+    }
+    if (split.provider) return `${providerLabel(split.provider)} channels`;
+    return 'Setup';
+}
+
+function setupStepProgress(
+    stepKeys: SetupStepKey[],
+    currentStep: number,
+): string {
+    return stepKeys
+        .map((stepKey, index) => {
+            const state =
+                index < currentStep
+                    ? 'completed'
+                    : index === currentStep
+                      ? 'active'
+                      : 'pending';
+            return `
+              <span class="wizard-progress-segment ${state}" title="${escapeHtml(setupStepLabel(stepKey))}">
+                <span>${String(index + 1).padStart(2, '0')}</span>
+              </span>
+            `;
+        })
+        .join('');
+}
+
+function setupSelectedQueuePreview(): string {
+    if (setupWizardState.selectedCoverage.length === 0) return '';
+    return `
+      <div class="setup-queue-preview">
+        <span>Setup queue</span>
+        <div>
+          ${setupWizardState.selectedCoverage
+              .map((key) => {
+                  const [provider, role] = key.split(':') as [
+                      SetupChannelProvider,
+                      BotRole,
+                  ];
+                  return `<strong>${escapeHtml(providerLabel(provider))} ${escapeHtml(roleLabel(role))}</strong>`;
+              })
+              .join('')}
+        </div>
+      </div>
+    `;
+}
+
 function nextSetupStepAfterPair(
     provider: SetupChannelProvider,
     role: BotRole,
@@ -699,7 +752,7 @@ function slackConnectGuide(input: {
     const nextAction = !configured
         ? input.roleStatus?.oauthConfigured
             ? 'Create or copy the app-level Socket Mode token, then paste it below.'
-            : 'Provide a Slack app configuration token so Murph can create or update the app from the manifest.'
+            : 'Create a new Slack app from the manifest, or open the reuse section to enter credentials from an existing app.'
         : !installed
           ? 'Install this Slack bot identity into the workspace from the button below.'
           : input.ownerMissing
@@ -855,10 +908,6 @@ function slackAppTokenForm(role: BotRole): string {
 function slackManifestForm(reusingToken: boolean): string {
     return `
       <form class="form" id="slack-manifest-form">
-        <label>
-          <span>Existing Slack app ID, optional</span>
-          <input name="existingAppId" placeholder="A0123456789" autocomplete="off" />
-        </label>
         ${
             reusingToken
                 ? '<div class="setup-success">Using the Slack app configuration token from the previous Slack app step</div>'
@@ -871,12 +920,16 @@ function slackManifestForm(reusingToken: boolean): string {
     `;
 }
 
-function slackManualConfigForm(role: BotRole): string {
+function slackManualConfigForm(role: BotRole, existingAppId?: string): string {
     const prefix = role === 'personal' ? 'SLACK_PERSONAL' : 'SLACK_CHANNEL';
     return `
       <details class="setup-advanced setup-manual-config">
-        <summary>Enter Slack app values manually</summary>
+        <summary>Reuse an existing Slack app</summary>
         <form class="form" id="slack-config-form">
+          <label>
+            <span>${prefix}_APP_ID</span>
+            <input name="appId" placeholder="A0123456789" autocomplete="off" value="${escapeHtml(existingAppId ?? '')}" required />
+          </label>
           <label>
             <span>${prefix}_APP_TOKEN</span>
             <input type="password" name="appToken" placeholder="xapp-..." autocomplete="off" required />
@@ -893,7 +946,7 @@ function slackManualConfigForm(role: BotRole): string {
             <span>${prefix}_SIGNING_SECRET</span>
             <input type="password" name="signingSecret" autocomplete="off" />
           </label>
-          <button type="button" class="secondary" id="slack-manual-save">Save manual values</button>
+          <button type="button" class="secondary" id="slack-manual-save">Use existing Slack app</button>
         </form>
       </details>
     `;
@@ -904,16 +957,18 @@ function slackManualConfigPayload(
     role: BotRole,
 ): Record<string, string> | undefined {
     const formData = form ? new FormData(form) : new FormData();
+    const appId = String(formData.get('appId') ?? '').trim();
     const appToken = String(formData.get('appToken') ?? '').trim();
     const clientId = String(formData.get('clientId') ?? '').trim();
     const clientSecret = String(formData.get('clientSecret') ?? '').trim();
     const signingSecret = String(formData.get('signingSecret') ?? '').trim();
-    if (!appToken || !clientId || !clientSecret) return undefined;
+    if (!appId || !appToken || !clientId || !clientSecret) return undefined;
 
     return {
         SLACK_EVENTS_MODE: 'socket',
         ...(role === 'personal'
             ? {
+                  SLACK_PERSONAL_APP_ID: appId,
                   SLACK_PERSONAL_APP_TOKEN: appToken,
                   SLACK_PERSONAL_CLIENT_ID: clientId,
                   SLACK_PERSONAL_CLIENT_SECRET: clientSecret,
@@ -922,12 +977,14 @@ function slackManualConfigPayload(
                       : {}),
               }
             : {
+                  SLACK_CHANNEL_APP_ID: appId,
                   SLACK_CHANNEL_APP_TOKEN: appToken,
                   SLACK_CHANNEL_CLIENT_ID: clientId,
                   SLACK_CHANNEL_CLIENT_SECRET: clientSecret,
                   ...(signingSecret
                       ? { SLACK_CHANNEL_SIGNING_SECRET: signingSecret }
                       : {}),
+                  SLACK_APP_ID: appId,
                   SLACK_APP_TOKEN: appToken,
                   SLACK_CLIENT_ID: clientId,
                   SLACK_CLIENT_SECRET: clientSecret,
@@ -1149,27 +1206,16 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
     const visibleStep = step + 1;
     const totalSteps = stepKeys.length;
 
-    const dots = `
-    ${Array.from({ length: totalSteps }, (_, i) => {
-        const current = step;
-        const cls =
-            i < current
-                ? 'wizard-dot completed'
-                : i === current
-                  ? 'wizard-dot active'
-                  : 'wizard-dot';
-        return `<span class="${cls}"></span>`;
-    }).join('')}
-    <span style="margin-left: 4px;">${String(visibleStep).padStart(2, '0')} / ${String(totalSteps).padStart(2, '0')}</span>
-  `;
+    const progressSegments = setupStepProgress(stepKeys, step);
+    const currentStepLabel = setupStepLabel(stepKey);
 
     let stepContent = '';
 
     if (stepKey === 'ai') {
         stepContent = `
       <div class="wizard-step">
-        <h1>Add an AI provider</h1>
-        <p>Murph needs OpenAI or Anthropic before it can draft replies. Choose the model used by <code>murph agent</code> here too.</p>
+        <h1>Configure AI model</h1>
+        <p>Add the model Murph uses to draft replies and run <code>murph agent</code>.</p>
         ${
             setup.provider.configured
                 ? `<div class="setup-success">${escapeHtml(setup.provider.defaultProvider)} is configured</div>
@@ -1254,6 +1300,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
         <div class="member-list provider-list">${providerOptions}</div>
         <h2 class="setup-subhead">Mode</h2>
         <div class="member-list setup-role-list">${roleCards}</div>
+        ${setupSelectedQueuePreview()}
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
           <button type="button" id="wizard-next" ${setupWizardState.selectedCoverage.length === 0 ? 'disabled' : ''}>Continue</button>
@@ -1287,9 +1334,10 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
             const canReuseConfigurationToken =
                 Boolean(setupWizardState.slackConfigurationToken) &&
                 !slackOauthConfigured;
+            const savedSlackAppId = roleStatus?.links?.appId;
             stepContent = `
       <div class="wizard-step">
-        <h1>${slackConfigured ? 'Connect Slack workspace' : 'Create Slack app'}</h1>
+        <h1>Set up Slack ${escapeHtml(roleLabel(role).toLowerCase())}</h1>
         <p>${
             role === 'personal'
                 ? 'This app handles direct messages for the represented owner.'
@@ -1303,7 +1351,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                   ? `${prepared ? slackPreparationDetails(prepared) : ''}
                      ${slackAppTokenForm(role)}`
                   : `${slackManifestForm(canReuseConfigurationToken)}
-                     ${slackManualConfigForm(role)}`
+                     ${slackManualConfigForm(role, savedSlackAppId)}`
         }
         ${slackConnected ? `<div class="setup-success">Slack ${role} bot connected</div>` : ''}
         ${
@@ -1352,7 +1400,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                 !setupProviderOwnerConfigured(setup, 'discord', role);
             stepContent = `
       <div class="wizard-step">
-        <h1>Connect Discord bot</h1>
+        <h1>Set up Discord ${escapeHtml(roleLabel(role).toLowerCase())}</h1>
         <p>${
             role === 'personal'
                 ? 'This app identifies the represented owner for personal DM handling.'
@@ -1415,7 +1463,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
         );
         stepContent = `
       <div class="wizard-step">
-        <h1>Choose channels</h1>
+        <h1>Choose ${providerLabel(stepProvider)} channels</h1>
         <p>Pick the ${escapeHtml(providerLabel(stepProvider))} channels Murph should watch by default.</p>
         ${setupGuide({
             nextAction: ownerConfigured
@@ -1451,19 +1499,41 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
       <div class="wizard-step">
         <h1>Finish setup</h1>
         <p>Murph has the selected channel and mode configuration. Finish setup to save these defaults and open the dashboard.</p>
-        <div class="setup-task">
-          <p>Selected modes</p>
-          <div class="setup-status-line">
-            ${setupWizardState.selectedCoverage
-                .map((key) => {
-                    const [provider, role] = key.split(':') as [
-                        SetupChannelProvider,
-                        BotRole,
-                    ];
-                    return `<span class="setup-status-item ok"><span>${escapeHtml(providerLabel(provider))}</span><strong>${escapeHtml(roleLabel(role))}</strong></span>`;
-                })
-                .join('')}
+        <div class="setup-summary-list">
+          <div class="setup-summary-row ok">
+            <span>AI model</span>
+            <strong>${setup.provider.configured ? escapeHtml(setup.provider.defaultProvider) : 'Needs API key'}</strong>
           </div>
+          ${setupWizardState.selectedCoverage
+              .map((key) => {
+                  const [provider, role] = key.split(':') as [
+                      SetupChannelProvider,
+                      BotRole,
+                  ];
+                  return `
+                    <div class="setup-summary-row ok">
+                      <span>${escapeHtml(providerLabel(provider))}</span>
+                      <strong>${escapeHtml(roleLabel(role))}</strong>
+                    </div>
+                  `;
+              })
+              .join('')}
+          ${setupWizardState.selectedProviders
+              .filter((provider) => coverageSelected(provider, 'channel'))
+              .map((provider) => {
+                  const selection = setupWizardState.providerSelections[provider];
+                  const channelLabel =
+                      selection.channelScopeMode === 'all_accessible'
+                          ? 'All accessible channels'
+                          : `${selection.selectedChannels.length} selected`;
+                  return `
+                    <div class="setup-summary-row ok">
+                      <span>${escapeHtml(providerLabel(provider))} channels</span>
+                      <strong>${escapeHtml(channelLabel)}</strong>
+                    </div>
+                  `;
+              })
+              .join('')}
         </div>
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
@@ -1475,15 +1545,29 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
 
     app.innerHTML = `
     <div class="wizard-container">
-      <div class="wizard-panel">
-        <div class="wizard-header">
-          <span class="wizard-brand"><img src="/img/murph-logo.svg" alt="" aria-hidden="true" />Murph</span>
-          ${step > 0 ? `<div class="wizard-progress-dots">${dots}</div>` : ''}
+      <header class="setup-topbar">
+        <a class="wizard-brand" href="/" aria-label="Murph home"><img src="/img/murph-logo.svg" alt="" aria-hidden="true" />Murph</a>
+        <div class="setup-topbar-step">
+          <span>Step ${visibleStep} of ${totalSteps}</span>
+          <strong>${escapeHtml(currentStepLabel)}</strong>
         </div>
-        ${setupNotice}
-        ${setupWizardState.errorMessage ? `<div class="notice danger">${escapeHtml(setupWizardState.errorMessage)}</div>` : ''}
-        ${stepContent}
-      </div>
+        <a class="button secondary" href="/admin">Admin</a>
+      </header>
+      <main class="setup-frame">
+        <section class="wizard-panel">
+          <div class="wizard-header">
+            <div>
+              <span class="setup-step-kicker">${escapeHtml(currentStepLabel)}</span>
+              <div class="wizard-progress-segments">${progressSegments}</div>
+            </div>
+            <span class="setup-step-count">${String(visibleStep).padStart(2, '0')} / ${String(totalSteps).padStart(2, '0')}</span>
+          </div>
+          ${setupNotice}
+          ${setupWizardState.errorMessage ? `<div class="notice danger">${escapeHtml(setupWizardState.errorMessage)}</div>` : ''}
+          ${stepContent}
+        </section>
+      </main>
+      <footer class="setup-footer">Local setup runs on this machine. Tokens are used only to configure your selected providers.</footer>
     </div>
   `;
 
@@ -1848,9 +1932,6 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                             setupWizardState.slackConfigurationToken ??
                             '',
                     ).trim();
-                    const existingAppId = String(
-                        formData.get('existingAppId') ?? '',
-                    ).trim();
                     if (!configurationToken) return;
                     setupWizardState.slackConfigurationToken =
                         configurationToken;
@@ -1860,7 +1941,6 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                             {
                                 role,
                                 configurationToken,
-                                ...(existingAppId ? { existingAppId } : {}),
                             },
                         );
                     setupWizardState.slackPreparationKey = preparationKey;

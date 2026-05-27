@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
-import { readSecret, writeSecret } from '#lib/server/credentials/local-store';
+import { listSecrets, readSecret, writeSecret } from '#lib/server/credentials/local-store';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#lib/server/integrations/capabilities';
 import { readMurphConfig } from '#lib/server/setup/config-file';
 import type { BotInstallation, BotRole, ChannelMessage, ThreadRef, Workspace } from '#lib/types';
@@ -290,6 +290,18 @@ export class SlackService {
         botUserId: workspace.botUserId,
         representedUserId: authedUser.id
       });
+      writeSecret('slack', 'bot_token', payload.access_token, {
+        workspaceId: workspace.id,
+        externalWorkspaceId: workspace.externalWorkspaceId,
+        botInstallationId: botInstallation.id,
+        metadata: {
+          teamName: workspace.name,
+          botUserId: payload.bot_user_id,
+          botRole: role,
+          representedUserId: authedUser.id,
+          validatedAt: new Date().toISOString()
+        }
+      });
     }
 
     return { workspace, role, botInstallation, authedUser };
@@ -351,6 +363,39 @@ export class SlackService {
     throw new Error('Slack bot token is missing from local credentials. Reconnect Slack.');
   }
 
+  getBotTokenForRole(workspace: Workspace, role: BotRole): string {
+    const installation = this.store.getBotInstallation('slack', workspace.externalWorkspaceId, role);
+    const scopedToken = installation
+      ? readSecret('slack', 'bot_token', { botInstallationId: installation.id })
+      : undefined;
+    if (scopedToken) {
+      return scopedToken;
+    }
+
+    const legacyWorkspaceToken = listSecrets()
+      .filter((record) => (
+        record.provider === 'slack' &&
+        record.key === 'bot_token' &&
+        !record.botInstallationId &&
+        !record.userId &&
+        (
+          record.workspaceId === workspace.id ||
+          record.externalWorkspaceId === workspace.externalWorkspaceId
+        )
+      ))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.value;
+    if (legacyWorkspaceToken) {
+      return legacyWorkspaceToken;
+    }
+
+    const legacyGlobalToken = readSecret('slack', 'bot_token');
+    if (legacyGlobalToken) {
+      return legacyGlobalToken;
+    }
+
+    throw new Error(`Slack ${role} bot token is missing from local credentials. Reconnect Slack.`);
+  }
+
   canReadBotToken(workspace: Workspace, botInstallationId?: string): boolean {
     try {
       this.getBotToken(workspace.id, botInstallationId);
@@ -358,6 +403,10 @@ export class SlackService {
     } catch {
       return false;
     }
+  }
+
+  canReadBotInstallationToken(botInstallationId?: string): boolean {
+    return Boolean(botInstallationId && readSecret('slack', 'bot_token', { botInstallationId }));
   }
 
   getUsableWorkspace(): Workspace | undefined {
@@ -460,10 +509,13 @@ export class SlackService {
   }
 
   async postMessage(workspace: Workspace, channelId: string, text: string, threadTs?: string, botInstallationId?: string): Promise<{ ts?: string }> {
+    const botToken = botInstallationId
+      ? this.getBotToken(workspace.externalWorkspaceId, botInstallationId)
+      : this.getBotTokenForRole(workspace, 'channel');
     const response = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId, botInstallationId)}`,
+        authorization: `Bearer ${botToken}`,
         'content-type': 'application/json; charset=utf-8'
       },
       body: JSON.stringify({
@@ -485,7 +537,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.info', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        authorization: `Bearer ${this.getBotTokenForRole(workspace, 'channel')}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
@@ -557,7 +609,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.list', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        authorization: `Bearer ${this.getBotTokenForRole(workspace, 'channel')}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
@@ -596,7 +648,7 @@ export class SlackService {
     const response = await fetch('https://slack.com/api/conversations.join', {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${this.getBotToken(workspace.externalWorkspaceId)}`,
+        authorization: `Bearer ${this.getBotTokenForRole(workspace, 'channel')}`,
         'content-type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({

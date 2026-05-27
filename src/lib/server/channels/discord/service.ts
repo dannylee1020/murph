@@ -144,6 +144,34 @@ export class DiscordService {
       : process.env.DISCORD_CHANNEL_BOT_TOKEN ?? readSecret('discord', 'channel_bot_token') ?? this.findBotToken();
   }
 
+  canReadBotInstallationToken(role: BotRole = 'channel', installation?: BotInstallation): boolean {
+    if (installation?.id && readSecret('discord', 'bot_token', { botInstallationId: installation.id })) {
+      return true;
+    }
+
+    if (role === 'personal') {
+      return Boolean(process.env.DISCORD_PERSONAL_BOT_TOKEN ?? readSecret('discord', 'personal_bot_token'));
+    }
+
+    if (process.env.DISCORD_CHANNEL_BOT_TOKEN ?? readSecret('discord', 'channel_bot_token')) {
+      return true;
+    }
+
+    if (!installation) {
+      return Boolean(this.findBotToken());
+    }
+
+    return Boolean(
+      readSecret('discord', 'bot_token', {
+        workspaceId: installation.workspaceId,
+        externalWorkspaceId: installation.externalWorkspaceId
+      }) ??
+        readSecret('discord', 'bot_token', { workspaceId: installation.workspaceId }) ??
+        readSecret('discord', 'bot_token', { externalWorkspaceId: installation.externalWorkspaceId }) ??
+        readSecret('discord', 'bot_token')
+    );
+  }
+
   isRoleConfigured(role: BotRole = 'channel'): boolean {
     return Boolean(this.botToken(role) && this.clientId(role) && this.clientSecret(role));
   }

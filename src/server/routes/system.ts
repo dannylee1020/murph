@@ -21,6 +21,7 @@ import { getSlackService } from '#lib/server/channels/slack/service';
 import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getIngressHealth } from '#lib/server/channels/ingress-health';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
+import { readSecret } from '#lib/server/credentials/local-store';
 import {
   buildSetupRoleStatus,
   normalizeSetupBotRoles,
@@ -189,14 +190,37 @@ function setupRoleWorkspaceMatch(
   provider: 'slack' | 'discord',
   role: 'channel' | 'personal'
 ) {
-  const installation = botInstallations.find((entry) => (
-    entry.provider === provider &&
-    entry.role === role &&
-    entry.status === 'active'
-  ));
-  if (!installation) return undefined;
-  const workspace = workspaces.find((entry) => entry.id === installation.workspaceId);
-  return workspace ? { installation, workspace } : undefined;
+  const matches = botInstallations
+    .filter((entry) => (
+      entry.provider === provider &&
+      entry.role === role &&
+      entry.status === 'active'
+    ))
+    .map((installation) => {
+      const workspace = workspaces.find((entry) => entry.id === installation.workspaceId);
+      return workspace ? { installation, workspace } : undefined;
+    })
+    .filter((entry): entry is {
+      installation: (typeof botInstallations)[number];
+      workspace: Workspace;
+    } => Boolean(entry));
+
+  return matches.sort((a, b) => {
+    const aReadable =
+      provider === 'slack'
+        ? canReadSlackBotInstallationToken(a.installation.id)
+        : canReadDiscordBotInstallationToken(role, a.installation);
+    const bReadable =
+      provider === 'slack'
+        ? canReadSlackBotInstallationToken(b.installation.id)
+        : canReadDiscordBotInstallationToken(role, b.installation);
+    if (aReadable !== bReadable) return aReadable ? -1 : 1;
+    return Date.parse(b.installation.installedAt) - Date.parse(a.installation.installedAt);
+  })[0];
+}
+
+function canReadSlackBotInstallationToken(botInstallationId?: string): boolean {
+  return Boolean(botInstallationId && readSecret('slack', 'bot_token', { botInstallationId }));
 }
 
 function setupSlackRoleInstalled(
@@ -205,12 +229,57 @@ function setupSlackRoleInstalled(
   role: 'channel' | 'personal'
 ): boolean {
   const match = setupRoleWorkspaceMatch(workspaces, botInstallations, 'slack', role);
-  return Boolean(match && getSlackService().canReadBotToken(match.workspace, match.installation.id));
+  return Boolean(match && canReadSlackBotInstallationToken(match.installation.id));
+}
+
+function setupDiscordRoleInstalled(
+  workspaces: Workspace[],
+  botInstallations: ReturnType<ReturnType<typeof getStore>['listBotInstallations']>,
+  role: 'channel' | 'personal'
+): boolean {
+  const match = setupRoleWorkspaceMatch(workspaces, botInstallations, 'discord', role);
+  return Boolean(match && canReadDiscordBotInstallationToken(role, match.installation));
+}
+
+function canReadDiscordBotInstallationToken(
+  role: 'channel' | 'personal',
+  installation?: ReturnType<ReturnType<typeof getStore>['listBotInstallations']>[number]
+): boolean {
+  if (installation?.id && readSecret('discord', 'bot_token', { botInstallationId: installation.id })) {
+    return true;
+  }
+
+  if (role === 'personal') {
+    return Boolean(process.env.DISCORD_PERSONAL_BOT_TOKEN ?? readSecret('discord', 'personal_bot_token'));
+  }
+
+  if (
+    process.env.DISCORD_CHANNEL_BOT_TOKEN ??
+    readSecret('discord', 'channel_bot_token') ??
+    process.env.DISCORD_BOT_TOKEN
+  ) {
+    return true;
+  }
+
+  if (!installation) {
+    return Boolean(readSecret('discord', 'bot_token'));
+  }
+
+  return Boolean(
+    readSecret('discord', 'bot_token', {
+      workspaceId: installation.workspaceId,
+      externalWorkspaceId: installation.externalWorkspaceId
+    }) ??
+      readSecret('discord', 'bot_token', { workspaceId: installation.workspaceId }) ??
+      readSecret('discord', 'bot_token', { externalWorkspaceId: installation.externalWorkspaceId }) ??
+      readSecret('discord', 'bot_token')
+  );
 }
 
 function slackRoleLinks(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal', appUrl: string) {
   const appId = slackRoleAppId(config, role);
   return {
+    appId,
     callbackUrl: `${appUrl}/api/slack/oauth/callback`,
     manifestUrl: role === 'personal' ? '/slack-personal-manifest.yaml' : '/slack-channel-manifest.yaml',
     createAppUrl: 'https://api.slack.com/apps?new_app=1',
@@ -569,13 +638,24 @@ export const systemRoutes: Route[] = [
     const slackOwnerConfigured = Boolean(
       slackWorkspace && resolveSetupDefaultsForWorkspace(slackWorkspace, setupDefaults).ownerUserId
     );
+    const discordChannelMatch = setupRoleWorkspaceMatch(workspaces, botInstallations, 'discord', 'channel');
+    const discordPersonalMatch = setupRoleWorkspaceMatch(workspaces, botInstallations, 'discord', 'personal');
+    const discordChannelInstalled = Boolean(
+      discordChannelMatch &&
+      canReadDiscordBotInstallationToken('channel', discordChannelMatch.installation)
+    );
+    const discordPersonalInstalled = Boolean(
+      discordPersonalMatch &&
+      canReadDiscordBotInstallationToken('personal', discordPersonalMatch.installation)
+    );
     const discordConfigured = getDiscordService().isConfigured();
-    const discordWorkspace = workspaces.find((workspace) => (
-      workspace.provider === 'discord' &&
-      discordConfigured
-    ));
+    const discordWorkspace =
+      (discordChannelInstalled ? discordChannelMatch?.workspace : undefined) ??
+      (discordPersonalInstalled ? discordPersonalMatch?.workspace : undefined);
     const discordOwnerConfigured = Boolean(
-      discordWorkspace && resolveSetupDefaultsForWorkspace(discordWorkspace, setupDefaults).ownerUserId
+      discordChannelInstalled &&
+      discordChannelMatch?.workspace &&
+      resolveSetupDefaultsForWorkspace(discordChannelMatch.workspace, setupDefaults).ownerUserId
     );
     const connectedWorkspaceIds = new Set([slackWorkspace?.id, discordWorkspace?.id].filter(Boolean));
     const channelWorkspaces = workspaces
@@ -660,7 +740,7 @@ export const systemRoutes: Route[] = [
           : undefined
       },
       discord: {
-        installed: Boolean(discordWorkspace),
+        installed: discordChannelInstalled || discordPersonalInstalled,
         botTokenConfigured: discordConfigured,
         clientIdConfigured: Boolean(env.discordClientId),
         clientSecretConfigured: Boolean(env.discordClientSecret),
@@ -668,14 +748,14 @@ export const systemRoutes: Route[] = [
         roles: {
           channel: {
             configured: getDiscordService().isRoleConfigured('channel'),
-            installed: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'channel' && installation.status === 'active'),
+            installed: discordChannelInstalled,
             ownerConfigured: discordOwnerConfigured,
             workspace: setupRoleWorkspace(workspaces, botInstallations, 'discord', 'channel'),
             links: discordRoleLinks(config, 'channel', appUrl)
           },
           personal: {
             configured: getDiscordService().isRoleConfigured('personal'),
-            installed: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active'),
+            installed: discordPersonalInstalled,
             representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId)),
             workspace: setupRoleWorkspace(workspaces, botInstallations, 'discord', 'personal'),
             links: discordRoleLinks(config, 'personal', appUrl)
@@ -834,7 +914,7 @@ export const systemRoutes: Route[] = [
     sendJson(res, getSetupDoctor());
   }),
   route('POST', '/api/setup/slack/prepare', async ({ req, res, url }) => {
-    const body = await readJson<{ configurationToken?: string; existingAppId?: string; role?: string }>(req);
+    const body = await readJson<{ configurationToken?: string; role?: string }>(req);
     const role: BotRole = body.role === 'personal' ? 'personal' : 'channel';
     const configurationToken = body.configurationToken?.trim() || process.env.MURPH_SLACK_CONFIG_TOKEN?.trim() || '';
 
@@ -859,14 +939,11 @@ export const systemRoutes: Route[] = [
     }
 
     try {
-      const config = readMurphConfig();
       const appUrl = publicAppUrl(req, url);
-      const providedExistingAppId = body.existingAppId?.trim();
       const prepared = await prepareSlackManifestApp({
         role,
         appUrl,
-        configurationToken,
-        existingAppId: providedExistingAppId || slackRoleAppId(config, role)
+        configurationToken
       });
       if (!prepared.credentials.clientId || !prepared.credentials.clientSecret) {
         sendJson(res, {

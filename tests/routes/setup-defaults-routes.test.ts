@@ -128,6 +128,12 @@ async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?
   delete process.env.DISCORD_BOT_TOKEN;
   delete process.env.DISCORD_CLIENT_ID;
   delete process.env.DISCORD_CLIENT_SECRET;
+  delete process.env.DISCORD_CHANNEL_BOT_TOKEN;
+  delete process.env.DISCORD_CHANNEL_CLIENT_ID;
+  delete process.env.DISCORD_CHANNEL_CLIENT_SECRET;
+  delete process.env.DISCORD_PERSONAL_BOT_TOKEN;
+  delete process.env.DISCORD_PERSONAL_CLIENT_ID;
+  delete process.env.DISCORD_PERSONAL_CLIENT_SECRET;
   delete process.env.GOOGLE_CLIENT_ID;
   delete process.env.GOOGLE_CLIENT_SECRET;
 
@@ -144,10 +150,12 @@ async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?
     name: 'Test Workspace',
     botUserId: 'UTZBOT'
   });
+  const botInstallation = store.getBotInstallation('slack', workspace.externalWorkspaceId, 'channel');
   if (!input.skipSlackToken) {
     writeSecret('slack', 'bot_token', 'xoxb-test', {
       workspaceId: workspace.id,
-      externalWorkspaceId: workspace.externalWorkspaceId
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      botInstallationId: botInstallation?.id
     });
   }
   const { systemRoutes } = await import('../../src/server/routes/system');
@@ -534,6 +542,54 @@ describe('setup defaults routes', () => {
     expect(response.body.slack.roles.channel.installed).toBe(false);
   });
 
+  it('does not mark Slack personal bot installed from a channel bot token fallback', async () => {
+    const { request, store } = await setup();
+    const workspace = store.getWorkspaceByExternalId('slack', 'T1');
+    expect(workspace).toBeDefined();
+    store.upsertBotInstallation({
+      workspaceId: workspace!.id,
+      provider: 'slack',
+      externalWorkspaceId: workspace!.externalWorkspaceId,
+      role: 'personal',
+      botUserId: 'UPERSONALBOT',
+      representedUserId: 'UOWNER'
+    });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.slack.roles.channel.installed).toBe(true);
+    expect(response.body.slack.roles.personal.installed).toBe(false);
+    expect(response.body.slack.roles.personal.representedOwnerConfigured).toBe(true);
+  });
+
+  it('prefers the readable Slack channel install over an older stale install', async () => {
+    const { request, store } = await setup({ skipSlackToken: true });
+    const { writeSecret } = await import('../../src/lib/server/credentials/local-store');
+    const readableWorkspace = store.saveInstall({
+      provider: 'slack',
+      externalWorkspaceId: 'T-readable',
+      name: 'Readable Workspace',
+      botUserId: 'UREADABLEBOT'
+    });
+    const readableInstallation = store.getBotInstallation('slack', 'T-readable', 'channel');
+    writeSecret('slack', 'bot_token', 'xoxb-readable', {
+      workspaceId: readableWorkspace.id,
+      externalWorkspaceId: readableWorkspace.externalWorkspaceId,
+      botInstallationId: readableInstallation?.id
+    });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.slack.installed).toBe(true);
+    expect(response.body.slack.roles.channel.installed).toBe(true);
+    expect(response.body.slack.roles.channel.workspace).toEqual(expect.objectContaining({
+      externalWorkspaceId: 'T-readable',
+      name: 'Readable Workspace'
+    }));
+  });
+
   it('returns role-specific setup helper links in setup status', async () => {
     const { request } = await setup();
     await request('POST', '/api/setup/config', {
@@ -547,6 +603,7 @@ describe('setup defaults routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.slack.roles.channel.links).toEqual(expect.objectContaining({
+      appId: 'A-channel',
       callbackUrl: 'http://localhost/api/slack/oauth/callback',
       manifestUrl: '/slack-channel-manifest.yaml',
       appConfigUrl: 'https://api.slack.com/apps/A-channel/general',
@@ -554,6 +611,7 @@ describe('setup defaults routes', () => {
       eventsConfigUrl: 'https://api.slack.com/apps/A-channel/event-subscriptions'
     }));
     expect(response.body.slack.roles.personal.links).toEqual(expect.objectContaining({
+      appId: 'A-personal',
       manifestUrl: '/slack-personal-manifest.yaml',
       appConfigUrl: 'https://api.slack.com/apps/A-personal/general'
     }));
@@ -675,7 +733,7 @@ describe('setup defaults routes', () => {
     expect(readSecret('slack', 'client_secret')).toBeUndefined();
   });
 
-  it('updates a saved Slack app instead of creating a duplicate from UI setup', async () => {
+  it('creates a new Slack app from prepare even when a saved Slack app ID exists', async () => {
     process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
     const { request } = await setup();
     await request('POST', '/api/setup/config', {
@@ -685,15 +743,12 @@ describe('setup defaults routes', () => {
     vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
       const body = options.body ? JSON.parse(String(options.body)) : undefined;
       calls.push({ url: String(url), body });
-      if (String(url).includes('/apps.manifest.export')) {
-        return Response.json({ ok: true, app_id: body?.app_id, manifest: {} });
-      }
       return Response.json({
         ok: true,
-        app_id: 'A-existing',
+        app_id: 'A-new',
         credentials: {
-          client_id: 'updated-client-id',
-          client_secret: 'updated-client-secret'
+          client_id: 'new-client-id',
+          client_secret: 'new-client-secret'
         }
       });
     });
@@ -704,28 +759,26 @@ describe('setup defaults routes', () => {
     });
 
     expect(response.status, JSON.stringify(response.body)).toBe(200);
-    expect(response.body.updatedExistingApp).toBe(true);
-    expect(calls.some((call) => call.url.includes('/apps.manifest.export'))).toBe(true);
-    expect(calls.some((call) => call.url.includes('/apps.manifest.update'))).toBe(true);
-    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(false);
+    expect(response.body.updatedExistingApp).toBe(false);
+    expect(response.body.appId).toBe('A-new');
+    expect(calls.some((call) => call.url.includes('/apps.manifest.export'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.update'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(true);
   });
 
-  it('uses an explicitly provided existing Slack app ID before creating from UI setup', async () => {
+  it('ignores explicitly provided existing Slack app IDs in the creation route', async () => {
     process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
     const { request } = await setup();
     const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
     vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
       const body = options.body ? JSON.parse(String(options.body)) : undefined;
       calls.push({ url: String(url), body });
-      if (String(url).includes('/apps.manifest.export')) {
-        return Response.json({ ok: true, app_id: body?.app_id, manifest: {} });
-      }
       return Response.json({
         ok: true,
-        app_id: 'A-provided',
+        app_id: 'A-created',
         credentials: {
-          client_id: 'provided-client-id',
-          client_secret: 'provided-client-secret'
+          client_id: 'created-client-id',
+          client_secret: 'created-client-secret'
         }
       });
     });
@@ -737,36 +790,59 @@ describe('setup defaults routes', () => {
     });
 
     expect(response.status, JSON.stringify(response.body)).toBe(200);
-    expect(response.body.updatedExistingApp).toBe(true);
-    expect(calls.find((call) => call.url.includes('/apps.manifest.export'))?.body).toEqual({
-      app_id: 'A-provided'
-    });
-    expect(calls.some((call) => call.url.includes('/apps.manifest.update'))).toBe(true);
-    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(false);
+    expect(response.body.updatedExistingApp).toBe(false);
+    expect(response.body.appId).toBe('A-created');
+    expect(calls.some((call) => call.url.includes('/apps.manifest.export'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.update'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(true);
   });
 
-  it('does not create a new Slack app when an explicitly provided app ID is missing', async () => {
-    process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
+  it('stores manual Slack channel app values for existing app reuse', async () => {
     const { request } = await setup();
-    const calls: string[] = [];
-    vi.stubGlobal('fetch', async (url: string) => {
-      calls.push(String(url));
-      if (String(url).includes('/apps.manifest.export')) {
-        return Response.json({ ok: false, error: 'invalid_app' });
-      }
-      return Response.json({ ok: true, app_id: 'A-new' });
+
+    const response = await request('POST', '/api/setup/config', {
+      SLACK_CHANNEL_APP_ID: 'A-existing',
+      SLACK_CHANNEL_APP_TOKEN: 'xapp-existing',
+      SLACK_CHANNEL_CLIENT_ID: 'existing-client-id',
+      SLACK_CHANNEL_CLIENT_SECRET: 'existing-client-secret',
+      SLACK_CHANNEL_SIGNING_SECRET: 'existing-signing-secret',
+      SLACK_APP_ID: 'A-existing',
+      SLACK_APP_TOKEN: 'xapp-existing',
+      SLACK_CLIENT_ID: 'existing-client-id',
+      SLACK_CLIENT_SECRET: 'existing-client-secret',
+      SLACK_SIGNING_SECRET: 'existing-signing-secret'
     });
 
-    const response = await request('POST', '/api/setup/slack/prepare', {
-      role: 'channel',
-      configurationToken: 'xoxe-config',
-      existingAppId: 'A-missing'
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('appId: A-existing');
+    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    expect(readSecret('slack', 'channel_app_token')).toBe('xapp-existing');
+    expect(readSecret('slack', 'app_token')).toBe('xapp-existing');
+    expect(readSecret('slack', 'channel_client_secret')).toBe('existing-client-secret');
+    expect(readSecret('slack', 'client_secret')).toBe('existing-client-secret');
+  });
+
+  it('stores manual Slack personal app values for existing app reuse without legacy channel keys', async () => {
+    const { request } = await setup();
+
+    const response = await request('POST', '/api/setup/config', {
+      SLACK_PERSONAL_APP_ID: 'A-personal-existing',
+      SLACK_PERSONAL_APP_TOKEN: 'xapp-personal-existing',
+      SLACK_PERSONAL_CLIENT_ID: 'personal-existing-client-id',
+      SLACK_PERSONAL_CLIENT_SECRET: 'personal-existing-client-secret',
+      SLACK_PERSONAL_SIGNING_SECRET: 'personal-existing-signing-secret'
     });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toContain('A-missing');
-    expect(calls.some((url) => url.includes('/apps.manifest.export'))).toBe(true);
-    expect(calls.some((url) => url.includes('/apps.manifest.create'))).toBe(false);
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
+    expect(config).toContain('personal:');
+    expect(config).toContain('appId: A-personal-existing');
+    expect(config).not.toContain('appId: A-channel-existing');
+    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    expect(readSecret('slack', 'personal_app_token')).toBe('xapp-personal-existing');
+    expect(readSecret('slack', 'app_token')).toBeUndefined();
+    expect(readSecret('slack', 'personal_client_secret')).toBe('personal-existing-client-secret');
+    expect(readSecret('slack', 'client_secret')).toBeUndefined();
   });
 
   it('does not send pasted Slack app-level tokens to Manifest APIs from UI setup', async () => {
@@ -790,7 +866,7 @@ describe('setup defaults routes', () => {
     expect(readSecret('slack', 'app_token')).toBe('xapp-mistaken');
   });
 
-  it('does not create a new Slack app when existing-app lookup is uncertain from UI setup', async () => {
+  it('surfaces Slack manifest create failures without trying existing-app lookup', async () => {
     process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
     const { request } = await setup();
     await request('POST', '/api/setup/config', {
@@ -809,8 +885,9 @@ describe('setup defaults routes', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toContain('ratelimited');
-    expect(calls.some((url) => url.includes('/apps.manifest.export'))).toBe(true);
-    expect(calls.some((url) => url.includes('/apps.manifest.create'))).toBe(false);
+    expect(calls.some((url) => url.includes('/apps.manifest.export'))).toBe(false);
+    expect(calls.some((url) => url.includes('/apps.manifest.update'))).toBe(false);
+    expect(calls.some((url) => url.includes('/apps.manifest.create'))).toBe(true);
   });
 
   it('honors MURPH_BOT_ROLES as an environment override in setup status', async () => {
@@ -999,6 +1076,86 @@ describe('setup defaults routes', () => {
       installed: true,
       botTokenConfigured: true
     }));
+  });
+
+  it('does not mark Discord connected from install rows without credentials', async () => {
+    const { request, store } = await setup();
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Server',
+      botUserId: 'bot-user-1'
+    });
+    store.upsertBotInstallation({
+      workspaceId: discordWorkspace.id,
+      provider: 'discord',
+      role: 'personal',
+      externalWorkspaceId: 'personal:U1',
+      botUserId: 'personal-bot-user',
+      representedUserId: 'U1'
+    });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.discord.installed).toBe(false);
+    expect(response.body.discord.botTokenConfigured).toBe(false);
+    expect(response.body.discord.roles.channel.installed).toBe(false);
+    expect(response.body.discord.roles.personal.installed).toBe(false);
+    expect(response.body.discord.roles.personal.representedOwnerConfigured).toBe(true);
+  });
+
+  it('does not use Discord channel credentials to mark the personal bot connected', async () => {
+    const { request, store } = await setup();
+    const { writeSecret } = await import('../../src/lib/server/credentials/local-store');
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'G1',
+      name: 'Test Server',
+      botUserId: 'channel-bot-user'
+    });
+    store.upsertBotInstallation({
+      workspaceId: discordWorkspace.id,
+      provider: 'discord',
+      role: 'personal',
+      externalWorkspaceId: 'personal:U1',
+      botUserId: 'personal-bot-user',
+      representedUserId: 'U1'
+    });
+    writeSecret('discord', 'channel_bot_token', 'discord-channel-token');
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.discord.installed).toBe(true);
+    expect(response.body.discord.roles.channel.installed).toBe(true);
+    expect(response.body.discord.roles.personal.installed).toBe(false);
+  });
+
+  it('marks only the Discord personal bot connected when only personal credentials are present', async () => {
+    const { request, store } = await setup();
+    const { writeSecret } = await import('../../src/lib/server/credentials/local-store');
+    const personalWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'personal:U1',
+      name: 'Personal User',
+      botUserId: 'personal-bot-user',
+      role: 'personal',
+      representedUserId: 'U1'
+    });
+    const personalInstallation = store.getBotInstallation('discord', personalWorkspace.externalWorkspaceId, 'personal');
+    writeSecret('discord', 'bot_token', 'discord-personal-token', {
+      workspaceId: personalWorkspace.id,
+      externalWorkspaceId: personalWorkspace.externalWorkspaceId,
+      botInstallationId: personalInstallation?.id
+    });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.discord.installed).toBe(true);
+    expect(response.body.discord.roles.channel.installed).toBe(false);
+    expect(response.body.discord.roles.personal.installed).toBe(true);
   });
 
   it('stores Google OAuth client settings through setup config', async () => {

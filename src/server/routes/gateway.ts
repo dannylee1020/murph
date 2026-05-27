@@ -211,22 +211,10 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
     };
   }
 
-  let ownerMember: ChannelSetupMember;
-  try {
-    ownerMember = await getChannelRegistry().getMember(workspace, ownerUserId);
-  } catch (error) {
-    return {
-      ok: false,
-      status: 400,
-      payload: {
-        ok: false,
-        error: 'owner_not_found',
-        workspace: workspaceDescriptor(workspace),
-        ownerUserId,
-        message: error instanceof Error ? error.message : 'Owner user was not found in this workspace'
-      }
-    };
-  }
+  const ownerMember: ChannelSetupMember = {
+    id: existingSubscription.externalUserId,
+    displayName: existingSubscription.displayName || existingSubscription.externalUserId
+  };
 
   const channelScope = input.channelScope ?? [];
   const membershipResults: ChannelEnsureMemberResult[] = [];
@@ -246,6 +234,13 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
       action: inviteAction({ id: result.channelId, name: result.name })
     }));
   const reinstallRequired = membershipResults.some((result) => result.status === 'reinstall_required');
+  const reinstallRequiredChannels = membershipResults
+    .filter((result) => result.status === 'reinstall_required')
+    .map((result) => ({
+      id: result.channelId,
+      name: result.name,
+      reason: result.reason ?? 'Slack app scopes need to be updated'
+    }));
   const errors = membershipResults
     .filter((result) => result.status === 'error')
     .map((result) => ({
@@ -266,6 +261,7 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
         autoJoined,
         requiresInvitation,
         reinstallRequired,
+        reinstallRequiredChannels,
         errors
       }
     };
@@ -699,6 +695,13 @@ export const gatewayRoutes: Route[] = [
         action: inviteAction({ id: result.channelId, name: result.name })
       }));
     const reinstallRequired = membershipResults.some((result) => result.status === 'reinstall_required');
+    const reinstallRequiredChannels = membershipResults
+      .filter((result) => result.status === 'reinstall_required')
+      .map((result) => ({
+        id: result.channelId,
+        name: result.name,
+        reason: result.reason ?? 'Slack app scopes need to be updated'
+      }));
     const errors = membershipResults
       .filter((result) => result.status === 'error')
       .map((result) => ({
@@ -716,6 +719,7 @@ export const gatewayRoutes: Route[] = [
         autoJoined,
         requiresInvitation,
         reinstallRequired,
+        reinstallRequiredChannels,
         errors
       }, 409);
       return;

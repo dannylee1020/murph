@@ -193,6 +193,7 @@ export type SetupStatusPayload = {
 export type BotRole = 'personal' | 'channel';
 
 export type SetupRoleLinks = {
+    appId?: string;
     callbackUrl?: string;
     redirectUri?: string;
     manifestUrl?: string;
@@ -504,8 +505,10 @@ export type SessionCreateResponse = {
     targets?: SessionCreateResponse[];
     autoJoined?: ChannelActionItem[];
     error?: string;
+    message?: string;
     requiresInvitation?: ChannelActionItem[];
     reinstallRequired?: boolean;
+    reinstallRequiredChannels?: ChannelActionItem[];
     errors?: ChannelActionItem[];
 };
 
