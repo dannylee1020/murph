@@ -1,5 +1,7 @@
 import { readSecret } from '#lib/server/credentials/local-store';
 import { getStore } from '#lib/server/persistence/store';
+import { providerBotRoleEnabled } from '#lib/server/setup/bot-roles';
+import { readMurphConfig } from '#lib/server/setup/config-file';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import type { ChannelPlugin } from '#lib/types';
 import { createDiscordChannelAdapter } from './adapter.js';
@@ -60,8 +62,13 @@ export function createDiscordChannelPlugin(): ChannelPlugin {
     },
     ingress: {
       start() {
-        getDiscordGatewayClient('channel').ensureStarted();
-        getDiscordGatewayClient('personal').ensureStarted();
+        const setupDefaults = readMurphConfig().setup;
+        if (providerBotRoleEnabled(setupDefaults, 'discord', 'channel')) {
+          getDiscordGatewayClient('channel').ensureStarted();
+        }
+        if (providerBotRoleEnabled(setupDefaults, 'discord', 'personal')) {
+          getDiscordGatewayClient('personal').ensureStarted();
+        }
       }
     }
   };

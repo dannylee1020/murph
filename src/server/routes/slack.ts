@@ -4,6 +4,7 @@ import { handleSlackEventEnvelope, verifySlackHttpSignature } from '#lib/server/
 import { getSlackService } from '#lib/server/channels/slack/service';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getStore } from '#lib/server/persistence/store';
+import { handleSlackInteractionPayload, parseSlackInteractionPayload } from '#lib/server/channels/slack/interactions';
 import { readMurphConfig, updateMurphSetupDefaults } from '#lib/server/setup/config-file';
 import { readBody, redirect, sendJson, toHeaders } from '../http.js';
 import { route, type Route } from '../router.js';
@@ -127,6 +128,17 @@ function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
 }
 
 export const slackRoutes: Route[] = [
+  route('POST', '/api/slack/interactions', async ({ req, res }) => {
+    const rawBody = await readBody(req);
+    if (!verifySlackHttpSignature(toHeaders(req), rawBody, 'channel')) {
+      console.warn('[slack] rejected interaction: invalid_signature');
+      sendJson(res, { response_type: 'ephemeral', text: 'Murph could not verify this Slack request.' }, 401);
+      return;
+    }
+
+    const result = await handleSlackInteractionPayload(parseSlackInteractionPayload(rawBody));
+    sendJson(res, result);
+  }),
   route('POST', '/api/slack/events', async ({ req, res }) => {
     await ensureRuntimeInitialized();
     const rawBody = await readBody(req);

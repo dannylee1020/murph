@@ -7,6 +7,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const channelManifest = [
   'display_information:',
   '  name: Murph',
+  'features:',
+  '  slash_commands:',
+  '    - command: /murph',
+  '      description: Open Murph Personal',
+  '      should_escape: true',
+  '  shortcuts:',
+  '    - name: Send to Murph Personal',
+  '      type: message',
+  '      callback_id: murph_personal_handoff',
   'oauth_config:',
   '  redirect_urls:',
   '    - http://localhost:5173/api/slack/oauth/callback',
@@ -15,6 +24,7 @@ const channelManifest = [
   '      - app_mentions:read',
   '      - channels:history',
   '      - chat:write',
+  '      - commands',
   '      - groups:history',
   '    user:',
   '      - search:read',
@@ -24,6 +34,8 @@ const channelManifest = [
   '      - app_mention',
   '      - message.channels',
   '      - message.groups',
+  '  interactivity:',
+  '    is_enabled: true',
   '  socket_mode_enabled: true',
   ''
 ].join('\n');
@@ -38,6 +50,7 @@ const personalManifest = [
   '    bot:',
   '      - chat:write',
   '      - im:history',
+  '      - im:write',
   'settings:',
   '  event_subscriptions:',
   '    bot_events:',
@@ -638,6 +651,31 @@ describe('setup defaults routes', () => {
     ]));
   });
 
+  it('saves provider-specific bot role toggles including an all-off provider', async () => {
+    const { request } = await setup();
+
+    const update = await request('PUT', '/api/setup/provider-roles', {
+      providerBotRoles: {
+        slack: [],
+        discord: ['personal']
+      }
+    });
+
+    expect(update.status).toBe(200);
+    expect(update.body.providerBotRoles).toEqual({
+      slack: [],
+      discord: ['personal']
+    });
+
+    const status = await request('GET', '/api/setup/status');
+    expect(status.status).toBe(200);
+    expect(status.body.botRoles).toEqual(['channel']);
+    expect(status.body.providerBotRoles).toEqual({
+      slack: [],
+      discord: ['personal']
+    });
+  });
+
   it('prepares a Slack channel app from the channel manifest and saves returned credentials', async () => {
     process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
     const { request } = await setup();
@@ -679,6 +717,18 @@ describe('setup defaults routes', () => {
     const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
     expect(manifestBody.oauth_config.redirect_urls).toEqual(['http://localhost/api/slack/oauth/callback']);
     expect(manifestBody.oauth_config.scopes.bot).toEqual(expect.arrayContaining(['app_mentions:read', 'channels:history']));
+    expect(manifestBody.oauth_config.scopes.bot).toContain('commands');
+    expect(manifestBody.features.slash_commands[0]).toEqual(expect.objectContaining({
+      command: '/murph'
+    }));
+    expect(manifestBody.features.slash_commands[0]).not.toHaveProperty('url');
+    expect(manifestBody.features.shortcuts[0]).toEqual(expect.objectContaining({
+      callback_id: 'murph_personal_handoff'
+    }));
+    expect(manifestBody.settings.interactivity).toEqual(expect.objectContaining({
+      is_enabled: true
+    }));
+    expect(manifestBody.settings.interactivity).not.toHaveProperty('request_url');
     expect(manifestBody.settings.socket_mode_enabled).toBe(true);
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('appId: A-channel');
     const { readSecret } = await import('../../src/lib/server/credentials/local-store');
@@ -722,7 +772,7 @@ describe('setup defaults routes', () => {
     const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
     const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
     expect(manifestBody.display_information.name).toBe('Murph Personal');
-    expect(manifestBody.oauth_config.scopes.bot).toEqual(['chat:write', 'im:history']);
+    expect(manifestBody.oauth_config.scopes.bot).toEqual(['chat:write', 'im:history', 'im:write']);
     expect(manifestBody.oauth_config.scopes.user).toBeUndefined();
     const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
     expect(config).toContain('personal:');

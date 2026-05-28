@@ -46,6 +46,14 @@ interface ChatPostMessageResponse {
   ts?: string;
 }
 
+interface ConversationsOpenResponse {
+  ok: boolean;
+  error?: string;
+  channel?: {
+    id?: string;
+  };
+}
+
 interface ConversationsInfoResponse {
   ok: boolean;
   error?: string;
@@ -199,8 +207,8 @@ export class SlackService {
 
     const redirectUri = `${appUrl}/api/slack/oauth/callback`;
     const scope = role === 'personal'
-      ? 'chat:write,im:history'
-      : 'app_mentions:read,channels:history,channels:read,channels:join,chat:write,groups:history,groups:read';
+      ? 'chat:write,im:history,im:write'
+      : 'app_mentions:read,channels:history,channels:read,channels:join,chat:write,commands,groups:history,groups:read';
     const params = new URLSearchParams({
       client_id: clientId,
       scope,
@@ -531,6 +539,27 @@ export class SlackService {
     }
 
     return { ts: payload.ts };
+  }
+
+  async openDirectMessage(workspace: Workspace, userId: string, botInstallationId?: string): Promise<string> {
+    const botToken = botInstallationId
+      ? this.getBotToken(workspace.externalWorkspaceId, botInstallationId)
+      : this.getBotTokenForRole(workspace, 'personal');
+    const response = await fetch('https://slack.com/api/conversations.open', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${botToken}`,
+        'content-type': 'application/json; charset=utf-8'
+      },
+      body: JSON.stringify({ users: userId })
+    });
+    const payload = (await response.json()) as ConversationsOpenResponse;
+
+    if (!payload.ok || !payload.channel?.id) {
+      throw new Error(payload.error ?? 'Failed to open Slack direct message');
+    }
+
+    return payload.channel.id;
   }
 
   async getChannelInfo(workspace: Workspace, channelId: string): Promise<SlackChannelInfo> {

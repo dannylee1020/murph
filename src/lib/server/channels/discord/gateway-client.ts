@@ -3,6 +3,8 @@ import { getDiscordService } from '#lib/server/channels/discord/service';
 import { getGateway } from '#lib/server/runtime/gateway';
 import { getStore } from '#lib/server/persistence/store';
 import { normalizeDiscordEventWithReason } from '#lib/server/channels/discord/adapter';
+import { providerBotRoleEnabled } from '#lib/server/setup/bot-roles';
+import { readMurphConfig } from '#lib/server/setup/config-file';
 import type { BotRole } from '#lib/types';
 import {
   markIngressClosed,
@@ -15,7 +17,17 @@ import {
 } from '#lib/server/channels/ingress-health';
 
 const DISCORD_GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
-const INTENTS = (1 << 0) | (1 << 9) | (1 << 15);
+export const DISCORD_GATEWAY_INTENTS = {
+  GUILDS: 1 << 0,
+  GUILD_MESSAGES: 1 << 9,
+  DIRECT_MESSAGES: 1 << 12,
+  MESSAGE_CONTENT: 1 << 15
+} as const;
+const INTENTS =
+  DISCORD_GATEWAY_INTENTS.GUILDS |
+  DISCORD_GATEWAY_INTENTS.GUILD_MESSAGES |
+  DISCORD_GATEWAY_INTENTS.DIRECT_MESSAGES |
+  DISCORD_GATEWAY_INTENTS.MESSAGE_CONTENT;
 
 export class DiscordGatewayClient {
   constructor(private readonly role: BotRole = 'channel') {}
@@ -26,10 +38,11 @@ export class DiscordGatewayClient {
   private started = false;
 
   ensureStarted(): void {
+    const enabled = providerBotRoleEnabled(readMurphConfig().setup, 'discord', this.role);
     const hasDiscordWorkspace = getStore().listBotInstallations({ provider: 'discord', role: this.role }).length > 0;
     const configured = Boolean(getDiscordService().botToken(this.role));
-    if (this.started || !hasDiscordWorkspace || !configured) {
-      markIngressConfigured('discord', hasDiscordWorkspace && configured);
+    if (this.started || !enabled || !hasDiscordWorkspace || !configured) {
+      markIngressConfigured('discord', enabled && hasDiscordWorkspace && configured);
       return;
     }
     this.started = true;
@@ -110,6 +123,19 @@ export class DiscordGatewayClient {
     }
 
     if (payload.op !== 0 || payload.t !== 'MESSAGE_CREATE' || !payload.d) {
+      return;
+    }
+
+    if (!providerBotRoleEnabled(readMurphConfig().setup, 'discord', this.role)) {
+      markIngressIgnored('discord', 'bot_role_disabled');
+      console.info('[discord] ignored event', {
+        eventId: typeof payload.d.id === 'string' ? payload.d.id : undefined,
+        guildId: typeof payload.d.guild_id === 'string' ? payload.d.guild_id : undefined,
+        channelId: typeof payload.d.channel_id === 'string' ? payload.d.channel_id : undefined,
+        userId: typeof payload.d.author?.id === 'string' ? payload.d.author.id : undefined,
+        reason: 'bot_role_disabled',
+        botRole: this.role
+      });
       return;
     }
 

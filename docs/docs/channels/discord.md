@@ -11,6 +11,8 @@ For both personal and channel behavior in one runtime, create two Discord applic
 
 The Discord channel bot installs into the server Murph should watch. The Discord personal bot uses OAuth identify to record the represented owner for personal DM handling; it is not the server channel reader.
 
+Murph does not read private Discord DMs between two people. For offline-owner DMs, teammates use the Murph application command or user command to open the right owner's Murph Personal bot, then continue the request in that bot DM.
+
 ## What You Need
 
 - Access to the [Discord Developer Portal](https://discord.com/developers/applications).
@@ -90,8 +92,10 @@ Then Murph will:
 
 - validate the bot token;
 - derive and save the Discord client ID;
+- save the Discord interaction public key when Discord returns it;
 - check the OAuth redirect URI when Discord returns it;
 - configure bot install permissions when Discord allows it;
+- register the Murph personal handoff commands when Discord allows it;
 - print and open the Discord authorization URL.
 
 ## Step 7: Approve The Discord Authorization

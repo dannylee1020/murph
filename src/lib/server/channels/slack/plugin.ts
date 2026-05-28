@@ -1,4 +1,6 @@
 import { getRuntimeEnv } from '#lib/server/util/env';
+import { providerBotRoleEnabled } from '#lib/server/setup/bot-roles';
+import { readMurphConfig } from '#lib/server/setup/config-file';
 import type { ChannelPlugin } from '#lib/types';
 import { createSlackChannelAdapter } from './adapter.js';
 import { handleSlackEventEnvelope, verifySlackHttpSignature } from './events.js';
@@ -55,12 +57,13 @@ export function createSlackChannelPlugin(): ChannelPlugin {
     ingress: {
       start() {
         if (slack.getUsableWorkspace()) {
+          const setupDefaults = readMurphConfig().setup;
           const channelClient = getSlackSocketModeClient('channel');
           const personalClient = getSlackSocketModeClient('personal');
-          if (channelClient.isConfigured()) {
+          if (providerBotRoleEnabled(setupDefaults, 'slack', 'channel') && channelClient.isConfigured()) {
             channelClient.ensureStarted();
           }
-          if (personalClient.isConfigured()) {
+          if (providerBotRoleEnabled(setupDefaults, 'slack', 'personal') && personalClient.isConfigured()) {
             personalClient.ensureStarted();
           }
         }

@@ -19,6 +19,7 @@ export interface RuntimeEnv {
   discordBotToken?: string;
   discordClientId?: string;
   discordClientSecret?: string;
+  discordPublicKey?: string;
   discordRedirectUri?: string;
   heartbeatIntervalMs: number;
   openaiApiKey?: string;
@@ -129,6 +130,7 @@ export function getRuntimeEnv(): RuntimeEnv {
     discordBotToken: envOrSecret('DISCORD_BOT_TOKEN', 'discord', 'bot_token'),
     discordClientId: process.env.DISCORD_CLIENT_ID ?? config.channels?.discord?.clientId,
     discordClientSecret: envOrSecret('DISCORD_CLIENT_SECRET', 'discord', 'client_secret'),
+    discordPublicKey: process.env.DISCORD_PUBLIC_KEY ?? config.channels?.discord?.publicKey,
     discordRedirectUri: process.env.DISCORD_REDIRECT_URI ?? config.channels?.discord?.redirectUri,
     heartbeatIntervalMs: envOrConfigNumber('MURPH_HEARTBEAT_INTERVAL_MS', config.app?.heartbeatIntervalMs, DEFAULT_HEARTBEAT_INTERVAL_MS),
     openaiApiKey: envOrSecret('OPENAI_API_KEY', 'openai', 'api_key'),

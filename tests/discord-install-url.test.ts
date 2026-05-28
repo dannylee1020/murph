@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const envKeys = ['MURPH_CONFIG_PATH', 'MURPH_CREDENTIALS_PATH', 'DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_TOKEN'] as const;
+const envKeys = ['MURPH_CONFIG_PATH', 'MURPH_CREDENTIALS_PATH', 'DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_TOKEN', 'DISCORD_PERSONAL_CLIENT_ID'] as const;
 const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 
 describe('Discord install URL', () => {
@@ -56,7 +56,7 @@ describe('Discord install URL', () => {
 
     const result = await new DiscordService().configureApplication();
 
-    expect(result).toEqual({ permissionsConfigured: true, intentsConfigured: true });
+    expect(result).toEqual({ permissionsConfigured: true, intentsConfigured: true, commandsConfigured: true });
     const patch = calls.find((call) => call.url.includes('/applications/@me') && call.method === 'PATCH');
     expect(patch?.body).toEqual(expect.objectContaining({
       install_params: {
@@ -73,6 +73,30 @@ describe('Discord install URL', () => {
       },
       flags: 524292
     }));
+    const commands = calls.find((call) => call.url.includes('/applications/app-123/commands') && call.method === 'PUT');
+    expect(commands?.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'murph', integration_types: [0, 1], contexts: [0, 1, 2] }),
+      expect.objectContaining({ name: 'Ask Murph Personal', type: 2, integration_types: [0, 1], contexts: [0, 1, 2] })
+    ]));
+  });
+
+  it('uses a zero-permission bot install for personal OAuth so the personal bot can receive DMs', async () => {
+    process.env.DISCORD_PERSONAL_CLIENT_ID = 'personal-client';
+    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+
+    const url = new DiscordService().buildInstallUrl({ appUrl: 'http://murph.test', role: 'personal' });
+
+    expect(url).toBeTruthy();
+    const params = new URL(url!).searchParams;
+    expect(params.get('client_id')).toBe('personal-client');
+    expect(params.get('scope')).toBe('bot identify');
+    expect(params.get('permissions')).toBe('0');
+  });
+
+  it('requests Discord direct message gateway events', async () => {
+    const { DISCORD_GATEWAY_INTENTS } = await import('../src/lib/server/channels/discord/gateway-client');
+
+    expect(DISCORD_GATEWAY_INTENTS.DIRECT_MESSAGES).toBe(1 << 12);
   });
 
   it('fetches a single Discord member display name', async () => {

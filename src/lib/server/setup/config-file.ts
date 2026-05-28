@@ -4,6 +4,7 @@ import { parse, stringify } from 'yaml';
 import type { BotRole, PolicyExecutionMode, ProductMode, ProviderName, SetupDefaults } from '#lib/types';
 import { normalizePolicyExecutionMode } from '#lib/server/runtime/policy-compiler';
 import { murphHome } from '#lib/server/setup/paths';
+import { normalizeProviderBotRoleMap } from '#lib/server/setup/bot-roles';
 
 export const MURPH_CONFIG_FILE = 'config.yaml';
 
@@ -44,9 +45,11 @@ export interface MurphConfig {
     };
     discord?: {
       clientId?: string;
+      publicKey?: string;
       redirectUri?: string;
       bots?: Partial<Record<BotRole, {
         clientId?: string;
+        publicKey?: string;
       }>>;
     };
   };
@@ -105,8 +108,11 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   SLACK_TEAM_ID: (config, value) => setPath(config, ['channels', 'slack', 'teamId'], value),
   SLACK_TEAM_NAME: (config, value) => setPath(config, ['channels', 'slack', 'teamName'], value),
   DISCORD_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'clientId'], value),
+  DISCORD_PUBLIC_KEY: (config, value) => setPath(config, ['channels', 'discord', 'publicKey'], value),
   DISCORD_CHANNEL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'channel', 'clientId'], value),
+  DISCORD_CHANNEL_PUBLIC_KEY: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'channel', 'publicKey'], value),
   DISCORD_PERSONAL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'personal', 'clientId'], value),
+  DISCORD_PERSONAL_PUBLIC_KEY: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'personal', 'publicKey'], value),
   DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value),
   MURPH_BOT_ROLES: (config, value) => setPath(config, ['setup', 'botRoles'], botRolesFromString(value)),
   NOTION_VERSION: (config, value) => setPath(config, ['integrations', 'notion', 'version'], value),
@@ -282,6 +288,7 @@ function setupDefaultsValue(value: unknown): SetupDefaults | undefined {
     : undefined;
   return {
     botRoles: botRolesValue(value.botRoles),
+    providerBotRoles: normalizeProviderBotRoleMap(value.providerBotRoles),
     channelProvider: stringValue(value.channelProvider),
     workspaceId: stringValue(value.workspaceId),
     ownerUserId: stringValue(value.ownerUserId),
@@ -396,13 +403,16 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
       },
       discord: {
         clientId: stringValue(discord.clientId),
+        publicKey: stringValue(discord.publicKey),
         redirectUri: stringValue(discord.redirectUri),
         bots: {
           channel: {
-            clientId: stringValue(discordChannelBot.clientId)
+            clientId: stringValue(discordChannelBot.clientId),
+            publicKey: stringValue(discordChannelBot.publicKey)
           },
           personal: {
-            clientId: stringValue(discordPersonalBot.clientId)
+            clientId: stringValue(discordPersonalBot.clientId),
+            publicKey: stringValue(discordPersonalBot.publicKey)
           }
         }
       }

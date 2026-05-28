@@ -59,4 +59,15 @@ describe('loadSkills groundingPolicy', () => {
     expect(skills.find((skill) => skill.name === 'custom-user-skill')?.priority).toBe(50);
     expect(skills.find((skill) => skill.name === 'github-code')?.priority).toBe(99);
   });
+
+  it('loads the built-in Obsidian vault skill with its context source requirement', async () => {
+    const skills = await loadSkills();
+
+    expect(skills.find((skill) => skill.name === 'obsidian-vault')).toEqual(expect.objectContaining({
+      knowledgeDomains: ['documentation', 'meeting'],
+      groundingPolicy: 'required_when_no_artifacts',
+      contextSourceNames: ['obsidian.thread_search'],
+      priority: 108
+    }));
+  });
 });

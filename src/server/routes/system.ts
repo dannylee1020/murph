@@ -24,6 +24,7 @@ import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { readSecret } from '#lib/server/credentials/local-store';
 import {
   buildSetupRoleStatus,
+  normalizeProviderBotRoleMap,
   normalizeSetupBotRoles,
   selectedSetupBotRoles,
   selectedSetupRolesReady,
@@ -339,6 +340,7 @@ function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
 
   return {
     botRoles: normalizeSetupBotRoles(value.botRoles),
+    providerBotRoles: normalizeProviderBotRoleMap(value.providerBotRoles),
     channelProvider: value.channelProvider?.trim() || undefined,
     workspaceId: value.workspaceId?.trim() || undefined,
     ownerUserId: value.ownerUserId?.trim() || undefined,
@@ -690,6 +692,7 @@ export const systemRoutes: Route[] = [
       ok: true,
       productMode: env.productMode,
       botRoles,
+      providerBotRoles: setupDefaults.providerBotRoles ?? {},
       roleStatus,
       rolesReady: selectedSetupRolesReady(roleStatus),
       botInstallations: botInstallations.map((installation) => ({
@@ -744,6 +747,8 @@ export const systemRoutes: Route[] = [
         botTokenConfigured: discordConfigured,
         clientIdConfigured: Boolean(env.discordClientId),
         clientSecretConfigured: Boolean(env.discordClientSecret),
+        publicKeyConfigured: Boolean(env.discordPublicKey || getDiscordService().publicKey('channel') || getDiscordService().publicKey('personal')),
+        interactionsUrl: `${appUrl}/api/discord/interactions`,
         oauthConfigured: Boolean(env.discordClientId && env.discordClientSecret),
         roles: {
           channel: {
@@ -795,6 +800,27 @@ export const systemRoutes: Route[] = [
   route('GET', '/api/setup/defaults', async ({ res, url }) => {
     await ensureRuntimeInitialized();
     sendJson(res, setupDefaultsPayload(getSetupWorkspace(url.searchParams.get('workspaceId') ?? undefined)));
+  }),
+  route('PUT', '/api/setup/provider-roles', async ({ req, res }) => {
+    await ensureRuntimeInitialized();
+    const body = await readJson<{ providerBotRoles?: unknown }>(req);
+    if (!Object.prototype.hasOwnProperty.call(body, 'providerBotRoles')) {
+      sendJson(res, { ok: false, error: 'provider_bot_roles_required' }, 400);
+      return;
+    }
+
+    const currentDefaults = effectiveSetupDefaults();
+    const defaults = normalizeSetupDefaults({
+      ...currentDefaults,
+      providerBotRoles: normalizeProviderBotRoleMap(body.providerBotRoles)
+    });
+    syncSetupSubscriptions(defaults);
+    updateMurphSetupDefaults(defaults);
+    const refresh = await refreshRuntimeState({
+      reason: 'setup_defaults_updated',
+      deferIfRunActive: true
+    });
+    sendJson(res, { ok: true, providerBotRoles: defaults.providerBotRoles ?? {}, refresh });
   }),
   route('GET', '/api/setup/members', async ({ res, url }) => {
     await ensureRuntimeInitialized();
@@ -1014,11 +1040,13 @@ export const systemRoutes: Route[] = [
           ? {
               DISCORD_PERSONAL_BOT_TOKEN: botToken,
               DISCORD_PERSONAL_CLIENT_ID: bot.applicationId,
+              ...(bot.applicationPublicKey ? { DISCORD_PERSONAL_PUBLIC_KEY: bot.applicationPublicKey } : {}),
               DISCORD_PERSONAL_CLIENT_SECRET: clientSecret
             }
           : {
               DISCORD_CHANNEL_BOT_TOKEN: botToken,
               DISCORD_CHANNEL_CLIENT_ID: bot.applicationId,
+              ...(bot.applicationPublicKey ? { DISCORD_CHANNEL_PUBLIC_KEY: bot.applicationPublicKey, DISCORD_PUBLIC_KEY: bot.applicationPublicKey } : {}),
               DISCORD_CHANNEL_CLIENT_SECRET: clientSecret,
               DISCORD_BOT_TOKEN: botToken,
               DISCORD_CLIENT_ID: bot.applicationId,
@@ -1039,11 +1067,13 @@ export const systemRoutes: Route[] = [
         botName: bot.botName ?? bot.botUsername ?? bot.botUserId,
         applicationId: bot.applicationId,
         applicationName: bot.applicationName,
+        applicationPublicKey: bot.applicationPublicKey,
         redirectUri,
         developerPortalUrl: discordDeveloperPortalOAuthUrl(bot.applicationId),
         redirectUriRegistered,
         permissionsConfigured: configuration.permissionsConfigured,
         intentsConfigured: configuration.intentsConfigured,
+        commandsConfigured: configuration.commandsConfigured,
         configurationError: configuration.error,
         installUrl: role === 'personal' ? '/api/discord/personal/install?source=setup' : '/api/discord/channel/install?source=setup'
       });

@@ -3,12 +3,14 @@ import { normalizeSlackEvent, type SlackIgnoredReason } from '#lib/server/channe
 import { getGateway } from '#lib/server/runtime/gateway';
 import { getStore } from '#lib/server/persistence/store';
 import { markIngressIgnored } from '#lib/server/channels/ingress-health';
+import { providerBotRoleEnabled } from '#lib/server/setup/bot-roles';
+import { readMurphConfig } from '#lib/server/setup/config-file';
 import type { BotRole } from '#lib/types';
 
 export interface SlackEnvelopeHandleResult {
   ok: boolean;
   ignored?: true;
-  reason?: SlackIgnoredReason | 'workspace_not_installed' | 'duplicate_event';
+  reason?: SlackIgnoredReason | 'workspace_not_installed' | 'duplicate_event' | 'bot_role_disabled';
   taskId?: string;
   audit?: unknown;
 }
@@ -47,6 +49,16 @@ export async function handleSlackEventEnvelope(
     ? (payload.authorizations[0] as { team_id?: unknown } | undefined)?.team_id
     : undefined);
   const botRole = options.botRole ?? 'channel';
+  if (!providerBotRoleEnabled(readMurphConfig().setup, 'slack', botRole)) {
+    markIngressIgnored('slack', 'bot_role_disabled');
+    console.info('[slack] ignored event', {
+      ...slackLogFields(payload, event),
+      source: options.source ?? 'http',
+      reason: 'bot_role_disabled',
+      botRole
+    });
+    return { ok: false, ignored: true, reason: 'bot_role_disabled' };
+  }
   const botInstallationId = options.botInstallationId ??
     (teamId ? getStore().getBotInstallation('slack', teamId, botRole)?.id : undefined);
   const normalized = normalizeSlackEvent(event, { eventId, teamId, botRole, botInstallationId });

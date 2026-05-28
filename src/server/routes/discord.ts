@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { getDiscordService } from '#lib/server/channels/discord/service';
 import { ensureRuntimeInitialized } from '#lib/server/runtime/bootstrap';
@@ -6,13 +6,16 @@ import { refreshRuntimeState } from '#lib/server/runtime/refresh';
 import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { getStore } from '#lib/server/persistence/store';
-import { readJson, redirect, sendJson } from '../http.js';
+import { openDiscordPersonalHandoff } from '#lib/server/channels/personal-handoff';
+import { readBody, readJson, redirect, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 import { readMurphConfig, updateMurphSetupDefaults } from '#lib/server/setup/config-file';
 import type { DiscordInstallResult } from '#lib/server/channels/discord/service';
 import type { BotRole, SetupDefaults } from '#lib/types';
 
 type OAuthSource = 'cli' | 'setup' | 'settings';
+
+const DISCORD_ED25519_PUBLIC_KEY_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -98,6 +101,62 @@ function discordCliReturnPath(role: BotRole, status: 'success' | 'error', reason
   return `/oauth/cli-complete?${params.toString()}`;
 }
 
+function verifyDiscordInteractionSignature(headers: IncomingMessage['headers'], rawBody: string, role: BotRole = 'channel'): boolean {
+  const signature = firstHeaderValue(headers['x-signature-ed25519']);
+  const timestamp = firstHeaderValue(headers['x-signature-timestamp']);
+  const publicKey = getDiscordService().publicKey(role) ?? getRuntimeEnv().discordPublicKey;
+  if (!signature || !timestamp || !publicKey) {
+    return false;
+  }
+  try {
+    const key = createPublicKey({
+      key: Buffer.concat([DISCORD_ED25519_PUBLIC_KEY_PREFIX, Buffer.from(publicKey, 'hex')]),
+      format: 'der',
+      type: 'spki'
+    });
+    return verify(null, Buffer.concat([Buffer.from(timestamp), Buffer.from(rawBody)]), key, Buffer.from(signature, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+function discordInteractionUserId(payload: Record<string, unknown>): string | undefined {
+  const member = payload.member;
+  if (member && typeof member === 'object') {
+    const user = (member as { user?: unknown }).user;
+    if (user && typeof user === 'object' && typeof (user as { id?: unknown }).id === 'string') {
+      return (user as { id: string }).id;
+    }
+  }
+  const user = payload.user;
+  if (user && typeof user === 'object' && typeof (user as { id?: unknown }).id === 'string') {
+    return (user as { id: string }).id;
+  }
+  return undefined;
+}
+
+function discordCommandOwnerUserId(payload: Record<string, unknown>): string | undefined {
+  const data = payload.data;
+  if (!data || typeof data !== 'object') return undefined;
+  const targetId = (data as { target_id?: unknown }).target_id;
+  if (typeof targetId === 'string') return targetId;
+  const options = Array.isArray((data as { options?: unknown }).options)
+    ? (data as { options: Array<{ name?: unknown; value?: unknown }> }).options
+    : [];
+  const owner = options.find((option) => option.name === 'owner');
+  return typeof owner?.value === 'string' ? owner.value : undefined;
+}
+
+function discordInteractionResponse(text: string): Record<string, unknown> {
+  return {
+    type: 4,
+    data: {
+      content: text,
+      flags: 64
+    }
+  };
+}
+
 function mergedSetupDefaults(): SetupDefaults {
   const store = getStore();
   return {
@@ -150,6 +209,31 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
 }
 
 export const discordRoutes: Route[] = [
+  route('POST', '/api/discord/interactions', async ({ req, res }) => {
+    const rawBody = await readBody(req);
+    if (!verifyDiscordInteractionSignature(req.headers, rawBody, 'channel') && !verifyDiscordInteractionSignature(req.headers, rawBody, 'personal')) {
+      sendJson(res, { error: 'invalid_signature' }, 401);
+      return;
+    }
+
+    const payload = rawBody ? JSON.parse(rawBody) as Record<string, unknown> : {};
+    if (payload.type === 1) {
+      sendJson(res, { type: 1 });
+      return;
+    }
+
+    const senderUserId = discordInteractionUserId(payload);
+    if (!senderUserId) {
+      sendJson(res, discordInteractionResponse('Murph could not identify the Discord user.'));
+      return;
+    }
+
+    const result = await openDiscordPersonalHandoff({
+      senderUserId,
+      ownerUserId: discordCommandOwnerUserId(payload)
+    });
+    sendJson(res, discordInteractionResponse(result.message));
+  }),
   route('GET', '/api/discord/install', ({ req, res, url: requestUrl }) => {
     const role = parseBotRole(requestUrl.searchParams.get('role'));
     const source = parseOAuthSource(requestUrl.searchParams.get('source'));

@@ -21,8 +21,40 @@ export function normalizeSetupBotRoles(value: unknown): BotRole[] {
   return unique.length > 0 ? unique : ['channel'];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+export function normalizeExplicitBotRoles(value: unknown): BotRole[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return Array.from(new Set(value.filter((entry): entry is BotRole => entry === 'channel' || entry === 'personal')));
+}
+
+export function normalizeProviderBotRoleMap(value: unknown): Record<string, BotRole[]> | undefined {
+  if (!isRecord(value)) return undefined;
+  const rolesByProvider: Record<string, BotRole[]> = {};
+  for (const [provider, roles] of Object.entries(value)) {
+    const providerName = provider.trim();
+    const normalizedRoles = normalizeExplicitBotRoles(roles);
+    if (!providerName || !normalizedRoles) continue;
+    rolesByProvider[providerName] = normalizedRoles;
+  }
+  return Object.keys(rolesByProvider).length > 0 ? rolesByProvider : undefined;
+}
+
 export function selectedSetupBotRoles(defaults: SetupDefaults | undefined): BotRole[] {
   return normalizeSetupBotRoles(defaults?.botRoles);
+}
+
+export function selectedProviderSetupBotRoles(defaults: SetupDefaults | undefined, provider: string): BotRole[] {
+  if (defaults?.providerBotRoles && Object.prototype.hasOwnProperty.call(defaults.providerBotRoles, provider)) {
+    return defaults.providerBotRoles[provider] ?? [];
+  }
+  return selectedSetupBotRoles(defaults);
+}
+
+export function providerBotRoleEnabled(defaults: SetupDefaults | undefined, provider: string, role: BotRole): boolean {
+  return selectedProviderSetupBotRoles(defaults, provider).includes(role);
 }
 
 export function setupRolesCsv(roles: BotRole[]): string {

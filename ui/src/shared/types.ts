@@ -119,6 +119,7 @@ export type SetupDoctorPayload = {
 export type SetupStatusPayload = {
     productMode: 'personal' | 'channel';
     botRoles?: BotRole[];
+    providerBotRoles?: Record<string, BotRole[]>;
     rolesReady?: boolean;
     roleStatus?: Record<
         BotRole,
@@ -166,6 +167,8 @@ export type SetupStatusPayload = {
         installed: boolean;
         clientIdConfigured: boolean;
         clientSecretConfigured?: boolean;
+        publicKeyConfigured?: boolean;
+        interactionsUrl?: string;
         oauthConfigured?: boolean;
         botTokenConfigured: boolean;
         ownerConfigured?: boolean;
@@ -229,6 +232,8 @@ export type SetupDefaultsPayload = {
     ok: boolean;
     workspaceId?: string;
     defaults: {
+        botRoles?: BotRole[];
+        providerBotRoles?: Record<string, BotRole[]>;
         workspaceId?: string;
         channelProvider?: string;
         ownerUserId?: string;
@@ -266,11 +271,13 @@ export type DiscordSetupPreparePayload = {
     botName: string;
     applicationId: string;
     applicationName?: string;
+    applicationPublicKey?: string;
     redirectUri: string;
     developerPortalUrl: string;
     redirectUriRegistered?: boolean;
     permissionsConfigured: boolean;
     intentsConfigured: boolean;
+    commandsConfigured?: boolean;
     configurationError?: string;
     installUrl: string;
 };

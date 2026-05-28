@@ -122,6 +122,94 @@ import {
     workspaceMetric,
 } from './page-helpers';
 
+const MANAGED_PROVIDERS = ['slack', 'discord'] as const;
+type ManagedProvider = (typeof MANAGED_PROVIDERS)[number];
+const PROVIDER_MODE_ROLES: BotRole[] = ['channel', 'personal'];
+
+function isManagedProvider(value: string): value is ManagedProvider {
+    return MANAGED_PROVIDERS.includes(value as ManagedProvider);
+}
+
+function providerModeRoles(
+    setup: SetupStatusPayload,
+    provider: ManagedProvider,
+): BotRole[] {
+    if (
+        setup.providerBotRoles &&
+        Object.prototype.hasOwnProperty.call(setup.providerBotRoles, provider)
+    ) {
+        return setup.providerBotRoles[provider] ?? [];
+    }
+    return setup.botRoles?.length ? setup.botRoles : ['channel'];
+}
+
+function providerModeSummary(
+    setup: SetupStatusPayload,
+    provider: ManagedProvider,
+): string {
+    const roles = providerModeRoles(setup, provider);
+    if (roles.length === 0) return 'Off';
+    return PROVIDER_MODE_ROLES.filter((role) => roles.includes(role))
+        .map(roleLabel)
+        .join(' + ');
+}
+
+function providerRoleStatus(
+    setup: SetupStatusPayload,
+    provider: ManagedProvider,
+    role: BotRole,
+): ProviderRoleSetupStatus | undefined {
+    return setup[provider].roles?.[role];
+}
+
+function providerModeRows(
+    setup: SetupStatusPayload,
+    provider: ManagedProvider,
+): string {
+    const enabledRoles = new Set(providerModeRoles(setup, provider));
+    return PROVIDER_MODE_ROLES.map((role) => {
+        const status = providerRoleStatus(setup, provider, role);
+        const setupUrl = `/setup?provider=${provider}&mode=${role}`;
+        const installLabel = status?.installed ? 'Connected' : 'Not connected';
+        const configLabel = status?.configured ? 'configured' : 'needs setup';
+        return `
+          <label class="toggle-row provider-mode-toggle">
+            <input type="checkbox" name="role" value="${role}" ${enabledRoles.has(role) ? 'checked' : ''} />
+            <span>
+              <strong>${escapeHtml(roleLabel(role))}</strong>
+              <small>${escapeHtml(roleDescription(role))}</small>
+              <small>${escapeHtml(installLabel)} · ${escapeHtml(configLabel)} · <a href="${setupUrl}">${status?.installed ? 'Reconnect' : 'Set up'}</a></small>
+            </span>
+          </label>
+        `;
+    }).join('');
+}
+
+function providerModesDialog(): string {
+    return `
+      <dialog class="modal" id="provider-modes-dialog">
+        <div class="modal-panel">
+          <div class="modal-head">
+            <div>
+              <p class="eyebrow" id="provider-modes-eyebrow">Modes</p>
+              <h2 id="provider-modes-title">Manage modes</h2>
+            </div>
+            <button type="button" class="icon-button close-provider-modes" aria-label="Close">×</button>
+          </div>
+          <p class="modal-intro">Turn off a mode to stop Murph from handling that mode. This does not uninstall the app or remove saved credentials.</p>
+          <form class="form compact-form" id="provider-modes-form">
+            <div class="provider-mode-list" id="provider-modes-list"></div>
+            <p class="modal-error" id="provider-modes-error" hidden></p>
+            <div class="actions">
+              <button type="button" class="secondary close-provider-modes">Cancel</button>
+              <button type="submit">Save modes</button>
+            </div>
+          </form>
+        </div>
+      </dialog>
+    `;
+}
+
 export async function renderSettings(): Promise<void> {
     setTitle('Murph Admin');
     loading('Admin');
@@ -197,11 +285,14 @@ export async function renderSettings(): Promise<void> {
         <p>Launch the guided setup for Slack channel or personal coverage.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.slack.installed ? 'Connected' : 'Not connected'}</dd></div>
+          <div><dt>Modes</dt><dd>${escapeHtml(providerModeSummary(setup, 'slack'))}</dd></div>
           <div><dt>Events</dt><dd>${setup.slack.eventsMode === 'socket' ? 'Socket Mode' : 'HTTP'}</dd></div>
+          <div><dt>DM shortcut</dt><dd>${setup.slack.socketConfigured ? 'Socket Mode' : 'Needs app token'}</dd></div>
           <div><dt>Setup</dt><dd>${setup.slack.oauthConfigured && setup.slack.socketConfigured ? 'Ready to install' : 'Missing app settings'}</dd></div>
         </dl>
         <div class="actions">
           <a class="button" href="/setup?provider=slack">${setup.slack.installed ? 'Reconnect Slack' : 'Connect Slack'}</a>
+          <button type="button" class="secondary manage-provider-modes" data-provider="slack">Modes</button>
         </div>
       </article>
       <article class="panel panel-status setup-entry-card">
@@ -209,10 +300,13 @@ export async function renderSettings(): Promise<void> {
         <p>Launch the guided setup for Discord channel or personal coverage.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${setup.discord.installed ? 'Connected' : 'Not connected'}</dd></div>
+          <div><dt>Modes</dt><dd>${escapeHtml(providerModeSummary(setup, 'discord'))}</dd></div>
+          <div><dt>DM shortcut</dt><dd>${setup.discord.publicKeyConfigured ? 'Ready' : 'Missing public key'}</dd></div>
           <div><dt>Setup</dt><dd>${discordSetupDetail}</dd></div>
         </dl>
         <div class="actions">
           <a class="button" href="/setup?provider=discord">${setup.discord.installed ? 'Reconnect Discord' : 'Connect Discord'}</a>
+          <button type="button" class="secondary manage-provider-modes" data-provider="discord">Modes</button>
         </div>
       </article>
       <article class="panel panel-status setup-entry-card">
@@ -279,6 +373,7 @@ export async function renderSettings(): Promise<void> {
     ${integrationCredentialDialog(integrationsPayload.workspaceId)}
     ${googleOAuthDialog(integrationsPayload.workspaceId)}
     ${policyProfileDialog(policyConfig.profiles, policyConfig.selectedProfileName)}
+    ${providerModesDialog()}
   `);
 
     const integrationsByProvider = new Map(
@@ -319,6 +414,113 @@ export async function renderSettings(): Promise<void> {
                     '#policy-profile-dialog',
                 )?.close();
             });
+        },
+    );
+
+    app.querySelectorAll<HTMLButtonElement>('.manage-provider-modes').forEach(
+        (button) => {
+            button.addEventListener('click', () => {
+                const provider = button.dataset.provider ?? '';
+                if (!isManagedProvider(provider)) return;
+                const dialog = app.querySelector<HTMLDialogElement>(
+                    '#provider-modes-dialog',
+                );
+                const form = app.querySelector<HTMLFormElement>(
+                    '#provider-modes-form',
+                );
+                const listEl = app.querySelector<HTMLElement>(
+                    '#provider-modes-list',
+                );
+                const eyebrowEl = app.querySelector<HTMLElement>(
+                    '#provider-modes-eyebrow',
+                );
+                const titleEl = app.querySelector<HTMLElement>(
+                    '#provider-modes-title',
+                );
+                const error = app.querySelector<HTMLElement>(
+                    '#provider-modes-error',
+                );
+                if (!dialog || !form || !listEl) return;
+                form.dataset.provider = provider;
+                listEl.innerHTML = providerModeRows(setup, provider);
+                if (eyebrowEl) eyebrowEl.textContent = providerLabel(provider);
+                if (titleEl)
+                    titleEl.textContent = `Manage ${providerLabel(provider)} modes`;
+                if (error) {
+                    error.hidden = true;
+                    error.textContent = '';
+                }
+                dialog.showModal();
+            });
+        },
+    );
+
+    app.querySelectorAll<HTMLButtonElement>('.close-provider-modes').forEach(
+        (button) => {
+            button.addEventListener('click', () => {
+                app.querySelector<HTMLDialogElement>(
+                    '#provider-modes-dialog',
+                )?.close();
+            });
+        },
+    );
+
+    app.querySelector<HTMLDialogElement>(
+        '#provider-modes-dialog',
+    )?.addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) {
+            (event.currentTarget as HTMLDialogElement).close();
+        }
+    });
+
+    app.querySelector<HTMLFormElement>('#provider-modes-form')?.addEventListener(
+        'submit',
+        async (event) => {
+            event.preventDefault();
+            const form = event.currentTarget as HTMLFormElement;
+            const provider = form.dataset.provider ?? '';
+            if (!isManagedProvider(provider)) return;
+            const roles = new FormData(form)
+                .getAll('role')
+                .filter((role): role is BotRole => role === 'channel' || role === 'personal');
+            const error = form.querySelector<HTMLElement>(
+                '#provider-modes-error',
+            );
+            const submitButton = form.querySelector<HTMLButtonElement>(
+                'button[type="submit"]',
+            );
+            if (error) {
+                error.hidden = true;
+                error.textContent = '';
+            }
+            if (submitButton) submitButton.disabled = true;
+            try {
+                const providerBotRoles: Record<string, BotRole[]> = {
+                    ...(setup.providerBotRoles ?? {}),
+                    [provider]: roles,
+                };
+                await putJson('/api/setup/provider-roles', {
+                    providerBotRoles,
+                });
+                setDashboardNotice(
+                    roles.length === 0
+                        ? `${providerLabel(provider)} modes turned off.`
+                        : `${providerLabel(provider)} modes updated.`,
+                );
+                app.querySelector<HTMLDialogElement>(
+                    '#provider-modes-dialog',
+                )?.close();
+                await renderSettings();
+            } catch (errorValue) {
+                if (error) {
+                    error.textContent =
+                        errorValue instanceof Error
+                            ? errorValue.message
+                            : 'Modes could not be saved.';
+                    error.hidden = false;
+                }
+                if (submitButton) submitButton.disabled = false;
+            }
         },
     );
 

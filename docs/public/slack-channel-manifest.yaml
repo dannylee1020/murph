@@ -4,6 +4,16 @@ features:
   bot_user:
     display_name: Murph
     always_online: false
+  slash_commands:
+    - command: /murph
+      description: Open the right Murph Personal bot for an offline owner
+      usage_hint: "@owner"
+      should_escape: true
+  shortcuts:
+    - name: Send to Murph Personal
+      type: message
+      callback_id: murph_personal_handoff
+      description: Open the owner's Murph Personal bot
 oauth_config:
   redirect_urls:
     - http://localhost:5173/api/slack/oauth/callback
@@ -14,6 +24,7 @@ oauth_config:
       - channels:join
       - channels:read
       - chat:write
+      - commands
       - groups:history
       - groups:read
     user:
@@ -25,7 +36,7 @@ settings:
       - message.channels
       - message.groups
   interactivity:
-    is_enabled: false
+    is_enabled: true
   org_deploy_enabled: false
   socket_mode_enabled: true
   token_rotation_enabled: false

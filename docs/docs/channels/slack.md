@@ -75,6 +75,7 @@ For the channel bot, in **OAuth & Permissions** -> **Scopes**, verify these bot 
 - `channels:join`
 - `channels:read`
 - `chat:write`
+- `commands`
 - `groups:history`
 - `groups:read`
 
@@ -94,6 +95,7 @@ For the personal bot, verify these bot token scopes:
 
 - `chat:write`
 - `im:history`
+- `im:write`
 
 The personal bot does not need channel, group, MPIM, or user token scopes for v1.
 
@@ -101,7 +103,9 @@ In **Event Subscriptions** -> **Subscribe to bot events**, verify this personal 
 
 - `message.im`
 
-Socket Mode means local Murph installs do not need a public Slack Events Request URL.
+Socket Mode means local Murph installs do not need a public Slack Events or Interactivity Request URL.
+
+The channel app also includes the `/murph` command and the **Send to Murph Personal** message shortcut. These are explicit sender actions: Murph does not read owner private DMs, but a teammate can invoke the shortcut from a DM to open the right owner's Murph Personal bot.
 
 ## Step 6: Enable Socket Mode And Create The App-Level Token
 

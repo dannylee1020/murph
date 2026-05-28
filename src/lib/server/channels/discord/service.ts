@@ -26,6 +26,7 @@ interface DiscordApplication {
   name?: string;
   flags?: number;
   redirect_uris?: string[];
+  verify_key?: string;
 }
 
 interface DiscordUser {
@@ -45,6 +46,10 @@ interface DiscordChannel {
   name?: string;
   type?: number;
   guild_id?: string;
+}
+
+interface DiscordDmChannel {
+  id?: string;
 }
 
 interface DiscordMessage {
@@ -80,6 +85,7 @@ export interface DiscordBotConfig {
   applicationName?: string;
   applicationFlags?: number;
   applicationRedirectUris?: string[];
+  applicationPublicKey?: string;
 }
 
 export interface DiscordChannelChoice {
@@ -102,6 +108,7 @@ export interface DiscordGuildChoice {
 export interface DiscordAppConfigurationResult {
   permissionsConfigured: boolean;
   intentsConfigured: boolean;
+  commandsConfigured?: boolean;
   error?: string;
 }
 
@@ -132,6 +139,13 @@ export class DiscordService {
     return role === 'personal'
       ? process.env.DISCORD_PERSONAL_CLIENT_SECRET ?? readSecret('discord', 'personal_client_secret')
       : process.env.DISCORD_CHANNEL_CLIENT_SECRET ?? readSecret('discord', 'channel_client_secret') ?? this.env.discordClientSecret;
+  }
+
+  publicKey(role: BotRole = 'channel'): string | undefined {
+    const config = readMurphConfig();
+    return role === 'personal'
+      ? process.env.DISCORD_PERSONAL_PUBLIC_KEY ?? config.channels?.discord?.bots?.personal?.publicKey ?? process.env.DISCORD_PUBLIC_KEY ?? config.channels?.discord?.publicKey
+      : process.env.DISCORD_CHANNEL_PUBLIC_KEY ?? config.channels?.discord?.bots?.channel?.publicKey ?? process.env.DISCORD_PUBLIC_KEY ?? config.channels?.discord?.publicKey;
   }
 
   botToken(role: BotRole = 'channel', botInstallationId?: string): string | undefined {
@@ -190,13 +204,11 @@ export class DiscordService {
     const redirectUri = this.resolveRedirectUri(options.appUrl);
     const params = new URLSearchParams({
       client_id: clientId,
-      scope: role === 'personal' ? 'identify' : 'bot identify',
+      scope: 'bot identify',
       response_type: 'code',
       redirect_uri: redirectUri
     });
-    if (role === 'channel') {
-      params.set('permissions', DISCORD_BOT_PERMISSIONS);
-    }
+    params.set('permissions', role === 'personal' ? '0' : DISCORD_BOT_PERMISSIONS);
     if (options.source) {
       params.set('state', options.source);
     }
@@ -216,7 +228,8 @@ export class DiscordService {
       applicationId: application?.id ?? botUser.id,
       applicationName: application?.name,
       applicationFlags: application?.flags,
-      applicationRedirectUris: discordRedirectUris(application)
+      applicationRedirectUris: discordRedirectUris(application),
+      applicationPublicKey: application?.verify_key
     };
   }
 
@@ -255,18 +268,59 @@ export class DiscordService {
           ...(flags === undefined ? {} : { flags })
         })
       });
+      const commandsConfigured = response.ok
+        ? await this.configurePersonalHandoffCommands(botToken).catch(() => false)
+        : false;
       return {
         permissionsConfigured: response.ok,
         intentsConfigured: response.ok && flags !== undefined,
+        commandsConfigured,
         ...(response.ok ? {} : { error: await discordErrorMessage(response, 'Discord app configuration automation failed') })
       };
     } catch (error) {
       return {
         permissionsConfigured: false,
         intentsConfigured: false,
+        commandsConfigured: false,
         error: error instanceof Error ? error.message : 'Discord app configuration automation failed'
       };
     }
+  }
+
+  async configurePersonalHandoffCommands(botToken?: string): Promise<boolean> {
+    const application = await this.fetchCurrentApplication(botToken);
+    const commands = [
+      {
+        name: 'murph',
+        description: "Open an owner's Murph Personal bot",
+        type: 1,
+        integration_types: [0, 1],
+        contexts: [0, 1, 2],
+        options: [
+          {
+            name: 'owner',
+            description: 'The offline owner you want to reach',
+            type: 6,
+            required: false
+          }
+        ]
+      },
+      {
+        name: 'Ask Murph Personal',
+        type: 2,
+        integration_types: [0, 1],
+        contexts: [0, 1, 2]
+      }
+    ];
+    const response = await fetch(`https://discord.com/api/v10/applications/${application.id}/commands`, {
+      method: 'PUT',
+      headers: {
+        authorization: `Bot ${botToken ?? this.getBotToken()}`,
+        'content-type': 'application/json; charset=utf-8'
+      },
+      body: JSON.stringify(commands)
+    });
+    return response.ok;
   }
 
   async exchangeCode(code: string, guildId: string | undefined, redirectUri = this.resolveRedirectUri(), role: BotRole = 'channel'): Promise<DiscordInstallResult> {
@@ -327,6 +381,9 @@ export class DiscordService {
             representedUserId: oauthUser.id,
             validatedAt: new Date().toISOString()
           }
+        });
+        await this.seedPersonalDirectMessage(oauthUser.id, botInstallation?.id).catch((error) => {
+          console.warn('[discord] personal bot DM seed failed:', error instanceof Error ? error.message : error);
         });
       }
       reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
@@ -590,6 +647,41 @@ export class DiscordService {
   async postMessage(_workspace: Workspace, channelId: string, text: string): Promise<{ ts?: string }> {
     const payload = await this.createMessage(channelId, { content: text });
     return { ts: payload.id };
+  }
+
+  async openDirectMessage(userId: string, role: BotRole = 'personal', botInstallationId?: string): Promise<string> {
+    const response = await fetch('https://discord.com/api/v10/users/@me/channels', {
+      method: 'POST',
+      headers: {
+        authorization: `Bot ${this.getBotToken(role, botInstallationId)}`,
+        'content-type': 'application/json; charset=utf-8'
+      },
+      body: JSON.stringify({ recipient_id: userId })
+    });
+    if (!response.ok) {
+      throw new Error(await discordErrorMessage(response, 'Failed to open Discord direct message'));
+    }
+    const channel = (await response.json()) as DiscordDmChannel;
+    if (!channel.id) {
+      throw new Error('Discord direct message response did not include a channel ID');
+    }
+    return channel.id;
+  }
+
+  async postDirectMessage(channelId: string, text: string, role: BotRole = 'personal', botInstallationId?: string): Promise<{ ts?: string }> {
+    const payload = await this.createMessage(channelId, { content: text }, { provider: 'discord', channelId, threadTs: channelId, botRole: role, botInstallationId });
+    return { ts: payload.id };
+  }
+
+  async seedPersonalDirectMessage(ownerUserId: string, botInstallationId?: string): Promise<string> {
+    const channelId = await this.openDirectMessage(ownerUserId, 'personal', botInstallationId);
+    await this.postDirectMessage(
+      channelId,
+      'Murph Personal is connected. Teammates can use the Murph command to open this personal bot when you are offline.',
+      'personal',
+      botInstallationId
+    );
+    return channelId;
   }
 
   async searchMessages(workspace: Workspace, query: string, limit = 5): Promise<DiscordSearchResponse> {

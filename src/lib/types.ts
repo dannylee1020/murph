@@ -231,6 +231,7 @@ export interface WorkspaceMemory {
 
 export interface SetupDefaults {
     botRoles?: BotRole[];
+    providerBotRoles?: Record<string, BotRole[]>;
     channelProvider?: ChannelProvider;
     workspaceId?: string;
     ownerUserId?: string;

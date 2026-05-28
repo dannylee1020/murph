@@ -9,6 +9,15 @@ const setupCli = path.join(repoRoot, 'bin/setup-cli.mjs');
 const channelManifest = [
   'display_information:',
   '  name: Murph',
+  'features:',
+  '  slash_commands:',
+  '    - command: /murph',
+  '      description: Open Murph Personal',
+  '      should_escape: true',
+  '  shortcuts:',
+  '    - name: Send to Murph Personal',
+  '      type: message',
+  '      callback_id: murph_personal_handoff',
   'oauth_config:',
   '  redirect_urls:',
   '    - http://localhost:5173/api/slack/oauth/callback',
@@ -17,6 +26,7 @@ const channelManifest = [
   '      - app_mentions:read',
   '      - channels:history',
   '      - chat:write',
+  '      - commands',
   '      - groups:history',
   '    user:',
   '      - search:read',
@@ -26,6 +36,8 @@ const channelManifest = [
   '      - app_mention',
   '      - message.channels',
   '      - message.groups',
+  '  interactivity:',
+  '    is_enabled: true',
   '  socket_mode_enabled: true',
   ''
 ].join('\n');
@@ -39,6 +51,7 @@ const personalManifest = [
   '    bot:',
   '      - chat:write',
   '      - im:history',
+  '      - im:write',
   'settings:',
   '  event_subscriptions:',
   '    bot_events:',
@@ -258,8 +271,15 @@ describe('setup CLI Slack app setup', () => {
       'app_mentions:read',
       'channels:history',
       'groups:history',
+      'commands',
       'chat:write'
     ]));
+    expect(manifestBody.features.slash_commands[0]).toEqual(expect.objectContaining({
+      command: '/murph'
+    }));
+    expect(manifestBody.features.shortcuts[0]).toEqual(expect.objectContaining({
+      callback_id: 'murph_personal_handoff'
+    }));
     expect(manifestBody.oauth_config.scopes.user).toEqual(['search:read']);
     expect(manifestBody.oauth_config.scopes.bot).not.toContain('im:history');
     expect(manifestBody.settings.event_subscriptions.bot_events).toEqual(expect.arrayContaining([
@@ -295,7 +315,7 @@ describe('setup CLI Slack app setup', () => {
     const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
     const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
     expect(manifestBody.display_information.name).toBe('Murph Personal');
-    expect(manifestBody.oauth_config.scopes.bot).toEqual(['chat:write', 'im:history']);
+    expect(manifestBody.oauth_config.scopes.bot).toEqual(['chat:write', 'im:history', 'im:write']);
     expect(manifestBody.oauth_config.scopes.user).toBeUndefined();
     expect(manifestBody.settings.event_subscriptions.bot_events).toEqual(['message.im']);
     expect(manifestBody.settings.event_subscriptions.bot_events).not.toContain('message.channels');

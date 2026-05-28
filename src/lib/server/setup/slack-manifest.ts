@@ -43,6 +43,18 @@ function setPath(target: Record<string, unknown>, keys: string[], value: unknown
   cursor[keys[keys.length - 1]] = value;
 }
 
+function deletePath(target: Record<string, unknown>, keys: string[]): void {
+  let cursor: Record<string, unknown> | undefined = target;
+  for (const key of keys.slice(0, -1)) {
+    const existing = cursor[key];
+    if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+      return;
+    }
+    cursor = existing as Record<string, unknown>;
+  }
+  delete cursor[keys[keys.length - 1]];
+}
+
 function appDir(): string {
   return process.env.MURPH_APP_DIR || process.cwd();
 }
@@ -70,6 +82,18 @@ export function renderSlackManifest(role: BotRole, appUrl: string): Record<strin
   }
 
   setPath(manifest as Record<string, unknown>, ['oauth_config', 'redirect_urls'], [`${appUrl}/api/slack/oauth/callback`]);
+  deletePath(manifest as Record<string, unknown>, ['settings', 'interactivity', 'request_url']);
+  const features = (manifest as Record<string, unknown>).features;
+  if (features && typeof features === 'object' && !Array.isArray(features)) {
+    const slashCommands = (features as Record<string, unknown>).slash_commands;
+    if (Array.isArray(slashCommands)) {
+      for (const command of slashCommands) {
+        if (command && typeof command === 'object' && !Array.isArray(command)) {
+          delete (command as Record<string, unknown>).url;
+        }
+      }
+    }
+  }
   setPath(manifest as Record<string, unknown>, ['settings', 'socket_mode_enabled'], true);
   return manifest as Record<string, unknown>;
 }

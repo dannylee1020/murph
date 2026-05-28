@@ -66,7 +66,9 @@ describe('handleSlackEventEnvelope', () => {
     vi.resetModules();
     handleTask.mockReset();
     handleTask.mockResolvedValue({ disposition: 'queued' });
-    process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-slack-events-')), 'murph.sqlite');
+    const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-slack-events-'));
+    process.env.MURPH_CONFIG_PATH = join(workspaceDir, 'config.yaml');
+    process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   });
 
@@ -99,5 +101,17 @@ describe('handleSlackEventEnvelope', () => {
 
     expect(duplicate).toMatchObject({ ok: true, ignored: true, reason: 'duplicate_event' });
     expect(handleTask).toHaveBeenCalledOnce();
+  });
+
+  it('ignores Slack events when that bot role is turned off', async () => {
+    await setup();
+    const { updateMurphSetupDefaults } = await import('../src/lib/server/setup/config-file');
+    updateMurphSetupDefaults({ providerBotRoles: { slack: [] } });
+    const { handleSlackEventEnvelope } = await import('../src/lib/server/channels/slack/events');
+
+    const result = await handleSlackEventEnvelope(slackEvent(), { source: 'socket' });
+
+    expect(result).toMatchObject({ ok: false, ignored: true, reason: 'bot_role_disabled' });
+    expect(handleTask).not.toHaveBeenCalled();
   });
 });

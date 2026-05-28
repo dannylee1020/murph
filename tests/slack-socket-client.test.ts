@@ -6,6 +6,8 @@ const socketConstructor = vi.fn(function SocketModeClientMock() {
   return { on, start };
 });
 const handleSlackEventEnvelope = vi.fn();
+const handleSlackSocketSlashCommand = vi.fn();
+const handleSlackSocketInteractive = vi.fn();
 const getUsableWorkspace = vi.fn();
 const appToken = vi.fn((role = 'channel') => (
   role === 'personal'
@@ -22,6 +24,11 @@ vi.mock('#lib/server/channels/slack/events', () => ({
   handleSlackEventEnvelope
 }));
 
+vi.mock('#lib/server/channels/slack/interactions', () => ({
+  handleSlackSocketSlashCommand,
+  handleSlackSocketInteractive
+}));
+
 vi.mock('#lib/server/channels/slack/service', () => ({
   getSlackService: () => ({ getUsableWorkspace, appToken })
 }));
@@ -34,6 +41,10 @@ describe('SlackSocketModeClient', () => {
     start.mockReset();
     start.mockResolvedValue({});
     handleSlackEventEnvelope.mockReset();
+    handleSlackSocketSlashCommand.mockReset();
+    handleSlackSocketSlashCommand.mockResolvedValue(undefined);
+    handleSlackSocketInteractive.mockReset();
+    handleSlackSocketInteractive.mockResolvedValue(undefined);
     getUsableWorkspace.mockReset();
     getUsableWorkspace.mockReturnValue(undefined);
     appToken.mockClear();
@@ -58,6 +69,8 @@ describe('SlackSocketModeClient', () => {
 
     expect(socketConstructor).toHaveBeenCalledWith({ appToken: 'xapp-test', logLevel: 'warn' });
     expect(on).toHaveBeenCalledWith('slack_event', expect.any(Function));
+    expect(on).toHaveBeenCalledWith('slash_commands', expect.any(Function));
+    expect(on).toHaveBeenCalledWith('interactive', expect.any(Function));
     expect(start).toHaveBeenCalledOnce();
   });
 
@@ -82,5 +95,48 @@ describe('SlackSocketModeClient', () => {
         botRole: 'channel'
       }
     );
+  });
+
+  it('does not ack non-Events API envelopes from the generic Slack event listener', async () => {
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+
+    await new SlackSocketModeClient().handleEnvelope({
+      ack,
+      envelope_id: 'env-1',
+      type: 'slash_commands',
+      body: { command: '/murph', user_id: 'U1' }
+    });
+
+    expect(ack).not.toHaveBeenCalled();
+    expect(handleSlackEventEnvelope).not.toHaveBeenCalled();
+  });
+
+  it('handles Socket Mode slash command envelopes with the interaction handler', async () => {
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const envelope = {
+      ack,
+      envelope_id: 'env-1',
+      body: { command: '/murph', user_id: 'U1' }
+    };
+    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+
+    await new SlackSocketModeClient().handleSlashCommandEnvelope(envelope);
+
+    expect(handleSlackSocketSlashCommand).toHaveBeenCalledWith(envelope);
+  });
+
+  it('handles Socket Mode interactive envelopes with the interaction handler', async () => {
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const envelope = {
+      ack,
+      envelope_id: 'env-1',
+      body: { type: 'message_action', callback_id: 'murph_personal_handoff', user: { id: 'U1' } }
+    };
+    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+
+    await new SlackSocketModeClient().handleInteractiveEnvelope(envelope);
+
+    expect(handleSlackSocketInteractive).toHaveBeenCalledWith(envelope);
   });
 });

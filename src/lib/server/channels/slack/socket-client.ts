@@ -1,6 +1,10 @@
 import { LogLevel, SocketModeClient } from '@slack/socket-mode';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { handleSlackEventEnvelope } from '#lib/server/channels/slack/events';
+import {
+  handleSlackSocketInteractive,
+  handleSlackSocketSlashCommand
+} from '#lib/server/channels/slack/interactions';
 import { getSlackService } from '#lib/server/channels/slack/service';
 import type { BotRole } from '#lib/types';
 import {
@@ -14,7 +18,7 @@ import {
 } from '#lib/server/channels/ingress-health';
 
 interface SlackSocketEventEnvelope {
-  ack?: () => Promise<void>;
+  ack?: (response?: { response_type: 'ephemeral'; text: string }) => Promise<void>;
   envelope_id?: string;
   type?: string;
   body?: Record<string, unknown>;
@@ -77,6 +81,12 @@ export class SlackSocketModeClient {
 
     this.client.on('slack_event', (envelope: SlackSocketEventEnvelope) => {
       void this.handleEnvelope(envelope);
+    });
+    this.client.on('slash_commands', (envelope: SlackSocketEventEnvelope) => {
+      void this.handleSlashCommandEnvelope(envelope);
+    });
+    this.client.on('interactive', (envelope: SlackSocketEventEnvelope) => {
+      void this.handleInteractiveEnvelope(envelope);
     });
     this.client.on('connected', () => {
       if (this.restartTimer) {
@@ -190,15 +200,15 @@ export class SlackSocketModeClient {
   }
 
   async handleEnvelope(envelope: SlackSocketEventEnvelope): Promise<void> {
+    if (envelope.type !== 'events_api' || !envelope.body) {
+      markIngressIgnored('slack', envelope.type ? `unsupported_envelope:${envelope.type}` : 'missing_envelope_body');
+      return;
+    }
+
     try {
       await envelope.ack?.();
     } catch (error) {
       console.warn('[slack] socket mode ack failed:', error instanceof Error ? error.message : error);
-    }
-
-    if (envelope.type !== 'events_api' || !envelope.body) {
-      markIngressIgnored('slack', envelope.type ? `unsupported_envelope:${envelope.type}` : 'missing_envelope_body');
-      return;
     }
 
     markIngressEvent('slack');
@@ -208,6 +218,26 @@ export class SlackSocketModeClient {
       source: 'socket',
       botRole: this.role
     });
+  }
+
+  async handleSlashCommandEnvelope(envelope: SlackSocketEventEnvelope): Promise<void> {
+    try {
+      markIngressEvent('slack');
+      await handleSlackSocketSlashCommand(envelope);
+    } catch (error) {
+      markIngressError('slack', error);
+      console.warn('[slack] socket slash command failed:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  async handleInteractiveEnvelope(envelope: SlackSocketEventEnvelope): Promise<void> {
+    try {
+      markIngressEvent('slack');
+      await handleSlackSocketInteractive(envelope);
+    } catch (error) {
+      markIngressError('slack', error);
+      console.warn('[slack] socket interaction failed:', error instanceof Error ? error.message : error);
+    }
   }
 }
 

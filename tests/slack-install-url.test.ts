@@ -38,6 +38,7 @@ describe('Slack install URL', () => {
     expect(params.get('user_scope')).toBe('search:read');
     expect(params.get('scope')).not.toContain('users:read');
     expect(params.get('scope')).not.toContain('im:history');
+    expect(params.get('scope')).toContain('commands');
     expect(params.get('state')).toBeNull();
   });
 
@@ -73,7 +74,7 @@ describe('Slack install URL', () => {
     const params = new URL(url!).searchParams;
     expect(params.get('client_id')).toBe('personal-client-id');
     expect(params.get('team')).toBe('T123');
-    expect(params.get('scope')).toBe('chat:write,im:history');
+    expect(params.get('scope')).toBe('chat:write,im:history,im:write');
     expect(params.get('user_scope')).toBeNull();
     expect(params.get('state')).toBe('personal:cli');
   });

@@ -773,6 +773,11 @@ function slackConnectGuide(input: {
                 status: installed ? 'ok' : 'action',
             },
             {
+                label: 'Commands',
+                value: input.role === 'channel' ? 'Socket Mode' : 'Not needed',
+                status: 'ok',
+            },
+            {
                 label: 'Owner identity',
                 value: setupStateLabel(ownerKnown, 'Known', 'Needs OAuth'),
                 status: ownerKnown ? 'ok' : 'action',
@@ -811,6 +816,7 @@ function discordConnectGuide(input: {
     roleStatus?: ProviderRoleSetupStatus;
     prepared?: DiscordSetupPreparePayload;
     ownerMissing: boolean;
+    interactionsUrl?: string;
 }): string {
     const links = input.roleStatus?.links;
     const configured = Boolean(input.roleStatus?.configured);
@@ -864,6 +870,9 @@ function discordConnectGuide(input: {
         values: [
             ...(redirectUri
                 ? [{ label: 'OAuth redirect URI', value: redirectUri }]
+                : []),
+            ...(input.role === 'channel' && input.interactionsUrl
+                ? [{ label: 'Interactions URL', value: input.interactionsUrl }]
                 : []),
             {
                 label: 'Config fields',
@@ -1008,6 +1017,10 @@ function discordPreparationDetails(
         preparation.permissionsConfigured && !preparation.intentsConfigured
             ? '<div class="notice"><strong>Discord privileged intents may still need manual review.</strong><p>Open Developer Portal > Bot and confirm Message Content Intent is enabled.</p></div>'
             : '';
+    const commandNotice =
+        preparation.commandsConfigured === false
+            ? '<div class="notice"><strong>Discord DM shortcut commands were not registered automatically.</strong><p>Open Developer Portal and add the Murph commands manually if the shortcut is needed.</p></div>'
+            : '';
     const confirmation =
         preparation.redirectUriRegistered === true
             ? ''
@@ -1021,6 +1034,7 @@ function discordPreparationDetails(
       ${redirectNotice}
       ${configurationNotice}
       ${intentNotice}
+      ${commandNotice}
       ${confirmation}
     `;
 }
@@ -1406,7 +1420,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                 ? 'This app identifies the represented owner for personal DM handling.'
                 : 'This app watches selected Discord channels during handoff sessions.'
         }</p>
-        ${discordConnectGuide({ role, roleStatus, prepared, ownerMissing: discordOwnerMissing })}
+        ${discordConnectGuide({ role, roleStatus, prepared, ownerMissing: discordOwnerMissing, interactionsUrl: setup.discord.interactionsUrl })}
         ${
             discordInstalled
                 ? `<div class="setup-success">Discord ${role} bot connected</div>`
