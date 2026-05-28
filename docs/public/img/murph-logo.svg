@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" role="img" aria-label="Murph">
-  <style>
-    path { fill: #d49a4a; }
-    @media (prefers-color-scheme: dark) { path { fill: #e8d8b8; } }
-  </style>
-  <path d="M5 26V6l7.5 8L20 6v20l-7.5-8L5 26Z"/>
-  <path d="M20 26V6l7.5 8L35 6v20l-7.5-8L20 26Z"/>
-</svg>

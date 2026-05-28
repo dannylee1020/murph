@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://murph-agent.com/sitemap.xml
