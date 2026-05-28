@@ -327,6 +327,69 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     expect(session.policy?.compiled.allowAutoSend).toBe(false);
   });
 
+  it('uses the subscriber policy binding for new session snapshots', async () => {
+    const { post, store, workspace } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
+    ]);
+    const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
+    updateMurphPolicyConfig({ profileName: 'yolo', mode: 'auto_send_low_risk' });
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'all_accessible',
+      channelScope: [],
+      policyProfileName: 'product',
+      policyMode: 'manual_review'
+    });
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1']
+    });
+
+    expect(response.status).toBe(201);
+    const session = store.listActiveSessions(workspace.id)[0];
+    expect(session.mode).toBe('manual_review');
+    expect(session.policyProfileName).toBe('product');
+    expect(session.policy?.compiled.alwaysQueueTopics).toContain('roadmap commitments');
+    expect(session.policy?.compiled.allowAutoSend).toBe(false);
+  });
+
+  it('clamps subscriber auto-send to the host safety floor', async () => {
+    const { post, store, workspace } = await setup([
+      { channelId: 'C1', name: 'product-eng', status: 'already_member' }
+    ]);
+    const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
+    updateMurphPolicyConfig({ profileName: 'default', mode: 'manual_review' });
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'all_accessible',
+      channelScope: [],
+      policyProfileName: 'yolo',
+      policyMode: 'auto_send_low_risk'
+    });
+
+    const response = await post({
+      ownerUserId: 'UOWNER',
+      channelScope: ['C1']
+    });
+
+    expect(response.status).toBe(201);
+    const session = store.listActiveSessions(workspace.id)[0];
+    expect(session.mode).toBe('manual_review');
+    expect(session.policyProfileName).toBe('yolo');
+    expect(session.policy?.compiled.executionMode).toBe('manual_review');
+    expect(session.policy?.compiled.allowAutoSend).toBe(false);
+    expect(session.policy?.compiled.blockedTopics).toContain('payroll details');
+  });
+
   it('inherits auto-send mode from the durable policy config when mode is omitted', async () => {
     const { post, store, workspace } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' }
@@ -606,7 +669,9 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
 
     const response = await put({
       workspaceId: workspace.id,
-      displayName: 'Team Subscriber'
+      displayName: 'Team Subscriber',
+      policyProfileName: 'product',
+      policyMode: 'manual_review'
     }, '/api/gateway/subscriptions/UTEAM');
 
     expect(response.status).toBe(200);
@@ -614,11 +679,61 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
       externalUserId: 'UTEAM',
       status: 'active',
       channelScopeMode: 'all_accessible',
-      channelScope: []
+      channelScope: [],
+      policyProfileName: 'product',
+      policyMode: 'manual_review'
     }));
     expect(store.getWorkspaceSubscription(workspace.id, 'UTEAM')).toEqual(expect.objectContaining({
       channelScopeMode: 'all_accessible',
-      channelScope: []
+      channelScope: [],
+      policyProfileName: 'product',
+      policyMode: 'manual_review'
+    }));
+  });
+
+  it('rejects unknown subscription policy profiles and invalid modes', async () => {
+    const { put, store, workspace } = await setup([]);
+
+    const unknownProfile = await put({
+      workspaceId: workspace.id,
+      policyProfileName: 'does-not-exist'
+    }, '/api/gateway/subscriptions/UTEAM');
+    const invalidMode = await put({
+      workspaceId: workspace.id,
+      policyMode: 'reckless'
+    }, '/api/gateway/subscriptions/UTEAM');
+
+    expect(unknownProfile.status).toBe(400);
+    expect(unknownProfile.body.error).toBe('unknown_policy_profile');
+    expect(invalidMode.status).toBe(400);
+    expect(invalidMode.body.error).toBe('invalid_policy_mode');
+    expect(store.getWorkspaceSubscription(workspace.id, 'UTEAM')).toBeUndefined();
+  });
+
+  it('clears subscription policy bindings when requested', async () => {
+    const { put, store, workspace } = await setup([]);
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UTEAM',
+      displayName: 'Team Subscriber',
+      status: 'active',
+      channelScopeMode: 'all_accessible',
+      channelScope: [],
+      policyProfileName: 'product',
+      policyMode: 'manual_review'
+    });
+
+    const response = await put({
+      workspaceId: workspace.id,
+      policyProfileName: null,
+      policyMode: null
+    }, '/api/gateway/subscriptions/UTEAM');
+
+    expect(response.status).toBe(200);
+    expect(store.getWorkspaceSubscription(workspace.id, 'UTEAM')).toEqual(expect.objectContaining({
+      policyProfileName: undefined,
+      policyMode: undefined
     }));
   });
 

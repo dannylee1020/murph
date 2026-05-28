@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentToolResult, ContextAssembly, ContinuityTask, SkillManifest } from '../src/lib/types';
 import type { AgentRunResult } from '../src/lib/server/runtime/agent-runtime';
 
@@ -123,6 +123,8 @@ async function setup(
 ) {
   vi.resetModules();
   const testRoot = mkdtempSync(join(tmpdir(), 'murph-gateway-policy-'));
+  process.env.MURPH_HOME = testRoot;
+  process.env.MURPH_CONFIG_PATH = join(testRoot, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(testRoot, 'murph.sqlite');
   process.env.MURPH_MEMORY_PATH = join(testRoot, 'memory');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
@@ -219,6 +221,14 @@ async function setup(
 describe('Gateway session-first policy', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete process.env.MURPH_HOME;
+    delete process.env.MURPH_CONFIG_PATH;
+    delete process.env.MURPH_SQLITE_PATH;
+    delete process.env.MURPH_MEMORY_PATH;
+    delete process.env.MURPH_ENCRYPTION_KEY;
   });
 
   it('writes thread memory for clean runs', async () => {
@@ -362,6 +372,34 @@ describe('Gateway session-first policy', () => {
     expect(runSpy).not.toHaveBeenCalled();
     expect(audit.disposition).toBe('abstained');
     expect(audit.policyReason).toBe('No active subscription matched this thread');
+  });
+
+  it('creates personal direct sessions with the represented owner subscriber policy', async () => {
+    const { gateway, store, workspace, runSpy } = await setup();
+    const { updateMurphPolicyConfig } = await import('../src/lib/server/setup/config-file');
+    updateMurphPolicyConfig({ profileName: 'yolo', mode: 'auto_send_low_risk' });
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'all_accessible',
+      channelScope: [],
+      policyProfileName: 'yolo',
+      policyMode: 'auto_send_low_risk'
+    });
+
+    await gateway.handleTask(task({
+      conversationKind: 'direct',
+      thread: { provider: 'slack', channelId: 'D1', threadTs: 'D1' }
+    }));
+
+    expect(runSpy).toHaveBeenCalledOnce();
+    const session = runSpy.mock.calls[0][1];
+    expect(session.mode).toBe('auto_send_low_risk');
+    expect(session.policyProfileName).toBe('yolo');
+    expect(session.policy?.compiled.allowAutoSend).toBe(true);
   });
 
   it('runs the main agent before policy execution abstains', async () => {

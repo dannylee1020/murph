@@ -44,7 +44,8 @@ describe('sqlite schema cleanup', () => {
       '004_add_memory_index_runs',
       '005_add_runtime_refresh_state',
       '006_add_workspace_subscriptions',
-      '007_add_bot_installations'
+      '007_add_bot_installations',
+      '008_add_subscription_policy_mode'
     ]);
     expect(tableExists(db, 'runtime_refresh_state')).toBe(true);
     expect(columns(db, 'autopilot_sessions')).toEqual(expect.arrayContaining([
@@ -62,8 +63,13 @@ describe('sqlite schema cleanup', () => {
       '004_add_memory_index_runs',
       '005_add_runtime_refresh_state',
       '006_add_workspace_subscriptions',
-      '007_add_bot_installations'
+      '007_add_bot_installations',
+      '008_add_subscription_policy_mode'
     ]);
+    expect(columns(db, 'workspace_subscriptions')).toEqual(expect.arrayContaining([
+      'policy_profile_name',
+      'policy_mode'
+    ]));
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(false);
   });
 
@@ -217,8 +223,10 @@ describe('sqlite schema cleanup', () => {
       '004_add_memory_index_runs',
       '005_add_runtime_refresh_state',
       '006_add_workspace_subscriptions',
-      '007_add_bot_installations'
+      '007_add_bot_installations',
+      '008_add_subscription_policy_mode'
     ]);
+    expect(columns(migrated, 'workspace_subscriptions')).toContain('policy_mode');
     expect(
       migrated.prepare(`SELECT role, external_workspace_id FROM bot_installations WHERE workspace_id = ?`).get('workspace-1')
     ).toEqual(expect.objectContaining({ role: 'channel', external_workspace_id: 'T1' }));

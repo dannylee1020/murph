@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   AgentUser,
   ChannelProvider,
+  PolicyExecutionMode,
   UserSchedule,
   WorkspaceSubscription,
   WorkspaceSubscriptionChannelScopeMode,
@@ -19,7 +20,8 @@ export interface WorkspaceSubscriptionInput {
   channelScopeMode?: WorkspaceSubscriptionChannelScopeMode;
   channelScope?: string[];
   schedule?: Partial<UserSchedule>;
-  policyProfileName?: string;
+  policyProfileName?: string | null;
+  policyMode?: PolicyExecutionMode | null;
   dashboardTokenHash?: string;
 }
 
@@ -36,6 +38,7 @@ interface WorkspaceSubscriptionRow {
   workday_start_hour?: number;
   workday_end_hour?: number;
   policy_profile_name?: string;
+  policy_mode?: PolicyExecutionMode;
   dashboard_token_hash?: string;
   created_at: string;
   updated_at: string;
@@ -64,6 +67,7 @@ function mapSubscription(row: WorkspaceSubscriptionRow): WorkspaceSubscription {
     channelScope: parseJsonArray(row.channel_scope_json),
     schedule: scheduleFromRow(row),
     policyProfileName: row.policy_profile_name ?? undefined,
+    policyMode: row.policy_mode ?? undefined,
     dashboardTokenHash: row.dashboard_token_hash ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -101,8 +105,8 @@ export function upsertWorkspaceSubscription(db: Db, input: WorkspaceSubscription
     `INSERT INTO workspace_subscriptions (
       id, workspace_id, provider, external_user_id, display_name, status,
       channel_scope_mode, channel_scope_json, timezone, workday_start_hour,
-      workday_end_hour, policy_profile_name, dashboard_token_hash, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      workday_end_hour, policy_profile_name, policy_mode, dashboard_token_hash, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(workspace_id, external_user_id) DO UPDATE SET
       provider = excluded.provider,
       display_name = excluded.display_name,
@@ -113,6 +117,7 @@ export function upsertWorkspaceSubscription(db: Db, input: WorkspaceSubscription
       workday_start_hour = excluded.workday_start_hour,
       workday_end_hour = excluded.workday_end_hour,
       policy_profile_name = excluded.policy_profile_name,
+      policy_mode = excluded.policy_mode,
       dashboard_token_hash = excluded.dashboard_token_hash,
       updated_at = excluded.updated_at`
   ).run(
@@ -127,7 +132,8 @@ export function upsertWorkspaceSubscription(db: Db, input: WorkspaceSubscription
     schedule?.timezone ?? null,
     schedule?.workdayStartHour ?? null,
     schedule?.workdayEndHour ?? null,
-    input.policyProfileName ?? existing?.policyProfileName ?? null,
+    input.policyProfileName !== undefined ? input.policyProfileName : existing?.policyProfileName ?? null,
+    input.policyMode !== undefined ? input.policyMode : existing?.policyMode ?? null,
     input.dashboardTokenHash ?? existing?.dashboardTokenHash ?? null,
     existing?.createdAt ?? now,
     now

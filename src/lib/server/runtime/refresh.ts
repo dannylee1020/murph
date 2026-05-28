@@ -13,6 +13,7 @@ import {
   builtinPolicyProfile,
   resolveEffectivePolicy
 } from '#lib/server/runtime/policy-compiler';
+import { resolveSubscriberPolicy } from '#lib/server/runtime/subscriber-policy';
 import type {
   AutopilotSession,
   PolicyExecutionMode,
@@ -32,7 +33,8 @@ type RefreshReason =
   | 'workspace_capabilities_updated'
   | 'plugin_reload'
   | 'channel_setup_updated'
-  | 'provider_config_updated';
+  | 'provider_config_updated'
+  | 'subscription_policy_updated';
 
 type RuntimeRevision = {
   policy: string;
@@ -151,12 +153,12 @@ async function currentPolicyProfile(): Promise<{
 
 async function computeRevision(workspace: Workspace): Promise<{
   revision: RuntimeRevision;
-  policy: Awaited<ReturnType<typeof currentPolicyProfile>>;
   channelScope: string[];
 }> {
   const store = getStore();
   const workspaceMemory = store.getOrCreateWorkspaceMemory(workspace.id);
   const policy = await currentPolicyProfile();
+  const profilesByName = new Map((await loadPolicyProfiles()).map((profile) => [profile.name, profile]));
   const channelScope = configuredChannelScope(workspace);
   const env = getRuntimeEnv();
   const skills = await loadSkills();
@@ -165,7 +167,16 @@ async function computeRevision(workspace: Workspace): Promise<{
     policy: hash({
       profileName: policy.userPolicy.profileName,
       mode: policy.mode,
-      compiled: policy.userPolicy.compiled
+      compiled: policy.userPolicy.compiled,
+      subscriptions: store.listWorkspaceSubscriptions(workspace.id).map((subscription) => ({
+        id: subscription.id,
+        externalUserId: subscription.externalUserId,
+        policyProfileName: subscription.policyProfileName,
+        policyMode: subscription.policyMode,
+        policyCompiled: subscription.policyProfileName
+          ? profilesByName.get(normalizePolicyProfileName(subscription.policyProfileName) ?? '')?.compiled
+          : undefined
+      }))
     }),
     setup: hash({
       ownerUserId: readMurphConfig().setup?.workspaceOwners?.find((owner) => owner.workspaceId === workspace.id)?.ownerUserId,
@@ -204,7 +215,7 @@ async function computeRevision(workspace: Workspace): Promise<{
     })
   };
 
-  return { revision, policy, channelScope };
+  return { revision, channelScope };
 }
 
 function scopeForWorkspace(workspaceId: string): string {
@@ -280,7 +291,7 @@ export async function refreshRuntimeState(input: {
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
     const scopeKey = scopeForWorkspace(workspace.id);
     const state = store.getRuntimeRefreshState(scopeKey);
-    const { revision, policy, channelScope } = await computeRevision(workspace);
+    const { revision, channelScope } = await computeRevision(workspace);
     const revisionJson = stableJson(revision);
     const storedRevision = parseRevision(state?.lastRevisionJson);
     const changed = changedSurfaces(storedRevision, revision);
@@ -296,9 +307,9 @@ export async function refreshRuntimeState(input: {
     }
 
     for (const session of staleSessions) {
-      const patched = patchSession(session, {
+      const patched = await patchSession(session, {
+        session,
         revisionJson,
-        policy,
         channelScope,
         refreshedAt: new Date().toISOString()
       });
@@ -336,26 +347,32 @@ export async function refreshRuntimeState(input: {
   return result;
 }
 
-function patchSession(
-  session: AutopilotSession,
+async function patchSession(
+  existingSession: AutopilotSession,
   input: {
+    session: AutopilotSession;
     revisionJson: string;
     refreshedAt: string;
-    policy: Awaited<ReturnType<typeof currentPolicyProfile>>;
     channelScope: string[];
   }
-): AutopilotSession | undefined {
+): Promise<AutopilotSession | undefined> {
   const store = getStore();
-  return store.patchSessionRefresh(session.id, {
-    ...(session.policyBinding === 'config'
+  const policy = input.session.policyBinding === 'config'
+    ? await resolveSubscriberPolicy({
+        workspaceId: input.session.workspaceId,
+        ownerUserId: input.session.ownerUserId
+      })
+    : undefined;
+  return store.patchSessionRefresh(existingSession.id, {
+    ...(policy
       ? {
-          mode: input.policy.mode,
-          policyProfileName: input.policy.userPolicy.profileName,
-          policyOverrideRaw: input.policy.userPolicy.overrideRaw,
-          policy: input.policy.userPolicy
+          mode: policy.mode,
+          policyProfileName: policy.userPolicy.profileName,
+          policyOverrideRaw: policy.userPolicy.overrideRaw,
+          policy: policy.userPolicy
         }
       : {}),
-    ...(session.channelScopeBinding === 'setup_defaults'
+    ...(input.session.channelScopeBinding === 'setup_defaults'
       ? { channelScope: input.channelScope }
       : {}),
     runtimeRevisionJson: input.revisionJson,

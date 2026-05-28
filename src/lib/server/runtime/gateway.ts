@@ -10,16 +10,10 @@ import { getStore } from '#lib/server/persistence/store';
 import { getToolRegistry } from '#lib/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#lib/server/util/env';
 import { evaluatePolicy } from '#lib/server/runtime/policy';
-import {
-  buildUserPolicyProfile,
-  builtinPolicyProfile,
-  resolveEffectivePolicy
-} from '#lib/server/runtime/policy-compiler';
 import { classifyPolicyExecution } from '#lib/server/runtime/policy-classifier';
 import { outputSummary } from '#lib/server/runtime/tool-output';
 import { refreshRuntimeState, withRuntimeRunLock } from '#lib/server/runtime/refresh';
-import { loadPolicyProfiles, normalizePolicyProfileName } from '#lib/server/policies/loader';
-import { readMurphConfig } from '#lib/server/setup/config-file';
+import { resolveSubscriberPolicy } from '#lib/server/runtime/subscriber-policy';
 import type {
   ActionContextSnapshot,
   AgentToolResult,
@@ -765,36 +759,20 @@ export class Gateway {
       });
     }
 
-    const config = readMurphConfig();
-    const profiles = await loadPolicyProfiles();
-    const selectedName = normalizePolicyProfileName(config.policy?.profile || this.store.getAppSettings().policyProfileName);
-    const selectedProfile = selectedName
-      ? profiles.find((profile) => profile.name === selectedName)
-      : undefined;
-    const baseProfile = selectedProfile ?? builtinPolicyProfile('manual_review');
-    const policyMode = config.policy?.mode ?? baseProfile.compiled.executionMode;
-    const mode = policyMode;
-    const effective = resolveEffectivePolicy({
-      mode,
-      executionMode: policyMode,
-      baseProfile
-    });
-    const policyProfile = buildUserPolicyProfile({
-      mode,
-      profileName: baseProfile.source === 'builtin' ? undefined : baseProfile.name,
-      compiled: effective.compiled,
-      source: baseProfile.source === 'builtin' ? 'default' : 'profile'
+    const policy = await resolveSubscriberPolicy({
+      workspaceId: workspace.id,
+      ownerUserId: task.targetUserId
     });
 
     return this.store.createSession({
       workspaceId: workspace.id,
       ownerUserId: task.targetUserId,
       title: 'Personal request',
-      mode,
+      mode: policy.mode,
       channelScope: [task.thread.channelId],
-      policyProfileName: policyProfile.profileName,
-      policyOverrideRaw: policyProfile.overrideRaw,
-      policy: policyProfile,
+      policyProfileName: policy.userPolicy.profileName,
+      policyOverrideRaw: policy.userPolicy.overrideRaw,
+      policy: policy.userPolicy,
       policyBinding: 'config',
       channelScopeBinding: 'explicit',
       endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()

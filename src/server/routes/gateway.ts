@@ -19,6 +19,7 @@ import {
   normalizePolicyExecutionMode,
   resolveEffectivePolicy
 } from '#lib/server/runtime/policy-compiler';
+import { resolveSubscriberPolicy } from '#lib/server/runtime/subscriber-policy';
 import { loadSkills } from '#lib/server/skills/loader';
 import { getStore } from '#lib/server/persistence/store';
 import { getSlackService } from '#lib/server/channels/slack/service';
@@ -288,30 +289,21 @@ async function createPreparedSession(target: PreparedSessionTarget, input: Sessi
     externalUserId: target.ownerUserId,
     displayName: target.ownerMember.displayName || target.ownerUserId
   });
-  const { selectedProfile } = await resolveProfileSelection();
-  const policyMode = effectivePolicyMode(selectedProfile.compiled.executionMode);
-  const mode = resolveSessionMode(input.mode, policyMode);
-  const effective = resolveEffectivePolicy({
-    mode,
-    executionMode: policyMode,
-    baseProfile: selectedProfile
-  });
-  const policyProfile = buildUserPolicyProfile({
-    mode,
-    profileName: selectedProfile.source === 'builtin' ? undefined : selectedProfile.name,
-    compiled: effective.compiled,
-    source: selectedProfile.source === 'builtin' ? 'default' : 'profile'
+  const policy = await resolveSubscriberPolicy({
+    workspaceId: target.workspace.id,
+    ownerUserId: target.ownerUserId,
+    requestedMode: input.mode
   });
 
   const session = store.createSession({
     workspaceId: target.workspace.id,
     ownerUserId: target.ownerUserId,
     title: input.title?.trim() || 'Overnight autopilot',
-    mode,
+    mode: policy.mode,
     channelScope: target.channelScope,
-    policyProfileName: policyProfile.profileName,
-    policyOverrideRaw: policyProfile.overrideRaw,
-    policy: policyProfile,
+    policyProfileName: policy.userPolicy.profileName,
+    policyOverrideRaw: policy.userPolicy.overrideRaw,
+    policy: policy.userPolicy,
     policyBinding: input.mode ? 'explicit' : 'config',
     channelScopeBinding: input.channelScope ? 'explicit' : 'setup_defaults',
     endsAt: resolveSessionEndsAt(input, user)
@@ -634,7 +626,8 @@ export const gatewayRoutes: Route[] = [
       timezone?: string;
       workdayStartHour?: number;
       workdayEndHour?: number;
-      policyProfileName?: string;
+      policyProfileName?: unknown;
+      policyMode?: unknown;
     }>(req);
     const store = getStore();
     const workspace = resolveRequestWorkspace(body.workspaceId);
@@ -662,6 +655,32 @@ export const gatewayRoutes: Route[] = [
     }
 
     const existingSubscription = store.getWorkspaceSubscription(workspace.id, params.userId);
+    const hasPolicyProfileName = Object.prototype.hasOwnProperty.call(body, 'policyProfileName');
+    const hasPolicyMode = Object.prototype.hasOwnProperty.call(body, 'policyMode');
+    const profileName = typeof body.policyProfileName === 'string'
+      ? normalizePolicyProfileName(body.policyProfileName)
+      : undefined;
+    const shouldClearProfile = hasPolicyProfileName &&
+      (body.policyProfileName === null || body.policyProfileName === '');
+    const policyMode = body.policyMode === undefined || body.policyMode === null || body.policyMode === ''
+      ? undefined
+      : normalizePolicyExecutionMode(body.policyMode);
+    const shouldClearPolicyMode = hasPolicyMode && (body.policyMode === null || body.policyMode === '');
+    if (hasPolicyProfileName && !profileName && !shouldClearProfile) {
+      sendJson(res, { ok: false, error: 'invalid_policy_profile' }, 400);
+      return;
+    }
+    if (profileName) {
+      const profiles = await loadPolicyProfiles();
+      if (!profiles.some((profile) => profile.name === profileName)) {
+        sendJson(res, { ok: false, error: 'unknown_policy_profile' }, 400);
+        return;
+      }
+    }
+    if (hasPolicyMode && !policyMode && !shouldClearPolicyMode) {
+      sendJson(res, { ok: false, error: 'invalid_policy_mode' }, 400);
+      return;
+    }
     const channelScopeMode =
       normalizeChannelScopeMode(body.channelScopeMode) ?? existingSubscription?.channelScopeMode ?? 'all_accessible';
     const channelScope = channelScopeMode === 'all_accessible'
@@ -739,10 +758,26 @@ export const gatewayRoutes: Route[] = [
       status: normalizeSubscriptionStatus(body.status) ?? existingSubscription?.status ?? 'active',
       channelScopeMode,
       channelScope,
-      policyProfileName: body.policyProfileName ?? existingSubscription?.policyProfileName
+      policyProfileName: hasPolicyProfileName
+        ? profileName ?? null
+        : existingSubscription?.policyProfileName,
+      policyMode: hasPolicyMode
+        ? policyMode ?? null
+        : existingSubscription?.policyMode
     });
 
-    sendJson(res, { ok: true, subscription, autoJoined }, 200);
+    const policyChanged =
+      subscription.policyProfileName !== existingSubscription?.policyProfileName ||
+      subscription.policyMode !== existingSubscription?.policyMode;
+    const refresh = policyChanged
+      ? await refreshRuntimeState({
+          reason: 'subscription_policy_updated',
+          workspaceIds: [workspace.id],
+          deferIfRunActive: true
+        })
+      : undefined;
+
+    sendJson(res, { ok: true, subscription, autoJoined, refresh }, 200);
   }),
   route('PUT', '/api/gateway/users/:userId/schedule', async ({ req, res, params }) => {
     const body = await readJson<{

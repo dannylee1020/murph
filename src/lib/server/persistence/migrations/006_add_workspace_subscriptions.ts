@@ -20,6 +20,7 @@ export const addWorkspaceSubscriptions: Migration = {
           workday_start_hour INTEGER,
           workday_end_hour INTEGER,
           policy_profile_name TEXT,
+          policy_mode TEXT,
           dashboard_token_hash TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,

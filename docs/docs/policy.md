@@ -82,6 +82,14 @@ Session mode is now a temporary override. Starting a session without a mode inhe
 
 Runtime hard stops still apply for empty context, out-of-scope threads, high-risk skill context, unsupported action types, and messages Murph cannot safely send.
 
+## Shared hosts
+
+In a shared Slack or Discord host, policy resolves for the represented subscriber, not the person who sent the message and not only the operator default.
+
+The operator can bind a subscriber to a policy profile and policy mode. New config-bound sessions snapshot that subscriber policy, and active config-bound sessions refresh at the runtime's normal safe refresh boundary when a binding changes.
+
+The host policy is still the safety floor. Host blocked topics, always-queue topics, blocked actions, grounding requirements, uncertainty preference, notes, and scoped rules are merged into the subscriber policy. A host `manual_review` mode also prevents subscriber profiles or scoped rules from raising execution to `auto_send_low_risk`.
+
 ## YOLO profile
 
 Use `yolo` when you intentionally want the least restrictive action profile:

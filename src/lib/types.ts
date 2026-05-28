@@ -97,6 +97,7 @@ export interface WorkspaceSubscription {
     channelScope: string[];
     schedule?: UserSchedule;
     policyProfileName?: string;
+    policyMode?: PolicyExecutionMode;
     dashboardTokenHash?: string;
     createdAt: string;
     updatedAt: string;

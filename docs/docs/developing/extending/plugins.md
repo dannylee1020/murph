@@ -7,6 +7,8 @@ description: Build scoped plugin packages that Murph can discover and validate.
 
 Plugins are local packages that contribute channels, connector modules, skills, or read-only tools.
 
+Plugins are installed, reloaded, and governed at the host level. In a team host, the operator decides which plugin code is available to the shared runtime; subscribers do not install or run separate per-user plugin code in this version. Use policy, channel scope, and source configuration to limit when a host plugin is used for a subscriber.
+
 ## Directory layout
 
 Create one package under a category root:

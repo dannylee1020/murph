@@ -45,6 +45,28 @@ function autoPolicy(name = 'engineering-auto'): string {
   ].join('\n');
 }
 
+function manualPolicyWithAutoRule(name = 'scoped-auto'): string {
+  return [
+    `name: ${name}`,
+    'description: Manual policy with an attempted channel auto-send rule',
+    'blockedTopics:',
+    'alwaysQueueTopics:',
+    'blockedActions:',
+    'mode: manual_review',
+    'allowAutoSend: no',
+    'requireGroundingForFacts: yes',
+    'preferAskWhenUncertain: yes',
+    `scopedRules: ${JSON.stringify([{
+      id: 'channel-auto',
+      name: 'Channel auto',
+      match: { channelIds: ['C1'], actionTypes: ['reply'] },
+      controls: { executionMode: 'auto_send_low_risk', allowAutoSend: true }
+    }])}`,
+    '---',
+    'Queue replies unless a narrower rule applies.'
+  ].join('\n');
+}
+
 async function setup() {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-runtime-refresh-'));
@@ -56,6 +78,7 @@ async function setup() {
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   writePolicy(root, 'engineering', manualPolicy('engineering'));
   writePolicy(root, 'engineering-auto', autoPolicy('engineering-auto'));
+  writePolicy(root, 'scoped-auto', manualPolicyWithAutoRule('scoped-auto'));
 
   const { getStore } = await import('../../src/lib/server/persistence/store');
   const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
@@ -112,6 +135,92 @@ describe('runtime refresh', () => {
     expect(refreshed.policyProfileName).toBe('engineering-auto');
     expect(refreshed.policy?.compiled.allowAutoSend).toBe(true);
     expect(refreshed.runtimeRevisionJson).toBeTruthy();
+  });
+
+  it('patches config-bound sessions from subscriber policy bindings', async () => {
+    const { store, workspace, updateMurphPolicyConfig, refreshRuntimeState } = await setup();
+    updateMurphPolicyConfig({ profileName: 'engineering-auto', mode: 'auto_send_low_risk' });
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'all_accessible',
+      channelScope: [],
+      policyProfileName: 'engineering',
+      policyMode: 'manual_review'
+    });
+    const session = store.createSession({
+      workspaceId: workspace.id,
+      ownerUserId: 'UOWNER',
+      title: 'Coverage',
+      mode: 'manual_review',
+      channelScope: ['C1'],
+      policyBinding: 'config',
+      channelScopeBinding: 'explicit',
+      endsAt: new Date(Date.now() + 60_000).toISOString()
+    });
+
+    await refreshRuntimeState({ reason: 'subscription_policy_updated', workspaceIds: [workspace.id], force: true });
+    const firstRefresh = store.getSessionById(session.id)!;
+    expect(firstRefresh.mode).toBe('manual_review');
+    expect(firstRefresh.policyProfileName).toBe('engineering');
+    expect(firstRefresh.policy?.compiled.allowAutoSend).toBe(false);
+
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'all_accessible',
+      channelScope: [],
+      policyProfileName: 'engineering-auto',
+      policyMode: 'auto_send_low_risk'
+    });
+    await refreshRuntimeState({ reason: 'subscription_policy_updated', workspaceIds: [workspace.id], force: true });
+
+    const refreshed = store.getSessionById(session.id)!;
+    expect(refreshed.mode).toBe('auto_send_low_risk');
+    expect(refreshed.policyProfileName).toBe('engineering-auto');
+    expect(refreshed.policy?.compiled.allowAutoSend).toBe(true);
+  });
+
+  it('clamps subscriber scoped rules to the resolved execution floor', async () => {
+    const { store, workspace, updateMurphPolicyConfig, refreshRuntimeState } = await setup();
+    updateMurphPolicyConfig({ profileName: 'engineering-auto', mode: 'auto_send_low_risk' });
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'active',
+      channelScopeMode: 'all_accessible',
+      channelScope: [],
+      policyProfileName: 'scoped-auto',
+      policyMode: 'manual_review'
+    });
+    const session = store.createSession({
+      workspaceId: workspace.id,
+      ownerUserId: 'UOWNER',
+      title: 'Coverage',
+      mode: 'manual_review',
+      channelScope: ['C1'],
+      policyBinding: 'config',
+      channelScopeBinding: 'explicit',
+      endsAt: new Date(Date.now() + 60_000).toISOString()
+    });
+
+    await refreshRuntimeState({ reason: 'subscription_policy_updated', workspaceIds: [workspace.id], force: true });
+
+    const refreshed = store.getSessionById(session.id)!;
+    const channelRule = refreshed.policy?.compiled.rules?.find((rule) => rule.id === 'channel-auto');
+    expect(refreshed.mode).toBe('manual_review');
+    expect(refreshed.policyProfileName).toBe('scoped-auto');
+    expect(refreshed.policy?.compiled.allowAutoSend).toBe(false);
+    expect(channelRule?.controls.executionMode).toBe('manual_review');
+    expect(channelRule?.controls.allowAutoSend).toBe(false);
   });
 
   it('does not upgrade explicit manual sessions when policy config changes', async () => {
