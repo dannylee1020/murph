@@ -5,28 +5,30 @@ description: Use Murph from the local browser interface.
 
 # Browser UI
 
-The browser UI is the local visual control surface for setup, sessions, status, and review.
+The browser UI is the host-served visual control surface for setup, sessions, status, review, and runtime control.
 
 ## Open the UI
 
-Start Murph, then open the local app:
+In a Team install, start Murph and print the admin dashboard URL:
 
 ```bash
 murph start
-murph open
+murph admin url
 ```
 
-Murph runs locally at:
+Open the printed URL in the operator browser. It points at the runtime host, such as:
 
 ```text
-http://localhost:5173
+http://localhost:5173/admin
 ```
+
+The Team admin UI assumes the Murph host is protected by your self-hosted boundary, such as localhost, LAN, VPN, firewall, or a reverse proxy. `murph open` still opens the host UI directly. In a Personal install, use `murph start` and `murph open`.
 
 If `5173` is occupied, stop the other process or choose a port intentionally with `MURPH_PORT=<port>`. Murph does not auto-switch ports because channel OAuth callbacks must keep matching the local origin.
 
 ## Setup wizard
 
-Use the setup wizard to configure the AI provider, Slack or Discord connection, OAuth owner identity, watched channels, schedule, and policy profile.
+Use the setup wizard to configure the AI provider, Slack or Discord connection, OAuth owner identity, schedule, and policy profile. Murph Team also asks for watched channels. Murph Personal is fixed to owner-DM coverage and skips subscriber and shared-channel controls.
 
 Changes made through setup refresh active config-bound sessions automatically. If a request is already running, Murph applies the refresh at the next run boundary.
 
@@ -36,7 +38,7 @@ Use status views to confirm provider setup, channel connection state, and runtim
 
 ## Sessions
 
-Use sessions when you want Murph to watch selected channels during a bounded async-work coverage window.
+Use sessions when you want Murph Team to watch selected channels during a bounded async-work coverage window, or when you want Murph Personal to handle owner DMs in a local runtime window.
 
 The stop time is interpreted in the selected timezone and enforced by the local runtime. Murph expires the session at that workday start time, with heartbeat reconciliation as a backup if the process sleeps or restarts.
 
@@ -49,3 +51,17 @@ Use triage after a session to review what Murph sent, queued, skipped, or failed
 ## Review
 
 Use review when policy queues a reply or a session needs human approval before sending.
+
+## Subscriber dashboards
+
+In Murph Team, the operator can create a scoped dashboard link for each subscriber from the admin settings page. The link opens:
+
+```text
+http://<runtime-host>/me?token=...
+```
+
+Subscriber links identify the subscriber for `/api/me/*` APIs and are scoped to that subscriber's workspace/user binding. Subscribers can inspect their own sessions, queue, triage, runs, and policy settings, but they do not receive operator access.
+
+Regenerating a subscriber link replaces the previous token. Revoking a link disables subscriber dashboard access until the operator creates a new one.
+
+Murph Personal is single-user and does not expose `/api/me/*` subscriber dashboards.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRetrievalQuery, buildRetrievalQueryVariants } from '#lib/server/util/retrieval-query';
+import { buildRetrievalQuery, buildRetrievalQueryVariants } from '#shared/server/util/retrieval-query';
 
 describe('buildRetrievalQuery', () => {
   it('strips Slack markup and keeps source-matching keywords', () => {

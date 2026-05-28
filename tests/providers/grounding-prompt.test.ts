@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildGroundingPrompt } from '../../src/lib/server/runtime/grounding-prompt';
-import type { GroundingDirective } from '../../src/lib/server/runtime/tool-calling-plan';
-import type { ContextAssembly } from '../../src/lib/types';
+import { buildGroundingPrompt } from '../../shared/server/runtime/grounding-prompt';
+import type { GroundingDirective } from '../../shared/server/runtime/tool-calling-plan';
+import type { ContextAssembly } from '../../shared/types';
 
 function context(overrides: Partial<Omit<ContextAssembly, 'summary' | 'unresolvedQuestions' | 'continuityCase'>> = {}): Omit<ContextAssembly, 'summary' | 'unresolvedQuestions' | 'continuityCase'> {
   return {

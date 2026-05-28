@@ -7,7 +7,7 @@ description: Configure providers, policy, storage, and runtime defaults.
 
 Murph stores non-secret runtime-host settings in `~/.murph/config.yaml`, runtime-host secrets in `~/.murph/.credentials`, generated memory under `app.memoryPath`, and runtime state in SQLite. Setup does not read or write `.env` files. Environment variables are an advanced override path for process control, development, and hosted deployments.
 
-The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, generated memory, bot ingress, and agent execution are colocated on that host.
+The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, generated memory, bot ingress, and agent execution are colocated on that host. Choose Murph Team for shared-channel coverage or Murph Personal for local owner-DM coverage.
 
 ## Setup wizard
 
@@ -21,21 +21,18 @@ Inspect runtime-host credentials with:
 
 ```bash
 murph credentials doctor
-murph credentials list
 ```
 
 You can re-run setup when credentials, channels, schedules, or policy choices change. The full wizard runs the same core sections as the CLI:
 
 ```text
-core -> provider -> bot roles -> channel providers -> bot app setup -> owner OAuth -> channels -> schedule -> policy -> status
+core -> provider -> distribution role -> channel providers -> bot app setup -> owner OAuth -> channels -> schedule -> policy -> status
 ```
 
 Use a focused section when only one part changed:
 
 ```bash
 murph setup provider
-murph setup roles
-murph setup providers
 murph setup slack
 murph setup discord
 murph setup channels
@@ -43,7 +40,7 @@ murph setup policy
 murph setup status
 ```
 
-Use `murph setup slack --role personal`, `murph setup slack --role channel`, `murph setup discord --role personal`, or `murph setup discord --role channel` to focus one app identity. `--role both` runs both identities for the selected provider. The browser setup wizard uses the same order and skips channel selection when only personal bots are enabled.
+Use `murph setup slack` or `murph setup discord` inside either product install. The browser setup wizard uses the same product boundary and skips channel selection in Personal.
 
 The schedule timezone is used when starting a session from Home. Murph computes the session stop time on the server and expires the session at the configured workday start in that timezone.
 
@@ -113,6 +110,7 @@ Normal setup writes these values into `~/.murph/config.yaml`:
 
 ```yaml
 app:
+  distribution: team
   url: http://localhost:5173
   sqlitePath: data/murph.sqlite
 channels:
@@ -138,6 +136,7 @@ For normal setup, prefer `~/.murph/config.yaml` and `~/.murph/.credentials` on t
 Common process-control overrides:
 
 ```text
+MURPH_DISTRIBUTION=team
 MURPH_HOME=/path/to/murph-home
 MURPH_CONFIG_PATH=/path/to/config.yaml
 MURPH_CREDENTIALS_PATH=/path/to/.credentials
@@ -147,30 +146,38 @@ MURPH_PORT=5173
 
 `MURPH_URL` is the CLI control URL used by commands such as setup, status, and policy calls. `MURPH_PORT` controls the local server port when starting Murph from the CLI.
 
+`MURPH_DISTRIBUTION=team|personal` selects the runtime distribution. Team is the default. The legacy `MURPH_PRODUCT_MODE=channel|personal` still works as a compatibility alias; `channel` maps to Team and `personal` maps to Personal unless `MURPH_DISTRIBUTION` is set.
+
 Most runtime config keys also have environment-variable equivalents, but those should be treated as explicit overrides. If you override the local origin with `MURPH_URL`, `MURPH_PORT`, `MURPH_APP_URL`, or `DISCORD_REDIRECT_URI`, update Slack and Discord callback URLs to match before reconnecting the channel.
 
 ## Channel setup
 
 Slack and Discord both use OAuth to lock the owner identity. Murph watches for the account that authorized the app; setup does not list workspace/server members or let you pick another owner manually.
 
-Murph can run personal and channel bot roles in the same hosted runtime. Keep the unprefixed channel variables for the shared channel bot, or use explicit role-prefixed variables when you run separate app identities:
+Murph Team and Murph Personal use separate bot identities. Keep the unprefixed channel variables for Team channel-bot compatibility, or use explicit role-prefixed variables:
 
 ```bash
-MURPH_BOT_ROLES=channel,personal
+MURPH_DISTRIBUTION=team
+MURPH_BOT_ROLES=channel
 
 SLACK_CHANNEL_CLIENT_ID=
 SLACK_CHANNEL_CLIENT_SECRET=
 SLACK_CHANNEL_SIGNING_SECRET=
 SLACK_CHANNEL_APP_TOKEN=
 
+DISCORD_CHANNEL_BOT_TOKEN=
+DISCORD_CHANNEL_CLIENT_ID=
+DISCORD_CHANNEL_CLIENT_SECRET=
+```
+
+```bash
+MURPH_DISTRIBUTION=personal
+MURPH_BOT_ROLES=personal
+
 SLACK_PERSONAL_CLIENT_ID=
 SLACK_PERSONAL_CLIENT_SECRET=
 SLACK_PERSONAL_SIGNING_SECRET=
 SLACK_PERSONAL_APP_TOKEN=
-
-DISCORD_CHANNEL_BOT_TOKEN=
-DISCORD_CHANNEL_CLIENT_ID=
-DISCORD_CHANNEL_CLIENT_SECRET=
 
 DISCORD_PERSONAL_BOT_TOKEN=
 DISCORD_PERSONAL_CLIENT_ID=

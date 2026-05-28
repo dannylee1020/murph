@@ -5,7 +5,7 @@ description: Install Murph locally and start the server.
 
 # Installation
 
-Murph is installed as a local app plus a `murph` CLI.
+Murph is installed as a local app plus one product-local `murph` CLI. In a Team deployment, `murph` means Murph Team. In a Personal deployment, `murph` means Murph Personal.
 
 ## Requirements
 
@@ -20,9 +20,15 @@ If Node.js 20+ or npm is missing, the installer downloads a Murph-managed Node/n
 curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
-By default, Murph installs into `~/.murph/app`, places the CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`.
+For Personal:
 
-After building, the installer removes development-only payload such as CI workflows, tests, and docs-site source from `~/.murph/app`. It keeps the app source, UI source, policy profiles, runtime skills, bundled Murph Agent skill templates, themes, and setup assets so `murph build`, `murph update`, setup, and local extension work still function.
+```bash
+curl -fsSL https://murph-agent.com/install.sh | bash -s -- --product personal
+```
+
+By default, Murph installs Team into `~/.murph/app`, places the product-local CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`. Install Personal with `--product personal`.
+
+After building, the installer removes development-only payload such as CI workflows, tests, and docs-site source from `~/.murph/app`. It keeps the app source, UI source, policy profiles, runtime skills, bundled Murph Agent skill templates, themes, and setup assets so product CLI build, update, setup, and local extension work still function.
 
 If you want to inspect the installer first:
 
@@ -30,6 +36,7 @@ If you want to inspect the installer first:
 curl -fsSL https://murph-agent.com/install.sh -o install.sh
 bash -n install.sh
 bash install.sh
+bash install.sh --product personal
 ```
 
 ## Install from a checkout
@@ -38,6 +45,7 @@ If you already have the repository:
 
 ```bash
 ./install.sh
+./install.sh --product personal
 ```
 
 ## Start and stop
@@ -61,7 +69,7 @@ murph update
 
 The updater preserves local state such as `~/.murph/config.yaml`, `~/.murph/.credentials`, and `data/`.
 
-After rebuilding, `murph update` applies the same install-payload pruning as the initial installer.
+After rebuilding, the updater applies the same install-payload pruning as the initial installer.
 
 ## Uninstall
 
@@ -69,7 +77,7 @@ After rebuilding, `murph update` applies the same install-payload pruning as the
 murph uninstall
 ```
 
-This reverses the default local install: it stops Murph, removes `~/.murph`, removes the `murph` CLI link from `~/.local/bin`, and clears Murph-owned runtime-host credentials, logs, managed deps, and SQLite data. Preview first with:
+This reverses the default local install: it stops Murph, removes `~/.murph`, removes installed Murph CLI links from `~/.local/bin`, and clears Murph-owned runtime-host credentials, logs, managed deps, and SQLite data. Preview first with:
 
 ```bash
 murph uninstall --dry-run

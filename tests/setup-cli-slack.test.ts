@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
-const setupCli = path.join(repoRoot, 'bin/setup-cli.mjs');
+const setupCli = path.join(repoRoot, 'shared/cli/setup-cli.mjs');
 const channelManifest = [
   'display_information:',
   '  name: Murph',
@@ -303,7 +303,7 @@ describe('setup CLI Slack app setup', () => {
       }
     }, {
       args: ['slack', '--role', 'personal'],
-      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config', SLACK_TEAM_ID: 'T123' },
+      env: { MURPH_DISTRIBUTION: 'personal', MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config', SLACK_TEAM_ID: 'T123' },
       setupStatusPayloads: [
         { ok: true, slack: { roles: { personal: { installed: false } } } },
         { ok: true, slack: { roles: { personal: { installed: true, workspace: { externalWorkspaceId: 'T123' } } } } }

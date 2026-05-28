@@ -3,24 +3,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AutopilotSession, Workspace } from '../src/lib/types';
+import type { AutopilotSession, Workspace } from '../shared/types';
 
 interface SlackAdapterTestContext {
   store: Awaited<ReturnType<typeof loadStore>>;
-  normalizeSlackEvent: typeof import('../src/lib/server/channels/slack/adapter').normalizeSlackEvent;
+  normalizeSlackEvent: typeof import('../shared/server/channels/slack/adapter').normalizeSlackEvent;
   workspace: Workspace;
   session: AutopilotSession;
 }
 
 async function loadStore() {
-  const { getStore } = await import('../src/lib/server/persistence/store');
+  const { getStore } = await import('../shared/server/persistence/store');
   return getStore();
 }
 
 async function setup(input: { subscribeOwner?: boolean } = {}): Promise<SlackAdapterTestContext> {
   const subscribeOwner = input.subscribeOwner ?? true;
   const store = await loadStore();
-  const { normalizeSlackEvent } = await import('../src/lib/server/channels/slack/adapter');
+  const { normalizeSlackEvent } = await import('../shared/server/channels/slack/adapter');
   const workspace = store.saveInstall({
     provider: 'slack',
     externalWorkspaceId: 'T1',
@@ -76,6 +76,7 @@ describe('normalizeSlackEvent', () => {
     process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
     delete process.env.MURPH_PRODUCT_MODE;
+    delete process.env.MURPH_DISTRIBUTION;
   });
 
   it('routes ordinary channel messages that mention an active session owner', async () => {
@@ -113,7 +114,7 @@ describe('normalizeSlackEvent', () => {
       botUserId: 'UPERSONALBOT',
       representedUserId: 'UOWNER'
     });
-    const { updateMurphSetupDefaults } = await import('../src/lib/server/setup/config-file');
+    const { updateMurphSetupDefaults } = await import('../shared/server/setup/config-file');
     updateMurphSetupDefaults({
       channelProvider: 'slack',
       workspaceId: workspace.id,
@@ -148,6 +149,58 @@ describe('normalizeSlackEvent', () => {
       externalUserId: 'UASKER',
       botInstallationId: personalInstall.id
     });
+  });
+
+  it('routes owner direct messages in the personal distribution', async () => {
+    process.env.MURPH_DISTRIBUTION = 'personal';
+    const { store, workspace, normalizeSlackEvent } = await setup({ subscribeOwner: false });
+    store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
+    const personalInstall = store.upsertBotInstallation({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      role: 'personal',
+      botUserId: 'UPERSONALBOT',
+      representedUserId: 'UOWNER'
+    });
+
+    const result = normalizeSlackEvent(slackEvent({
+      channel: 'D1',
+      channel_type: 'im',
+      user: 'UOWNER',
+      text: 'check my notes',
+      ts: '222.444'
+    }), { eventId: 'EvOwnerDm', teamId: 'T1', botRole: 'personal', botInstallationId: personalInstall.id });
+
+    expect(result.task).toMatchObject({
+      conversationKind: 'direct',
+      targetUserId: 'UOWNER',
+      actorUserId: 'UOWNER',
+      thread: { provider: 'slack', channelId: 'D1', threadTs: '222.444' }
+    });
+  });
+
+  it('ignores non-owner direct messages in the personal distribution', async () => {
+    process.env.MURPH_DISTRIBUTION = 'personal';
+    const { store, workspace, normalizeSlackEvent } = await setup({ subscribeOwner: false });
+    const personalInstall = store.upsertBotInstallation({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      role: 'personal',
+      botUserId: 'UPERSONALBOT',
+      representedUserId: 'UOWNER'
+    });
+
+    const result = normalizeSlackEvent(slackEvent({
+      channel: 'D1',
+      channel_type: 'im',
+      user: 'UASKER',
+      text: 'draft a reply',
+      ts: '222.555'
+    }), { eventId: 'EvNonOwnerDm', teamId: 'T1', botRole: 'personal', botInstallationId: personalInstall.id });
+
+    expect(result).toMatchObject({ ignoredReason: 'personal_owner_mismatch' });
   });
 
   it('uses the single scoped subscribed session fallback only for bot-directed messages', async () => {

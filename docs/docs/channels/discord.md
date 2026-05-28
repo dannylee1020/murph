@@ -5,9 +5,9 @@ description: Connect Discord as a Murph channel.
 
 # Discord
 
-Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup discord` validate the app, open the authorization flow, and save the server, your OAuth identity, and watched channels.
+Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup discord` or `murph setup discord` validate the app, open the authorization flow, and save the product's Discord defaults.
 
-For both personal and channel behavior in one runtime, create two Discord applications: one personal bot for explicit DMs to the represented owner's Murph bot and one channel bot for shared-channel coverage. Use `/api/discord/personal/install` and `DISCORD_PERSONAL_*` variables for the personal bot. Use `/api/discord/channel/install` and `DISCORD_CHANNEL_*` variables for the channel bot. The unqualified `/api/discord/install` endpoint and legacy `DISCORD_*` variables remain compatibility aliases for the channel bot.
+Murph Team uses a channel Discord application for shared-channel coverage. Murph Personal uses a personal Discord application for explicit DMs to the local owner's Murph bot. Use `/api/discord/channel/install` and `DISCORD_CHANNEL_*` variables for Team. Use `/api/discord/personal/install` and `DISCORD_PERSONAL_*` variables for Personal. The unqualified `/api/discord/install` endpoint and legacy `DISCORD_*` variables remain compatibility aliases for the channel bot.
 
 The Discord channel bot installs into the server Murph should watch. The Discord personal bot uses OAuth identify to record the represented owner for personal DM handling; it is not the server channel reader.
 
@@ -23,7 +23,7 @@ Murph does not read private Discord DMs between two people. For represented-owne
 http://localhost:5173/api/discord/oauth/callback
 ```
 
-If you use a custom Murph origin or Discord redirect URI in `~/.murph/config.yaml`, register the exact callback URL printed by `murph setup discord` instead.
+If you use a custom Murph origin or Discord redirect URI in `~/.murph/config.yaml`, register the exact callback URL printed by setup instead.
 
 ## Step 1: Create Or Open The Discord App
 
@@ -36,7 +36,7 @@ If you use a custom Murph origin or Discord redirect URI in `~/.murph/config.yam
 1. Go to **Bot**.
 2. Add a bot if the application does not already have one.
 3. Generate or reset the bot token.
-4. Keep the bot token ready for `murph setup discord`.
+4. Keep the bot token ready for setup.
 
 Murph stores the bot token locally in `~/.murph/.credentials`.
 
@@ -44,7 +44,7 @@ Murph stores the bot token locally in `~/.murph/.credentials`.
 
 1. Go to **OAuth2**.
 2. Copy the application client secret.
-3. Keep the client secret ready for `murph setup discord`.
+3. Keep the client secret ready for setup.
 
 Murph uses the client secret only to complete Discord's OAuth2 callback and identify the Discord user who authorized Murph.
 
@@ -72,17 +72,10 @@ Discord does not have a separate App Home-style toggle for Murph personal bot DM
 
 ## Step 6: Run Discord Setup
 
-Run:
+Run this on the product host:
 
 ```bash
 murph setup discord
-```
-
-To configure one role explicitly:
-
-```bash
-murph setup discord --role channel
-murph setup discord --role personal
 ```
 
 Setup will ask for:
@@ -157,7 +150,7 @@ Run:
 murph doctor
 ```
 
-Then start a short test session and mention Murph in a watched Discord channel.
+Then start a short test session and mention Murph in a watched Discord channel. In a Personal install, DM the personal Discord app.
 
 ## Troubleshooting
 
@@ -179,7 +172,7 @@ Discord rejected Murph's best-effort application update. Continue with manual se
 
 1. Open the **Bot** page.
 2. Enable **Message Content Intent**.
-3. Re-run `murph setup discord` if needed.
+3. Re-run `murph setup discord` or `murph setup discord` if needed.
 
 ### Missing Access Or Channel Listing Fails
 

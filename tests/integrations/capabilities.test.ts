@@ -17,7 +17,7 @@ async function setup(options: { notionApiKey?: string } = {}) {
   process.env.GRANOLA_API_KEY = '';
   process.env.OBSIDIAN_VAULT_PATH = '';
 
-  const { getStore } = await import('#lib/server/persistence/store');
+  const { getStore } = await import('#shared/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -37,8 +37,8 @@ describe('integration capability wiring', () => {
 
   it('enableIntegrationCapabilities unions notion tools and context sources into workspace memory', async () => {
     const { store, workspace } = await setup();
-    const { enableIntegrationCapabilities } = await import('#lib/server/integrations/capabilities');
-    const { INTEGRATIONS } = await import('#lib/server/integrations/registry');
+    const { enableIntegrationCapabilities } = await import('#shared/server/integrations/capabilities');
+    const { INTEGRATIONS } = await import('#shared/server/integrations/registry');
     const notion = INTEGRATIONS.find((i) => i.provider === 'notion')!;
 
     enableIntegrationCapabilities(workspace.id, notion);
@@ -51,9 +51,9 @@ describe('integration capability wiring', () => {
   it('disableIntegrationCapabilities removes the integration tools and sources', async () => {
     const { store, workspace } = await setup();
     const { enableIntegrationCapabilities, disableIntegrationCapabilities } = await import(
-      '#lib/server/integrations/capabilities'
+      '#shared/server/integrations/capabilities'
     );
-    const { INTEGRATIONS } = await import('#lib/server/integrations/registry');
+    const { INTEGRATIONS } = await import('#shared/server/integrations/registry');
     const notion = INTEGRATIONS.find((i) => i.provider === 'notion')!;
 
     enableIntegrationCapabilities(workspace.id, notion);
@@ -70,7 +70,7 @@ describe('integration capability wiring', () => {
 
   it('reconcileIntegrationCapabilitiesForWorkspace waits for GitHub repositories before enabling retrieval', async () => {
     const { store, workspace } = await setup();
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('github', 'api_key', 'github-token', {
       metadata: { account: 'octo-user', repositories: [] }
     });
@@ -81,7 +81,7 @@ describe('integration capability wiring', () => {
       metadata: { account: 'octo-user', repositories: [] }
     });
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#lib/server/integrations/capabilities'
+      '#shared/server/integrations/capabilities'
     );
 
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
@@ -93,7 +93,7 @@ describe('integration capability wiring', () => {
 
   it('reconcileIntegrationCapabilitiesForWorkspace enables GitHub when repositories are selected', async () => {
     const { store, workspace } = await setup();
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('github', 'api_key', 'github-token', {
       metadata: { account: 'octo-user', repositories: ['octo/app'] }
     });
@@ -104,7 +104,7 @@ describe('integration capability wiring', () => {
       metadata: { account: 'octo-user', repositories: ['octo/app'] }
     });
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#lib/server/integrations/capabilities'
+      '#shared/server/integrations/capabilities'
     );
 
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
@@ -122,7 +122,7 @@ describe('integration capability wiring', () => {
       name: 'Test Guild',
       botUserId: 'DBOT'
     });
-    const { writeSecret, readSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret, readSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('notion', 'api_key', 'notion-token', {
       workspaceId: workspace.id,
       metadata: { account: 'murph-adapter' }
@@ -134,7 +134,7 @@ describe('integration capability wiring', () => {
       metadata: { account: 'murph-adapter' }
     });
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#lib/server/integrations/capabilities'
+      '#shared/server/integrations/capabilities'
     );
 
     reconcileIntegrationCapabilitiesForWorkspace(discordWorkspace.id);
@@ -149,7 +149,7 @@ describe('integration capability wiring', () => {
   it('reconcileIntegrationCapabilitiesForWorkspace enables tools from env fallback', async () => {
     const { store, workspace } = await setup({ notionApiKey: 'env-notion-token' });
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#lib/server/integrations/capabilities'
+      '#shared/server/integrations/capabilities'
     );
 
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
@@ -166,8 +166,8 @@ describe('integration capability wiring', () => {
       enableIntegrationCapabilities,
       reconcileIntegrationCapabilitiesForWorkspace,
       MISSING_INTEGRATION_CREDENTIAL_MESSAGE
-    } = await import('#lib/server/integrations/capabilities');
-    const { INTEGRATIONS } = await import('#lib/server/integrations/registry');
+    } = await import('#shared/server/integrations/capabilities');
+    const { INTEGRATIONS } = await import('#shared/server/integrations/registry');
     const google = INTEGRATIONS.find((i) => i.provider === 'google')!;
     enableIntegrationCapabilities(workspace.id, google);
     store.saveIntegrationConnection({
@@ -190,7 +190,7 @@ describe('integration capability wiring', () => {
 
   it('reconcileIntegrationCapabilitiesForWorkspace restores Google capabilities when OAuth credentials exist', async () => {
     const { store, workspace } = await setup();
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('google', 'oauth_bundle', JSON.stringify({
       access_token: 'google-access-token',
       refresh_token: 'google-refresh-token',
@@ -208,7 +208,7 @@ describe('integration capability wiring', () => {
       errorMessage: 'Local credential is missing. Reconnect this integration.'
     });
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#lib/server/integrations/capabilities'
+      '#shared/server/integrations/capabilities'
     );
 
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
@@ -225,10 +225,10 @@ describe('integration capability wiring', () => {
     const { store, workspace } = await setup();
     const root = mkdtempSync(join(tmpdir(), 'murph-obsidian-capabilities-'));
     process.env.OBSIDIAN_VAULT_PATH = root;
-    const { registerBuiltInIntegrationAdapters } = await import('#lib/server/integrations/register-builtins');
+    const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');
     registerBuiltInIntegrationAdapters();
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#lib/server/integrations/capabilities'
+      '#shared/server/integrations/capabilities'
     );
 
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
@@ -241,7 +241,7 @@ describe('integration capability wiring', () => {
   it('reconcileIntegrationCapabilitiesForWorkspace enables Slack channel tools without integration credentials', async () => {
     const { store, workspace } = await setup();
     const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#lib/server/integrations/capabilities'
+      '#shared/server/integrations/capabilities'
     );
 
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);

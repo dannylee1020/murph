@@ -13,11 +13,11 @@ Use [Murph Agent](/docs/usage/murph-agent) when you want guided local help for s
 
 ## Browser UI
 
-Use the [Browser UI](/docs/usage/browser-ui) when you want a visual setup flow, runtime status, session control, triage, and review.
+Use the [Browser UI](/docs/usage/browser-ui) when you want a visual setup flow, runtime status, session control, triage, review, or admin-issued subscriber dashboards.
 
 ## CLI
 
-Use the [CLI](/docs/usage/cli) when you want terminal-first setup, process control, health checks, logs, credentials, or policy commands.
+Use the [CLI](/docs/usage/cli) when you want terminal-first setup, process control, health checks, logs, credentials, policy commands, or dashboard links.
 
 ## Best practices
 

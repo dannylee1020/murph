@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 async function loadTool() {
   vi.resetModules();
-  const module = await import('../../src/lib/server/tools/file-ops');
+  const module = await import('../../shared/server/tools/file-ops');
   return module.createFileReadTool();
 }
 

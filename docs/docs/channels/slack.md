@@ -5,11 +5,11 @@ description: Connect Slack as a Murph channel.
 
 # Slack
 
-Slack setup can create the Murph Slack app from a manifest, or you can configure the app manually in Slack's dashboard. The browser setup flow and `murph setup slack` both support manifest automation; manual dashboard setup is the fallback when automation is not available.
+Slack setup can create the Murph Slack app from a manifest, or you can configure the app manually in Slack's dashboard. The browser setup flow, `murph setup slack`, and `murph setup slack` support manifest automation; manual dashboard setup is the fallback when automation is not available.
 
-For both personal and channel behavior in one runtime, create two Slack apps: one personal bot for explicit DMs to the represented owner's Murph bot and one channel bot for shared-channel coverage. Use `/api/slack/personal/install`, `/api/slack/personal/events`, and `SLACK_PERSONAL_*` variables for the personal app. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for the channel app. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
+Murph Team uses a channel Slack app for shared-channel coverage. Murph Personal uses a personal Slack app for explicit DMs to the local owner's Murph bot. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for Team. Use `/api/slack/personal/install`, `/api/slack/personal/events`, and `SLACK_PERSONAL_*` variables for Personal. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
 
-For the common both-role setup, install and authorize both Slack apps in the same workspace. If the Slack CLI selects one workspace but OAuth authorizes another, Murph treats the OAuth-connected workspace as the source of truth and asks whether to adopt it.
+If you run both distributions, install and authorize separate Slack apps for each distribution. If the Slack CLI selects one workspace but OAuth authorizes another, Murph treats the OAuth-connected workspace as the source of truth and asks whether to adopt it.
 
 ## What You Need
 
@@ -48,7 +48,7 @@ The legacy public manifest is a channel-bot compatibility alias:
 
 The manifests set the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode. Use the channel manifest for shared-channel coverage and the personal manifest for 1:1 DMs to the personal bot.
 
-The browser setup flow, `murph setup slack --role channel`, and `murph setup slack --role personal` can create or update the matching app from the matching manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it. If you select both channel and personal Slack coverage in browser setup, Murph reuses the token in memory only long enough to create the second selected Slack app.
+The browser setup flow, `murph setup slack`, and `murph setup slack` can create or update the matching app from the matching manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it.
 
 If you already created the Slack app, paste its app ID in browser setup before creating from the manifest. Murph checks that app first and updates it instead of creating a duplicate.
 
@@ -115,7 +115,7 @@ The channel app also includes the `/murph` command and the **Send to Murph Perso
 2. Enable Socket Mode.
 3. Go to **Basic Information** -> **App-Level Tokens**.
 4. Create an app-level token with the `connections:write` scope.
-5. Keep the generated `xapp-...` token ready for `murph setup slack`.
+5. Keep the generated `xapp-...` token ready for setup.
 
 Murph uses this token to connect to Slack Socket Mode.
 
@@ -131,20 +131,13 @@ Murph stores the Client Secret and Signing Secret locally in `~/.murph/.credenti
 
 ## Step 8: Run Slack Setup
 
-Run:
+Run this on the product host:
 
 ```bash
 murph setup slack
 ```
 
-To configure one role explicitly:
-
-```bash
-murph setup slack --role channel
-murph setup slack --role personal
-```
-
-You can also choose Slack during the full setup flow:
+You can also choose Slack during the full product setup flow:
 
 ```bash
 murph setup
@@ -208,7 +201,7 @@ Run:
 murph doctor
 ```
 
-Then start a short test session and mention Murph in a watched Slack channel.
+Then start a short test session and mention Murph in a watched Slack channel. In a Personal install, DM the personal Slack app.
 
 ## Reconnect Search
 

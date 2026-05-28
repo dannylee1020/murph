@@ -150,12 +150,12 @@ async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?
   delete process.env.GOOGLE_CLIENT_ID;
   delete process.env.GOOGLE_CLIENT_SECRET;
 
-  vi.doMock('#lib/server/runtime/bootstrap', () => ({
+  vi.doMock('#shared/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
   }));
 
-  const { getStore } = await import('#lib/server/persistence/store');
-  const { writeSecret } = await import('#lib/server/credentials/local-store');
+  const { getStore } = await import('#shared/server/persistence/store');
+  const { writeSecret } = await import('#shared/server/credentials/local-store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -171,8 +171,8 @@ async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?
       botInstallationId: botInstallation?.id
     });
   }
-  const { systemRoutes } = await import('../../src/server/routes/system');
-  const { dispatchRoute } = await import('../../src/server/router');
+  const { systemRoutes } = await import('../../shared/server/routes/system');
+  const { dispatchRoute } = await import('../../shared/server/router');
 
   async function request(method: string, path: string, body?: unknown) {
     const req = jsonRequest(method, body);
@@ -204,8 +204,8 @@ async function seedWorkspaceOwner(
   ownerUserId = 'U1',
   ownerDisplayName = 'Daniel'
 ) {
-  const { getStore } = await import('#lib/server/persistence/store');
-  const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
+  const { getStore } = await import('#shared/server/persistence/store');
+  const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
   getStore().upsertUser({
     workspaceId: workspace.id,
     externalUserId: ownerUserId,
@@ -404,7 +404,7 @@ describe('setup defaults routes', () => {
       name: 'Test Server',
       botUserId: 'DBOT'
     });
-    const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
+    const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
     updateMurphSetupDefaults({
       ownerUserId: 'USLACK',
       ownerDisplayName: 'Slack Daniel',
@@ -512,7 +512,7 @@ describe('setup defaults routes', () => {
 
   it('marks setup not ready when event ingress has a blocking error', async () => {
     const { request, workspace } = await setup();
-    const { markIngressError } = await import('#lib/server/channels/ingress-health');
+    const { markIngressError } = await import('#shared/server/channels/ingress-health');
     await seedWorkspaceOwner(workspace);
     await request('PUT', '/api/setup/defaults', {
       ownerUserId: 'U1',
@@ -578,7 +578,7 @@ describe('setup defaults routes', () => {
 
   it('prefers the readable Slack channel install over an older stale install', async () => {
     const { request, store } = await setup({ skipSlackToken: true });
-    const { writeSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { writeSecret } = await import('../../shared/server/credentials/local-store');
     const readableWorkspace = store.saveInstall({
       provider: 'slack',
       externalWorkspaceId: 'T-readable',
@@ -672,7 +672,7 @@ describe('setup defaults routes', () => {
     expect(status.body.botRoles).toEqual(['channel']);
     expect(status.body.providerBotRoles).toEqual({
       slack: [],
-      discord: ['personal']
+      discord: []
     });
   });
 
@@ -731,7 +731,7 @@ describe('setup defaults routes', () => {
     expect(manifestBody.settings.interactivity).not.toHaveProperty('request_url');
     expect(manifestBody.settings.socket_mode_enabled).toBe(true);
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('appId: A-channel');
-    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('slack', 'channel_client_secret')).toBe('channel-client-secret');
     expect(readSecret('slack', 'client_secret')).toBe('channel-client-secret');
     expect(readSecret('slack', 'channel_app_token')).toBe('xapp-channel');
@@ -778,7 +778,7 @@ describe('setup defaults routes', () => {
     expect(config).toContain('personal:');
     expect(config).toContain('appId: A-personal');
     expect(config).not.toContain('appId: A-channel');
-    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('slack', 'personal_client_secret')).toBe('personal-client-secret');
     expect(readSecret('slack', 'client_secret')).toBeUndefined();
   });
@@ -865,7 +865,7 @@ describe('setup defaults routes', () => {
 
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('appId: A-existing');
-    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('slack', 'channel_app_token')).toBe('xapp-existing');
     expect(readSecret('slack', 'app_token')).toBe('xapp-existing');
     expect(readSecret('slack', 'channel_client_secret')).toBe('existing-client-secret');
@@ -888,7 +888,7 @@ describe('setup defaults routes', () => {
     expect(config).toContain('personal:');
     expect(config).toContain('appId: A-personal-existing');
     expect(config).not.toContain('appId: A-channel-existing');
-    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('slack', 'personal_app_token')).toBe('xapp-personal-existing');
     expect(readSecret('slack', 'app_token')).toBeUndefined();
     expect(readSecret('slack', 'personal_client_secret')).toBe('personal-existing-client-secret');
@@ -911,7 +911,7 @@ describe('setup defaults routes', () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toContain('app-level token');
     expect(calls).toEqual([]);
-    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('slack', 'channel_app_token')).toBe('xapp-mistaken');
     expect(readSecret('slack', 'app_token')).toBe('xapp-mistaken');
   });
@@ -940,28 +940,40 @@ describe('setup defaults routes', () => {
     expect(calls.some((url) => url.includes('/apps.manifest.create'))).toBe(true);
   });
 
-  it('honors MURPH_BOT_ROLES as an environment override in setup status', async () => {
+  it('constrains MURPH_BOT_ROLES to the active team distribution in setup status', async () => {
     const { request } = await setup({ botRolesEnv: 'personal' });
 
     const response = await request('GET', '/api/setup/status');
 
     expect(response.status).toBe(200);
+    expect(response.body.botRoles).toEqual(['channel']);
+    expect(response.body.roleStatus.channel.selected).toBe(true);
+    expect(response.body.roleStatus.personal.selected).toBe(false);
+  });
+
+  it('uses personal bot roles in the personal distribution', async () => {
+    const { request } = await setup({ productMode: 'personal', botRolesEnv: 'personal' });
+
+    const response = await request('GET', '/api/setup/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body.productMode).toBe('personal');
     expect(response.body.botRoles).toEqual(['personal']);
     expect(response.body.roleStatus.channel.selected).toBe(false);
     expect(response.body.roleStatus.personal.selected).toBe(true);
   });
 
-  it('uses config-backed bot roles when no environment override is set', async () => {
+  it('constrains config-backed bot roles to the active team distribution', async () => {
     const { request } = await setup();
-    const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
+    const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
     updateMurphSetupDefaults({ botRoles: ['channel', 'personal'] });
 
     const response = await request('GET', '/api/setup/status');
 
     expect(response.status).toBe(200);
-    expect(response.body.botRoles).toEqual(['channel', 'personal']);
+    expect(response.body.botRoles).toEqual(['channel']);
     expect(response.body.roleStatus.channel.selected).toBe(true);
-    expect(response.body.roleStatus.personal.selected).toBe(true);
+    expect(response.body.roleStatus.personal.selected).toBe(false);
   });
 
   it('returns all channel workspaces and Discord setup metadata in setup status', async () => {
@@ -1041,7 +1053,7 @@ describe('setup defaults routes', () => {
     }));
     const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
     expect(config).toContain('clientId: app-123');
-    const { readSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('discord', 'bot_token')).toBe('discord-bot-token');
     expect(readSecret('discord', 'client_secret')).toBe('discord-client-secret');
   });
@@ -1107,7 +1119,7 @@ describe('setup defaults routes', () => {
 
   it('treats workspace-scoped Discord bot credentials as configured', async () => {
     const { request, store } = await setup();
-    const { writeSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { writeSecret } = await import('../../shared/server/credentials/local-store');
     const discordWorkspace = store.saveInstall({
       provider: 'discord',
       externalWorkspaceId: 'G1',
@@ -1157,7 +1169,7 @@ describe('setup defaults routes', () => {
 
   it('does not use Discord channel credentials to mark the personal bot connected', async () => {
     const { request, store } = await setup();
-    const { writeSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { writeSecret } = await import('../../shared/server/credentials/local-store');
     const discordWorkspace = store.saveInstall({
       provider: 'discord',
       externalWorkspaceId: 'G1',
@@ -1184,7 +1196,7 @@ describe('setup defaults routes', () => {
 
   it('marks only the Discord personal bot connected when only personal credentials are present', async () => {
     const { request, store } = await setup();
-    const { writeSecret } = await import('../../src/lib/server/credentials/local-store');
+    const { writeSecret } = await import('../../shared/server/credentials/local-store');
     const personalWorkspace = store.saveInstall({
       provider: 'discord',
       externalWorkspaceId: 'personal:U1',
@@ -1215,7 +1227,7 @@ describe('setup defaults routes', () => {
       GOOGLE_CLIENT_ID: 'google-client-id',
       GOOGLE_CLIENT_SECRET: 'google-client-secret'
     });
-    const { getRuntimeEnv } = await import('#lib/server/util/env');
+    const { getRuntimeEnv } = await import('#shared/server/util/env');
 
     expect(response.status).toBe(200);
     expect(response.body.updated).toEqual(expect.arrayContaining(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']));

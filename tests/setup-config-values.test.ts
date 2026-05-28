@@ -9,6 +9,7 @@ const envKeys = [
   'MURPH_CONFIG_PATH',
   'MURPH_CREDENTIALS_PATH',
   'MURPH_APP_URL',
+  'MURPH_DISTRIBUTION',
   'MURPH_SQLITE_PATH',
   'MURPH_DEFAULT_PROVIDER',
   'MURPH_DEFAULT_MODEL',
@@ -54,10 +55,11 @@ describe('setup config value writer', () => {
 
   it('writes known setup keys to config and credentials', async () => {
     writeFileSync('config.yaml', 'custom:\n  keep: true\n');
-    const { updateSetupConfigValues } = await import('../src/lib/server/setup/config-values');
+    const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
 
     const result = updateSetupConfigValues({
       MURPH_DEFAULT_PROVIDER: 'openai',
+      MURPH_DISTRIBUTION: 'team',
       MURPH_DEFAULT_MODEL: 'gpt-5.5',
       MURPH_AGENT_PROVIDER: 'anthropic',
       MURPH_AGENT_MODEL: 'claude-opus-4-7',
@@ -75,6 +77,7 @@ describe('setup config value writer', () => {
       'SLACK_APP_TOKEN',
       'SLACK_SIGNING_SECRET',
       'MURPH_DEFAULT_PROVIDER',
+      'MURPH_DISTRIBUTION',
       'MURPH_DEFAULT_MODEL',
       'MURPH_AGENT_PROVIDER',
       'MURPH_AGENT_MODEL',
@@ -90,6 +93,7 @@ describe('setup config value writer', () => {
       expect.objectContaining({ provider: 'slack', key: 'signing_secret', value: 'signing-test' })
     ]));
     expect(readFileSync('config.yaml', 'utf8')).toContain('keep: true');
+    expect(readFileSync('config.yaml', 'utf8')).toContain('distribution: team');
     expect(readFileSync('config.yaml', 'utf8')).toContain('defaultProvider: openai');
     expect(readFileSync('config.yaml', 'utf8')).toContain('defaultModel: gpt-5.5');
     expect(readFileSync('config.yaml', 'utf8')).toContain('provider: anthropic');
@@ -102,7 +106,7 @@ describe('setup config value writer', () => {
   });
 
   it('rejects unsupported keys', async () => {
-    const { updateSetupConfigValues } = await import('../src/lib/server/setup/config-values');
+    const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
 
     expect(() => updateSetupConfigValues({ NOT_A_SETUP_KEY: 'nope' })).toThrow('Unsupported setup key');
   });

@@ -30,7 +30,7 @@ describe('Obsidian context source', () => {
   });
 
   it('searches Markdown notes inside the configured vault only', async () => {
-    const { searchObsidianNotes } = await import('../../src/lib/server/context-sources/obsidian');
+    const { searchObsidianNotes } = await import('../../shared/server/context-sources/obsidian');
 
     const results = await searchObsidianNotes('acme rollout readiness', 5);
 
@@ -46,7 +46,7 @@ describe('Obsidian context source', () => {
   });
 
   it('reads notes by relative path and refuses paths outside the vault', async () => {
-    const { readObsidianNote } = await import('../../src/lib/server/context-sources/obsidian');
+    const { readObsidianNote } = await import('../../shared/server/context-sources/obsidian');
 
     const note = await readObsidianNote('Projects/Launch Plan');
     expect(note.text).toContain('Acme rollout readiness');
@@ -57,13 +57,13 @@ describe('Obsidian context source', () => {
 
   it('refuses vault-local symlinks that resolve outside the vault', async () => {
     symlinkSync(outside, join(vault, 'Linked Outside.md'));
-    const { readObsidianNote } = await import('../../src/lib/server/context-sources/obsidian');
+    const { readObsidianNote } = await import('../../shared/server/context-sources/obsidian');
 
     await expect(readObsidianNote('Linked Outside.md')).rejects.toThrow('inside the configured vault');
   });
 
   it('validates that a vault path exists, is a directory, and is readable', async () => {
-    const { validateObsidianVaultPath } = await import('../../src/lib/server/context-sources/obsidian');
+    const { validateObsidianVaultPath } = await import('../../shared/server/context-sources/obsidian');
 
     await expect(validateObsidianVaultPath(vault)).resolves.toEqual({ vaultPath: realpathSync(vault) });
     await expect(validateObsidianVaultPath(outside)).rejects.toThrow('must be a directory');

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ContextArtifact } from '../../src/lib/types';
+import type { ContextArtifact } from '../../shared/types';
 
 async function loadRegistry() {
   vi.resetModules();
-  const module = await import('../../src/lib/server/capabilities/context-source-registry');
+  const module = await import('../../shared/server/capabilities/context-source-registry');
   return module.getContextSourceRegistry();
 }
 

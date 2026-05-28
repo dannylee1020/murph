@@ -54,7 +54,7 @@ async function setup(options: { githubPat?: string } = {}) {
   process.env.LINEAR_API_KEY = '';
   mkdirSync(join(murphHome, 'plugins'), { recursive: true });
 
-  const { getStore } = await import('#lib/server/persistence/store');
+  const { getStore } = await import('#shared/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -62,8 +62,8 @@ async function setup(options: { githubPat?: string } = {}) {
     name: 'Test Workspace',
     botUserId: 'UTZBOT'
   });
-  const { integrationRoutes } = await import('../../src/server/routes/integrations');
-  const { dispatchRoute } = await import('../../src/server/router');
+  const { integrationRoutes } = await import('../../shared/server/routes/integrations');
+  const { dispatchRoute } = await import('../../shared/server/router');
 
   async function request(method: string, path: string, body?: unknown) {
     const req = jsonRequest(method, body);
@@ -172,7 +172,7 @@ describe('integration routes', () => {
       credentialKind: 'api_key',
       status: 'connected'
     }));
-    const { readSecret } = await import('#lib/server/credentials/local-store');
+    const { readSecret } = await import('#shared/server/credentials/local-store');
     expect(readSecret('github', 'api_key')).toBe('ghp_test_token');
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).not.toContain('github.search');
@@ -215,7 +215,7 @@ describe('integration routes', () => {
     );
     const stored = store.getIntegrationConnection(workspace.id, 'github');
     expect(stored?.metadata.repositories).toEqual(['octo/app']);
-    const { readSecretRecord } = await import('#lib/server/credentials/local-store');
+    const { readSecretRecord } = await import('#shared/server/credentials/local-store');
     expect(readSecretRecord('github', 'api_key')?.metadata?.repositories).toEqual(['octo/app']);
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toContain('github.search');
@@ -276,7 +276,7 @@ describe('integration routes', () => {
     const { request, workspace, murphHome } = await setup();
     writeLinearPlugin(murphHome);
 
-    const { reloadScopedPlugins } = await import('#lib/server/plugins/loader');
+    const { reloadScopedPlugins } = await import('#shared/server/plugins/loader');
     const pluginStatuses = await reloadScopedPlugins();
     const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
     const linear = response.body.integrations.find((integration: any) => integration.provider === 'linear');
@@ -327,7 +327,7 @@ describe('integration routes', () => {
         vaultPath: realVault
       })
     }));
-    const { readSecretRecord } = await import('#lib/server/credentials/local-store');
+    const { readSecretRecord } = await import('#shared/server/credentials/local-store');
     expect(readSecretRecord('obsidian', 'config_path')).toBeUndefined();
     expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain(`vaultPath: ${realVault}`);
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
@@ -375,7 +375,7 @@ describe('integration routes', () => {
 
   it('reports global credentials before env fallback when both are present', async () => {
     const { request, store, workspace } = await setup({ githubPat: 'env-token' });
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('github', 'api_key', 'stored-token', {
       metadata: { masked: '****oken', repositories: ['octo/app'] }
     });
@@ -403,7 +403,7 @@ describe('integration routes', () => {
 
   it('ignores legacy scoped credentials in status', async () => {
     const { request, workspace } = await setup();
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('github', 'api_key', 'scoped-token', { workspaceId: workspace.id });
 
     const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
@@ -472,7 +472,7 @@ describe('integration routes', () => {
 
   it('reports Google as connected when an OAuth bundle is stored for the workspace', async () => {
     const { request, store, workspace } = await setup();
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     const metadata = {
       account: 'person@example.com',
       validatedAt: new Date().toISOString()
@@ -508,7 +508,7 @@ describe('integration routes', () => {
 
   it('reports Google as connected from a global OAuth bundle across channel workspaces', async () => {
     const { request, store, workspace } = await setup();
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     const discordWorkspace = store.saveInstall({
       provider: 'discord',
       externalWorkspaceId: 'G1',
@@ -550,7 +550,7 @@ describe('integration routes', () => {
 
   it('ignores legacy scoped Google OAuth bundles in status', async () => {
     const { request, workspace } = await setup();
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('google', 'oauth_bundle', JSON.stringify({
       access_token: 'access-token',
       refresh_token: 'refresh-token',

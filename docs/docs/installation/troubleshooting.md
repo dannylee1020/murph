@@ -13,9 +13,9 @@ murph status
 murph logs
 ```
 
-## The `murph` command is not found
+## The Murph command is not found
 
-The installer writes the CLI to `~/.local/bin`. Add it to your shell path:
+The installer writes the product-local `murph` command to `~/.local/bin`. Add it to your shell path:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"

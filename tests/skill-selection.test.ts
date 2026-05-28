@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { selectSkills } from '../src/lib/server/skills/selection';
-import type { SkillManifest, WorkspaceMemory } from '../src/lib/types';
+import { selectSkills } from '../shared/server/skills/selection';
+import type { SkillManifest, WorkspaceMemory } from '../shared/types';
 
 function skill(input: Partial<SkillManifest> & { name: string; priority: number }): SkillManifest {
   return {

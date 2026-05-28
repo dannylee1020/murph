@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["vite/client"]
   },
-  "include": ["ui/**/*.ts"]
+  "include": ["shared/ui/**/*.ts", "murph-team/ui/**/*.ts", "murph-personal/ui/**/*.ts"]
 }

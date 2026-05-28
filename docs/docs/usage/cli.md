@@ -5,24 +5,24 @@ description: Use the murph command-line interface.
 
 # CLI
 
-The `murph` CLI is the terminal control surface for setup, runtime operations, health checks, credentials, and policy.
+Murph installs one product-local CLI for normal use:
+
+- In a Team deployment, `murph` controls the shared-channel Team runtime.
+- In a Personal deployment, `murph` controls the local owner-DM Personal runtime.
 
 ## Setup commands
 
 ```bash
 murph setup
 murph setup provider
-murph setup ai
 murph setup slack
 murph setup discord
-murph setup identity
 murph setup channels
-murph setup schedule
 murph setup policy
 murph setup status
 ```
 
-Use `murph setup` for the full wizard. The wizard creates core local config, chooses the runtime AI provider, chooses Slack or Discord, captures your OAuth owner identity, saves watched-channel defaults, sets the schedule, selects policy, and prints setup status.
+Use `murph setup` on the host where the product is installed. The wizard creates core local config, chooses the runtime AI provider, chooses Slack or Discord, captures OAuth owner identity, saves product-specific defaults, sets the schedule, selects policy, and prints setup status.
 
 Setup changes refresh active config-bound sessions automatically. If Murph is already handling a request, the refresh is marked pending and applied at the next run boundary.
 
@@ -36,7 +36,9 @@ murph setup discord
 murph setup channels
 ```
 
-`murph setup identity` only verifies that OAuth owner identity is present. If it is missing, reconnect Slack or Discord; Murph does not accept a manual owner ID.
+`murph setup channels` is Team-only. Personal setup skips watched-channel selection.
+
+`murph setup identity` remains as a compatibility check for OAuth owner identity. If identity is missing, reconnect Slack or Discord; Murph does not accept a manual owner ID.
 
 ## Runtime commands
 
@@ -50,7 +52,20 @@ murph restart
 murph open
 ```
 
-Use these commands to run Murph locally and inspect the local process.
+Use these commands to run Murph locally and inspect the local process. The installed product fixes the matching runtime distribution.
+
+## Admin commands
+
+```bash
+murph admin url
+murph admin subscribers
+murph admin subscribers link <user-id>
+murph admin subscribers revoke <user-id>
+```
+
+Use `murph admin url` to print the admin dashboard URL for the current Team runtime host.
+
+Use `murph admin subscribers` to inspect subscriber dashboard access. Use `link` to create or regenerate a subscriber dashboard URL, and `revoke` to disable it. Personal installs are single-user and do not expose subscriber dashboard commands.
 
 ## Health commands
 
@@ -58,7 +73,7 @@ Use these commands to run Murph locally and inspect the local process.
 murph doctor
 ```
 
-Use `murph doctor` after setup changes or when a channel, provider, or runtime check fails.
+Use the matching product doctor after setup changes or when a channel, provider, or runtime check fails.
 
 ## Credential commands
 
@@ -94,4 +109,4 @@ murph uninstall --dry-run
 murph uninstall
 ```
 
-Use `murph uninstall --dry-run` before removing Murph-owned local files. `murph uninstall` removes `~/.murph`, the installed CLI link, runtime-host credentials, logs, managed deps, and SQLite data, but leaves unrelated system tools alone.
+Use maintenance commands from the installed product host. Uninstall is app-wide for that host: it removes `~/.murph`, the installed CLI link, runtime-host credentials, logs, managed deps, and SQLite data, but leaves unrelated system tools alone.

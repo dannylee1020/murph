@@ -2,12 +2,18 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "types": ["node"],
     "declaration": true,
     "declarationMap": true,
     "noEmit": false
   },
-  "include": ["src/**/*.d.ts", "src/lib/**/*.ts", "src/server/**/*.ts"],
-  "exclude": ["ui", "node_modules", "dist"]
+  "include": [
+    "shared/*.d.ts",
+    "shared/*.ts",
+    "shared/server/**/*.ts",
+    "murph-team/runtime/**/*.ts",
+    "murph-personal/runtime/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
 }

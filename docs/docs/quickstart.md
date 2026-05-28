@@ -5,7 +5,7 @@ description: Get Murph installed, configured, and running.
 
 # Quickstart
 
-Murph is a self-hosted agent runtime for async work across personal DMs and shared channels. It is extensible by design: you choose the runtime host, channels, data sources, and policy.
+Murph is a self-hosted agent runtime for async work. It ships as two distributions: Murph Team for shared channels and Murph Personal for owner DMs. You choose the runtime host, messenger, data sources, and policy.
 
 ## 1. Install
 
@@ -15,27 +15,39 @@ Run the installer from any terminal:
 curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
-The installer downloads Murph, installs minimal runtime pre-reqs, builds the app, installs setup helpers such as Slack CLI, creates local defaults, and installs the `murph` CLI.
+For Personal, pass the product option:
+
+```bash
+curl -fsSL https://murph-agent.com/install.sh | bash -s -- --product personal
+```
+
+The installer downloads Murph, installs minimal runtime pre-reqs, builds the app, installs setup helpers such as Slack CLI, creates local defaults, and installs the product-local `murph` CLI.
 
 ## 2. Configure
 
-Run the setup wizard:
+Choose a product when installing, then run setup on that host:
 
 ```bash
 murph setup
 ```
 
-Setup walks through the basics: AI provider, messenger credentials, personal or channel coverage, identity, watched channels, schedule, and policy.
+In a Team deployment, `murph setup` configures shared-channel coverage, subscribers, watched channels, schedule, and policy. In a Personal deployment, it configures owner-DM coverage for the local user and private local data sources.
 
 ## 3. Start
 
-Start Murph:
+Start the installed runtime:
 
 ```bash
 murph start
 ```
 
 Murph runs at `http://localhost:5173` on the runtime host by default. If that port is already in use, Murph stops with a port-conflict message instead of switching ports automatically, because OAuth callbacks and tunnels must match the configured origin. To use another port, start Murph with `MURPH_PORT=<port>` and update any provider callback URLs to match.
+
+To open the admin dashboard, print the URL:
+
+```bash
+murph admin url
+```
 
 ## 4. Check
 

@@ -4,7 +4,7 @@ import {
   compilePolicyOverride,
   mergeCompiledPolicy,
   resolveEffectivePolicy
-} from '../src/lib/server/runtime/policy-compiler';
+} from '../shared/server/runtime/policy-compiler';
 
 describe('policy compiler', () => {
   it('builds a mode-aware built-in fallback profile', () => {

@@ -5,8 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 async function setup(input: { subscribeOwner?: boolean } = {}) {
   const subscribeOwner = input.subscribeOwner ?? true;
-  const { getStore } = await import('../src/lib/server/persistence/store');
-  const { normalizeDiscordEventWithReason } = await import('../src/lib/server/channels/discord/adapter');
+  const { getStore } = await import('../shared/server/persistence/store');
+  const { normalizeDiscordEventWithReason } = await import('../shared/server/channels/discord/adapter');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'discord',
@@ -60,6 +60,7 @@ describe('normalizeDiscordEventWithReason', () => {
     process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
     delete process.env.MURPH_PRODUCT_MODE;
+    delete process.env.MURPH_DISTRIBUTION;
   });
 
   it('routes structured Discord mentions even when message content is empty', async () => {
@@ -103,7 +104,7 @@ describe('normalizeDiscordEventWithReason', () => {
       botUserId: '999',
       representedUserId: '123'
     });
-    const { updateMurphSetupDefaults } = await import('../src/lib/server/setup/config-file');
+    const { updateMurphSetupDefaults } = await import('../shared/server/setup/config-file');
     updateMurphSetupDefaults({
       channelProvider: 'discord',
       workspaceId: workspace.id,
@@ -137,6 +138,56 @@ describe('normalizeDiscordEventWithReason', () => {
       externalUserId: '456',
       botInstallationId: personalInstall.id
     });
+  });
+
+  it('routes owner direct messages in the personal distribution', async () => {
+    process.env.MURPH_DISTRIBUTION = 'personal';
+    const { store, workspace, normalizeDiscordEventWithReason } = await setup({ subscribeOwner: false });
+    store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
+    const personalInstall = store.upsertBotInstallation({
+      workspaceId: workspace.id,
+      provider: 'discord',
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      role: 'personal',
+      botUserId: '999',
+      representedUserId: '123'
+    });
+
+    const result = normalizeDiscordEventWithReason(discordEvent({
+      guild_id: undefined,
+      channel_id: 'DM1',
+      author: { id: '123' },
+      content: 'check my notes'
+    }), { eventId: 'OwnerDm1', botRole: 'personal', botInstallationId: personalInstall.id });
+
+    expect(result.task).toMatchObject({
+      conversationKind: 'direct',
+      targetUserId: '123',
+      actorUserId: '123',
+      thread: { provider: 'discord', channelId: 'DM1', threadTs: 'M1' }
+    });
+  });
+
+  it('ignores non-owner direct messages in the personal distribution', async () => {
+    process.env.MURPH_DISTRIBUTION = 'personal';
+    const { store, workspace, normalizeDiscordEventWithReason } = await setup({ subscribeOwner: false });
+    const personalInstall = store.upsertBotInstallation({
+      workspaceId: workspace.id,
+      provider: 'discord',
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      role: 'personal',
+      botUserId: '999',
+      representedUserId: '123'
+    });
+
+    const result = normalizeDiscordEventWithReason(discordEvent({
+      guild_id: undefined,
+      channel_id: 'DM1',
+      author: { id: '456' },
+      content: 'draft this'
+    }), { eventId: 'NonOwnerDm1', botRole: 'personal', botInstallationId: personalInstall.id });
+
+    expect(result).toMatchObject({ ignoredReason: 'personal_owner_mismatch' });
   });
 
   it('uses the single scoped subscribed session fallback for bot-directed messages', async () => {

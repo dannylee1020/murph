@@ -6,7 +6,7 @@ describe('web.fetch tool', () => {
   });
 
   it('rejects non-http URLs', async () => {
-    const { createWebFetchTool } = await import('../src/lib/server/tools/web-fetch');
+    const { createWebFetchTool } = await import('../shared/server/tools/web-fetch');
     const tool = createWebFetchTool();
 
     await expect(tool.execute({ url: 'file:///etc/passwd' })).rejects.toThrow('Only http(s) URLs are allowed');
@@ -18,7 +18,7 @@ describe('web.fetch tool', () => {
       status: 200,
       text: async () => '<html><head><title>Example &amp; Test</title><style>bad</style></head><body><script>bad</script><h1>Hello</h1><p>Grounded text</p></body></html>'
     }));
-    const { createWebFetchTool } = await import('../src/lib/server/tools/web-fetch');
+    const { createWebFetchTool } = await import('../shared/server/tools/web-fetch');
 
     const result = await createWebFetchTool().execute({ url: 'https://example.com/page' });
 
@@ -35,7 +35,7 @@ describe('web.fetch tool', () => {
       status: 200,
       text: async () => 'x'.repeat(1000)
     }));
-    const { createWebFetchTool } = await import('../src/lib/server/tools/web-fetch');
+    const { createWebFetchTool } = await import('../shared/server/tools/web-fetch');
 
     const result = await createWebFetchTool().execute({ url: 'https://example.com/plain', maxChars: 256 });
 

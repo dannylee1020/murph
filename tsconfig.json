@@ -6,7 +6,7 @@
     "lib": ["ES2022", "DOM"],
     "baseUrl": ".",
     "paths": {
-      "#lib/*": ["src/lib/*"]
+      "#shared/*": ["shared/*"]
     },
     "allowJs": false,
     "checkJs": false,

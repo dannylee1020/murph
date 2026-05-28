@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AutopilotSession, ContinuityTask, ModelProvider, ProviderDraftResult, SkillManifest, Workspace } from '../../src/lib/types';
+import type { AutopilotSession, ContinuityTask, ModelProvider, ProviderDraftResult, SkillManifest, Workspace } from '../../shared/types';
 
 const fallbackDraft: ProviderDraftResult = {
   continuityCase: 'clarification',
@@ -43,11 +43,11 @@ const provider: ModelProvider = {
   }
 };
 
-vi.mock('#lib/server/providers/index', () => ({
+vi.mock('#shared/server/providers/index', () => ({
   getModelProvider: () => provider
 }));
 
-vi.mock('#lib/server/skills/loader', () => ({
+vi.mock('#shared/server/skills/loader', () => ({
   loadSkills: async (): Promise<SkillManifest[]> => testSkills
 }));
 
@@ -196,9 +196,9 @@ async function setupRuntime() {
   process.env.MURPH_MEMORY_PATH = join(testRoot, 'memory');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
 
-  const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-  const { getContextSourceRegistry } = await import('#lib/server/capabilities/context-source-registry');
-  const { AgentRuntime } = await import('#lib/server/runtime/agent-runtime');
+  const { getToolRegistry } = await import('#shared/server/capabilities/tool-registry');
+  const { getContextSourceRegistry } = await import('#shared/server/capabilities/context-source-registry');
+  const { AgentRuntime } = await import('#shared/server/runtime/agent-runtime');
   const registry = getToolRegistry();
   const contextSources = getContextSourceRegistry();
 

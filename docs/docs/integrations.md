@@ -9,7 +9,9 @@ Integrations are connected work sources Murph can use for context while groundin
 
 Connect default integrations from setup or the browser UI. Murph stores runtime-host secrets in `~/.murph/.credentials` and stores non-secret runtime-host settings, such as repository scope or vault paths, in `~/.murph/config.yaml`.
 
-In V1, integration credentials are runtime-level credentials. In shared-bot mode, a connected integration is available to the Murph runtime only when that runtime host has the credential configured. Subscriber-local private credentials and local worker execution are future architecture, not the current integration model.
+In V1, integration credentials are runtime-level credentials. In Murph Team, connected integrations are available to the shared host and should be safe for that host to read. In Murph Personal, connected integrations can point at local private sources such as an Obsidian vault because the personal runtime runs on the owner's machine.
+
+Team does not reach into subscriber-local private tools or files. Run Murph Personal when the context source must stay on an individual user's machine.
 
 ## Connect Default Integrations
 

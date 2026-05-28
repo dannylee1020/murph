@@ -23,9 +23,9 @@ describe('personal bot handoff', () => {
       }
       return Response.json({ ok: true, ts: '123.456' });
     });
-    const { getStore } = await import('../src/lib/server/persistence/store');
-    const { writeSecret } = await import('../src/lib/server/credentials/local-store');
-    const { openSlackPersonalHandoff } = await import('../src/lib/server/channels/personal-handoff');
+    const { getStore } = await import('../shared/server/persistence/store');
+    const { writeSecret } = await import('../shared/server/credentials/local-store');
+    const { openSlackPersonalHandoff } = await import('../shared/server/channels/personal-handoff');
     const store = getStore();
     const workspace = store.saveInstall({
       provider: 'slack',
@@ -77,9 +77,9 @@ describe('personal bot handoff', () => {
       }
       return Response.json({ id: 'message-1' });
     });
-    const { getStore } = await import('../src/lib/server/persistence/store');
-    const { writeSecret } = await import('../src/lib/server/credentials/local-store');
-    const { openDiscordPersonalHandoff } = await import('../src/lib/server/channels/personal-handoff');
+    const { getStore } = await import('../shared/server/persistence/store');
+    const { writeSecret } = await import('../shared/server/credentials/local-store');
+    const { openDiscordPersonalHandoff } = await import('../shared/server/channels/personal-handoff');
     const store = getStore();
     const workspace = store.saveInstall({
       provider: 'discord',

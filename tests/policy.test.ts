@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { evaluatePolicy } from '../src/lib/server/runtime/policy';
-import type { AutopilotSession, CompiledPolicy, ContextAssembly, ProposedAction } from '../src/lib/types';
+import { evaluatePolicy } from '../shared/server/runtime/policy';
+import type { AutopilotSession, CompiledPolicy, ContextAssembly, ProposedAction } from '../shared/types';
 
 function context(overrides: Partial<ContextAssembly> = {}): ContextAssembly {
   return {

@@ -16,6 +16,7 @@ no_start=false
 skip_build=false
 simple=false
 doctor=false
+product="${MURPH_DISTRIBUTION:-team}"
 original_args=("$@")
 
 have_command() {
@@ -24,9 +25,10 @@ have_command() {
 
 usage() {
   cat <<'EOF'
-Usage: ./install.sh [--force] [--no-start] [--skip-build] [--simple] [--doctor]
+Usage: ./install.sh [--product team|personal] [--force] [--no-start] [--skip-build] [--simple] [--doctor]
 
 Options:
+  --product    Install Murph Team or Murph Personal. Defaults to team.
   --force      Regenerate local config and rebuild even when files already exist.
   --no-start   Do not ask to start the server after installation.
   --skip-build Skip npm run build.
@@ -38,6 +40,15 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --product)
+      product="${2:-}"
+      [[ -n "$product" ]] || {
+        echo "--product requires team or personal"
+        usage
+        exit 1
+      }
+      shift
+      ;;
     --force)
       force=true
       ;;
@@ -68,6 +79,13 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ "$product" != "team" && "$product" != "personal" ]]; then
+  echo "Invalid product: $product"
+  usage
+  exit 1
+fi
+export MURPH_DISTRIBUTION="$product"
 
 is_murph_checkout() {
   [[ -f package.json && -f install.sh ]] && grep -q '"name"[[:space:]]*:[[:space:]]*"murph"' package.json
@@ -383,6 +401,12 @@ NODE
 
 write_config_file() {
   local provider="openai"
+  local product_mode="channel"
+  local bot_role="channel"
+  if [[ "$product" == "personal" ]]; then
+    product_mode="personal"
+    bot_role="personal"
+  fi
 
   if [[ "${LLM_PROVIDER:-}" == "openai" ]]; then
     provider="openai"
@@ -396,6 +420,8 @@ write_config_file() {
   mkdir -p "$HOME/.murph"
   cat > "$CONFIG_PATH_DEFAULT" <<EOF
 app:
+  distribution: $product
+  productMode: $product_mode
   url: $APP_URL_DEFAULT
   sqlitePath: $SQLITE_PATH_DEFAULT
 ai:
@@ -407,6 +433,9 @@ channels:
   discord:
     clientId: ""
     redirectUri: ""
+setup:
+  botRoles:
+    - $bot_role
 EOF
 }
 
@@ -483,16 +512,29 @@ prune_install_payload() {
 install_cli() {
   section "Installing CLI"
 
-  if [[ ! -f bin/murph ]]; then
-    printf 'bin/murph is missing. Skipping CLI install.\n'
+  local product_cli="murph-team/cli/murph"
+  if [[ "$product" == "personal" ]]; then
+    product_cli="murph-personal/cli/murph"
+  fi
+
+  if [[ ! -f "$product_cli" ]]; then
+    printf '%s is missing. Skipping CLI install.\n' "$product_cli"
     return
   fi
 
   local bin_dir="${MURPH_BIN_DIR:-$BIN_DIR_DEFAULT}"
   mkdir -p "$bin_dir"
-  chmod +x bin/murph
-  ln -sf "$(pwd)/bin/murph" "$bin_dir/murph"
-  printf 'Installed murph CLI at %s/murph.\n' "$bin_dir"
+  chmod +x "$product_cli" shared/cli/murph
+  cat > "$bin_dir/murph" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+export MURPH_APP_DIR="\${MURPH_APP_DIR:-$(pwd)}"
+export MURPH_HOME="\${MURPH_HOME:-$HOME/.murph}"
+exec "\$MURPH_APP_DIR/$product_cli" "\$@"
+EOF
+  chmod +x "$bin_dir/murph"
+  printf 'Installed Murph %s CLI at %s/murph.\n' "$([[ "$product" == "personal" ]] && printf 'Personal' || printf 'Team')" "$bin_dir"
 
   case ":$PATH:" in
     *":$bin_dir:"*)
@@ -510,19 +552,24 @@ print_next_steps() {
   section "Next steps"
 
   local build_status="Production build ready"
+  local product_label="Murph Team"
+  if [[ "$product" == "personal" ]]; then
+    product_label="Murph Personal"
+  fi
   if [[ "$skip_build" == true ]]; then
     build_status="Build skipped; run murph build before murph start"
   fi
 
   cat <<EOF
 Installed:
+  - $product_label selected
   - Dependencies installed
   - $build_status
   - ~/.murph/config.yaml present
   - SQLite data directory ready
 
 Agent-ready checklist:
-  - Run murph setup to configure AI, Slack, identity, channels, schedule, and policy.
+  - Run murph setup to configure AI, Slack/Discord, identity, schedule, and policy.
 
 Local app:
   $APP_URL_DEFAULT
@@ -563,11 +610,16 @@ maybe_start() {
 
   printf '\nRun CLI setup now? [y/N] '
   local answer
+  local bin_dir="${MURPH_BIN_DIR:-$BIN_DIR_DEFAULT}"
   read -r answer
   case "$answer" in
     y|Y|yes|YES)
-      if [[ -x bin/murph ]]; then
-        bin/murph setup --quick
+      if [[ -x "$bin_dir/murph" ]]; then
+        "$bin_dir/murph" setup --quick
+      elif [[ "$product" == "personal" && -x murph-personal/cli/murph ]]; then
+        murph-personal/cli/murph setup --quick
+      elif [[ -x murph-team/cli/murph ]]; then
+        murph-team/cli/murph setup --quick
       elif command -v murph >/dev/null 2>&1; then
         murph setup --quick
       else

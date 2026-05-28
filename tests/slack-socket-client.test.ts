@@ -20,16 +20,16 @@ vi.mock('@slack/socket-mode', () => ({
   SocketModeClient: socketConstructor
 }));
 
-vi.mock('#lib/server/channels/slack/events', () => ({
+vi.mock('#shared/server/channels/slack/events', () => ({
   handleSlackEventEnvelope
 }));
 
-vi.mock('#lib/server/channels/slack/interactions', () => ({
+vi.mock('#shared/server/channels/slack/interactions', () => ({
   handleSlackSocketSlashCommand,
   handleSlackSocketInteractive
 }));
 
-vi.mock('#lib/server/channels/slack/service', () => ({
+vi.mock('#shared/server/channels/slack/service', () => ({
   getSlackService: () => ({ getUsableWorkspace, appToken })
 }));
 
@@ -53,7 +53,7 @@ describe('SlackSocketModeClient', () => {
   });
 
   it('does not start without a Slack app token', async () => {
-    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+    const { SlackSocketModeClient } = await import('../shared/server/channels/slack/socket-client');
 
     new SlackSocketModeClient().ensureStarted();
 
@@ -63,7 +63,7 @@ describe('SlackSocketModeClient', () => {
   it('starts Socket Mode when configured', async () => {
     process.env.SLACK_APP_TOKEN = 'xapp-test';
     getUsableWorkspace.mockReturnValue({ id: 'workspace-1' });
-    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+    const { SlackSocketModeClient } = await import('../shared/server/channels/slack/socket-client');
 
     new SlackSocketModeClient().ensureStarted();
 
@@ -76,7 +76,7 @@ describe('SlackSocketModeClient', () => {
 
   it('acks and handles Slack Events API envelopes', async () => {
     const ack = vi.fn().mockResolvedValue(undefined);
-    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+    const { SlackSocketModeClient } = await import('../shared/server/channels/slack/socket-client');
 
     await new SlackSocketModeClient().handleEnvelope({
       ack,
@@ -99,7 +99,7 @@ describe('SlackSocketModeClient', () => {
 
   it('does not ack non-Events API envelopes from the generic Slack event listener', async () => {
     const ack = vi.fn().mockResolvedValue(undefined);
-    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+    const { SlackSocketModeClient } = await import('../shared/server/channels/slack/socket-client');
 
     await new SlackSocketModeClient().handleEnvelope({
       ack,
@@ -119,7 +119,7 @@ describe('SlackSocketModeClient', () => {
       envelope_id: 'env-1',
       body: { command: '/murph', user_id: 'U1' }
     };
-    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+    const { SlackSocketModeClient } = await import('../shared/server/channels/slack/socket-client');
 
     await new SlackSocketModeClient().handleSlashCommandEnvelope(envelope);
 
@@ -133,7 +133,7 @@ describe('SlackSocketModeClient', () => {
       envelope_id: 'env-1',
       body: { type: 'message_action', callback_id: 'murph_personal_handoff', user: { id: 'U1' } }
     };
-    const { SlackSocketModeClient } = await import('../src/lib/server/channels/slack/socket-client');
+    const { SlackSocketModeClient } = await import('../shared/server/channels/slack/socket-client');
 
     await new SlackSocketModeClient().handleInteractiveEnvelope(envelope);
 

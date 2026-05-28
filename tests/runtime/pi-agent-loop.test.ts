@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ProviderDraftResult } from '../../src/lib/types';
+import type { ProviderDraftResult } from '../../shared/types';
 
 const runAgentLoopMock = vi.fn();
 const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
@@ -138,10 +138,10 @@ describe('runGroundingLoop', () => {
   it('passes OpenAI credentials from the local credential store to the Pi agent loop', async () => {
     process.env.MURPH_CREDENTIALS_PATH = join(mkdtempSync(join(tmpdir(), 'murph-pi-loop-credentials-')), '.credentials');
 
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('openai', 'api_key', 'sk-from-credentials');
 
-    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const { runGroundingLoop } = await import('#shared/server/runtime/pi-agent-loop');
     runAgentLoopMock.mockImplementation(async (_prompts, _agentContext, config) => {
       expect(await config.getApiKey?.('openai')).toBe('sk-from-credentials');
       return [finalAssistantMessage()];
@@ -163,10 +163,10 @@ describe('runGroundingLoop', () => {
     process.env.MURPH_CREDENTIALS_PATH = join(mkdtempSync(join(tmpdir(), 'murph-pi-loop-credentials-')), '.credentials');
     process.env.OPENAI_API_KEY = 'sk-from-env';
 
-    const { writeSecret } = await import('#lib/server/credentials/local-store');
+    const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('openai', 'api_key', 'sk-from-credentials');
 
-    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const { runGroundingLoop } = await import('#shared/server/runtime/pi-agent-loop');
     runAgentLoopMock.mockImplementation(async (_prompts, _agentContext, config) => {
       expect(await config.getApiKey?.('openai')).toBe('sk-from-env');
       return [finalAssistantMessage()];
@@ -185,7 +185,7 @@ describe('runGroundingLoop', () => {
   });
 
   it('adds encrypted reasoning continuity for stateless OpenAI Responses tool turns', async () => {
-    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const { runGroundingLoop } = await import('#shared/server/runtime/pi-agent-loop');
     runAgentLoopMock.mockImplementation(async (_prompts, _agentContext, config) => {
       const payload = config.onPayload?.({
         model: 'gpt-5.5',
@@ -219,7 +219,7 @@ describe('runGroundingLoop', () => {
   });
 
   it('does not mutate non-Responses model payloads', async () => {
-    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const { runGroundingLoop } = await import('#shared/server/runtime/pi-agent-loop');
     runAgentLoopMock.mockImplementation(async (_prompts, _agentContext, config) => {
       const payload = {
         model: 'claude-opus-4-7',
@@ -245,8 +245,8 @@ describe('runGroundingLoop', () => {
   });
 
   it('blocks tools that are not in availableTools', async () => {
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const { getToolRegistry } = await import('#shared/server/capabilities/tool-registry');
+    const { runGroundingLoop } = await import('#shared/server/runtime/pi-agent-loop');
     const registry = getToolRegistry();
     registry.register({
       name: 'hidden.search',
@@ -317,8 +317,8 @@ describe('runGroundingLoop', () => {
   });
 
   it('blocks tools whose sideEffectClass is not read', async () => {
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const { getToolRegistry } = await import('#shared/server/capabilities/tool-registry');
+    const { runGroundingLoop } = await import('#shared/server/runtime/pi-agent-loop');
     const registry = getToolRegistry();
     registry.register({
       name: 'memory.thread.link_artifact',
@@ -361,8 +361,8 @@ describe('runGroundingLoop', () => {
   });
 
   it('enforces MAX_TOOL_CALLS_PER_RUN', async () => {
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-    const { runGroundingLoop } = await import('#lib/server/runtime/pi-agent-loop');
+    const { getToolRegistry } = await import('#shared/server/capabilities/tool-registry');
+    const { runGroundingLoop } = await import('#shared/server/runtime/pi-agent-loop');
     const registry = getToolRegistry();
     registry.register({
       name: 'notion.search',

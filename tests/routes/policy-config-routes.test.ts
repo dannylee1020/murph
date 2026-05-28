@@ -35,11 +35,11 @@ async function setup() {
   process.env.MURPH_CONFIG_PATH = join(workspaceDir, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
-  vi.doMock('#lib/server/runtime/bootstrap', () => ({
+  vi.doMock('#shared/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
   }));
 
-  const { getStore } = await import('#lib/server/persistence/store');
+  const { getStore } = await import('#shared/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -48,8 +48,8 @@ async function setup() {
     botUserId: 'UTZBOT'
   });
   store.upsertUser({ workspaceId: workspace.id, externalUserId: 'U1', displayName: 'Daniel' });
-  const { gatewayRoutes } = await import('../../src/server/routes/gateway');
-  const { dispatchRoute } = await import('../../src/server/router');
+  const { gatewayRoutes } = await import('../../shared/server/routes/gateway');
+  const { dispatchRoute } = await import('../../shared/server/router');
 
   async function request(method: string, path: string, body?: unknown) {
     const req = jsonRequest(method, body);

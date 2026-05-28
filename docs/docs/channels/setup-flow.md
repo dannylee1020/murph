@@ -5,15 +5,14 @@ description: Connect messaging channels to Murph.
 
 # Setup Flow
 
-Channel setup connects messaging bots and saves the local defaults Murph needs for personal DM coverage and shared-channel async-work sessions.
+Channel setup connects messaging bots and saves the local defaults Murph needs for the selected distribution.
 
-Murph does not require a single runtime mode anymore. The same runtime can run:
+Murph now has two runtime distributions:
 
-- a personal bot for explicit DMs to the represented owner's Murph bot;
-- a channel bot for shared-channel coverage during active sessions;
-- both bot roles side by side.
+- **Murph Team** runs the channel bot for shared-channel coverage during active sessions.
+- **Murph Personal** runs the personal bot for explicit DMs to the local owner's Murph bot.
 
-Use separate provider app identities when you enable both roles. The host machine still owns the runtime bundle: credentials, config, SQLite OLTP data, generated memory, integrations, policy, review, plugins, and the operator UI all stay with the runtime.
+Use separate provider app identities when you run both products. The host machine still owns the runtime bundle: credentials, config, SQLite data, generated memory, integrations, policy, review, plugins, and the UI all stay with that runtime.
 
 ## CLI setup
 
@@ -32,16 +31,12 @@ core -> provider -> coverage -> bot app setup -> owner OAuth -> channels -> sche
 Run channel-specific setup when only channel settings changed:
 
 ```bash
-murph setup roles
-murph setup providers
-murph setup slack --role channel
-murph setup slack --role personal
-murph setup discord --role channel
-murph setup discord --role personal
+murph setup slack
+murph setup discord
 murph setup channels
 ```
 
-Use `--role both` to configure both personal and channel app identities for one provider. Watched-channel selection only runs when the channel role is enabled.
+Use channel roles in Murph Team and personal roles in Murph Personal. Watched-channel selection only runs in Team, so `murph setup channels` is Team-only.
 
 Slack setup is mostly automated through the Slack manifest and OAuth flow. The personal Slack manifest enables the App Home Messages tab so people can DM the Murph Personal bot; if you configure Slack manually, turn that tab on yourself. Discord setup requires a few manual Developer Portal steps first: create the bot, copy the bot token and client secret, add the exact OAuth redirect URI, and enable Message Content intent. Use [Discord](/docs/channels/discord) for the step-by-step checklist.
 
@@ -54,7 +49,7 @@ murph start
 murph open
 ```
 
-Use the setup wizard to choose coverage in one step: Slack channel bot, Slack personal bot, Discord channel bot, Discord personal bot, or any combination of those identities. Each provider step shows app value state, bot install state, owner identity state, direct provider shortcuts, and the exact callback or redirect URI for the current Murph host. The wizard authorizes your own account through OAuth and only asks for watched channels when a channel bot is enabled. Owner identity is captured from the OAuth callback; Murph does not list workspace members or let you choose another user.
+Use the setup wizard to choose Slack or Discord for the active distribution. Each provider step shows app value state, bot install state, owner identity state, direct provider shortcuts, and the exact callback or redirect URI for the current Murph host. The wizard authorizes your own account through OAuth and only asks for watched channels in Team. Owner identity is captured from the OAuth callback; Murph does not list workspace members or let you choose another user.
 
 Role-specific HTTP install and event endpoints are available for hosted setups:
 
@@ -80,9 +75,9 @@ Channel defaults include:
 - the OAuth owner identity for that workspace/server
 - selected channels or all accessible channels
 
-Personal-bot installs also record the represented owner on the bot installation, so explicit DMs to that bot can route to the right owner. Channel-bot installs use `workspace_subscriptions` and watched-channel defaults to decide which subscribed user can be routed from a shared-channel event.
+Personal-bot installs record the represented owner on the bot installation, so explicit DMs to that bot can route to the local owner in Murph Personal. Team channel-bot installs use `workspace_subscriptions` and watched-channel defaults to decide which subscribed user can be routed from a shared-channel event.
 
-If identity is missing, reconnect Slack or Discord. `murph setup identity` verifies identity, but it cannot manually set a different owner.
+If identity is missing, reconnect Slack or Discord. `murph setup identity` remains a compatibility check, but it cannot manually set a different owner.
 
 ## Setup check
 

@@ -55,7 +55,7 @@ describe('GmailService', () => {
       };
     }));
 
-    const { getGmailService, toArtifact } = await import('#lib/server/context-sources/gmail');
+    const { getGmailService, toArtifact } = await import('#shared/server/context-sources/gmail');
     const gmail = getGmailService();
     const search = await gmail.search('google-token', 'launch timeline', 3);
 

@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
-const setupCli = path.join(repoRoot, 'bin/setup-cli.mjs');
+const setupCli = path.join(repoRoot, 'shared/cli/setup-cli.mjs');
 
 function createAppDir(): string {
   const appDir = path.join(tmpdir(), `murph-setup-cli-provider-${Date.now()}-${Math.random().toString(16).slice(2)}`);

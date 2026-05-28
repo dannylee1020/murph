@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ChannelRegistry } from '../src/lib/server/capabilities/channel-registry';
-import type { ChannelAdapter, Workspace } from '../src/lib/types';
+import { ChannelRegistry } from '../shared/server/capabilities/channel-registry';
+import type { ChannelAdapter, Workspace } from '../shared/types';
 
 function adapter(id: string, postReply = vi.fn()): ChannelAdapter {
   return {

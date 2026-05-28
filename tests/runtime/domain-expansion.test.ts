@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { expandContextSources } from '../../src/lib/server/runtime/domain-expansion';
-import type { ContextSource, SkillManifest, WorkspaceMemory } from '../../src/lib/types';
+import { expandContextSources } from '../../shared/server/runtime/domain-expansion';
+import type { ContextSource, SkillManifest, WorkspaceMemory } from '../../shared/types';
 
 const workspaceMemory: WorkspaceMemory = {
   workspaceId: 'workspace',

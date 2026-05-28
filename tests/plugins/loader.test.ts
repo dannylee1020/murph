@@ -180,10 +180,10 @@ describe('scoped plugin loader', () => {
     const home = tempMurphHome();
     writePlugin(home, 'linear');
 
-    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
-    const { loadSkills } = await import('#lib/server/skills/loader');
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-    const { getContextSourceRegistry } = await import('#lib/server/capabilities/context-source-registry');
+    const { loadScopedPlugins } = await import('#shared/server/plugins/loader');
+    const { loadSkills } = await import('#shared/server/skills/loader');
+    const { getToolRegistry } = await import('#shared/server/capabilities/tool-registry');
+    const { getContextSourceRegistry } = await import('#shared/server/capabilities/context-source-registry');
 
     const statuses = await loadScopedPlugins();
 
@@ -210,9 +210,9 @@ describe('scoped plugin loader', () => {
     const home = tempMurphHome();
     writePlugin(home, 'linear', { toolSideEffect: 'external_write' });
 
-    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-    const { loadSkills } = await import('#lib/server/skills/loader');
+    const { loadScopedPlugins } = await import('#shared/server/plugins/loader');
+    const { getToolRegistry } = await import('#shared/server/capabilities/tool-registry');
+    const { loadSkills } = await import('#shared/server/skills/loader');
 
     const statuses = await loadScopedPlugins();
 
@@ -229,7 +229,7 @@ describe('scoped plugin loader', () => {
     const home = tempMurphHome();
     writePlugin(home, 'linear', { skillPath: '../outside.md' });
 
-    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
+    const { loadScopedPlugins } = await import('#shared/server/plugins/loader');
 
     const statuses = await loadScopedPlugins();
 
@@ -244,7 +244,7 @@ describe('scoped plugin loader', () => {
     const home = tempMurphHome();
     writeLegacyAdapterPlugin(home, 'linear');
 
-    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
+    const { loadScopedPlugins } = await import('#shared/server/plugins/loader');
 
     const statuses = await loadScopedPlugins();
 
@@ -259,8 +259,8 @@ describe('scoped plugin loader', () => {
     const home = tempMurphHome();
     writeChannelPlugin(home, 'teams');
 
-    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
-    const { getChannelRegistry } = await import('#lib/server/capabilities/channel-registry');
+    const { loadScopedPlugins } = await import('#shared/server/plugins/loader');
+    const { getChannelRegistry } = await import('#shared/server/capabilities/channel-registry');
 
     const statuses = await loadScopedPlugins();
 
@@ -287,7 +287,7 @@ describe('scoped plugin loader', () => {
     const home = tempMurphHome();
     writeLegacyChannelPlugin(home, 'teams');
 
-    const { loadScopedPlugins } = await import('#lib/server/plugins/loader');
+    const { loadScopedPlugins } = await import('#shared/server/plugins/loader');
 
     const statuses = await loadScopedPlugins();
 
@@ -305,7 +305,7 @@ describe('scoped plugin loader', () => {
     writePlugin(workspace, 'repo_plugin');
     process.chdir(workspace);
 
-    const { getScopedPluginRoots, loadScopedPlugins } = await import('#lib/server/plugins/loader');
+    const { getScopedPluginRoots, loadScopedPlugins } = await import('#shared/server/plugins/loader');
 
     expect(getScopedPluginRoots()).toEqual([join(home, 'plugins')]);
     expect((await loadScopedPlugins()).map((status) => status.id)).toEqual(['global_plugin']);

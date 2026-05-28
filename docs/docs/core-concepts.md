@@ -7,29 +7,34 @@ description: Understand Murph's runtime, sessions, evidence, policy, memory, and
 
 Murph is a self-hosted agent runtime for async work. Its core job is to receive messages, decide whether the message needs a represented owner, gather relevant context, draft a bounded response, and apply policy before anything is sent.
 
-It is not an always-on chatbot. The product is built around one operator-controlled runtime host, explicit sessions, local configuration, source-grounded answers, and reviewable audit trails.
+It is not an always-on chatbot. The product is built around an operator-controlled runtime host, explicit sessions, local configuration, source-grounded answers, and reviewable audit trails.
 
 ## Runtime host model
 
-Murph runs as one deployable runtime bundle. The machine running that bundle is the Murph runtime host: it can be your laptop, a VPS, a home server, or another host you control. That host owns the runtime's config, credentials, SQLite database, generated memory, bot ingress, agent execution, integrations, policy, review, plugins, and operator UI.
+Murph runs as one of two deployable runtime distributions:
+
+- **Murph Team** is the shared host runtime for Slack or Discord channel coverage. It owns team subscribers, shared channel scope, subscriber dashboard links, shared tools, shared memory, queue, triage, logs, and the admin control plane.
+- **Murph Personal** is a single-user local runtime for direct messages to the owner's bot identity. It owns local credentials, local memory, private data sources, queue, triage, logs, and the owner control plane.
+
+The machine running either distribution is the Murph runtime host: it can be your laptop, a VPS, a home server, or another host you control. That host owns the runtime's config, credentials, SQLite database, generated memory, bot ingress, agent execution, integrations, policy, review, plugins, and UI.
 
 - SQLite stores sessions, subscriptions, runs, events, tool calls, policy decisions, action results, and indexing state.
 - `~/.murph/config.yaml` stores non-secret setup and runtime configuration on the runtime host.
 - `~/.murph/.credentials` stores runtime-host secrets with owner-only permissions.
 - `~/.murph/memory` stores generated markdown recall pages on the runtime host when configured through `app.memoryPath`.
-- The browser UI, CLI, and Murph Agent all control the same runtime.
+- The browser UI, CLI, and Murph Agent all control the selected runtime distribution.
 
-For a self-hosted install, credentials are not uploaded to Murph-run servers. They stay on the runtime host and only leave that host when Murph uses them to call the providers, channels, or integrations you connected. If you run Murph on a VPS or cloud VM, that machine is the runtime host and must be trusted with the bot and integration credentials configured there.
+For a self-hosted install, credentials are not uploaded to Murph-run servers. They stay on the runtime host and only leave that host when Murph uses them to call the providers, channels, or integrations you connected. If you run Murph Team on a VPS or cloud VM, that machine must be trusted with team bot and integration credentials. If you need private local sources such as an Obsidian vault, run Murph Personal on the machine that owns those sources.
 
 ## How async work flows through Murph
 
-The agent runtime is the center of Murph. It turns personal-bot DMs and channel activity into policy-gated actions.
+The agent runtime is the center of Murph. Team turns channel activity into policy-gated actions for subscribed users; Personal turns owner DMs into policy-gated actions for the local owner.
 
 At a high level, the runtime loop is:
 
 1. A channel adapter receives a Slack, Discord, or plugin channel event.
 2. The adapter normalizes the event into a task with workspace, thread, actor, represented owner or subscriber, and trigger message details.
-3. For personal bots, explicit DMs route to the owner represented by that bot installation. For channel bots, shared-channel events route through active workspace subscriptions and channel scope.
+3. Team channel events route through active workspace subscriptions and channel scope. Personal DMs route only to the owner represented by that bot installation.
 4. The gateway checks for an active session that matches the workspace, represented owner, channel scope, and coverage window.
 5. The runtime assembles context from the current thread, subscriber-scoped memory, workspace settings, selected skills, and enabled integrations.
 6. The tool planner decides which read-only retrieval tools are available and whether grounding is required before drafting.
@@ -129,13 +134,13 @@ After a session, triage shows what Murph sent, queued, skipped, or failed. This 
 
 ## Control surfaces
 
-Murph has three operator surfaces:
+Murph has three control surfaces:
 
 - [Browser UI](/docs/usage/browser-ui) for setup, sessions, status, triage, and review.
 - [CLI](/docs/usage/cli) for setup, process control, health checks, credentials, and policy.
 - [Murph Agent](/docs/usage/murph-agent) for guided local help with setup, debugging, policy, and scoped extension work.
 
-All three surfaces operate on the same local configuration and runtime state.
+All three surfaces operate on the same local configuration and runtime state for the selected distribution. Team also has admin-issued subscriber dashboard links for per-subscriber inspection; Personal does not expose subscriber APIs.
 
 ## Extensibility
 

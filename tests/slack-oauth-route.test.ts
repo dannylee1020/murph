@@ -52,16 +52,16 @@ async function setup(
     }
     return Response.json(slackPayload);
   }));
-  vi.doMock('#lib/server/channels/slack/socket-client', () => ({
+  vi.doMock('#shared/server/channels/slack/socket-client', () => ({
     getSlackSocketModeClient: (role: 'channel' | 'personal' = 'channel') => ({
       isConfigured: () => role === 'channel',
       ensureStarted
     })
   }));
 
-  const { slackRoutes } = await import('../src/server/routes/slack');
-  const { dispatchRoute } = await import('../src/server/router');
-  const { getStore } = await import('#lib/server/persistence/store');
+  const { slackRoutes } = await import('../shared/server/routes/slack');
+  const { dispatchRoute } = await import('../shared/server/router');
+  const { getStore } = await import('#shared/server/persistence/store');
 
   async function get(pathname: string) {
     const res = response();
@@ -208,7 +208,7 @@ describe('Slack OAuth callback route', () => {
     expect(result.status).toBe(302);
     expect(result.headers.location).toBe('/oauth/cli-complete?provider=slack&role=personal&status=success');
     const install = store.getBotInstallation('slack', 'T1', 'personal');
-    const { readSecret } = await import('../src/lib/server/credentials/local-store');
+    const { readSecret } = await import('../shared/server/credentials/local-store');
     expect(readSecret('slack', 'bot_token', { botInstallationId: install?.id })).toBe('xoxb-test');
   });
 });

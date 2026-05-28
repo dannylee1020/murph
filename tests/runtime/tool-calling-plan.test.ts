@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRuntimeToolCallingPlan,
   listAvailableTools
-} from '../../src/lib/server/runtime/tool-calling-plan';
-import type { CompiledPolicy, ContextAssembly, SkillManifest, ToolInventoryItem, WorkspaceMemory } from '../../src/lib/types';
+} from '../../shared/server/runtime/tool-calling-plan';
+import type { CompiledPolicy, ContextAssembly, SkillManifest, ToolInventoryItem, WorkspaceMemory } from '../../shared/types';
 
 const workspaceMemory: WorkspaceMemory = {
   workspaceId: 'workspace',

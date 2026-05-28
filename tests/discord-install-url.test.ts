@@ -29,7 +29,7 @@ describe('Discord install URL', () => {
   });
 
   it('uses bot install authorization and identify for browser OAuth', async () => {
-    const { DiscordService, DISCORD_BOT_PERMISSIONS } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService, DISCORD_BOT_PERMISSIONS } = await import('../shared/server/channels/discord/service');
 
     const url = new DiscordService().buildInstallUrl({ appUrl: 'http://murph.test' });
 
@@ -52,7 +52,7 @@ describe('Discord install URL', () => {
       }
       return Response.json({ id: 'app-123' });
     });
-    const { DiscordService, DISCORD_BOT_PERMISSIONS } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService, DISCORD_BOT_PERMISSIONS } = await import('../shared/server/channels/discord/service');
 
     const result = await new DiscordService().configureApplication();
 
@@ -82,7 +82,7 @@ describe('Discord install URL', () => {
 
   it('uses a zero-permission bot install for personal OAuth so the personal bot can receive DMs', async () => {
     process.env.DISCORD_PERSONAL_CLIENT_ID = 'personal-client';
-    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
 
     const url = new DiscordService().buildInstallUrl({ appUrl: 'http://murph.test', role: 'personal' });
 
@@ -94,7 +94,7 @@ describe('Discord install URL', () => {
   });
 
   it('requests Discord direct message gateway events', async () => {
-    const { DISCORD_GATEWAY_INTENTS } = await import('../src/lib/server/channels/discord/gateway-client');
+    const { DISCORD_GATEWAY_INTENTS } = await import('../shared/server/channels/discord/gateway-client');
 
     expect(DISCORD_GATEWAY_INTENTS.DIRECT_MESSAGES).toBe(1 << 12);
   });
@@ -107,7 +107,7 @@ describe('Discord install URL', () => {
         nick: 'Danny'
       });
     });
-    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
 
     const member = await new DiscordService().getMember({
       id: 'ws-discord',
@@ -121,7 +121,7 @@ describe('Discord install URL', () => {
 
   it('preserves Discord channel list error details', async () => {
     vi.stubGlobal('fetch', async () => Response.json({ message: 'Missing Access' }, { status: 403 }));
-    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
 
     await expect(new DiscordService().listChannels({
       id: 'ws-discord',
@@ -136,7 +136,7 @@ describe('Discord install URL', () => {
       expect(String(url)).toContain('/channels/channel-1');
       return Response.json({ id: 'channel-1', name: 'general', type: 0, guild_id: 'guild-1' });
     });
-    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
 
     const channel = await new DiscordService().getChannel({
       id: 'ws-discord',
@@ -150,7 +150,7 @@ describe('Discord install URL', () => {
 
   it('rejects unsupported Discord channel types', async () => {
     vi.stubGlobal('fetch', async () => Response.json({ id: 'channel-1', name: 'voice', type: 2, guild_id: 'guild-1' }));
-    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
 
     await expect(new DiscordService().getChannel({
       id: 'ws-discord',
@@ -166,7 +166,7 @@ describe('Discord install URL', () => {
       calls.push({ url: String(url), body: JSON.parse(String(options.body)) });
       return Response.json({ id: 'message-1' });
     });
-    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
 
     await new DiscordService().postReply({
       id: 'ws-discord',
@@ -187,7 +187,7 @@ describe('Discord install URL', () => {
       calls.push({ url: String(url), body: JSON.parse(String(options.body)) });
       return Response.json({ id: 'message-1' });
     });
-    const { DiscordService } = await import('../src/lib/server/channels/discord/service');
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
 
     await new DiscordService().postReply({
       id: 'ws-discord',

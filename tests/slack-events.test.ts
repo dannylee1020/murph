@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const handleTask = vi.fn();
 
-vi.mock('#lib/server/runtime/gateway', () => ({
+vi.mock('#shared/server/runtime/gateway', () => ({
   getGateway: () => ({ handleTask })
 }));
 
@@ -25,7 +25,7 @@ function slackEvent(input: Record<string, unknown> = {}): Record<string, unknown
 }
 
 async function setup() {
-  const { getStore } = await import('../src/lib/server/persistence/store');
+  const { getStore } = await import('../shared/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -74,7 +74,7 @@ describe('handleSlackEventEnvelope', () => {
 
   it('routes a valid Slack event through the shared gateway path', async () => {
     await setup();
-    const { handleSlackEventEnvelope } = await import('../src/lib/server/channels/slack/events');
+    const { handleSlackEventEnvelope } = await import('../shared/server/channels/slack/events');
 
     const result = await handleSlackEventEnvelope(slackEvent(), {
       rawPayload: JSON.stringify(slackEvent()),
@@ -94,7 +94,7 @@ describe('handleSlackEventEnvelope', () => {
 
   it('dedupes repeated Slack events before dispatching to the gateway', async () => {
     await setup();
-    const { handleSlackEventEnvelope } = await import('../src/lib/server/channels/slack/events');
+    const { handleSlackEventEnvelope } = await import('../shared/server/channels/slack/events');
 
     await handleSlackEventEnvelope(slackEvent(), { source: 'socket' });
     const duplicate = await handleSlackEventEnvelope(slackEvent(), { source: 'http' });
@@ -105,9 +105,9 @@ describe('handleSlackEventEnvelope', () => {
 
   it('ignores Slack events when that bot role is turned off', async () => {
     await setup();
-    const { updateMurphSetupDefaults } = await import('../src/lib/server/setup/config-file');
+    const { updateMurphSetupDefaults } = await import('../shared/server/setup/config-file');
     updateMurphSetupDefaults({ providerBotRoles: { slack: [] } });
-    const { handleSlackEventEnvelope } = await import('../src/lib/server/channels/slack/events');
+    const { handleSlackEventEnvelope } = await import('../shared/server/channels/slack/events');
 
     const result = await handleSlackEventEnvelope(slackEvent(), { source: 'socket' });
 

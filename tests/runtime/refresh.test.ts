@@ -80,9 +80,9 @@ async function setup() {
   writePolicy(root, 'engineering-auto', autoPolicy('engineering-auto'));
   writePolicy(root, 'scoped-auto', manualPolicyWithAutoRule('scoped-auto'));
 
-  const { getStore } = await import('../../src/lib/server/persistence/store');
-  const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
-  const { refreshRuntimeState, withRuntimeRunLock } = await import('../../src/lib/server/runtime/refresh');
+  const { getStore } = await import('../../shared/server/persistence/store');
+  const { updateMurphPolicyConfig } = await import('../../shared/server/setup/config-file');
+  const { refreshRuntimeState, withRuntimeRunLock } = await import('../../shared/server/runtime/refresh');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',

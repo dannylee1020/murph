@@ -5,7 +5,7 @@ description: Fix channel setup and access issues.
 
 # Channel Troubleshooting
 
-Start with `murph doctor` when channel setup or runtime behavior fails.
+Start with the matching product doctor when channel setup or runtime behavior fails.
 
 ## Health check
 

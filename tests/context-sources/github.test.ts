@@ -72,7 +72,7 @@ describe('GitHubService', () => {
       };
     }));
 
-    const { getGitHubService, toArtifact } = await import('#lib/server/context-sources/github');
+    const { getGitHubService, toArtifact } = await import('#shared/server/context-sources/github');
     const github = getGitHubService();
     const result = await github.search('checkout launch', 3);
 
@@ -105,7 +105,7 @@ describe('GitHubService', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    const { getGitHubService } = await import('#lib/server/context-sources/github');
+    const { getGitHubService } = await import('#shared/server/context-sources/github');
     const github = getGitHubService();
 
     await expect(github.search('dark mode status', 3)).rejects.toThrow('GitHub repository scope is required');
@@ -173,7 +173,7 @@ describe('GitHubService', () => {
       };
     }));
 
-    const { createGitHubAdapter } = await import('#lib/server/integrations/github/index');
+    const { createGitHubAdapter } = await import('#shared/server/integrations/github/index');
     const adapter = createGitHubAdapter();
     const source = adapter.contextSources[0];
     const input = {
@@ -247,7 +247,7 @@ describe('GitHubService', () => {
       };
     }));
 
-    const { getGitHubService } = await import('#lib/server/context-sources/github');
+    const { getGitHubService } = await import('#shared/server/context-sources/github');
     const github = getGitHubService();
     const result = await github.search('rate limiting Acme deadline blocking', 5);
 
@@ -277,7 +277,7 @@ describe('GitHubService', () => {
       })
     }));
 
-    const { getGitHubService } = await import('#lib/server/context-sources/github');
+    const { getGitHubService } = await import('#shared/server/context-sources/github');
     const github = getGitHubService();
     const result = await github.readIssue('acme/app', 42);
 

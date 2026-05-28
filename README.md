@@ -4,15 +4,15 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-b96f22.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-murph--agent.com-b96f22.svg)](https://murph-agent.com/docs)
 
-Murph is a self-hosted agent runtime for async work across personal DMs and shared channels.
+Murph is a self-hosted agent runtime for async work in two distributions: Murph Team for shared channels and Murph Personal for owner DMs.
 
 Run one Murph host anywhere you choose: your laptop, a VPS, a home server, or another machine you control. That host owns bot ingress, agent execution, SQLite state, generated memory, config, credentials, integrations, policy, review, plugins, and the operator UI.
 
-Connect Slack or Discord, enable personal DM coverage, shared-channel coverage, or both, then start a session when Murph should cover async work for a represented owner. Murph pulls context from connected integrations and tools, drafts grounded replies, applies your policy, and leaves a review trail for every decision.
+Choose the distribution that matches the job. Murph Team is the shared host for subscribed users in Slack or Discord channels. Murph Personal is a local single-user runtime for private DMs and local data sources. Both reuse the same core agent runtime, policy, queue, triage, integrations, and plugin system.
 
 | What you need | What Murph does |
 | --- | --- |
-| **Cover async work** | Routes personal DMs and subscribed shared-channel messages through one runtime host |
+| **Cover async work** | Routes subscribed shared-channel messages in Team or owner DMs in Personal |
 | **Keep control explicit** | Sends safe work, queues risky work, and skips anything it should not answer |
 | **Use your real context** | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
 | **Review what happened** | Shows what was sent, queued, skipped, and why |
@@ -29,17 +29,25 @@ Install Murph:
 curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
-Run setup:
+Team is the default install. For Personal, use:
+
+```bash
+curl -fsSL https://murph-agent.com/install.sh | bash -s -- --product personal
+```
+
+Run setup on the host where you installed Murph:
 
 ```bash
 murph setup
 ```
 
-Start Murph:
+Start the installed Murph runtime:
 
 ```bash
 murph start
 ```
+
+The `murph` command is product-local: in a Team deployment it runs Murph Team, and in a Personal deployment it runs Murph Personal.
 
 ## Documentation
 

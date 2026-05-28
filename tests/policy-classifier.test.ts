@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { classifyPolicyExecution } from '../src/lib/server/runtime/policy-classifier';
-import type { AutopilotSession, ContextAssembly, ProposedAction } from '../src/lib/types';
+import { classifyPolicyExecution } from '../shared/server/runtime/policy-classifier';
+import type { AutopilotSession, ContextAssembly, ProposedAction } from '../shared/types';
 
 const classifyPolicyExecutionMock = vi.hoisted(() => vi.fn());
 
-vi.mock('#lib/server/providers/index', () => ({
+vi.mock('#shared/server/providers/index', () => ({
   getPolicyModelProvider: () => ({
     classifyPolicyExecution: classifyPolicyExecutionMock
   })

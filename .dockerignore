@@ -1,0 +1,6 @@
+node_modules
+dist
+data
+.git
+.murph-install.log
+npm-debug.log

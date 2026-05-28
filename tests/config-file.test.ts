@@ -9,6 +9,7 @@ const envKeys = [
   'MURPH_CONFIG_PATH',
   'MURPH_CREDENTIALS_PATH',
   'MURPH_APP_URL',
+  'MURPH_DISTRIBUTION',
   'MURPH_PRODUCT_MODE',
   'MURPH_DEFAULT_PROVIDER',
   'MURPH_DEFAULT_MODEL',
@@ -51,7 +52,7 @@ describe('murph config file', () => {
     writeFileSync('config.yaml', [
       'app:',
       '  url: https://murph.example',
-      '  productMode: personal',
+      '  distribution: personal',
       'ai:',
       '  defaultProvider: anthropic',
       '  defaultModel: claude-opus-4-7',
@@ -69,10 +70,11 @@ describe('murph config file', () => {
       ''
     ].join('\n'));
 
-    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
+    const { getRuntimeEnv } = await import('../shared/server/util/env');
     const env = getRuntimeEnv();
 
     expect(env.appUrl).toBe('https://murph.example');
+    expect(env.distribution).toBe('personal');
     expect(env.productMode).toBe('personal');
     expect(env.defaultProvider).toBe('anthropic');
     expect(env.defaultModel).toBe('claude-opus-4-7');
@@ -91,7 +93,7 @@ describe('murph config file', () => {
     ].join('\n'));
     process.env.OBSIDIAN_VAULT_PATH = '';
 
-    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
+    const { getRuntimeEnv } = await import('../shared/server/util/env');
     const env = getRuntimeEnv();
 
     expect(env.obsidianVaultPath).toBe('/Users/test/Vault');
@@ -104,10 +106,10 @@ describe('murph config file', () => {
       '  defaultModel: claude-opus-4-7',
       ''
     ].join('\n'));
-    const { writeSecret } = await import('../src/lib/server/credentials/local-store');
+    const { writeSecret } = await import('../shared/server/credentials/local-store');
     writeSecret('anthropic', 'api_key', 'sk-ant-test');
 
-    const { getModelProvider } = await import('../src/lib/server/providers/index');
+    const { getModelProvider } = await import('../shared/server/providers/index');
     const provider = getModelProvider();
 
     expect(provider.name).toBe('anthropic');
@@ -127,14 +129,15 @@ describe('murph config file', () => {
       ''
     ].join('\n'));
     process.env.MURPH_APP_URL = 'https://override.example';
-    process.env.MURPH_PRODUCT_MODE = 'personal';
+    process.env.MURPH_DISTRIBUTION = 'personal';
     process.env.MURPH_AGENT_PROVIDER = 'openai';
     process.env.MURPH_AGENT_MODEL = 'gpt-5.5';
 
-    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
+    const { getRuntimeEnv } = await import('../shared/server/util/env');
     const env = getRuntimeEnv();
 
     expect(env.appUrl).toBe('https://override.example');
+    expect(env.distribution).toBe('personal');
     expect(env.productMode).toBe('personal');
     expect(env.agentProvider).toBe('openai');
     expect(env.agentModel).toBe('gpt-5.5');
@@ -142,10 +145,10 @@ describe('murph config file', () => {
 
   it('prefers local credentials over environment secrets', async () => {
     process.env.OPENAI_API_KEY = 'env-key';
-    const { writeSecret } = await import('../src/lib/server/credentials/local-store');
+    const { writeSecret } = await import('../shared/server/credentials/local-store');
     writeSecret('openai', 'api_key', 'stored-key');
 
-    const { getRuntimeEnv } = await import('../src/lib/server/util/env');
+    const { getRuntimeEnv } = await import('../shared/server/util/env');
     const env = getRuntimeEnv();
 
     expect(env.openaiApiKey).toBe('stored-key');
@@ -153,10 +156,11 @@ describe('murph config file', () => {
 
   it('updates non-secret setup keys without dropping unrelated YAML', async () => {
     writeFileSync('config.yaml', 'custom:\n  keep: true\n');
-    const { updateMurphConfigValues } = await import('../src/lib/server/setup/config-file');
+    const { updateMurphConfigValues } = await import('../shared/server/setup/config-file');
 
     const result = updateMurphConfigValues({
       MURPH_APP_URL: 'https://murph.example',
+      MURPH_DISTRIBUTION: 'personal',
       MURPH_PRODUCT_MODE: 'personal',
       MURPH_DEFAULT_MODEL: 'gpt-5.5',
       MURPH_AGENT_MODEL: 'claude-opus-4-7',
@@ -165,15 +169,39 @@ describe('murph config file', () => {
     });
 
     const raw = readFileSync('config.yaml', 'utf8');
-    expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_PRODUCT_MODE', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES', 'OBSIDIAN_VAULT_PATH']);
+    expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_DISTRIBUTION', 'MURPH_PRODUCT_MODE', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES', 'OBSIDIAN_VAULT_PATH']);
     expect(raw).toContain('keep: true');
     expect(raw).toContain('url: https://murph.example');
+    expect(raw).toContain('distribution: personal');
     expect(raw).toContain('productMode: personal');
     expect(raw).toContain('defaultModel: gpt-5.5');
     expect(raw).toContain('model: claude-opus-4-7');
     expect(raw).toContain('- acme/app');
     expect(raw).toContain('- acme/api');
     expect(raw).toContain('vaultPath: /Users/test/Vault');
+  });
+
+  it('defaults to the team distribution and maps legacy channel mode to team', async () => {
+    const { getRuntimeEnv } = await import('../shared/server/util/env');
+    expect(getRuntimeEnv().distribution).toBe('team');
+    expect(getRuntimeEnv().productMode).toBe('channel');
+
+    vi.resetModules();
+    process.env.MURPH_PRODUCT_MODE = 'channel';
+    const { getRuntimeEnv: getEnvWithLegacyMode } = await import('../shared/server/util/env');
+    expect(getEnvWithLegacyMode().distribution).toBe('team');
+    expect(getEnvWithLegacyMode().productMode).toBe('channel');
+  });
+
+  it('lets MURPH_DISTRIBUTION override legacy product mode', async () => {
+    process.env.MURPH_DISTRIBUTION = 'team';
+    process.env.MURPH_PRODUCT_MODE = 'personal';
+
+    const { getRuntimeEnv } = await import('../shared/server/util/env');
+    const env = getRuntimeEnv();
+
+    expect(env.distribution).toBe('team');
+    expect(env.productMode).toBe('channel');
   });
 
   it('clears explicit Murph Agent overrides so the agent can inherit runtime', async () => {
@@ -186,7 +214,7 @@ describe('murph config file', () => {
       '    model: claude-opus-4-7',
       ''
     ].join('\n'));
-    const { updateMurphConfigValues } = await import('../src/lib/server/setup/config-file');
+    const { updateMurphConfigValues } = await import('../shared/server/setup/config-file');
 
     const result = updateMurphConfigValues({
       MURPH_AGENT_PROVIDER: '',
@@ -208,7 +236,7 @@ describe('murph config file', () => {
       '    vaultPath: /Users/test/Vault',
       ''
     ].join('\n'));
-    const { updateMurphConfigValues } = await import('../src/lib/server/setup/config-file');
+    const { updateMurphConfigValues } = await import('../shared/server/setup/config-file');
 
     const result = updateMurphConfigValues({
       OBSIDIAN_VAULT_PATH: ''

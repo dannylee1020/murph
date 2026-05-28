@@ -27,7 +27,7 @@ describe('sqlite schema cleanup', () => {
     const sqlitePath = join(mkdtempSync(join(tmpdir(), 'murph-schema-fresh-')), 'murph.sqlite');
     process.env.MURPH_SQLITE_PATH = sqlitePath;
 
-    const { getDb } = await import('#lib/server/persistence/db');
+    const { getDb } = await import('#shared/server/persistence/db');
     const db = getDb();
 
     expect(tableExists(db, 'workspaces')).toBe(true);
@@ -55,7 +55,7 @@ describe('sqlite schema cleanup', () => {
       'policy_binding',
       'channel_scope_binding'
     ]));
-    const { runMigrations } = await import('#lib/server/persistence/migrator');
+    const { runMigrations } = await import('#shared/server/persistence/migrator');
     runMigrations(db, sqlitePath);
     expect(migrationIds(db)).toEqual([
       '001_create_current_schema',
@@ -177,7 +177,7 @@ describe('sqlite schema cleanup', () => {
     `);
     (db as unknown as { close?: () => void }).close?.();
 
-    const { getStore } = await import('#lib/server/persistence/store');
+    const { getStore } = await import('#shared/server/persistence/store');
     const store = getStore();
     const workspace = store.getWorkspaceByExternalId('slack', 'T1');
 
@@ -263,7 +263,7 @@ describe('sqlite schema cleanup', () => {
       );
     `);
 
-    const { runMigrations } = await import('#lib/server/persistence/migrator');
+    const { runMigrations } = await import('#shared/server/persistence/migrator');
     runMigrations(db, sqlitePath);
 
     expect(columns(db, 'thread_memory')).toContain('target_user_id');
@@ -277,7 +277,7 @@ describe('sqlite schema cleanup', () => {
   it('rolls back failed migrations without recording them', async () => {
     const sqlitePath = join(mkdtempSync(join(tmpdir(), 'murph-schema-failure-')), 'murph.sqlite');
     const db = new Database(sqlitePath);
-    const { runMigrationList } = await import('#lib/server/persistence/migrator');
+    const { runMigrationList } = await import('#shared/server/persistence/migrator');
 
     expect(() => runMigrationList(db, sqlitePath, [
       {

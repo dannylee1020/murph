@@ -3,25 +3,32 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/server/index.js",
+  "main": "dist/murph-team/runtime/server.js",
+  "bin": {
+    "murph": "murph-team/cli/murph"
+  },
   "engines": {
     "node": ">=20"
   },
   "imports": {
-    "#lib/*": {
-      "types": "./src/lib/*.ts",
-      "default": "./dist/lib/*.js"
+    "#shared/*": {
+      "types": "./shared/*.ts",
+      "default": "./dist/shared/*.js"
     }
   },
   "scripts": {
-    "dev": "node bin/dev.mjs",
+    "dev": "node scripts/dev.mjs",
     "dev:server": "npm run build:server && npm run start",
-    "dev:ui": "vite --config ui/vite.config.ts",
+    "dev:ui": "vite --config shared/ui/vite.config.ts",
     "watch:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput",
     "build": "npm run build:server && npm run build:ui",
     "build:server": "tsc -p tsconfig.server.json",
-    "build:ui": "vite build --config ui/vite.config.ts",
-    "start": "node dist/server/index.js",
+    "build:ui": "npm run build:ui:team && npm run build:ui:personal",
+    "build:ui:team": "MURPH_UI_PRODUCT=team vite build --config shared/ui/vite.config.ts",
+    "build:ui:personal": "MURPH_UI_PRODUCT=personal vite build --config shared/ui/vite.config.ts",
+    "start": "npm run start:team",
+    "start:team": "node dist/murph-team/runtime/server.js",
+    "start:personal": "node dist/murph-personal/runtime/server.js",
     "preview": "npm run start",
     "architecture:map": "node scripts/generate-architecture-map.mjs",
     "docs:sync-installer": "mkdir -p docs/public && cp install.sh docs/public/install.sh",

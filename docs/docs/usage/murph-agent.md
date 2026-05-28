@@ -47,7 +47,7 @@ Murph seeds the built-in skills into that directory from the installed app when 
 The bundled defaults live with the app source:
 
 ```text
-<murph app>/agent/skills/<skill>/SKILL.md
+<murph app>/skills/agent/<skill>/SKILL.md
 ```
 
 They are different from Murph runtime skills. Runtime skills guide the async messenger runtime when it drafts channel replies. Murph Agent skills guide the local setup/coding agent while it helps you configure or extend Murph.

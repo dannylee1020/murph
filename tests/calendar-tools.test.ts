@@ -23,10 +23,10 @@ describe('calendar tools', () => {
       })
     }));
 
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-    const { registerBuiltInTools } = await import('#lib/server/capabilities/builtins');
-    const { registerBuiltInIntegrationAdapters } = await import('#lib/server/integrations/register-builtins');
-    const { getStore } = await import('#lib/server/persistence/store');
+    const { getToolRegistry } = await import('#shared/server/capabilities/tool-registry');
+    const { registerBuiltInTools } = await import('#shared/server/capabilities/builtins');
+    const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');
+    const { getStore } = await import('#shared/server/persistence/store');
     registerBuiltInTools();
     registerBuiltInIntegrationAdapters();
     const store = getStore();
@@ -82,9 +82,9 @@ describe('calendar tools', () => {
   it('fails workday availability when target user schedule is missing', async () => {
     vi.stubGlobal('fetch', vi.fn());
 
-    const { getToolRegistry } = await import('#lib/server/capabilities/tool-registry');
-    const { registerBuiltInTools } = await import('#lib/server/capabilities/builtins');
-    const { registerBuiltInIntegrationAdapters } = await import('#lib/server/integrations/register-builtins');
+    const { getToolRegistry } = await import('#shared/server/capabilities/tool-registry');
+    const { registerBuiltInTools } = await import('#shared/server/capabilities/builtins');
+    const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');
     registerBuiltInTools();
     registerBuiltInIntegrationAdapters();
     const registry = getToolRegistry();

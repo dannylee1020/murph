@@ -58,15 +58,15 @@ async function setup(
     ensureMember.mockResolvedValueOnce(result);
   }
 
-  vi.doMock('#lib/server/runtime/bootstrap', () => ({
+  vi.doMock('#shared/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
   }));
-  vi.doMock('#lib/server/capabilities/channel-registry', () => ({
+  vi.doMock('#shared/server/capabilities/channel-registry', () => ({
     getChannelRegistry: () => ({ ensureMember, getMember })
   }));
 
-  const { getStore } = await import('#lib/server/persistence/store');
-  const { writeSecret } = await import('#lib/server/credentials/local-store');
+  const { getStore } = await import('#shared/server/persistence/store');
+  const { writeSecret } = await import('#shared/server/credentials/local-store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -102,7 +102,7 @@ async function setup(
     channelScopeMode: 'all_accessible',
     channelScope: []
   });
-  const { updateMurphSetupDefaults } = await import('../../src/lib/server/setup/config-file');
+  const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
   updateMurphSetupDefaults({
     channelProvider: 'slack',
     workspaceId: workspace.id,
@@ -113,9 +113,9 @@ async function setup(
       { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Owner' }
     ]
   });
-  const { gatewayRoutes } = await import('../../src/server/routes/gateway');
-  const { dispatchRoute } = await import('../../src/server/router');
-  const { getGateway } = await import('../../src/lib/server/runtime/gateway');
+  const { gatewayRoutes } = await import('../../shared/server/routes/gateway');
+  const { dispatchRoute } = await import('../../shared/server/router');
+  const { getGateway } = await import('../../shared/server/runtime/gateway');
 
   async function post(body: unknown, path = '/api/gateway/sessions') {
     const req = jsonRequest(body);
@@ -139,7 +139,20 @@ async function setup(
     return res.result();
   }
 
-  return { post, put, store, workspace, discordWorkspace, gateway: getGateway(), ensureMember, getMember };
+  async function get(path: string) {
+    const req = Readable.from([]) as any;
+    req.method = 'GET';
+    req.headers = {};
+    const res = jsonResponse();
+    await dispatchRoute(gatewayRoutes, {
+      req,
+      res,
+      url: new URL(path, 'http://localhost')
+    });
+    return res.result();
+  }
+
+  return { post, put, get, store, workspace, discordWorkspace, gateway: getGateway(), ensureMember, getMember };
 }
 
 describe('POST /api/gateway/sessions channel membership gating', () => {
@@ -331,7 +344,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     const { post, store, workspace } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' }
     ]);
-    const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
+    const { updateMurphPolicyConfig } = await import('../../shared/server/setup/config-file');
     updateMurphPolicyConfig({ profileName: 'yolo', mode: 'auto_send_low_risk' });
     store.upsertWorkspaceSubscription({
       workspaceId: workspace.id,
@@ -362,7 +375,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     const { post, store, workspace } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' }
     ]);
-    const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
+    const { updateMurphPolicyConfig } = await import('../../shared/server/setup/config-file');
     updateMurphPolicyConfig({ profileName: 'default', mode: 'manual_review' });
     store.upsertWorkspaceSubscription({
       workspaceId: workspace.id,
@@ -394,7 +407,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     const { post, store, workspace } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' }
     ]);
-    const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
+    const { updateMurphPolicyConfig } = await import('../../shared/server/setup/config-file');
     updateMurphPolicyConfig({ profileName: 'yolo', mode: 'auto_send_low_risk' });
 
     const response = await post({
@@ -413,7 +426,7 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
     const { post, store, workspace } = await setup([
       { channelId: 'C1', name: 'product-eng', status: 'already_member' }
     ]);
-    const { updateMurphPolicyConfig } = await import('../../src/lib/server/setup/config-file');
+    const { updateMurphPolicyConfig } = await import('../../shared/server/setup/config-file');
     updateMurphPolicyConfig({ profileName: 'default', mode: 'manual_review' });
 
     const response = await post({
@@ -689,6 +702,27 @@ describe('POST /api/gateway/sessions channel membership gating', () => {
       policyProfileName: 'product',
       policyMode: 'manual_review'
     }));
+  });
+
+  it('creates subscriber dashboard links without exposing token hashes', async () => {
+    const { post, get, store, workspace } = await setup([]);
+
+    const response = await post({}, `/api/gateway/subscriptions/UOWNER/dashboard-link?workspaceId=${workspace.id}`);
+    const list = await get(`/api/gateway/subscriptions?workspaceId=${workspace.id}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.url).toContain('/me?token=');
+    expect(response.body.subscription).toEqual(expect.objectContaining({
+      externalUserId: 'UOWNER',
+      dashboardAccessEnabled: true
+    }));
+    expect(response.body.subscription).not.toHaveProperty('dashboardTokenHash');
+    expect(list.body.subscriptions[0]).toEqual(expect.objectContaining({
+      externalUserId: 'UOWNER',
+      dashboardAccessEnabled: true
+    }));
+    expect(list.body.subscriptions[0]).not.toHaveProperty('dashboardTokenHash');
+    expect(store.getWorkspaceSubscription(workspace.id, 'UOWNER')?.dashboardTokenHash).toBeTruthy();
   });
 
   it('rejects unknown subscription policy profiles and invalid modes', async () => {

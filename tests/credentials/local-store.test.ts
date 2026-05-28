@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 async function loadStore() {
   vi.resetModules();
   process.env.MURPH_CREDENTIALS_PATH = join(mkdtempSync(join(tmpdir(), 'murph-credentials-store-')), '.credentials');
-  return await import('#lib/server/credentials/local-store');
+  return await import('#shared/server/credentials/local-store');
 }
 
 describe('local credential store', () => {

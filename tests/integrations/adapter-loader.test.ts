@@ -39,8 +39,8 @@ describe('integration adapter loader', () => {
     const home = tempMurphHome();
     writeFileSync(join(home, 'integrations', 'linear.js'), adapterModule('linear'));
 
-    const { loadIntegrationAdapters } = await import('#lib/server/integrations/adapter-loader');
-    const { listAdapters } = await import('#lib/server/integrations/adapter-registry');
+    const { loadIntegrationAdapters } = await import('#shared/server/integrations/adapter-loader');
+    const { listAdapters } = await import('#shared/server/integrations/adapter-registry');
 
     await loadIntegrationAdapters();
 
@@ -52,8 +52,8 @@ describe('integration adapter loader', () => {
     writeFileSync(join(home, 'integrations', 'one.js'), adapterModule('linear'));
     writeFileSync(join(home, 'integrations', 'two.js'), adapterModule('linear'));
 
-    const { loadIntegrationAdapters } = await import('#lib/server/integrations/adapter-loader');
-    const { listAdapters, listAdapterStatuses } = await import('#lib/server/integrations/adapter-registry');
+    const { loadIntegrationAdapters } = await import('#shared/server/integrations/adapter-loader');
+    const { listAdapters, listAdapterStatuses } = await import('#shared/server/integrations/adapter-registry');
 
     await loadIntegrationAdapters();
 
