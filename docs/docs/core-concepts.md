@@ -31,12 +31,12 @@ At a high level, the runtime loop is:
 2. The adapter normalizes the event into a task with workspace, thread, actor, represented owner or subscriber, and trigger message details.
 3. For personal bots, explicit DMs route to the owner represented by that bot installation. For channel bots, shared-channel events route through active workspace subscriptions and channel scope.
 4. The gateway checks for an active session that matches the workspace, represented owner, channel scope, and coverage window.
-5. The runtime assembles context from the current thread, session memory, workspace settings, selected skills, generated memory index, and enabled integrations.
+5. The runtime assembles context from the current thread, subscriber-scoped memory, workspace settings, selected skills, and enabled integrations.
 6. The tool planner decides which read-only retrieval tools are available and whether grounding is required before drafting.
 7. The model drafts a proposed action such as reply, ask, redirect, defer, remind, or abstain.
 8. Policy classification and deterministic policy gates decide whether the action may send, must queue for review, or should abstain.
 9. Murph executes the allowed action or creates a review item.
-10. Run events, tool results, policy decisions, and final outcomes are stored for triage, audit, and future memory indexing.
+10. Run events, tool results, policy decisions, and final outcomes are stored for triage, audit, and optional operator exports.
 
 This is why source access, policy, and session scope matter. Murph is useful when it can answer from the current thread or connected sources and conservative when it cannot.
 
@@ -77,11 +77,11 @@ If a task is already running, Murph does not mutate the in-flight run. It marks 
 
 Murph separates context from evidence.
 
-Context helps the agent understand the request. It can include the current thread, session metadata, user/workspace memory, selected skills, linked artifacts, and generated memory index entries.
+Context helps the agent understand the request. It can include the current thread, session metadata, subscriber memory, workspace memory, subscriber-scoped thread memory, selected skills, and linked artifacts.
 
-Evidence supports factual answers. It should come from current thread content, connected integration reads, read-only tool results, or a loaded memory page with provenance for stable follow-up questions.
+Evidence supports factual answers. It should come from current thread content, connected integration reads, or read-only tool results from the current run.
 
-For latest, current, today, now, status, changed, or source-of-truth requests, Murph should use live retrieval from connected sources. Generated memory alone is not enough for fresh state.
+For latest, current, today, now, status, changed, or source-of-truth requests, Murph should use live retrieval from connected sources. Stored memory alone is not enough for fresh state.
 
 ## Channels, integrations, tools, and skills
 
@@ -99,11 +99,11 @@ Skills are not a separate agent. They shape the runtime's behavior once relevant
 
 ## Memory
 
-Murph has two memory surfaces.
+Murph has one runtime memory surface and one audit log.
 
-SQLite is the source of truth for what happened. It preserves the transactional history of sessions, runs, events, tools, policy, and actions.
+SQLite is the source of truth for runtime state and what happened. It preserves subscriber memory, workspace memory, subscriber-scoped thread memory, sessions, runs, events, tools, policy, and actions.
 
-Generated markdown memory is a recall layer. It builds compact thread and session pages under the configured memory path so the agent can answer stable follow-up questions without scanning raw run history every time.
+Generated markdown is optional operator export/debug output. It is built from SQLite run history and is not agent-readable runtime memory.
 
 See [Memory](/docs/memory) for the storage layout and freshness rules.
 

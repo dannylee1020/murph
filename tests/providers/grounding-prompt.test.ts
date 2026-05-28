@@ -107,9 +107,7 @@ describe('buildGroundingPrompt', () => {
     }));
 
     expect(prompt).toContain('Thread memory is conversation context, not source-of-truth evidence.');
-    expect(prompt).toContain('Murph markdown memory is cached evidence with provenance.');
-    expect(prompt).toContain('Do not rely on markdown memory for latest, current, today, now, status, changed, or source-of-truth requests');
-    expect(prompt).toContain('If memory index relevance is ambiguous, page provenance is missing, or freshness metadata says to refresh');
+    expect(prompt).toContain('Do not rely on stored memory for latest, current, today, now, status, changed, or source-of-truth requests');
     expect(prompt).toContain('The triggerMessage in the task is the current request and the primary authority.');
     expect(prompt).toContain('Current-run artifacts may include broad fanout results from connected read-only sources');
     expect(prompt).toContain('If sources conflict, say which source says what instead of guessing.');

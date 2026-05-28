@@ -23,8 +23,8 @@ export class MemoryService {
     return this.store.getOrCreateWorkspaceMemory(workspaceId);
   }
 
-  getThreadMemory(workspaceId: string, channelId: string, threadTs: string): ThreadMemory {
-    return this.store.getOrCreateThreadMemory(workspaceId, channelId, threadTs);
+  getThreadMemory(workspaceId: string, channelId: string, threadTs: string, targetUserId?: string): ThreadMemory {
+    return this.store.getOrCreateThreadMemory(workspaceId, channelId, threadTs, targetUserId);
   }
 
   writeThreadSummary(
@@ -36,7 +36,7 @@ export class MemoryService {
     openQuestions: string[] = [],
     evidenceStatus?: ThreadEvidenceStatus
   ): ThreadMemory {
-    const existing = this.getThreadMemory(workspace.id, channelId, threadTs);
+    const existing = this.getThreadMemory(workspace.id, channelId, threadTs, targetUserId);
     const next: ThreadMemory = {
       ...existing,
       targetUserId: targetUserId ?? existing.targetUserId,
@@ -53,9 +53,10 @@ export class MemoryService {
     workspace: Workspace,
     channelId: string,
     threadTs: string,
-    artifact: string
+    artifact: string,
+    targetUserId?: string
   ): ThreadMemory {
-    const existing = this.getThreadMemory(workspace.id, channelId, threadTs);
+    const existing = this.getThreadMemory(workspace.id, channelId, threadTs, targetUserId);
     const linkedArtifacts = existing.linkedArtifacts.includes(artifact)
       ? existing.linkedArtifacts
       : [...existing.linkedArtifacts, artifact];

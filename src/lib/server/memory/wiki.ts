@@ -541,7 +541,7 @@ export async function rebuildMemoryPagesForRun(run: AgentRunRecord): Promise<{
   pagePaths.push(await writeThreadPage({
     root,
     run,
-    threadMemory: store.getThreadMemory(run.workspaceId, run.channelId, run.threadTs),
+    threadMemory: store.getThreadMemory(run.workspaceId, run.channelId, run.threadTs, run.targetUserId),
     summaries: threadSummaries
   }));
 

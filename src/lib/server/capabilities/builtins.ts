@@ -2,7 +2,6 @@ import { getChannelRegistry } from '#lib/server/capabilities/channel-registry';
 import { getContextSourceRegistry } from '#lib/server/capabilities/context-source-registry';
 import { getMemoryService } from '#lib/server/memory/service';
 import { searchLocalFiles, toArtifact as localFsToArtifact } from '#lib/server/context-sources/local-fs';
-import { readMemoryPage } from '#lib/server/memory/wiki';
 import { createFileReadTool } from '#lib/server/tools/file-ops';
 import { createShellExecTool } from '#lib/server/tools/shell';
 import { createWebFetchTool } from '#lib/server/tools/web-fetch';
@@ -233,8 +232,13 @@ export function registerBuiltInTools(): void {
       description: 'Read thread memory.',
       sideEffectClass: 'read',
       supportsDryRun: true,
-      async execute(input: { workspaceId: string; channelId: string; threadTs: string }) {
-        return memory.getThreadMemory(input.workspaceId, input.channelId, input.threadTs);
+      async execute(input: { workspaceId: string; channelId: string; threadTs: string; targetUserId?: string }, context) {
+        return memory.getThreadMemory(
+          input.workspaceId,
+          input.channelId,
+          input.threadTs,
+          input.targetUserId ?? context.task?.targetUserId
+        );
       }
     },
     {
@@ -280,28 +284,14 @@ export function registerBuiltInTools(): void {
       description: 'Link an external artifact URL or identifier to the active thread memory.',
       sideEffectClass: 'write',
       supportsDryRun: true,
-      async execute(input: { channelId: string; threadTs: string; artifact: string }, context) {
-        return memory.linkThreadArtifact(context.workspace, input.channelId, input.threadTs, input.artifact);
-      }
-    },
-    {
-      name: 'memory.wiki.read_page',
-      description: 'Read one indexed Murph markdown memory page for stable or follow-up context.',
-      sideEffectClass: 'read',
-      inputSchema: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['path'],
-        properties: {
-          path: { type: 'string' },
-          maxChars: { type: 'number' }
-        }
-      },
-      knowledgeDomains: ['documentation', 'team', 'coordination'],
-      retrievalEligible: false,
-      supportsDryRun: true,
-      async execute(input: { path: string; maxChars?: number }) {
-        return await readMemoryPage(input.path, input.maxChars);
+      async execute(input: { channelId: string; threadTs: string; artifact: string; targetUserId?: string }, context) {
+        return memory.linkThreadArtifact(
+          context.workspace,
+          input.channelId,
+          input.threadTs,
+          input.artifact,
+          input.targetUserId ?? context.task?.targetUserId
+        );
       }
     },
     {

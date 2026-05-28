@@ -45,7 +45,8 @@ describe('sqlite schema cleanup', () => {
       '005_add_runtime_refresh_state',
       '006_add_workspace_subscriptions',
       '007_add_bot_installations',
-      '008_add_subscription_policy_mode'
+      '008_add_subscription_policy_mode',
+      '009_scope_thread_memory_by_subscriber'
     ]);
     expect(tableExists(db, 'runtime_refresh_state')).toBe(true);
     expect(columns(db, 'autopilot_sessions')).toEqual(expect.arrayContaining([
@@ -64,12 +65,14 @@ describe('sqlite schema cleanup', () => {
       '005_add_runtime_refresh_state',
       '006_add_workspace_subscriptions',
       '007_add_bot_installations',
-      '008_add_subscription_policy_mode'
+      '008_add_subscription_policy_mode',
+      '009_scope_thread_memory_by_subscriber'
     ]);
     expect(columns(db, 'workspace_subscriptions')).toEqual(expect.arrayContaining([
       'policy_profile_name',
       'policy_mode'
     ]));
+    expect(columns(db, 'thread_memory')).toContain('target_user_id');
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(false);
   });
 
@@ -224,7 +227,8 @@ describe('sqlite schema cleanup', () => {
       '005_add_runtime_refresh_state',
       '006_add_workspace_subscriptions',
       '007_add_bot_installations',
-      '008_add_subscription_policy_mode'
+      '008_add_subscription_policy_mode',
+      '009_scope_thread_memory_by_subscriber'
     ]);
     expect(columns(migrated, 'workspace_subscriptions')).toContain('policy_mode');
     expect(
@@ -235,6 +239,39 @@ describe('sqlite schema cleanup', () => {
     ).toBeUndefined();
     expect(existsSync(`${sqlitePath}.before-002_simplify_local_first_schema.bak`)).toBe(true);
     (migrated as unknown as { close?: () => void }).close?.();
+  });
+
+  it('migrates legacy thread memory to an unowned compatibility row', async () => {
+    vi.resetModules();
+    const sqlitePath = join(mkdtempSync(join(tmpdir(), 'murph-thread-memory-schema-')), 'murph.sqlite');
+    process.env.MURPH_SQLITE_PATH = sqlitePath;
+
+    const db = new Database(sqlitePath);
+    db.exec(`
+      CREATE TABLE thread_memory (
+        workspace_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        thread_ts TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, channel_id, thread_ts)
+      );
+      INSERT INTO thread_memory VALUES (
+        'workspace-1',
+        'C1',
+        '111.222',
+        '{"workspaceId":"workspace-1","channelId":"C1","threadTs":"111.222","summary":"legacy","linkedArtifacts":[],"openQuestions":[],"blockerNotes":[]}'
+      );
+    `);
+
+    const { runMigrations } = await import('#lib/server/persistence/migrator');
+    runMigrations(db, sqlitePath);
+
+    expect(columns(db, 'thread_memory')).toContain('target_user_id');
+    expect(
+      db.prepare(`SELECT target_user_id FROM thread_memory WHERE workspace_id = ? AND channel_id = ? AND thread_ts = ?`)
+        .get('workspace-1', 'C1', '111.222')
+    ).toEqual({ target_user_id: '' });
+    (db as unknown as { close?: () => void }).close?.();
   });
 
   it('rolls back failed migrations without recording them', async () => {

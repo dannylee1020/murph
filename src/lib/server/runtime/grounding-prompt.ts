@@ -13,7 +13,7 @@ function describeAvailableTools(context: Pick<ContextAssembly, 'availableTools'>
     return `- ${tool.name}${domains}: ${tool.description}`;
   });
   return [
-    'Tools you may call. Live retrieval is all-or-nothing: either call runtime.retrieve_all once for the current request, or call no live tools. If memory.wiki.read_page is available, use it only after the memory index clearly points to one stable/follow-up page.',
+    'Tools you may call. Live retrieval is all-or-nothing: either call runtime.retrieve_all once for the current request, or call no live tools.',
     ...lines
   ].join('\n');
 }
@@ -31,9 +31,7 @@ function describeGroundingDirective(directive?: GroundingDirective): string {
 function describeMemoryBoundary(): string {
   return [
     'Thread memory is conversation context, not source-of-truth evidence.',
-    'Murph markdown memory is cached evidence with provenance. Use memory.tool_wiki.index to choose one indexed page, then call memory.wiki.read_page only for stable or follow-up questions.',
-    'Do not rely on markdown memory for latest, current, today, now, status, changed, or source-of-truth requests; call live retrieval for those.',
-    'If memory index relevance is ambiguous, page provenance is missing, or freshness metadata says to refresh, call live retrieval instead of answering from memory.',
+    'Do not rely on stored memory for latest, current, today, now, status, changed, or source-of-truth requests; call live retrieval for those.',
     'The triggerMessage in the task is the current request and the primary authority.',
     'Use recentMessages only when the trigger clearly continues that same thread; do not let old thread history override an unrelated current trigger.',
     'Current-run artifacts may include broad fanout results from connected read-only sources; compare all relevant artifacts before drafting.',

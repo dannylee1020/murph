@@ -236,10 +236,11 @@ describe('Gateway session-first policy', () => {
 
     await gateway.handleTask(task());
 
-    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222');
+    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222', 'UOWNER');
     expect(memory.summary).toBe('Owner was asked to confirm status.');
     expect(memory.evidenceStatus?.status).toBe('complete');
     expect(memory.evidenceStatus?.attemptedTools).toEqual(['channel.fetch_thread']);
+    expect(store.getThreadMemory(workspace.id, 'C1', '111.222', 'UOTHER')).toBeUndefined();
   });
 
   it('does not persist thread summary when all tool calls failed', async () => {
@@ -254,7 +255,7 @@ describe('Gateway session-first policy', () => {
 
     await gateway.handleTask(task());
 
-    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222');
+    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222', 'UOWNER');
     expect(memory.summary).toBeUndefined();
     const runs = store.listAgentRuns(undefined, 1);
     const events = store.listAgentRunEvents(runs[0].id);
@@ -282,7 +283,7 @@ describe('Gateway session-first policy', () => {
 
     await gateway.handleTask(task());
 
-    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222');
+    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222', 'UOWNER');
     expect(memory.summary).toBe('Owner was asked to confirm status.');
     expect(memory.evidenceStatus).toMatchObject({
       status: 'partial',
@@ -308,12 +309,62 @@ describe('Gateway session-first policy', () => {
 
     await gateway.handleTask(task());
 
-    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222');
+    const memory = store.getOrCreateThreadMemory(workspace.id, 'C1', '111.222', 'UOWNER');
     expect(memory.summary).toBeUndefined();
     expect(memory.openQuestions).toEqual(['What time window should be checked?']);
     const runs = store.listAgentRuns(undefined, 1);
     const events = store.listAgentRunEvents(runs[0].id);
     expect(events.some((event) => event.type === 'agent.memory.skipped')).toBe(true);
+  });
+
+  it('does not run recurring subscriber jobs for paused subscriptions', async () => {
+    const { gateway, store, workspace, session, postMessage } = await setup({
+      sessionMode: 'auto_send_low_risk'
+    });
+    store.upsertWorkspaceSubscription({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      externalUserId: 'UOWNER',
+      displayName: 'Owner',
+      status: 'paused',
+      channelScopeMode: 'selected',
+      channelScope: ['C1']
+    });
+    const job = store.createRecurringJob({
+      workspaceId: workspace.id,
+      sessionId: session.id,
+      jobType: 'morning_digest',
+      localTime: '08:30',
+      timezone: 'America/Los_Angeles',
+      payload: { channelId: 'C1', ownerUserId: 'UOWNER' },
+      nextRunAt: new Date().toISOString()
+    });
+
+    await gateway.runRecurringJob(job);
+
+    expect(postMessage).not.toHaveBeenCalled();
+    expect(store.listAgentRuns(session.id, 10)).toEqual([]);
+  });
+
+  it('does not run recurring subscriber jobs without a subscription', async () => {
+    const { gateway, store, workspace, session, postMessage } = await setup({
+      sessionMode: 'auto_send_low_risk',
+      subscribeOwner: false
+    });
+    const job = store.createRecurringJob({
+      workspaceId: workspace.id,
+      sessionId: session.id,
+      jobType: 'morning_digest',
+      localTime: '08:30',
+      timezone: 'America/Los_Angeles',
+      payload: { channelId: 'C1', ownerUserId: 'UOWNER' },
+      nextRunAt: new Date().toISOString()
+    });
+
+    await gateway.runRecurringJob(job);
+
+    expect(postMessage).not.toHaveBeenCalled();
+    expect(store.listAgentRuns(session.id, 10)).toEqual([]);
   });
 
   it('abstains when the event actor is the session owner', async () => {

@@ -201,8 +201,9 @@ export const createCurrentSchema: Migration = {
         workspace_id TEXT NOT NULL,
         channel_id TEXT NOT NULL,
         thread_ts TEXT NOT NULL,
+        target_user_id TEXT NOT NULL DEFAULT '',
         data_json TEXT NOT NULL,
-        PRIMARY KEY (workspace_id, channel_id, thread_ts)
+        PRIMARY KEY (workspace_id, channel_id, thread_ts, target_user_id)
       );
 
       CREATE TABLE IF NOT EXISTS integration_connections (

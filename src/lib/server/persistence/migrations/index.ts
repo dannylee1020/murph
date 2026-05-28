@@ -6,6 +6,7 @@ import { addRuntimeRefreshState } from './005_add_runtime_refresh_state.js';
 import { addWorkspaceSubscriptions } from './006_add_workspace_subscriptions.js';
 import { addBotInstallations } from './007_add_bot_installations.js';
 import { addSubscriptionPolicyMode } from './008_add_subscription_policy_mode.js';
+import { scopeThreadMemoryBySubscriber } from './009_scope_thread_memory_by_subscriber.js';
 import type { Migration } from './types.js';
 
 export const migrations: Migration[] = [
@@ -16,5 +17,6 @@ export const migrations: Migration[] = [
   addRuntimeRefreshState,
   addWorkspaceSubscriptions,
   addBotInstallations,
-  addSubscriptionPolicyMode
+  addSubscriptionPolicyMode,
+  scopeThreadMemoryBySubscriber
 ];

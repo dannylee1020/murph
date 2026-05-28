@@ -213,6 +213,10 @@ export class Gateway {
       return;
     }
 
+    if (!this.subscriptionAllowsChannel(workspace, job.payload.ownerUserId, job.payload.channelId)) {
+      return;
+    }
+
     const message = this.composeMorningDigest(session);
     const threadTs = `digest:${job.id}:${Date.now()}`;
     const run = this.store.createAgentRun({
@@ -789,10 +793,14 @@ export class Gateway {
   }
 
   private subscriptionAllowsTask(workspace: Workspace, session: AutopilotSession, task: ContinuityTask): boolean {
-    const subscription = this.store.getWorkspaceSubscription(workspace.id, session.ownerUserId);
+    return this.subscriptionAllowsChannel(workspace, session.ownerUserId, task.thread.channelId);
+  }
+
+  private subscriptionAllowsChannel(workspace: Workspace, ownerUserId: string, channelId: string): boolean {
+    const subscription = this.store.getWorkspaceSubscription(workspace.id, ownerUserId);
     return Boolean(
       subscription?.status === 'active' &&
-      this.store.subscriptionAllowsChannelScope(subscription, [task.thread.channelId])
+      this.store.subscriptionAllowsChannelScope(subscription, [channelId])
     );
   }
 

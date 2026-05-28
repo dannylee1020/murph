@@ -83,7 +83,7 @@ ai:
 
 ## Storage
 
-Murph uses local SQLite by default. SQLite is the transactional source of truth for sessions, runs, events, tool calls, policy decisions, and action results.
+Murph uses local SQLite by default. SQLite is the transactional source of truth for sessions, runs, events, tool calls, policy decisions, action results, and runtime memory.
 
 The SQLite path is stored in the runtime host's `~/.murph/config.yaml`:
 
@@ -92,14 +92,14 @@ app:
   sqlitePath: data/murph.sqlite
 ```
 
-Murph also writes generated markdown memory for stable follow-up recall. Configure that path in the same file:
+Murph can also write generated markdown exports for operator inspection and debugging. Configure that path in the same file:
 
 ```yaml
 app:
   memoryPath: ~/.murph/memory
 ```
 
-Generated memory is not configuration. It is rebuilt from SQLite run history and lives under the configured `memoryPath`, usually as `index.md`, `threads/...`, and `sessions/...`. See [Memory](/docs/memory) for the runtime behavior.
+Generated exports are not configuration or agent-readable runtime memory. They are rebuilt from SQLite run history and live under the configured `memoryPath`, usually as `index.md`, `threads/...`, and `sessions/...`. See [Memory](/docs/memory) for the runtime behavior.
 
 Secrets are stored in plaintext at `~/.murph/.credentials` on the runtime host with owner-only file permissions. Runtime credential reads come from that file, not SQLite.
 

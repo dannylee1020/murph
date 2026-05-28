@@ -29,11 +29,11 @@ Use `yolo` only after setup and early sessions behave the way you expect. It is 
 
 Check triage after each early session. Triage shows the message, context, tool calls, policy decision, and final action.
 
-## Treat memory as recall
+## Treat Memory As Context
 
-Murph's markdown memory is useful for stable follow-up questions such as "what did we decide?" or "how did the last run handle this?" It is generated from prior run history and includes provenance.
+Murph's runtime memory is typed SQLite state scoped to the workspace, subscriber, and thread. Use it for continuity, preferences, and thread context.
 
-For latest, current, today, status, changed, or source-of-truth questions, rely on live connected sources. Murph should not answer fresh-state questions from memory alone.
+For latest, current, today, status, changed, or source-of-truth questions, rely on live connected sources. Murph should not answer fresh-state questions from stored memory alone.
 
 ## Reconnect after scope changes
 

@@ -97,9 +97,10 @@ export function getOrCreateThreadMemory(
   db: Db,
   workspaceId: string,
   channelId: string,
-  threadTs: string
+  threadTs: string,
+  targetUserId?: string
 ): ThreadMemory {
-  const existing = getThreadMemory(db, workspaceId, channelId, threadTs);
+  const existing = getThreadMemory(db, workspaceId, channelId, threadTs, targetUserId);
   if (existing) {
     return existing;
   }
@@ -108,6 +109,7 @@ export function getOrCreateThreadMemory(
     workspaceId,
     channelId,
     threadTs,
+    targetUserId,
     linkedArtifacts: [],
     openQuestions: [],
     blockerNotes: []
@@ -121,32 +123,48 @@ export function getThreadMemory(
   db: Db,
   workspaceId: string,
   channelId: string,
-  threadTs: string
+  threadTs: string,
+  targetUserId?: string
 ): ThreadMemory | undefined {
+  const rowTargetUserId = targetUserId ?? '';
   const row = db
     .prepare(
-      `SELECT data_json FROM thread_memory WHERE workspace_id = ? AND channel_id = ? AND thread_ts = ?`
+      `SELECT target_user_id, data_json FROM thread_memory
+       WHERE workspace_id = ? AND channel_id = ? AND thread_ts = ? AND target_user_id = ?`
     )
-    .get(workspaceId, channelId, threadTs) as { data_json: string } | undefined;
+    .get(workspaceId, channelId, threadTs, rowTargetUserId) as { target_user_id: string; data_json: string } | undefined;
 
   if (row) {
-    return parseJsonObject<ThreadMemory>(row.data_json, {
+    const parsed = parseJsonObject<ThreadMemory>(row.data_json, {
       workspaceId,
       channelId,
       threadTs,
+      targetUserId,
       linkedArtifacts: [],
       openQuestions: [],
       blockerNotes: []
     });
+    return {
+      ...parsed,
+      workspaceId,
+      channelId,
+      threadTs,
+      targetUserId: row.target_user_id || parsed.targetUserId
+    };
   }
   return undefined;
 }
 
 export function upsertThreadMemory(db: Db, memory: ThreadMemory): void {
+  const targetUserId = memory.targetUserId ?? '';
+  const data: ThreadMemory = {
+    ...memory,
+    targetUserId: memory.targetUserId || undefined
+  };
   db.prepare(
-    `INSERT INTO thread_memory (workspace_id, channel_id, thread_ts, data_json)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(workspace_id, channel_id, thread_ts) DO UPDATE SET
+    `INSERT INTO thread_memory (workspace_id, channel_id, thread_ts, target_user_id, data_json)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(workspace_id, channel_id, thread_ts, target_user_id) DO UPDATE SET
     data_json = excluded.data_json`
-  ).run(memory.workspaceId, memory.channelId, memory.threadTs, JSON.stringify(memory));
+  ).run(memory.workspaceId, memory.channelId, memory.threadTs, targetUserId, JSON.stringify(data));
 }

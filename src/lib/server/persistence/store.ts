@@ -161,11 +161,11 @@ export class Store {
   upsertWorkspaceMemory(next: WorkspaceMemory): void {
     memory.upsertWorkspaceMemory(this.db, next);
   }
-  getOrCreateThreadMemory(workspaceId: string, channelId: string, threadTs: string): ThreadMemory {
-    return memory.getOrCreateThreadMemory(this.db, workspaceId, channelId, threadTs);
+  getOrCreateThreadMemory(workspaceId: string, channelId: string, threadTs: string, targetUserId?: string): ThreadMemory {
+    return memory.getOrCreateThreadMemory(this.db, workspaceId, channelId, threadTs, targetUserId);
   }
-  getThreadMemory(workspaceId: string, channelId: string, threadTs: string): ThreadMemory | undefined {
-    return memory.getThreadMemory(this.db, workspaceId, channelId, threadTs);
+  getThreadMemory(workspaceId: string, channelId: string, threadTs: string, targetUserId?: string): ThreadMemory | undefined {
+    return memory.getThreadMemory(this.db, workspaceId, channelId, threadTs, targetUserId);
   }
   upsertThreadMemory(next: ThreadMemory): void {
     memory.upsertThreadMemory(this.db, next);
