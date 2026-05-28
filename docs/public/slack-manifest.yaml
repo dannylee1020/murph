@@ -6,7 +6,7 @@ features:
     always_online: false
   slash_commands:
     - command: /murph
-      description: Open the right Murph Personal bot for an offline owner
+      description: Open the right Murph Personal bot for a represented owner
       usage_hint: "@owner"
       should_escape: true
   shortcuts:

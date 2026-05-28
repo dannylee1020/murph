@@ -5,13 +5,13 @@ description: Understand Murph's runtime, sessions, evidence, policy, memory, and
 
 # Core Concepts
 
-Murph is a local-first handoff agent. Its core job is to watch selected async channels while you are offline, understand whether an incoming message needs you, gather relevant context, draft a bounded response, and apply policy before anything is sent.
+Murph is a self-hosted agent runtime for async work. Its core job is to receive messages, decide whether the message needs a represented owner, gather relevant context, draft a bounded response, and apply policy before anything is sent.
 
-It is not an always-on chatbot. The product is built around explicit sessions, local configuration, source-grounded answers, and reviewable audit trails.
+It is not an always-on chatbot. The product is built around one operator-controlled runtime host, explicit sessions, local configuration, source-grounded answers, and reviewable audit trails.
 
-## Local-first model
+## Runtime host model
 
-Murph runs as one deployable runtime bundle. The machine running that bundle is the Murph runtime host: it can be your laptop, a VPS, a home server, or another host you control. That host owns the runtime's config, credentials, SQLite database, generated memory, bot ingress, and agent execution.
+Murph runs as one deployable runtime bundle. The machine running that bundle is the Murph runtime host: it can be your laptop, a VPS, a home server, or another host you control. That host owns the runtime's config, credentials, SQLite database, generated memory, bot ingress, agent execution, integrations, policy, review, plugins, and operator UI.
 
 - SQLite stores sessions, subscriptions, runs, events, tool calls, policy decisions, action results, and indexing state.
 - `~/.murph/config.yaml` stores non-secret setup and runtime configuration on the runtime host.
@@ -21,31 +21,32 @@ Murph runs as one deployable runtime bundle. The machine running that bundle is 
 
 For a self-hosted install, credentials are not uploaded to Murph-run servers. They stay on the runtime host and only leave that host when Murph uses them to call the providers, channels, or integrations you connected. If you run Murph on a VPS or cloud VM, that machine is the runtime host and must be trusted with the bot and integration credentials configured there.
 
-## Agent runtime
+## How async work flows through Murph
 
-The agent runtime is the center of Murph. It turns channel activity into a policy-gated action.
+The agent runtime is the center of Murph. It turns personal-bot DMs and channel activity into policy-gated actions.
 
 At a high level, the runtime loop is:
 
 1. A channel adapter receives a Slack, Discord, or plugin channel event.
-2. The adapter normalizes the event into a task with workspace, thread, actor, target user, and trigger message details.
-3. The gateway checks for an active session that matches the workspace, owner, channel scope, and handoff window.
-4. The runtime assembles context from the current thread, session memory, workspace settings, selected skills, generated memory index, and enabled integrations.
-5. The tool planner decides which read-only retrieval tools are available and whether grounding is required before drafting.
-6. The model drafts a proposed action such as reply, ask, redirect, defer, remind, or abstain.
-7. Policy classification and deterministic policy gates decide whether the action may send, must queue for review, or should abstain.
-8. Murph executes the allowed action or creates a review item.
-9. Run events, tool results, policy decisions, and final outcomes are stored for triage, audit, and future memory indexing.
+2. The adapter normalizes the event into a task with workspace, thread, actor, represented owner or subscriber, and trigger message details.
+3. For personal bots, explicit DMs route to the owner represented by that bot installation. For channel bots, shared-channel events route through active workspace subscriptions and channel scope.
+4. The gateway checks for an active session that matches the workspace, represented owner, channel scope, and coverage window.
+5. The runtime assembles context from the current thread, session memory, workspace settings, selected skills, generated memory index, and enabled integrations.
+6. The tool planner decides which read-only retrieval tools are available and whether grounding is required before drafting.
+7. The model drafts a proposed action such as reply, ask, redirect, defer, remind, or abstain.
+8. Policy classification and deterministic policy gates decide whether the action may send, must queue for review, or should abstain.
+9. Murph executes the allowed action or creates a review item.
+10. Run events, tool results, policy decisions, and final outcomes are stored for triage, audit, and future memory indexing.
 
 This is why source access, policy, and session scope matter. Murph is useful when it can answer from the current thread or connected sources and conservative when it cannot.
 
 ## Sessions
 
-A session is a bounded offline handoff window. You start a session before going offline, choose which channels Murph may watch, and set the policy posture for that handoff.
+A session is a bounded async-work coverage window. You start a session when Murph should cover work for a represented owner, choose which channels Murph may watch, and set the policy posture for that session.
 
 Sessions carry:
 
-- the owner identity Murph is covering for
+- the represented owner or subscriber Murph is covering for
 - workspace and channel scope
 - start and stop time
 - policy mode and selected profile
@@ -140,4 +141,4 @@ All three surfaces operate on the same local configuration and runtime state.
 
 Murph ships defaults for channels, integrations, tools, skills, policy profiles, providers, and storage, but those defaults are not a closed set.
 
-New channels, integrations, skills, policies, model providers, search providers, and fetch backends should plug into existing extension points instead of changing the handoff workflow. For most local needs, start with scoped plugins under `~/.murph/plugins`.
+New channels, integrations, skills, policies, model providers, search providers, and fetch backends should plug into existing extension points instead of changing the async-work runtime flow. For most local needs, start with scoped plugins under `~/.murph/plugins`.

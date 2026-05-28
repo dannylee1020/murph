@@ -21,4 +21,4 @@ Use the [CLI](/docs/usage/cli) when you want terminal-first setup, process contr
 
 ## Best practices
 
-Use [Best Practices](/docs/usage/best-practices) when you want the safest default operating pattern for local-first handoffs.
+Use [Best Practices](/docs/usage/best-practices) when you want the safest default operating pattern for self-hosted async-work coverage.

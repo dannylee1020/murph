@@ -5,7 +5,7 @@ description: Work on Murph locally and open focused pull requests.
 
 # Contributing
 
-Murph is a local-first Node and Vite app. The full contribution guide lives in [`CONTRIBUTING.md`](https://github.com/dannylee1020/murph/blob/main/CONTRIBUTING.md).
+Murph is a self-hosted Node and Vite runtime bundle. The full contribution guide lives in [`CONTRIBUTING.md`](https://github.com/dannylee1020/murph/blob/main/CONTRIBUTING.md).
 
 ## Local development
 

@@ -1,6 +1,6 @@
 ---
 title: Best Practices
-description: Operate Murph safely during local-first handoffs.
+description: Operate Murph safely as a self-hosted async-work runtime.
 ---
 
 # Best Practices

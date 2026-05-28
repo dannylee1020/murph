@@ -5,12 +5,12 @@ description: Connect messaging surfaces that Murph can watch.
 
 # Channels
 
-Channels are messaging surfaces that Murph can watch during a bounded handoff session. A single Murph runtime can now host two bot roles:
+Channels are messaging surfaces that Murph can use for async-work coverage during bounded sessions. A single Murph runtime can host two bot roles:
 
-- Personal bot: people DM this bot when they need Murph to draft on behalf of the represented owner.
-- Channel bot: this shared bot watches subscribed channels during explicit handoff sessions and routes messages to the right owner.
+- Personal bot: people explicitly DM this bot when they need Murph to draft on behalf of the represented owner. Murph does not read arbitrary private DMs between two people.
+- Channel bot: this shared bot watches subscribed channels during active sessions and routes messages to the right represented owner through subscription and channel-scope rules.
 
-Use separate Slack or Discord app identities when you enable both roles. Runtime storage, SQLite, memory, config, and credentials still live together on the machine hosting Murph.
+Use separate Slack or Discord app identities when you enable both roles. Runtime storage, SQLite, memory, config, credentials, policy, review, and plugin code still live together on the machine hosting Murph.
 
 ## Built-in channels
 

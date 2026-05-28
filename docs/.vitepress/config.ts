@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress';
 
 const siteUrl = 'https://murph-agent.com';
 const siteDescription =
-    'Local-first handoff agent for staying offline without losing context.';
+    'Self-hosted agent runtime for async work across personal DMs and shared channels.';
 const socialPreviewUrl = `${siteUrl}/img/social-preview.png`;
 
 export default defineConfig({
@@ -167,7 +167,7 @@ export default defineConfig({
             ],
         },
         footer: {
-            message: 'Local-first handoff agent for async work.',
+            message: 'Self-hosted agent runtime for async work.',
             copyright: `Copyright © ${new Date().getFullYear()} Murph`,
         },
         outline: {

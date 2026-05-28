@@ -4,20 +4,22 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-b96f22.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-murph--agent.com-b96f22.svg)](https://murph-agent.com/docs)
 
-Murph is a self-hosted, local-first handoff agent for the hours you are away.
+Murph is a self-hosted agent runtime for async work across personal DMs and shared channels.
 
-Start a session before you log off. Murph watches the channels you choose, pulls context from connected integrations and tools, drafts grounded replies, applies your policy, and leaves a review trail for every decision.
+Run one Murph host anywhere you choose: your laptop, a VPS, a home server, or another machine you control. That host owns bot ingress, agent execution, SQLite state, generated memory, config, credentials, integrations, policy, review, plugins, and the operator UI.
+
+Connect Slack or Discord, enable personal DM coverage, shared-channel coverage, or both, then start a session when Murph should cover async work for a represented owner. Murph pulls context from connected integrations and tools, drafts grounded replies, applies your policy, and leaves a review trail for every decision.
 
 | What you need | What Murph does |
 | --- | --- |
-| **Stay offline without losing momentum** | Watches selected messenger channels while you are away |
+| **Cover async work** | Routes personal DMs and subscribed shared-channel messages through one runtime host |
 | **Keep control explicit** | Sends safe work, queues risky work, and skips anything it should not answer |
 | **Use your real context** | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
 | **Review what happened** | Shows what was sent, queued, skipped, and why |
-| **Run it yourself** | Keeps SQLite state, generated memory, config, and credentials on the Murph runtime host you control |
+| **Run it yourself** | Keeps runtime state, generated memory, config, and credentials on the Murph host you control |
 
 
-Murph is built for people who want async continuity without handing over control: indie developers, founders, operators, and distributed teams.
+Murph is built for people and teams that want async work covered without handing over control: indie developers, founders, operators, and distributed teams.
 
 ## Getting started
 

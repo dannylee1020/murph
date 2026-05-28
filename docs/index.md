@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Murph
-description: Local-first handoff agent for staying offline without losing context.
+description: Self-hosted agent runtime for async work across personal DMs and shared channels.
 sidebar: false
 aside: false
 editLink: false

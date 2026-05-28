@@ -5,7 +5,7 @@ description: Get Murph installed, configured, and running.
 
 # Quickstart
 
-Murph is a self-hosted, local-first handoff agent for handling messaging channels while you are offline. It is extensible by design: you choose the runtime host, channels, data sources, and policy.
+Murph is a self-hosted agent runtime for async work across personal DMs and shared channels. It is extensible by design: you choose the runtime host, channels, data sources, and policy.
 
 ## 1. Install
 
@@ -25,7 +25,7 @@ Run the setup wizard:
 murph setup
 ```
 
-Setup walks through the basics: AI provider, messenger credentials, identity, watched channels, schedule, and policy.
+Setup walks through the basics: AI provider, messenger credentials, personal or channel coverage, identity, watched channels, schedule, and policy.
 
 ## 3. Start
 

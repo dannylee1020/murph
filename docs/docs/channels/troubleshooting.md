@@ -31,6 +31,12 @@ Slack search requires the `search:read` user scope. Refresh it with:
 murph setup slack --reconnect-search
 ```
 
+## Slack personal DMs disabled
+
+If Slack says users cannot send messages to the Murph Personal app, open the personal Slack app dashboard and check **App Home**. The **Messages** tab must be enabled and writable. The personal bot also needs `chat:write`, `im:history`, `im:write`, and the `message.im` bot event.
+
+Reconnect or reinstall the personal Slack app after changing those settings.
+
 ## Missing channels
 
 If no Slack channels load, reconnect Slack and verify the app is installed in the expected workspace.

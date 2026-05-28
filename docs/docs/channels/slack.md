@@ -7,7 +7,7 @@ description: Connect Slack as a Murph channel.
 
 Slack setup can create the Murph Slack app from a manifest, or you can configure the app manually in Slack's dashboard. The browser setup flow and `murph setup slack` both support manifest automation; manual dashboard setup is the fallback when automation is not available.
 
-For both personal and channel behavior in one runtime, create two Slack apps: one personal bot for DMs and one channel bot for watched-channel handoff. Use `/api/slack/personal/install`, `/api/slack/personal/events`, and `SLACK_PERSONAL_*` variables for the personal app. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for the channel app. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
+For both personal and channel behavior in one runtime, create two Slack apps: one personal bot for explicit DMs to the represented owner's Murph bot and one channel bot for shared-channel coverage. Use `/api/slack/personal/install`, `/api/slack/personal/events`, and `SLACK_PERSONAL_*` variables for the personal app. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for the channel app. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
 
 For the common both-role setup, install and authorize both Slack apps in the same workspace. If the Slack CLI selects one workspace but OAuth authorizes another, Murph treats the OAuth-connected workspace as the source of truth and asks whether to adopt it.
 
@@ -46,7 +46,7 @@ The legacy public manifest is a channel-bot compatibility alias:
 /slack-manifest.yaml
 ```
 
-The manifests set the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode. Use the channel manifest for watched-channel handoff and the personal manifest for 1:1 DMs to the personal bot.
+The manifests set the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode. Use the channel manifest for shared-channel coverage and the personal manifest for 1:1 DMs to the personal bot.
 
 The browser setup flow, `murph setup slack --role channel`, and `murph setup slack --role personal` can create or update the matching app from the matching manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it. If you select both channel and personal Slack coverage in browser setup, Murph reuses the token in memory only long enough to create the second selected Slack app.
 
@@ -89,7 +89,7 @@ In **Event Subscriptions** -> **Subscribe to bot events**, verify these channel 
 - `message.channels`
 - `message.groups`
 
-## Step 5: Check Personal Bot Scopes And Events
+## Step 5: Check Personal Bot DMs, Scopes, And Events
 
 For the personal bot, verify these bot token scopes:
 
@@ -98,6 +98,8 @@ For the personal bot, verify these bot token scopes:
 - `im:write`
 
 The personal bot does not need channel, group, MPIM, or user token scopes for v1.
+
+In **App Home**, verify the **Messages** tab is enabled and not read-only. This is the Slack DM surface people use to message the Murph Personal bot. Murph's personal Slack manifest enables it automatically, but manual app setup must turn it on.
 
 In **Event Subscriptions** -> **Subscribe to bot events**, verify this personal bot event:
 
@@ -256,6 +258,17 @@ Then restart Murph or rerun:
 murph setup slack
 ```
 
+### Personal Bot DMs Are Disabled
+
+If Slack says users cannot send messages to the Murph Personal app, open the personal Slack app dashboard and check **App Home**:
+
+1. The **Messages** tab is enabled.
+2. The **Messages** tab is not read-only.
+3. The personal bot has `chat:write`, `im:history`, and `im:write`.
+4. The personal bot subscribes to `message.im` events.
+
+Reinstall or reconnect the personal Slack app after changing scopes or App Home settings.
+
 ### Channels Do Not Load
 
 Reconnect Slack and verify the app is installed in the expected workspace.
@@ -278,7 +291,7 @@ murph setup slack
 
 ## Runtime Path
 
-Each Slack handoff follows the same path:
+Each Slack channel run follows the same path:
 
 ```text
 Slack channel -> context -> grounded draft -> policy -> send | queue | skip

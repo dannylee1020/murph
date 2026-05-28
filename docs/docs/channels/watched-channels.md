@@ -9,7 +9,7 @@ Murph only watches channels included in the active session scope.
 
 ## Selected channels
 
-Selected channels are the safest default. Choose the specific channels Murph should cover during handoff sessions.
+Selected channels are the safest default. Choose the specific channels Murph should cover during active async-work sessions.
 
 Use selected channels first when testing a new Slack workspace or Discord server. This keeps early runs limited to channels where you have already checked app access and policy behavior.
 
@@ -21,7 +21,7 @@ Use this only after verifying the app or bot has the access you expect. For Slac
 
 ## Session scope
 
-Setup saves default channel choices. A session uses those defaults when you start a bounded offline handoff.
+Setup saves default channel choices. A session uses those defaults when you start a bounded async-work coverage window.
 
 Re-run channel setup when the default scope changes:
 

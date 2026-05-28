@@ -4,6 +4,9 @@ features:
   bot_user:
     display_name: Murph Personal
     always_online: false
+  app_home:
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
 oauth_config:
   redirect_urls:
     - http://localhost:5173/api/slack/oauth/callback

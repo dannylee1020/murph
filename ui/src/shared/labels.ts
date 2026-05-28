@@ -13,6 +13,6 @@ export function roleLabel(role: BotRole): string {
 
 export function roleDescription(role: BotRole): string {
     return role === 'personal'
-        ? 'Receives DMs for the represented owner while they are away'
-        : 'Watches subscribed channels during handoff sessions';
+        ? 'Receives explicit DMs for the represented owner'
+        : 'Watches subscribed channels during active sessions';
 }

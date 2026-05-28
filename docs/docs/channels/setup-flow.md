@@ -5,15 +5,15 @@ description: Connect messaging channels to Murph.
 
 # Setup Flow
 
-Channel setup connects messaging bots and saves the local defaults Murph needs for direct-message coverage and handoff sessions.
+Channel setup connects messaging bots and saves the local defaults Murph needs for personal DM coverage and shared-channel async-work sessions.
 
 Murph does not require a single runtime mode anymore. The same runtime can run:
 
-- a personal bot for DMs to the owner's stand-in bot;
-- a channel bot for shared channel handoffs;
+- a personal bot for explicit DMs to the represented owner's Murph bot;
+- a channel bot for shared-channel coverage during active sessions;
 - both bot roles side by side.
 
-Use separate provider app identities when you enable both roles. The host machine still owns the runtime bundle: credentials, config, SQLite OLTP data, and memory all stay with the runtime.
+Use separate provider app identities when you enable both roles. The host machine still owns the runtime bundle: credentials, config, SQLite OLTP data, generated memory, integrations, policy, review, plugins, and the operator UI all stay with the runtime.
 
 ## CLI setup
 
@@ -43,7 +43,7 @@ murph setup channels
 
 Use `--role both` to configure both personal and channel app identities for one provider. Watched-channel selection only runs when the channel role is enabled.
 
-Slack setup is mostly automated through the Slack manifest and OAuth flow. Discord setup requires a few manual Developer Portal steps first: create the bot, copy the bot token and client secret, add the exact OAuth redirect URI, and enable Message Content intent. Use [Discord](/docs/channels/discord) for the step-by-step checklist.
+Slack setup is mostly automated through the Slack manifest and OAuth flow. The personal Slack manifest enables the App Home Messages tab so people can DM the Murph Personal bot; if you configure Slack manually, turn that tab on yourself. Discord setup requires a few manual Developer Portal steps first: create the bot, copy the bot token and client secret, add the exact OAuth redirect URI, and enable Message Content intent. Use [Discord](/docs/channels/discord) for the step-by-step checklist.
 
 ## Browser setup
 
@@ -80,7 +80,7 @@ Channel defaults include:
 - the OAuth owner identity for that workspace/server
 - selected channels or all accessible channels
 
-Personal-bot installs also record the represented owner on the bot installation. Channel-bot installs use `workspace_subscriptions` and watched-channel defaults to decide which user can be routed from a channel event.
+Personal-bot installs also record the represented owner on the bot installation, so explicit DMs to that bot can route to the right owner. Channel-bot installs use `workspace_subscriptions` and watched-channel defaults to decide which subscribed user can be routed from a shared-channel event.
 
 If identity is missing, reconnect Slack or Discord. `murph setup identity` verifies identity, but it cannot manually set a different owner.
 

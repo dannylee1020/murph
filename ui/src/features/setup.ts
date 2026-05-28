@@ -1355,7 +1355,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
         <p>${
             role === 'personal'
                 ? 'This app handles direct messages for the represented owner.'
-                : 'This app watches the channels you choose during handoff sessions.'
+                : 'This app watches the channels you choose during active sessions.'
         }</p>
         ${slackConnectGuide({ role, roleStatus, connected: slackConnected, ownerMissing: slackOwnerMissing })}
         ${
@@ -1418,7 +1418,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
         <p>${
             role === 'personal'
                 ? 'This app identifies the represented owner for personal DM handling.'
-                : 'This app watches selected Discord channels during handoff sessions.'
+                : 'This app watches selected Discord channels during active sessions.'
         }</p>
         ${discordConnectGuide({ role, roleStatus, prepared, ownerMissing: discordOwnerMissing, interactionsUrl: setup.discord.interactionsUrl })}
         ${
@@ -1677,7 +1677,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
             <span class="member-avatar-placeholder">#</span>
             <span class="channel-copy">
               <strong>Selected channels</strong>
-              <small>Recommended for a focused handoff</small>
+              <small>Recommended for focused async-work coverage</small>
             </span>
           </label>
           <label class="member-item channel-item ${selection.channelScopeMode === 'all_accessible' ? 'selected' : ''}">

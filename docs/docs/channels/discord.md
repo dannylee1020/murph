@@ -7,11 +7,11 @@ description: Connect Discord as a Murph channel.
 
 Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup discord` validate the app, open the authorization flow, and save the server, your OAuth identity, and watched channels.
 
-For both personal and channel behavior in one runtime, create two Discord applications: one personal bot for DMs and one channel bot for watched-channel handoff. Use `/api/discord/personal/install` and `DISCORD_PERSONAL_*` variables for the personal bot. Use `/api/discord/channel/install` and `DISCORD_CHANNEL_*` variables for the channel bot. The unqualified `/api/discord/install` endpoint and legacy `DISCORD_*` variables remain compatibility aliases for the channel bot.
+For both personal and channel behavior in one runtime, create two Discord applications: one personal bot for explicit DMs to the represented owner's Murph bot and one channel bot for shared-channel coverage. Use `/api/discord/personal/install` and `DISCORD_PERSONAL_*` variables for the personal bot. Use `/api/discord/channel/install` and `DISCORD_CHANNEL_*` variables for the channel bot. The unqualified `/api/discord/install` endpoint and legacy `DISCORD_*` variables remain compatibility aliases for the channel bot.
 
 The Discord channel bot installs into the server Murph should watch. The Discord personal bot uses OAuth identify to record the represented owner for personal DM handling; it is not the server channel reader.
 
-Murph does not read private Discord DMs between two people. For offline-owner DMs, teammates use the Murph application command or user command to open the right owner's Murph Personal bot, then continue the request in that bot DM.
+Murph does not read private Discord DMs between two people. For represented-owner DMs, teammates use the Murph application command or user command to open the right owner's Murph Personal bot, then continue the request in that bot DM.
 
 ## What You Need
 
@@ -68,6 +68,8 @@ On the **Bot** page, enable this privileged gateway intent:
 
 Murph tries to configure the required intent flag and default install permissions through Discord's API. If Discord rejects that update, enable Message Content manually and continue.
 
+Discord does not have a separate App Home-style toggle for Murph personal bot DMs. Personal DM availability depends on the bot being installed, Murph registering the personal command when Discord allows it, and the user's/server's Discord privacy settings allowing the bot DM to open.
+
 ## Step 6: Run Discord Setup
 
 Run:
@@ -95,7 +97,7 @@ Then Murph will:
 - save the Discord interaction public key when Discord returns it;
 - check the OAuth redirect URI when Discord returns it;
 - configure bot install permissions when Discord allows it;
-- register the Murph personal handoff commands when Discord allows it;
+- register the Murph personal DM commands when Discord allows it;
 - print and open the Discord authorization URL.
 
 ## Step 7: Approve The Discord Authorization
