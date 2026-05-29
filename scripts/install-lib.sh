@@ -510,9 +510,9 @@ prune_install_payload() {
 install_cli() {
   section "Installing CLI"
 
-  local product_cli="murph-team/cli/murph"
+  local product_cli="app/team/cli/murph"
   if [[ "$product" == "personal" ]]; then
-    product_cli="murph-personal/cli/murph"
+    product_cli="app/personal/cli/murph"
   fi
 
   if [[ ! -f "$product_cli" ]]; then
@@ -614,10 +614,10 @@ maybe_start() {
     y|Y|yes|YES)
       if [[ -x "$bin_dir/murph" ]]; then
         "$bin_dir/murph" setup --quick
-      elif [[ "$product" == "personal" && -x murph-personal/cli/murph ]]; then
-        murph-personal/cli/murph setup --quick
-      elif [[ -x murph-team/cli/murph ]]; then
-        murph-team/cli/murph setup --quick
+      elif [[ "$product" == "personal" && -x app/personal/cli/murph ]]; then
+        app/personal/cli/murph setup --quick
+      elif [[ -x app/team/cli/murph ]]; then
+        app/team/cli/murph setup --quick
       elif command -v murph >/dev/null 2>&1; then
         murph setup --quick
       else

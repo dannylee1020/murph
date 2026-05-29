@@ -13,7 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.MURPH_APP_DIR || path.resolve(here, '../../..');
 
 function staticRootFor(distribution: RuntimeDistribution): string {
-  return path.resolve(repoRoot, 'dist', distribution === 'personal' ? 'murph-personal' : 'murph-team', 'ui');
+  return path.resolve(repoRoot, 'dist', distribution === 'personal' ? 'app/personal' : 'app/team', 'ui');
 }
 
 export interface MurphServerOptions {

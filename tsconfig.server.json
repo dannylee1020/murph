@@ -12,8 +12,8 @@
     "shared/*.d.ts",
     "shared/*.ts",
     "shared/server/**/*.ts",
-    "murph-team/runtime/**/*.ts",
-    "murph-personal/runtime/**/*.ts"
+    "app/team/runtime/**/*.ts",
+    "app/personal/runtime/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

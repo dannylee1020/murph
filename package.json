@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/murph-team/runtime/server.js",
+  "main": "dist/app/team/runtime/server.js",
   "bin": {
-    "murph": "murph-team/cli/murph"
+    "murph": "app/team/cli/murph"
   },
   "engines": {
     "node": ">=20"
@@ -27,8 +27,8 @@
     "build:ui:team": "MURPH_UI_PRODUCT=team vite build --config shared/ui/vite.config.ts",
     "build:ui:personal": "MURPH_UI_PRODUCT=personal vite build --config shared/ui/vite.config.ts",
     "start": "npm run start:team",
-    "start:team": "node dist/murph-team/runtime/server.js",
-    "start:personal": "node dist/murph-personal/runtime/server.js",
+    "start:team": "node dist/app/team/runtime/server.js",
+    "start:personal": "node dist/app/personal/runtime/server.js",
     "preview": "npm run start",
     "architecture:map": "node scripts/generate-architecture-map.mjs",
     "docs:sync-installer": "mkdir -p docs/public && cp install.sh docs/public/install.sh && cp install-personal.sh docs/public/install-personal.sh",

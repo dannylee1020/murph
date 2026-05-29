@@ -115,10 +115,10 @@ require_runtime() {
 runtime_entrypoint() {
   case "$1" in
     personal)
-      printf 'dist/murph-personal/runtime/server.js\n'
+      printf 'dist/app/personal/runtime/server.js\n'
       ;;
     team|"")
-      printf 'dist/murph-team/runtime/server.js\n'
+      printf 'dist/app/team/runtime/server.js\n'
       ;;
     *)
       fail "Unknown Murph distribution: $1"
@@ -696,7 +696,7 @@ dangerous_path() {
 
 is_murph_app_dir() {
   local dir="$1"
-  [[ -f "$dir/package.json" && ( -f "$dir/murph-team/cli/murph" || -f "$dir/murph-personal/cli/murph" ) ]] &&
+  [[ -f "$dir/package.json" && ( -f "$dir/app/team/cli/murph" || -f "$dir/app/personal/cli/murph" ) ]] &&
     grep -q '"name"[[:space:]]*:[[:space:]]*"murph"' "$dir/package.json"
 }
 
@@ -734,7 +734,7 @@ remove_cli_link() {
   local dry_run="$1"
   local cli_name cli_path
 
-  for cli_name in murph murph-team murph-personal; do
+  for cli_name in murph; do
     cli_path="$MURPH_BIN_DIR/$cli_name"
     [[ -e "$cli_path" || -L "$cli_path" ]] || continue
 
