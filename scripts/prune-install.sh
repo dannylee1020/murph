@@ -27,6 +27,7 @@ remove_path "docs/public/_headers"
 remove_path "docs/public/robots.txt"
 remove_path "docs/public/img"
 remove_path "docs/public/install.sh"
+remove_path "docs/public/install-personal.sh"
 remove_path "docs/public/architecture-map.html"
 
 printf 'Pruned install-only files from %s.\n' "$APP_DIR"

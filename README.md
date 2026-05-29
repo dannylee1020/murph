@@ -34,7 +34,7 @@ curl -fsSL https://murph-agent.com/install.sh | bash
 Team is the default install. For Personal, use:
 
 ```bash
-curl -fsSL https://murph-agent.com/install.sh | bash -s -- --product personal
+curl -fsSL https://murph-agent.com/install-personal.sh | bash
 ```
 
 Run setup on the host where you installed Murph:

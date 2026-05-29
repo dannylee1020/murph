@@ -31,7 +31,7 @@
     "start:personal": "node dist/murph-personal/runtime/server.js",
     "preview": "npm run start",
     "architecture:map": "node scripts/generate-architecture-map.mjs",
-    "docs:sync-installer": "mkdir -p docs/public && cp install.sh docs/public/install.sh",
+    "docs:sync-installer": "mkdir -p docs/public && cp install.sh docs/public/install.sh && cp install-personal.sh docs/public/install-personal.sh",
     "docs:dev": "npm run docs:sync-installer && vitepress dev docs",
     "docs:build": "npm run docs:sync-installer && vitepress build docs",
     "docs:start": "vitepress preview docs",

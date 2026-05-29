@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export MURPH_DISTRIBUTION=team
+export MURPH_DISTRIBUTION=personal
 
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
 while [[ -L "$SCRIPT_SOURCE" ]]; do
@@ -39,7 +39,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf 'Installing Murph Team into %s\n' "$install_dir"
+printf 'Installing Murph Personal into %s\n' "$install_dir"
 printf 'Downloading %s\n' "$SOURCE_ARCHIVE_URL"
 curl -fsSL "$SOURCE_ARCHIVE_URL" -o "$archive_file"
 tar -xzf "$archive_file" -C "$tmp_dir"

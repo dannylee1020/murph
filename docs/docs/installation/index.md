@@ -23,10 +23,10 @@ curl -fsSL https://murph-agent.com/install.sh | bash
 For Personal:
 
 ```bash
-curl -fsSL https://murph-agent.com/install.sh | bash -s -- --product personal
+curl -fsSL https://murph-agent.com/install-personal.sh | bash
 ```
 
-By default, Murph installs Team into `~/.murph/app`, places the product-local CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`. Install Personal with `--product personal`.
+By default, Murph installs Team into `~/.murph/app`, places the product-local CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`. Install Personal with `install-personal.sh`.
 
 After building, the installer removes development-only payload such as CI workflows, tests, and docs-site source from `~/.murph/app`. It keeps the app source, UI source, policy profiles, runtime skills, bundled Murph Agent skill templates, themes, and setup assets so product CLI build, update, setup, and local extension work still function.
 
@@ -34,9 +34,11 @@ If you want to inspect the installer first:
 
 ```bash
 curl -fsSL https://murph-agent.com/install.sh -o install.sh
+curl -fsSL https://murph-agent.com/install-personal.sh -o install-personal.sh
 bash -n install.sh
+bash -n install-personal.sh
 bash install.sh
-bash install.sh --product personal
+bash install-personal.sh
 ```
 
 ## Install from a checkout
@@ -45,7 +47,7 @@ If you already have the repository:
 
 ```bash
 ./install.sh
-./install.sh --product personal
+./install-personal.sh
 ```
 
 ## Start and stop

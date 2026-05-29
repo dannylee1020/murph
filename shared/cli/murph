@@ -366,7 +366,7 @@ status() {
 doctor() {
   require_app
   cd "$MURPH_APP_DIR"
-  ./install.sh --doctor
+  MURPH_DISTRIBUTION="$(default_distribution)" bash scripts/install-lib.sh --doctor
 }
 
 setup_command() {
@@ -871,7 +871,11 @@ uninstall_command() {
     printf '\nDry run complete. Nothing was removed.\n'
   else
     printf '\nMurph uninstall complete.\n'
-    printf 'Reinstall with: curl -fsSL https://murph-agent.com/install.sh | bash\n'
+    if [[ "$(default_distribution)" == "personal" ]]; then
+      printf 'Reinstall with: curl -fsSL https://murph-agent.com/install-personal.sh | bash\n'
+    else
+      printf 'Reinstall with: curl -fsSL https://murph-agent.com/install.sh | bash\n'
+    fi
   fi
 }
 

@@ -15,10 +15,10 @@ Run the installer from any terminal:
 curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
-For Personal, pass the product option:
+For Personal, use the Personal installer:
 
 ```bash
-curl -fsSL https://murph-agent.com/install.sh | bash -s -- --product personal
+curl -fsSL https://murph-agent.com/install-personal.sh | bash
 ```
 
 The installer downloads Murph, installs minimal runtime pre-reqs, builds the app, installs setup helpers such as Slack CLI, creates local defaults, and installs the product-local `murph` CLI.

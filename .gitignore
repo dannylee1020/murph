@@ -8,6 +8,7 @@ dist/
 .svelte-kit/
 .vite/
 docs/public/install.sh
+docs/public/install-personal.sh
 
 # Runtime data
 data/
@@ -39,6 +40,7 @@ pnpm-debug.log*
 *.todo
 *.html
 scripts/*
+!scripts/install-lib.sh
 !scripts/install-deps.sh
 !scripts/prune-install.sh
 images/
