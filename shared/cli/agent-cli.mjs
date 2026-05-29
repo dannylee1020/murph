@@ -40,6 +40,7 @@ const color = {
 };
 
 const CUSTOM_TOOL_NAMES = [
+    'murph_product_context',
     'murph_setup_status',
     'murph_setup_doctor',
     'murph_runtime_health',
@@ -453,6 +454,69 @@ function textResult(details, terminate = false) {
         details,
         terminate,
     };
+}
+
+function activeDistribution() {
+    return process.env.MURPH_DISTRIBUTION === 'personal' ? 'personal' : 'team';
+}
+
+function productContext(setupStatus) {
+    const setupDistribution =
+        setupStatus?.distribution === 'personal' || setupStatus?.distribution === 'team'
+            ? setupStatus.distribution
+            : undefined;
+    const distribution = setupDistribution || activeDistribution();
+    const personal = distribution === 'personal';
+    return {
+        distribution,
+        product: personal ? 'Murph Personal' : 'Murph Team',
+        productMode: setupStatus?.productMode || (personal ? 'personal' : 'channel'),
+        runtimePurpose: personal
+            ? 'Local/private runtime for one user.'
+            : 'Shared host/channel runtime for team use.',
+        runtimeUrl: murphUrl,
+        appDir,
+        murphHome,
+        availableCapabilities: personal
+            ? ['setup', 'local integrations', 'plugins', 'skills', 'policies', 'credentials']
+            : ['setup', 'team integrations', 'plugins', 'skills', 'policies', 'admin', 'subscribers', 'dashboard links'],
+        unavailableCapabilities: personal
+            ? ['team subscriber admin', 'team dashboard links', 'team control-plane operations']
+            : ['personal-local privacy guarantees', 'private-machine data access unless configured as an integration'],
+        setupStatus: setupStatus
+            ? {
+                  reachable: true,
+                  distribution: setupStatus.distribution,
+                  productMode: setupStatus.productMode,
+                  botRoles: setupStatus.botRoles,
+                  rolesReady: setupStatus.rolesReady,
+              }
+            : { reachable: false },
+    };
+}
+
+async function readProductContext() {
+    try {
+        return productContext(await requestJson('GET', '/api/setup/status'));
+    } catch (error) {
+        return {
+            ...productContext(),
+            setupStatus: {
+                reachable: false,
+                error: error instanceof Error ? error.message : String(error),
+            },
+        };
+    }
+}
+
+function runtimeContextPrompt() {
+    const context = productContext();
+    return [
+        `Active runtime: ${context.product}.`,
+        `Runtime purpose: ${context.runtimePurpose}`,
+        `Available capability groups: ${context.availableCapabilities.join(', ')}.`,
+        `Unavailable in this runtime: ${context.unavailableCapabilities.join(', ')}.`,
+    ].join('\n');
 }
 
 function clampLimit(value, fallback = 5) {
@@ -973,6 +1037,16 @@ function validatePluginRoot(pluginRoot) {
 function createMurphTools() {
     return [
         defineTool({
+            name: 'murph_product_context',
+            label: 'Murph product context',
+            description:
+                'Read the active Murph product context and Team/Personal capability boundary.',
+            promptSnippet:
+                'murph_product_context: inspect whether this agent is configuring Murph Team or Murph Personal before product-sensitive work.',
+            parameters: Type.Object({}),
+            execute: async () => textResult(await readProductContext()),
+        }),
+        defineTool({
             name: 'murph_setup_status',
             label: 'Murph setup status',
             description: 'Read Murph setup readiness from the running server.',
@@ -1232,6 +1306,10 @@ function murphSystemPrompt(sourceEdits) {
     return [
         'You are Murph Agent, a user-facing coding agent embedded in the Murph CLI.',
         'Your job is to help the local operator set up Murph, debug Murph, build scoped integrations, create skills/connectors, and adjust policy configuration.',
+        runtimeContextPrompt(),
+        'If a request is valid only for the other Murph product, say it is unsupported in the active runtime and suggest the matching Team or Personal deployment.',
+        'Do not perform Team subscriber/admin/dashboard-link work in Murph Personal. Do not claim Personal local privacy or private-machine data guarantees in Murph Team.',
+        'Use murph_product_context when the active product or product capability boundary is relevant or unclear.',
         'Murph async messenger runtime is separate. Do not present yourself as the async runtime brain.',
         'Built-in Murph Agent skills are Pi skills for this local setup/coding agent. They are separate from Murph runtime skills used by the async messenger runtime.',
         'Use relevant Murph Agent skills for workflow guidance. Use murph_docs_search for user-facing docs questions and murph_architecture_search for runtime, plugin, channel, policy, and config architecture questions before falling back to generic grep.',
