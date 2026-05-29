@@ -4,7 +4,9 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-b96f22.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-murph--agent.com-b96f22.svg)](https://murph-agent.com/docs)
 
-Murph is a self-hosted agent runtime for async work in two distributions: Murph Team for shared channels and Murph Personal for owner DMs.
+Murph is a self-hosted agent runtime for async work, built to keep teams moving across time zones without trading away control, context, or review.
+
+Run Murph Team for shared channels, or Murph Personal for private owner DMs and local data sources.
 
 Run one Murph host anywhere you choose: your laptop, a VPS, a home server, or another machine you control. That host owns bot ingress, agent execution, SQLite state, generated memory, config, credentials, integrations, policy, review, plugins, and the operator UI.
 
