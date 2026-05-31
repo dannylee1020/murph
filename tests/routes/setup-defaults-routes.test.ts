@@ -963,6 +963,26 @@ describe('setup defaults routes', () => {
     expect(response.body.roleStatus.personal.selected).toBe(true);
   });
 
+  it('does not call channel discovery from the personal distribution', async () => {
+    const { request, workspace } = await setup({
+      productMode: 'personal',
+      botRolesEnv: 'personal',
+      skipSlackToken: true
+    });
+    const fetchMock = vi.fn().mockRejectedValue(new Error('channel discovery should not run'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await request('GET', `/api/setup/channels?provider=slack&workspaceId=${workspace.id}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      ok: false,
+      error: 'channel_role_not_enabled',
+      channels: []
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('constrains config-backed bot roles to the active team distribution', async () => {
     const { request } = await setup();
     const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');

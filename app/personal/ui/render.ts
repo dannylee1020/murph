@@ -1,3 +1,4 @@
+import { renderSettings } from '../../../shared/ui/features/admin';
 import { renderDashboard } from '../../../shared/ui/features/dashboard';
 import {
     renderActivity,
@@ -15,8 +16,16 @@ export async function renderPersonal(): Promise<void> {
     try {
         const pathname = window.location.pathname;
 
-        if (pathname === '/admin' || pathname === '/settings' || pathname === '/me') {
+        if (pathname === '/me') {
             history.replaceState(null, '', '/');
+        }
+
+        if (pathname === '/admin' || pathname === '/settings') {
+            if (pathname === '/admin') {
+                history.replaceState(null, '', '/settings');
+            }
+            await renderSettings();
+            return;
         }
 
         if (window.location.pathname === '/setup') {

@@ -85,6 +85,9 @@ darkSchemeQuery.addEventListener('change', () => {
 });
 
 export function activeNavHref(pathname: string): string {
+    if (productSurface === 'personal' && (pathname === '/admin' || pathname === '/settings')) {
+        return '/settings';
+    }
     if (pathname === '/settings') return '/admin';
     if (pathname === '/runs' || pathname === '/audit') return '/activity';
     return pathname;
@@ -139,7 +142,11 @@ export function shell(content: string): void {
     const themePreference = getThemePreference();
     const visibleNavItems =
         productSurface === 'personal'
-            ? navItems.filter((item) => item.href !== '/admin')
+            ? navItems.map((item) =>
+                  item.href === '/admin'
+                      ? { href: '/settings', label: 'Settings' }
+                      : item,
+              )
             : navItems;
     app.innerHTML = `
     <div class="app-shell route-${slug}">

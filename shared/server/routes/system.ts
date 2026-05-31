@@ -26,6 +26,7 @@ import {
   buildSetupRoleStatus,
   normalizeProviderBotRoleMap,
   normalizeSetupBotRoles,
+  selectedProviderSetupBotRoles,
   selectedSetupBotRoles,
   selectedSetupRolesReady,
   workspaceChannelsConfigured
@@ -863,6 +864,10 @@ export const systemRoutes: Route[] = [
     const workspace = getProviderWorkspace(provider, url.searchParams.get('workspaceId') ?? undefined);
     if (!workspace) {
       sendJson(res, { ok: false, error: 'workspace_required' }, 400);
+      return;
+    }
+    if (!selectedProviderSetupBotRoles(effectiveSetupDefaults(), workspace.provider).includes('channel')) {
+      sendJson(res, { ok: false, error: 'channel_role_not_enabled', channels: [] }, 400);
       return;
     }
     sendJson(res, { ok: true, workspaceId: workspace.id, provider: workspace.provider, channels: await getChannelRegistry().listChannels(workspace) });

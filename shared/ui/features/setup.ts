@@ -389,13 +389,24 @@ function ensureSetupProviderState(
         }
     }
     if (setupWizardState.selectedCoverage.length === 0) {
-            setupWizardState.selectedCoverage =
-                setupWizardState.selectedProviders.flatMap((provider) =>
-                    setupWizardState.botRoles.map(
-                        (role) => `${provider}:${role}` as CoverageKey,
-                    ),
-                );
+        setupWizardState.selectedCoverage =
+            setupWizardState.selectedProviders.flatMap((provider) =>
+                setupWizardState.botRoles.map(
+                    (role) => `${provider}:${role}` as CoverageKey,
+                ),
+            );
     } else {
+        const providersBeforeRoleFilter = Array.from(
+            new Set(
+                setupWizardState.selectedCoverage.map((key) => {
+                    const [provider] = key.split(':') as [
+                        SetupChannelProvider,
+                        BotRole,
+                    ];
+                    return provider;
+                }),
+            ),
+        );
         setupWizardState.selectedCoverage =
             setupWizardState.selectedCoverage.filter((key) => {
                 const [, role] = key.split(':') as [
@@ -406,12 +417,23 @@ function ensureSetupProviderState(
             });
         syncCoverageStateFromKeys();
         if (setupWizardState.selectedCoverage.length === 0) {
+            setupWizardState.selectedProviders =
+                setupWizardState.selectedProviders.length > 0
+                    ? setupWizardState.selectedProviders
+                    : providersBeforeRoleFilter.length > 0
+                      ? providersBeforeRoleFilter
+                      : inferSetupProviders(setup, defaults);
+            if (setupWizardState.selectedProviders.length === 0) {
+                setupWizardState.selectedProviders = ['slack'];
+            }
+            setupWizardState.botRoles = allowedRoles;
             setupWizardState.selectedCoverage =
                 setupWizardState.selectedProviders.flatMap((provider) =>
                     setupWizardState.botRoles.map(
                         (role) => `${provider}:${role}` as CoverageKey,
                     ),
                 );
+            syncCoverageStateFromKeys();
         }
     }
 

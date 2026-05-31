@@ -225,8 +225,7 @@ function providerModesDialog(): string {
 }
 
 export async function renderSettings(): Promise<void> {
-    setTitle('Murph Admin');
-    loading('Admin');
+    loading('Settings');
 
     const params = new URLSearchParams(window.location.search);
     let settingsNotice = '';
@@ -265,7 +264,10 @@ export async function renderSettings(): Promise<void> {
           )
         : { ok: false, workspaceId: '', integrations: [] };
     const isTeamDistribution = setup.distribution !== 'personal';
+    setTitle(isTeamDistribution ? 'Murph Admin' : 'Murph Settings');
     const runtimeLabel = distributionName(setup);
+    const settingsLabel = isTeamDistribution ? 'Admin' : 'Settings';
+    const setupMode = isTeamDistribution ? 'channel' : 'personal';
     const subscriptionsPayload: SubscriptionsPayload =
         isTeamDistribution && selectedWorkspaceId
         ? await getJson<SubscriptionsPayload>(
@@ -318,8 +320,8 @@ export async function renderSettings(): Promise<void> {
     <section class="page-head console-head">
       <div>
         <p class="eyebrow">Setup</p>
-        <h1>Admin</h1>
-        <p>Connect the services ${escapeHtml(runtimeLabel)} needs to watch messages and draft useful replies.</p>
+        <h1>${escapeHtml(settingsLabel)}</h1>
+        <p>Connect the services ${escapeHtml(runtimeLabel)} needs to ${isTeamDistribution ? 'watch messages' : 'receive owner DMs'} and draft useful replies.</p>
       </div>
       ${consoleStateHtml(setup.provider.configured && channelConnected ? 'Operational' : 'Needs setup', setup.provider.configured && channelConnected ? 'ok' : 'off')}
     </section>
@@ -343,7 +345,7 @@ export async function renderSettings(): Promise<void> {
           <div><dt>Setup</dt><dd>${setup.slack.oauthConfigured && setup.slack.socketConfigured ? 'Ready to install' : 'Missing app settings'}</dd></div>
         </dl>
         <div class="actions">
-          <a class="button" href="/setup?provider=slack">${setup.slack.installed ? 'Reconnect Slack' : 'Connect Slack'}</a>
+          <a class="button" href="/setup?provider=slack&mode=${setupMode}">${setup.slack.installed ? 'Reconnect Slack' : 'Connect Slack'}</a>
           <button type="button" class="secondary manage-provider-modes" data-provider="slack">Coverage</button>
         </div>
       </article>
@@ -357,7 +359,7 @@ export async function renderSettings(): Promise<void> {
           <div><dt>Setup</dt><dd>${discordSetupDetail}</dd></div>
         </dl>
         <div class="actions">
-          <a class="button" href="/setup?provider=discord">${setup.discord.installed ? 'Reconnect Discord' : 'Connect Discord'}</a>
+          <a class="button" href="/setup?provider=discord&mode=${setupMode}">${setup.discord.installed ? 'Reconnect Discord' : 'Connect Discord'}</a>
           <button type="button" class="secondary manage-provider-modes" data-provider="discord">Coverage</button>
         </div>
       </article>
