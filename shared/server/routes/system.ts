@@ -14,8 +14,8 @@ import {
   SETUP_CONFIG_KEYS,
   murphConfigPath,
   murphConfigExists,
-  readMurphConfig,
-  updateMurphSetupDefaults
+  pruneChannelRuntimeConfig,
+  readMurphConfig
 } from '#shared/server/setup/config-file';
 import { getSlackService } from '#shared/server/channels/slack/service';
 import { getDiscordService } from '#shared/server/channels/discord/service';
@@ -120,10 +120,11 @@ function slackAppUrl(appId: string, section: 'general' | 'oauth' | 'event-subscr
   return `https://api.slack.com/apps/${encodeURIComponent(appId)}/${section}`;
 }
 
-function slackRoleAppId(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal'): string | undefined {
+function slackRoleAppId(role: 'channel' | 'personal'): string | undefined {
+  const roleConfig = getStore().getBotAppConfig('slack', role);
   return role === 'personal'
-    ? process.env.SLACK_PERSONAL_APP_ID ?? config.channels?.slack?.bots?.personal?.appId
-    : process.env.SLACK_CHANNEL_APP_ID ?? config.channels?.slack?.bots?.channel?.appId ?? process.env.SLACK_APP_ID ?? config.channels?.slack?.appId;
+    ? process.env.SLACK_PERSONAL_APP_ID ?? roleConfig?.appId
+    : process.env.SLACK_CHANNEL_APP_ID ?? process.env.SLACK_APP_ID ?? roleConfig?.appId;
 }
 
 function slackRoleSetupValues(role: BotRole, credentials: SlackManifestCredentials): Record<string, string | undefined> {
@@ -161,10 +162,11 @@ function slackRoleAppTokenValues(role: BotRole, appToken: string): Record<string
     : { SLACK_CHANNEL_APP_TOKEN: appToken, SLACK_APP_TOKEN: appToken };
 }
 
-function discordRoleClientId(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal'): string | undefined {
+function discordRoleClientId(role: 'channel' | 'personal'): string | undefined {
+  const roleConfig = getStore().getBotAppConfig('discord', role);
   return role === 'personal'
-    ? process.env.DISCORD_PERSONAL_CLIENT_ID ?? config.channels?.discord?.bots?.personal?.clientId
-    : process.env.DISCORD_CHANNEL_CLIENT_ID ?? config.channels?.discord?.bots?.channel?.clientId ?? process.env.DISCORD_CLIENT_ID ?? config.channels?.discord?.clientId;
+    ? process.env.DISCORD_PERSONAL_CLIENT_ID ?? roleConfig?.clientId ?? roleConfig?.appId
+    : process.env.DISCORD_CHANNEL_CLIENT_ID ?? process.env.DISCORD_CLIENT_ID ?? roleConfig?.clientId ?? roleConfig?.appId;
 }
 
 function setupRoleWorkspace(
@@ -196,7 +198,8 @@ function setupRoleWorkspaceMatch(
     .filter((entry) => (
       entry.provider === provider &&
       entry.role === role &&
-      entry.status === 'active'
+      entry.status === 'active' &&
+      botInstallationMatchesCurrentApp(entry, provider, role)
     ))
     .map((installation) => {
       const workspace = workspaces.find((entry) => entry.id === installation.workspaceId);
@@ -219,6 +222,24 @@ function setupRoleWorkspaceMatch(
     if (aReadable !== bReadable) return aReadable ? -1 : 1;
     return Date.parse(b.installation.installedAt) - Date.parse(a.installation.installedAt);
   })[0];
+}
+
+function currentBotAppId(provider: 'slack' | 'discord', role: 'channel' | 'personal'): string | undefined {
+  if (provider === 'slack') {
+    return slackRoleAppId(role);
+  }
+  return discordRoleClientId(role);
+}
+
+function botInstallationMatchesCurrentApp(
+  installation: ReturnType<ReturnType<typeof getStore>['listBotInstallations']>[number],
+  provider: 'slack' | 'discord',
+  role: 'channel' | 'personal'
+): boolean {
+  const appId = currentBotAppId(provider, role);
+  if (!appId || installation.appId !== appId) return false;
+  if (role === 'personal' && !installation.representedUserId) return false;
+  return true;
 }
 
 function canReadSlackBotInstallationToken(botInstallationId?: string): boolean {
@@ -278,8 +299,8 @@ function canReadDiscordBotInstallationToken(
   );
 }
 
-function slackRoleLinks(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal', appUrl: string) {
-  const appId = slackRoleAppId(config, role);
+function slackRoleLinks(role: 'channel' | 'personal', appUrl: string) {
+  const appId = slackRoleAppId(role);
   return {
     appId,
     callbackUrl: `${appUrl}/api/slack/oauth/callback`,
@@ -291,11 +312,13 @@ function slackRoleLinks(config: ReturnType<typeof readMurphConfig>, role: 'chann
   };
 }
 
-function discordRoleLinks(config: ReturnType<typeof readMurphConfig>, role: 'channel' | 'personal', appUrl: string) {
-  const clientId = discordRoleClientId(config, role);
-  const env = getRuntimeEnv();
+function discordRoleLinks(role: 'channel' | 'personal', appUrl: string) {
+  const clientId = discordRoleClientId(role);
+  const redirectUri = process.env.DISCORD_REDIRECT_URI ??
+    getStore().getBotAppConfig('discord', role)?.redirectUri ??
+    `${appUrl}/api/discord/oauth/callback`;
   return {
-    redirectUri: env.discordRedirectUri ?? `${appUrl}/api/discord/oauth/callback`,
+    redirectUri,
     developerPortalUrl: clientId ? discordDeveloperPortalOAuthUrl(clientId) : 'https://discord.com/developers/applications',
     botConfigUrl: clientId ? discordDeveloperPortalBotUrl(clientId) : undefined
   };
@@ -354,6 +377,42 @@ function normalizeSetupDefaults(value: Partial<SetupDefaults>): SetupDefaults {
     workdayStartHour: Number.isFinite(value.workdayStartHour) ? value.workdayStartHour : undefined,
     workdayEndHour: Number.isFinite(value.workdayEndHour) ? value.workdayEndHour : undefined
   };
+}
+
+function mergeWorkspaceOwners(
+  currentOwners: SetupDefaults['workspaceOwners'],
+  incomingOwners: SetupDefaults['workspaceOwners']
+): SetupDefaults['workspaceOwners'] {
+  const owners = new Map<string, { workspaceId: string; ownerUserId: string; ownerDisplayName?: string }>();
+  for (const owner of currentOwners ?? []) {
+    if (!owner.workspaceId?.trim() || !owner.ownerUserId?.trim()) continue;
+    owners.set(owner.workspaceId.trim(), {
+      workspaceId: owner.workspaceId.trim(),
+      ownerUserId: owner.ownerUserId.trim(),
+      ownerDisplayName: owner.ownerDisplayName?.trim() || owner.ownerUserId.trim()
+    });
+  }
+  for (const owner of incomingOwners ?? []) {
+    if (!owner.workspaceId?.trim() || !owner.ownerUserId?.trim()) continue;
+    owners.set(owner.workspaceId.trim(), {
+      workspaceId: owner.workspaceId.trim(),
+      ownerUserId: owner.ownerUserId.trim(),
+      ownerDisplayName: owner.ownerDisplayName?.trim() || owner.ownerUserId.trim()
+    });
+  }
+  return [...owners.values()];
+}
+
+function mergeSetupDefaultsPatch(currentDefaults: SetupDefaults, body: Partial<SetupDefaults>): SetupDefaults {
+  return normalizeSetupDefaults({
+    ...currentDefaults,
+    ...body,
+    ...(body.workspaceOwners !== undefined
+      ? {
+          workspaceOwners: mergeWorkspaceOwners(currentDefaults.workspaceOwners, body.workspaceOwners)
+        }
+      : {})
+  });
 }
 
 function getSetupWorkspace(workspaceId?: string): Workspace | undefined {
@@ -526,11 +585,13 @@ function sendOwnerIdentityError(
 function validateOwnerUpdates(
   body: Partial<SetupDefaults> & { workspaceId?: string },
   workspace: Workspace,
-  currentDefaults: SetupDefaults
+  currentDefaults: SetupDefaults,
+  nextDefaults: SetupDefaults
 ): ReturnType<typeof requireMatchingSetupOwner> {
   const ownerUserId = body.ownerUserId?.trim();
-  const ownerTouched = body.ownerUserId !== undefined ||
-    body.ownerDisplayName !== undefined ||
+  const ownerDisplayName = body.ownerDisplayName?.trim();
+  const ownerTouched = Boolean(ownerUserId) ||
+    Boolean(ownerDisplayName) ||
     body.workspaceOwners !== undefined;
 
   if (!ownerTouched) {
@@ -551,12 +612,6 @@ function validateOwnerUpdates(
   }
 
   if (body.workspaceOwners !== undefined) {
-    const requestedOwners = new Map(
-      (body.workspaceOwners ?? [])
-        .map((owner) => [owner.workspaceId?.trim(), owner.ownerUserId?.trim()] as const)
-        .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1]))
-    );
-
     for (const owner of body.workspaceOwners ?? []) {
       const ownerWorkspace = owner.workspaceId ? getStore().getWorkspaceById(owner.workspaceId) : undefined;
       if (!ownerWorkspace) continue;
@@ -567,17 +622,30 @@ function validateOwnerUpdates(
     for (const lockedWorkspace of getStore().listWorkspaces().filter((entry) => providerLocksOwnerIdentity(entry.provider))) {
       const existingOwner = setupOwnerForWorkspace(lockedWorkspace, currentDefaults);
       if (!existingOwner) continue;
-      const requestedOwner = requestedOwners.get(lockedWorkspace.id);
-      if (requestedOwner === undefined) {
+      const nextOwner = setupOwnerForWorkspace(lockedWorkspace, nextDefaults);
+      if (!nextOwner?.ownerUserId) {
         return { ok: false, error: 'owner_identity_required', owner: existingOwner };
       }
-      if (requestedOwner !== existingOwner.ownerUserId) {
+      if (nextOwner.ownerUserId !== existingOwner.ownerUserId) {
         return { ok: false, error: 'owner_identity_mismatch', owner: existingOwner };
       }
     }
   }
 
   return requireMatchingSetupOwner(workspace, ownerUserId, currentDefaults);
+}
+
+function setupDefaultsBodyWithoutEmptyOwnerFields(
+  body: Partial<SetupDefaults> & { workspaceId?: string }
+): Partial<SetupDefaults> & { workspaceId?: string } {
+  const next = { ...body };
+  if (next.ownerUserId !== undefined && !next.ownerUserId.trim()) {
+    delete next.ownerUserId;
+  }
+  if (next.ownerDisplayName !== undefined && !next.ownerDisplayName.trim()) {
+    delete next.ownerDisplayName;
+  }
+  return next;
 }
 
 function getProviderWorkspace(provider?: string, workspaceId?: string): Workspace | undefined {
@@ -599,10 +667,16 @@ function getProviderWorkspace(provider?: string, workspaceId?: string): Workspac
 }
 
 function effectiveSetupDefaults(): SetupDefaults {
-  return normalizeSetupDefaults({
-    ...(getStore().getAppSettings().setupDefaults ?? {}),
-    ...(readMurphConfig().setup ?? {})
+  return normalizeSetupDefaults(getStore().getAppSettings().setupDefaults ?? {});
+}
+
+function writeSetupDefaults(defaults: SetupDefaults): void {
+  const settings = getStore().getAppSettings();
+  getStore().upsertAppSettings({
+    ...settings,
+    setupDefaults: defaults
   });
+  pruneChannelRuntimeConfig();
 }
 
 function envOverrides(): string[] {
@@ -637,6 +711,10 @@ export const systemRoutes: Route[] = [
     const setupDefaults = effectiveSetupDefaults();
     const workspaces = getStore().listWorkspaces();
     const botInstallations = getStore().listBotInstallations();
+    const currentBotInstallations = botInstallations.filter((installation) => {
+      if (installation.provider !== 'slack' && installation.provider !== 'discord') return true;
+      return botInstallationMatchesCurrentApp(installation, installation.provider, installation.role);
+    });
     const slackWorkspace = getSlackService().getUsableWorkspace();
     const slackOwnerConfigured = Boolean(
       slackWorkspace && resolveSetupDefaultsForWorkspace(slackWorkspace, setupDefaults).ownerUserId
@@ -685,7 +763,7 @@ export const systemRoutes: Route[] = [
     const botRoles = selectedSetupBotRoles(setupDefaults);
     const roleStatus = buildSetupRoleStatus({
       defaults: setupDefaults,
-      botInstallations,
+      botInstallations: currentBotInstallations,
       userConfigured
     });
 
@@ -697,7 +775,7 @@ export const systemRoutes: Route[] = [
       providerBotRoles: setupDefaults.providerBotRoles ?? {},
       roleStatus,
       rolesReady: selectedSetupRolesReady(roleStatus),
-      botInstallations: botInstallations.map((installation) => ({
+      botInstallations: currentBotInstallations.map((installation) => ({
         id: installation.id,
         workspaceId: installation.workspaceId,
         provider: installation.provider,
@@ -709,9 +787,12 @@ export const systemRoutes: Route[] = [
       })),
       slack: {
         installed: Boolean(slackWorkspace),
-        oauthConfigured: Boolean(env.slackClientId && env.slackClientSecret),
+        oauthConfigured: getSlackService().isRoleOAuthConfigured('channel') || getSlackService().isRoleOAuthConfigured('personal'),
         signingSecretConfigured: Boolean(env.slackSigningSecret),
-        eventsMode: env.slackEventsMode,
+        eventsMode: process.env.SLACK_EVENTS_MODE ??
+          getStore().getBotAppConfig('slack', 'channel')?.eventsMode ??
+          getStore().getBotAppConfig('slack', 'personal')?.eventsMode ??
+          'socket',
         socketConfigured: Boolean(env.slackAppToken),
         roles: {
           channel: {
@@ -721,16 +802,16 @@ export const systemRoutes: Route[] = [
             installed: setupSlackRoleInstalled(workspaces, botInstallations, 'channel'),
             ownerConfigured: slackOwnerConfigured,
             workspace: setupRoleWorkspace(workspaces, botInstallations, 'slack', 'channel'),
-            links: slackRoleLinks(config, 'channel', appUrl)
+            links: slackRoleLinks('channel', appUrl)
           },
           personal: {
             configured: getSlackService().isRoleConfigured('personal'),
             oauthConfigured: getSlackService().isRoleOAuthConfigured('personal'),
             socketConfigured: getSlackService().isRoleSocketConfigured('personal'),
             installed: setupSlackRoleInstalled(workspaces, botInstallations, 'personal'),
-            representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId)),
+            representedOwnerConfigured: currentBotInstallations.some((installation) => installation.provider === 'slack' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId)),
             workspace: setupRoleWorkspace(workspaces, botInstallations, 'slack', 'personal'),
-            links: slackRoleLinks(config, 'personal', appUrl)
+            links: slackRoleLinks('personal', appUrl)
           }
         },
         ingress: getIngressHealth('slack'),
@@ -747,25 +828,25 @@ export const systemRoutes: Route[] = [
       discord: {
         installed: discordChannelInstalled || discordPersonalInstalled,
         botTokenConfigured: discordConfigured,
-        clientIdConfigured: Boolean(env.discordClientId),
+        clientIdConfigured: Boolean(discordRoleClientId('channel') || discordRoleClientId('personal')),
         clientSecretConfigured: Boolean(env.discordClientSecret),
         publicKeyConfigured: Boolean(env.discordPublicKey || getDiscordService().publicKey('channel') || getDiscordService().publicKey('personal')),
         interactionsUrl: `${appUrl}/api/discord/interactions`,
-        oauthConfigured: Boolean(env.discordClientId && env.discordClientSecret),
+        oauthConfigured: getDiscordService().isRoleConfigured('channel') || getDiscordService().isRoleConfigured('personal'),
         roles: {
           channel: {
             configured: getDiscordService().isRoleConfigured('channel'),
             installed: discordChannelInstalled,
             ownerConfigured: discordOwnerConfigured,
             workspace: setupRoleWorkspace(workspaces, botInstallations, 'discord', 'channel'),
-            links: discordRoleLinks(config, 'channel', appUrl)
+            links: discordRoleLinks('channel', appUrl)
           },
           personal: {
             configured: getDiscordService().isRoleConfigured('personal'),
             installed: discordPersonalInstalled,
-            representedOwnerConfigured: botInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId)),
+            representedOwnerConfigured: currentBotInstallations.some((installation) => installation.provider === 'discord' && installation.role === 'personal' && installation.status === 'active' && Boolean(installation.representedUserId)),
             workspace: setupRoleWorkspace(workspaces, botInstallations, 'discord', 'personal'),
-            links: discordRoleLinks(config, 'personal', appUrl)
+            links: discordRoleLinks('personal', appUrl)
           }
         },
         ownerConfigured: discordOwnerConfigured,
@@ -817,7 +898,7 @@ export const systemRoutes: Route[] = [
       providerBotRoles: normalizeProviderBotRoleMap(body.providerBotRoles)
     });
     syncSetupSubscriptions(defaults);
-    updateMurphSetupDefaults(defaults);
+    writeSetupDefaults(defaults);
     const refresh = await refreshRuntimeState({
       reason: 'setup_defaults_updated',
       deferIfRunActive: true
@@ -889,7 +970,8 @@ export const systemRoutes: Route[] = [
   }),
   route('PUT', '/api/setup/defaults', async ({ req, res }) => {
     await ensureRuntimeInitialized();
-    const body = await readJson<Partial<SetupDefaults> & { workspaceId?: string }>(req);
+    const rawBody = await readJson<Partial<SetupDefaults> & { workspaceId?: string }>(req);
+    const body = setupDefaultsBodyWithoutEmptyOwnerFields(rawBody);
     const workspace = getSetupWorkspace(body.workspaceId);
 
     if (!workspace) {
@@ -898,16 +980,12 @@ export const systemRoutes: Route[] = [
     }
 
     const currentDefaults = effectiveSetupDefaults();
-    const ownerCheck = validateOwnerUpdates(body, workspace, currentDefaults);
+    const defaults = mergeSetupDefaultsPatch(currentDefaults, body);
+    const ownerCheck = validateOwnerUpdates(body, workspace, currentDefaults, defaults);
     if (!ownerCheck.ok) {
       sendOwnerIdentityError(res, ownerCheck);
       return;
     }
-
-    const defaults = normalizeSetupDefaults({
-      ...currentDefaults,
-      ...body
-    });
 
     if (defaults.ownerUserId) {
       getStore().upsertUser({
@@ -933,7 +1011,7 @@ export const systemRoutes: Route[] = [
     }
 
     syncSetupSubscriptions(defaults);
-    updateMurphSetupDefaults(defaults);
+    writeSetupDefaults(defaults);
     const refresh = await refreshRuntimeState({
       reason: 'setup_defaults_updated',
       workspaceIds: [workspace.id],
@@ -1061,8 +1139,14 @@ export const systemRoutes: Route[] = [
       });
       const configuration = await discord.configureApplication(botToken);
       const appUrl = publicAppUrl(req, url);
-      const env = getRuntimeEnv();
-      const redirectUri = env.discordRedirectUri ?? `${appUrl}/api/discord/oauth/callback`;
+      const redirectUri = process.env.DISCORD_REDIRECT_URI ??
+        getStore().getBotAppConfig('discord', role)?.redirectUri ??
+        `${appUrl}/api/discord/oauth/callback`;
+      getStore().upsertBotAppConfig({
+        provider: 'discord',
+        role,
+        redirectUri
+      });
       const redirectUriRegistered = bot.applicationRedirectUris === undefined
         ? undefined
         : bot.applicationRedirectUris.includes(redirectUri);

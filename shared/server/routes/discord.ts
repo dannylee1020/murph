@@ -9,7 +9,7 @@ import { getStore } from '#shared/server/persistence/store';
 import { openDiscordPersonalHandoff } from '#shared/server/channels/personal-handoff';
 import { readBody, readJson, redirect, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
-import { readMurphConfig, updateMurphSetupDefaults } from '#shared/server/setup/config-file';
+import { pruneChannelRuntimeConfig } from '#shared/server/setup/config-file';
 import type { DiscordInstallResult } from '#shared/server/channels/discord/service';
 import type { BotRole, SetupDefaults } from '#shared/types';
 
@@ -158,11 +158,7 @@ function discordInteractionResponse(text: string): Record<string, unknown> {
 }
 
 function mergedSetupDefaults(): SetupDefaults {
-  const store = getStore();
-  return {
-    ...(store.getAppSettings().setupDefaults ?? {}),
-    ...(readMurphConfig().setup ?? {})
-  };
+  return getStore().getAppSettings().setupDefaults ?? {};
 }
 
 function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): void {
@@ -170,19 +166,26 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
 
   const store = getStore();
   const currentDefaults = mergedSetupDefaults();
+  const ownerDisplayName = result.authedUser.displayName || result.authedUser.id;
+  const replacedPersonalWorkspaceIds = result.role === 'personal'
+    ? new Set(store.listBotInstallations({ provider: 'discord', role: 'personal' }).map((installation) => installation.workspaceId))
+    : new Set<string>();
   const nextOwners = [
-    ...(currentDefaults.workspaceOwners ?? []).filter((owner) => owner.workspaceId !== result.workspace.id),
+    ...(currentDefaults.workspaceOwners ?? []).filter((owner) => (
+      owner.workspaceId !== result.workspace.id &&
+      !replacedPersonalWorkspaceIds.has(owner.workspaceId)
+    )),
     {
       workspaceId: result.workspace.id,
       ownerUserId: result.authedUser.id,
-      ownerDisplayName: result.authedUser.displayName || result.authedUser.id
+      ownerDisplayName
     }
   ];
 
   const user = store.upsertUser({
     workspaceId: result.workspace.id,
     externalUserId: result.authedUser.id,
-    displayName: result.authedUser.displayName || result.authedUser.id,
+    displayName: ownerDisplayName,
     timezone: currentDefaults.timezone,
     workdayStartHour: currentDefaults.workdayStartHour,
     workdayEndHour: currentDefaults.workdayEndHour
@@ -202,10 +205,26 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
         []
     });
   }
-  updateMurphSetupDefaults({
-    ...currentDefaults,
-    workspaceOwners: nextOwners
+  store.upsertAppSettings({
+    ...store.getAppSettings(),
+    setupDefaults: {
+      ...currentDefaults,
+      workspaceOwners: nextOwners,
+      ...(currentDefaults.ownerUserId?.trim() && result.role !== 'personal'
+        ? {}
+        : {
+            ownerUserId: result.authedUser.id,
+            ownerDisplayName
+          }),
+      ...(currentDefaults.workspaceId?.trim() && result.role !== 'personal'
+        ? {}
+        : {
+            workspaceId: result.workspace.id,
+            channelProvider: 'discord'
+          })
+    }
   });
+  pruneChannelRuntimeConfig();
 }
 
 export const discordRoutes: Route[] = [
@@ -299,8 +318,9 @@ export const discordRoutes: Route[] = [
 
     try {
       await ensureRuntimeInitialized();
-      const env = getRuntimeEnv();
-      const redirectUri = env.discordRedirectUri ?? `${publicAppUrl(req, url)}/api/discord/oauth/callback`;
+      const redirectUri = process.env.DISCORD_REDIRECT_URI ??
+        getStore().getBotAppConfig('discord', role)?.redirectUri ??
+        `${publicAppUrl(req, url)}/api/discord/oauth/callback`;
       const install = await getDiscordService().exchangeCode(code, guildId, redirectUri, role);
       const { workspace } = install;
       saveAuthedDiscordUserAsWorkspaceOwner(install);

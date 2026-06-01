@@ -1,8 +1,6 @@
 import { readSecret } from '#shared/server/credentials/local-store';
 import { getStore } from '#shared/server/persistence/store';
 import { providerBotRoleEnabled } from '#shared/server/setup/bot-roles';
-import { readMurphConfig } from '#shared/server/setup/config-file';
-import { getRuntimeEnv } from '#shared/server/util/env';
 import type { ChannelPlugin } from '#shared/types';
 import { createDiscordChannelAdapter } from './adapter.js';
 import { getDiscordGatewayClient } from './gateway-client.js';
@@ -30,16 +28,15 @@ export function createDiscordChannelPlugin(): ChannelPlugin {
         }
       ],
       getStatus() {
-        const env = getRuntimeEnv();
         const workspace = getStore().listWorkspaces().find((entry) => (
           entry.provider === 'discord' &&
-          (Boolean(env.discordBotToken) || Boolean(readSecret('discord', 'bot_token', {
+          (getDiscordService().isConfigured() || Boolean(readSecret('discord', 'bot_token', {
             workspaceId: entry.id,
             externalWorkspaceId: entry.externalWorkspaceId
           })))
         ));
         return {
-          configured: Boolean(env.discordBotToken || readSecret('discord', 'bot_token')),
+          configured: getDiscordService().isRoleConfigured('channel') || getDiscordService().isRoleConfigured('personal'),
           installed: Boolean(workspace),
           workspace: workspace
             ? {
@@ -62,7 +59,7 @@ export function createDiscordChannelPlugin(): ChannelPlugin {
     },
     ingress: {
       start() {
-        const setupDefaults = readMurphConfig().setup;
+        const setupDefaults = getStore().getAppSettings().setupDefaults;
         if (providerBotRoleEnabled(setupDefaults, 'discord', 'channel')) {
           getDiscordGatewayClient('channel').ensureStarted();
         }

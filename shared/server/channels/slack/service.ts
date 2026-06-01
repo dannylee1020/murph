@@ -3,7 +3,6 @@ import { getRuntimeEnv } from '#shared/server/util/env';
 import { getStore } from '#shared/server/persistence/store';
 import { listSecrets, readSecret, writeSecret } from '#shared/server/credentials/local-store';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#shared/server/integrations/capabilities';
-import { readMurphConfig } from '#shared/server/setup/config-file';
 import type { BotInstallation, BotRole, ChannelMessage, ThreadRef, Workspace } from '#shared/types';
 
 interface OAuthExchangeResponse {
@@ -11,6 +10,7 @@ interface OAuthExchangeResponse {
   error?: string;
   team?: { id: string; name: string };
   access_token?: string;
+  app_id?: string;
   bot_user_id?: string;
   authed_user?: {
     id?: string;
@@ -163,10 +163,10 @@ export class SlackService {
   }
 
   private clientId(role: BotRole): string | undefined {
-    const config = readMurphConfig();
+    const roleConfig = this.store.getBotAppConfig('slack', role);
     return role === 'personal'
-      ? process.env.SLACK_PERSONAL_CLIENT_ID ?? config.channels?.slack?.bots?.personal?.clientId
-      : process.env.SLACK_CHANNEL_CLIENT_ID ?? config.channels?.slack?.bots?.channel?.clientId ?? this.env.slackClientId;
+      ? process.env.SLACK_PERSONAL_CLIENT_ID ?? roleConfig?.clientId
+      : process.env.SLACK_CHANNEL_CLIENT_ID ?? process.env.SLACK_CLIENT_ID ?? roleConfig?.clientId;
   }
 
   private clientSecret(role: BotRole): string | undefined {
@@ -187,6 +187,29 @@ export class SlackService {
       : process.env.SLACK_CHANNEL_APP_TOKEN ?? readSecret('slack', 'channel_app_token') ?? this.env.slackAppToken;
   }
 
+  private appId(role: BotRole): string | undefined {
+    const roleConfig = this.store.getBotAppConfig('slack', role);
+    return role === 'personal'
+      ? process.env.SLACK_PERSONAL_APP_ID ?? roleConfig?.appId
+      : process.env.SLACK_CHANNEL_APP_ID ?? process.env.SLACK_APP_ID ?? roleConfig?.appId;
+  }
+
+  private installationMatchesCurrentApp(installation: BotInstallation, role: BotRole): boolean {
+    const appId = this.appId(role);
+    if (!appId || installation.appId !== appId) return false;
+    if (role === 'personal' && !installation.representedUserId) return false;
+    return installation.status === 'active';
+  }
+
+  private eventsMode(role: BotRole): 'http' | 'socket' {
+    const configured = process.env.SLACK_EVENTS_MODE === 'http'
+      ? 'http'
+      : process.env.SLACK_EVENTS_MODE === 'socket'
+        ? 'socket'
+        : this.store.getBotAppConfig('slack', role)?.eventsMode;
+    return configured ?? 'socket';
+  }
+
   isRoleOAuthConfigured(role: BotRole = 'channel'): boolean {
     return Boolean(this.clientId(role) && this.clientSecret(role));
   }
@@ -196,7 +219,7 @@ export class SlackService {
   }
 
   isRoleConfigured(role: BotRole = 'channel'): boolean {
-    return Boolean(this.clientId(role) && this.clientSecret(role) && (this.env.slackEventsMode === 'http' || this.appToken(role)));
+    return Boolean(this.clientId(role) && this.clientSecret(role) && (this.eventsMode(role) === 'http' || this.appToken(role)));
   }
 
   buildInstallUrl(appUrl = this.env.appUrl, teamId?: string, source?: string, role: BotRole = 'channel'): string | undefined {
@@ -250,12 +273,14 @@ export class SlackService {
       throw new Error(payload.error ?? 'Slack OAuth exchange failed');
     }
 
+    const appId = payload.app_id ?? this.appId(role);
     const workspace = this.store.saveInstall({
       provider: 'slack',
       externalWorkspaceId: payload.team.id,
       name: payload.team.name ?? payload.team.id,
       botUserId: payload.bot_user_id,
-      role
+      role,
+      appId
     });
     let botInstallation = this.store.getBotInstallation('slack', workspace.externalWorkspaceId, role);
     writeSecret('slack', 'bot_token', payload.access_token, {
@@ -296,6 +321,7 @@ export class SlackService {
         role,
         externalWorkspaceId: workspace.externalWorkspaceId,
         botUserId: workspace.botUserId,
+        appId,
         representedUserId: authedUser.id
       });
       writeSecret('slack', 'bot_token', payload.access_token, {
@@ -373,6 +399,9 @@ export class SlackService {
 
   getBotTokenForRole(workspace: Workspace, role: BotRole): string {
     const installation = this.store.getBotInstallation('slack', workspace.externalWorkspaceId, role);
+    if (installation && !this.installationMatchesCurrentApp(installation, role)) {
+      throw new Error(`Slack ${role} bot token is tied to a stale app installation. Reconnect Slack.`);
+    }
     const scopedToken = installation
       ? readSecret('slack', 'bot_token', { botInstallationId: installation.id })
       : undefined;
@@ -418,10 +447,13 @@ export class SlackService {
   }
 
   getUsableWorkspace(): Workspace | undefined {
-    return this.store.listWorkspaces().find((workspace) => (
-      workspace.provider === 'slack' &&
-      this.canReadBotToken(workspace)
-    ));
+    const installation = this.store.listBotInstallations({ provider: 'slack' })
+      .find((entry) => (
+        (entry.role === 'channel' || entry.role === 'personal') &&
+        this.installationMatchesCurrentApp(entry, entry.role) &&
+        this.canReadBotInstallationToken(entry.id)
+      ));
+    return installation ? this.store.getWorkspaceById(installation.workspaceId) : undefined;
   }
 
   hasUnreadableInstall(): boolean {

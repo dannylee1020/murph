@@ -15,27 +15,6 @@ ai:
     provider: ""
     model: ""
 
-channels:
-  slack:
-    eventsMode: socket
-    clientId: ""
-    appId: ""
-    teamId: ""
-    teamName: ""
-  discord:
-    clientId: ""
-
-setup:
-  channelProvider: slack
-  workspaceId: ""
-  ownerUserId: ""
-  ownerDisplayName: ""
-  channelScopeMode: selected
-  selectedChannels: []
-  timezone: ""
-  workdayStartHour: 9
-  workdayEndHour: 17
-
 integrations:
   notion:
     version: 2026-03-11

@@ -2,7 +2,6 @@ import { getRuntimeEnv } from '#shared/server/util/env';
 import { getStore } from '#shared/server/persistence/store';
 import { readSecret, writeSecret } from '#shared/server/credentials/local-store';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#shared/server/integrations/capabilities';
-import { readMurphConfig } from '#shared/server/setup/config-file';
 import type { BotInstallation, BotRole, ChannelMessage, ChannelThreadRef, Workspace } from '#shared/types';
 
 export const DISCORD_BOT_PERMISSIONS = '274877991936';
@@ -129,10 +128,10 @@ export class DiscordService {
   }
 
   private clientId(role: BotRole): string | undefined {
-    const config = readMurphConfig();
+    const roleConfig = this.store.getBotAppConfig('discord', role);
     return role === 'personal'
-      ? process.env.DISCORD_PERSONAL_CLIENT_ID ?? config.channels?.discord?.bots?.personal?.clientId
-      : process.env.DISCORD_CHANNEL_CLIENT_ID ?? config.channels?.discord?.bots?.channel?.clientId ?? this.env.discordClientId;
+      ? process.env.DISCORD_PERSONAL_CLIENT_ID ?? roleConfig?.clientId ?? roleConfig?.appId
+      : process.env.DISCORD_CHANNEL_CLIENT_ID ?? process.env.DISCORD_CLIENT_ID ?? roleConfig?.clientId ?? roleConfig?.appId;
   }
 
   private clientSecret(role: BotRole): string | undefined {
@@ -142,10 +141,21 @@ export class DiscordService {
   }
 
   publicKey(role: BotRole = 'channel'): string | undefined {
-    const config = readMurphConfig();
+    const roleConfig = this.store.getBotAppConfig('discord', role);
     return role === 'personal'
-      ? process.env.DISCORD_PERSONAL_PUBLIC_KEY ?? config.channels?.discord?.bots?.personal?.publicKey ?? process.env.DISCORD_PUBLIC_KEY ?? config.channels?.discord?.publicKey
-      : process.env.DISCORD_CHANNEL_PUBLIC_KEY ?? config.channels?.discord?.bots?.channel?.publicKey ?? process.env.DISCORD_PUBLIC_KEY ?? config.channels?.discord?.publicKey;
+      ? process.env.DISCORD_PERSONAL_PUBLIC_KEY ?? process.env.DISCORD_PUBLIC_KEY ?? roleConfig?.publicKey
+      : process.env.DISCORD_CHANNEL_PUBLIC_KEY ?? process.env.DISCORD_PUBLIC_KEY ?? roleConfig?.publicKey;
+  }
+
+  private currentAppId(role: BotRole): string | undefined {
+    return this.clientId(role);
+  }
+
+  private installationMatchesCurrentApp(role: BotRole, installation: BotInstallation): boolean {
+    const appId = this.currentAppId(role);
+    if (!appId || installation.appId !== appId) return false;
+    if (role === 'personal' && !installation.representedUserId) return false;
+    return installation.status === 'active';
   }
 
   botToken(role: BotRole = 'channel', botInstallationId?: string): string | undefined {
@@ -159,6 +169,9 @@ export class DiscordService {
   }
 
   canReadBotInstallationToken(role: BotRole = 'channel', installation?: BotInstallation): boolean {
+    if (installation && !this.installationMatchesCurrentApp(role, installation)) {
+      return false;
+    }
     if (installation?.id && readSecret('discord', 'bot_token', { botInstallationId: installation.id })) {
       return true;
     }
@@ -201,7 +214,7 @@ export class DiscordService {
       return undefined;
     }
 
-    const redirectUri = this.resolveRedirectUri(options.appUrl);
+    const redirectUri = this.resolveRedirectUri(options.appUrl, role);
     const params = new URLSearchParams({
       client_id: clientId,
       scope: 'bot identify',
@@ -361,12 +374,14 @@ export class DiscordService {
     };
 
     if (role === 'personal') {
+      const applicationId = this.clientId(role);
       const workspace = this.store.saveInstall({
         provider: 'discord',
         externalWorkspaceId: `personal:${oauthUser.id}`,
         name: fallbackMember.displayName,
         botUserId: await this.fetchBotUserId(role).catch(() => undefined),
         role,
+        appId: applicationId,
         representedUserId: oauthUser.id
       });
       const botInstallation = this.store.getBotInstallation('discord', workspace.externalWorkspaceId, role);
@@ -411,8 +426,10 @@ export class DiscordService {
     };
   }
 
-  private resolveRedirectUri(appUrl = this.env.appUrl): string {
-    return this.env.discordRedirectUri ?? `${appUrl}/api/discord/oauth/callback`;
+  private resolveRedirectUri(appUrl = this.env.appUrl, role: BotRole = 'channel'): string {
+    return process.env.DISCORD_REDIRECT_URI ??
+      this.store.getBotAppConfig('discord', role)?.redirectUri ??
+      `${appUrl}/api/discord/oauth/callback`;
   }
 
   getBotToken(role: BotRole = 'channel', botInstallationId?: string): string {
@@ -455,7 +472,8 @@ export class DiscordService {
       externalWorkspaceId: guild.id,
       name: guild.name ?? guild.id,
       botUserId: await this.fetchBotUserId(role),
-      role
+      role,
+      appId: this.clientId(role)
     });
     const botInstallation = this.store.getBotInstallation('discord', workspace.externalWorkspaceId, role);
     const token = this.botToken(role);

@@ -100,23 +100,6 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   MURPH_AGENT_MODEL: (config, value) => setPath(config, ['ai', 'agent', 'model'], value),
   MURPH_POLICY_PROVIDER: (config, value) => setPath(config, ['ai', 'policy', 'provider'], providerFromString(value)),
   MURPH_POLICY_MODEL: (config, value) => setPath(config, ['ai', 'policy', 'model'], value),
-  SLACK_EVENTS_MODE: (config, value) => setPath(config, ['channels', 'slack', 'eventsMode'], value === 'http' ? 'http' : 'socket'),
-  SLACK_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'clientId'], value),
-  SLACK_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'appId'], value),
-  SLACK_CHANNEL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'channel', 'clientId'], value),
-  SLACK_CHANNEL_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'channel', 'appId'], value),
-  SLACK_PERSONAL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'personal', 'clientId'], value),
-  SLACK_PERSONAL_APP_ID: (config, value) => setPath(config, ['channels', 'slack', 'bots', 'personal', 'appId'], value),
-  SLACK_TEAM_ID: (config, value) => setPath(config, ['channels', 'slack', 'teamId'], value),
-  SLACK_TEAM_NAME: (config, value) => setPath(config, ['channels', 'slack', 'teamName'], value),
-  DISCORD_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'clientId'], value),
-  DISCORD_PUBLIC_KEY: (config, value) => setPath(config, ['channels', 'discord', 'publicKey'], value),
-  DISCORD_CHANNEL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'channel', 'clientId'], value),
-  DISCORD_CHANNEL_PUBLIC_KEY: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'channel', 'publicKey'], value),
-  DISCORD_PERSONAL_CLIENT_ID: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'personal', 'clientId'], value),
-  DISCORD_PERSONAL_PUBLIC_KEY: (config, value) => setPath(config, ['channels', 'discord', 'bots', 'personal', 'publicKey'], value),
-  DISCORD_REDIRECT_URI: (config, value) => setPath(config, ['channels', 'discord', 'redirectUri'], value),
-  MURPH_BOT_ROLES: (config, value) => setPath(config, ['setup', 'botRoles'], botRolesFromString(value)),
   NOTION_VERSION: (config, value) => setPath(config, ['integrations', 'notion', 'version'], value),
   NOTION_MAX_RESULTS: (config, value) => setPath(config, ['integrations', 'notion', 'maxResults'], numberFromString(value)),
   GITHUB_REPOSITORIES: (config, value) => setPath(config, ['integrations', 'github', 'repositories'], csvFromString(value)),
@@ -534,6 +517,18 @@ export function updateMurphConfigValues(values: Record<string, string | undefine
 export function updateMurphSetupDefaults(defaults: SetupDefaults, cwd = process.cwd()): void {
   const raw = readRawConfig(cwd);
   setPath(raw, ['setup'], defaults);
+  writeRawConfig(raw, cwd);
+}
+
+export function pruneChannelRuntimeConfig(cwd = process.cwd()): void {
+  const raw = readRawConfig(cwd);
+  deletePath(raw, ['setup']);
+  deletePath(raw, ['channels', 'slack']);
+  deletePath(raw, ['channels', 'discord']);
+  const channels = raw.channels;
+  if (isRecord(channels) && Object.keys(channels).length === 0) {
+    delete raw.channels;
+  }
   writeRawConfig(raw, cwd);
 }
 

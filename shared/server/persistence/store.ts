@@ -8,6 +8,7 @@ import type {
   AgentUser,
   AppSettings,
   AuditRecord,
+  BotAppConfig,
   AutopilotSession,
   BotInstallation,
   BotRole,
@@ -32,6 +33,7 @@ import * as action from './stores/action.js';
 import * as appSettings from './stores/app-settings.js';
 import * as audit from './stores/audit.js';
 import * as briefing from './stores/briefing.js';
+import * as botAppConfig from './stores/bot-app-config.js';
 import * as botInstallation from './stores/bot-installation.js';
 import * as integrationCredentials from './stores/integration-credentials.js';
 import * as memoryIndex from './stores/memory-index.js';
@@ -57,6 +59,17 @@ export class Store {
   }
   upsertAppSettings(settings: AppSettings): AppSettings {
     return appSettings.upsertAppSettings(this.db, settings);
+  }
+
+  // Bot app configs
+  upsertBotAppConfig(input: botAppConfig.BotAppConfigInput): BotAppConfig {
+    return botAppConfig.upsertBotAppConfig(this.db, input);
+  }
+  getBotAppConfig(provider: string, role: BotRole): BotAppConfig | undefined {
+    return botAppConfig.getBotAppConfig(this.db, provider, role);
+  }
+  listBotAppConfigs(): BotAppConfig[] {
+    return botAppConfig.listBotAppConfigs(this.db);
   }
 
   // Workspace + slack events

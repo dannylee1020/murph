@@ -34,6 +34,7 @@ import {
 } from '#shared/server/auth/dashboard-access';
 import type {
   AgentUser,
+  ChannelDisplay,
   ChannelEnsureMemberResult,
   ChannelSetupMember,
   PolicyExecutionMode,
@@ -106,6 +107,63 @@ function workspaceDescriptor(workspace: Workspace) {
     id: workspace.id,
     provider: workspace.provider,
     name: workspace.name
+  };
+}
+
+function resolveChannelDisplay(input: {
+  workspaceId: string;
+  channelId: string;
+  targetUserId?: string;
+}): ChannelDisplay {
+  const store = getStore();
+  const workspace = store.getWorkspaceById(input.workspaceId);
+  const defaults = store.getAppSettings().setupDefaults;
+  const workspaceChannels = defaults?.workspaceChannels?.find((entry) => entry.workspaceId === input.workspaceId);
+  const savedChannel =
+    workspaceChannels?.selectedChannels.find((channel) => channel.id === input.channelId) ??
+    (defaults?.workspaceId === input.workspaceId || !defaults?.workspaceId
+      ? defaults?.selectedChannels?.find((channel) => channel.id === input.channelId)
+      : undefined);
+
+  if (savedChannel) {
+    return {
+      id: input.channelId,
+      label: savedChannel.displayName,
+      workspaceName: workspace?.name,
+      fallback: false
+    };
+  }
+
+  const isPersonalDirect =
+    (workspace?.provider === 'slack' && input.channelId.startsWith('D')) ||
+    (workspace?.provider === 'discord' && workspace.externalWorkspaceId.startsWith('personal:'));
+  if (isPersonalDirect) {
+    return {
+      id: input.channelId,
+      label: input.targetUserId ? `DM with ${input.targetUserId}` : 'Direct message',
+      workspaceName: workspace?.name,
+      fallback: true
+    };
+  }
+
+  return {
+    id: input.channelId,
+    label: input.channelId,
+    workspaceName: workspace?.name,
+    fallback: true
+  };
+}
+
+function withChannelDisplay<T extends { workspaceId: string; channelId: string; targetUserId?: string }>(
+  item: T
+): T & { channelDisplay: ChannelDisplay } {
+  return {
+    ...item,
+    channelDisplay: resolveChannelDisplay({
+      workspaceId: item.workspaceId,
+      channelId: item.channelId,
+      targetUserId: item.targetUserId
+    })
   };
 }
 
@@ -561,7 +619,7 @@ export const gatewayRoutes: Route[] = [
       runs: getStore().listAgentRuns(
         url.searchParams.get('sessionId') ?? undefined,
         Number(url.searchParams.get('limit') ?? 50)
-      )
+      ).map(withChannelDisplay)
     });
   }),
   route('GET', '/api/gateway/runs/:id', ({ res, params }) => {
@@ -571,7 +629,7 @@ export const gatewayRoutes: Route[] = [
       return;
     }
 
-    sendJson(res, { run });
+    sendJson(res, { run: withChannelDisplay(run) });
   }),
   route('GET', '/api/gateway/runs/:id/events', ({ res, params }) => {
     const run = getStore().getAgentRun(params.id);
@@ -603,7 +661,7 @@ export const gatewayRoutes: Route[] = [
         ...completedSession,
         triageItemCount: triageCounts.get(completedSession.id) ?? 0
       })),
-      items: session ? store.listTriageItems(workspaceId, session.id) : []
+      items: session ? store.listTriageItems(workspaceId, session.id).map(withChannelDisplay) : []
     });
   }),
   route('GET', '/api/gateway/queue', ({ res, url }) => {
@@ -611,7 +669,7 @@ export const gatewayRoutes: Route[] = [
       queue: getStore().listReviewQueue(
         url.searchParams.get('workspaceId') ?? undefined,
         url.searchParams.get('sessionId') ?? undefined
-      )
+      ).map(withChannelDisplay)
     });
   }),
   route('GET', '/api/gateway/subscriptions', ({ res, url }) => {

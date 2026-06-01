@@ -5,7 +5,7 @@ import { getSlackService } from '#shared/server/channels/slack/service';
 import { getChannelRegistry } from '#shared/server/capabilities/channel-registry';
 import { getStore } from '#shared/server/persistence/store';
 import { handleSlackInteractionPayload, parseSlackInteractionPayload } from '#shared/server/channels/slack/interactions';
-import { readMurphConfig, updateMurphSetupDefaults } from '#shared/server/setup/config-file';
+import { pruneChannelRuntimeConfig } from '#shared/server/setup/config-file';
 import { readBody, redirect, sendJson, toHeaders } from '../http.js';
 import { route, type Route } from '../router.js';
 import type { SlackInstallResult } from '#shared/server/channels/slack/service';
@@ -76,10 +76,7 @@ function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
   if (!result.authedUser?.id) return;
 
   const store = getStore();
-  const currentDefaults = {
-    ...(store.getAppSettings().setupDefaults ?? {}),
-    ...(readMurphConfig().setup ?? {})
-  };
+  const currentDefaults = store.getAppSettings().setupDefaults ?? {};
   const ownerDisplayName = result.authedUser.displayName || result.authedUser.id;
 
   const user = store.upsertUser({
@@ -115,16 +112,20 @@ function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
     }
   ];
 
-  updateMurphSetupDefaults({
-    ...currentDefaults,
-    workspaceOwners,
-    ...(currentDefaults.ownerUserId?.trim()
-      ? {}
-      : {
-          ownerUserId: result.authedUser.id,
-          ownerDisplayName
-        })
+  store.upsertAppSettings({
+    ...store.getAppSettings(),
+    setupDefaults: {
+      ...currentDefaults,
+      workspaceOwners,
+      ...(currentDefaults.ownerUserId?.trim()
+        ? {}
+        : {
+            ownerUserId: result.authedUser.id,
+            ownerDisplayName
+          })
+    }
   });
+  pruneChannelRuntimeConfig();
 }
 
 export const slackRoutes: Route[] = [

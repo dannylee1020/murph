@@ -571,6 +571,94 @@ describe('Gateway session-first policy', () => {
     );
   });
 
+  it('approves queued personal replies with the personal bot installation', async () => {
+    const { gateway, store, workspace, postReply } = await setup();
+    const installation = store.upsertBotInstallation({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      role: 'personal',
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      botUserId: 'UPERSONALBOT',
+      representedUserId: 'UOWNER'
+    });
+    const item = store.insertAction({
+      workspaceId: workspace.id,
+      sessionId: undefined,
+      channelId: 'DOWNER',
+      threadTs: '1710000000.000100',
+      targetUserId: 'UOWNER',
+      actionType: 'reply',
+      disposition: 'queued',
+      message: 'Approved personal reply',
+      reason: 'Needs operator approval',
+      confidence: 0.8,
+      contextSnapshot: {
+        summary: 'Personal DM summary',
+        continuityCase: 'clarification',
+        thread: {
+          provider: 'slack',
+          botRole: 'personal',
+          botInstallationId: installation.id,
+          channelId: 'DOWNER',
+          threadTs: '1710000000.000100',
+          messages: []
+        }
+      }
+    });
+
+    await gateway.handleReviewAction(item.id, { action: 'approve_send' });
+
+    expect(postReply).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'slack' }),
+      expect.objectContaining({
+        provider: 'slack',
+        botRole: 'personal',
+        botInstallationId: installation.id,
+        channelId: 'DOWNER',
+        threadTs: '1710000000.000100'
+      }),
+      'Approved personal reply'
+    );
+  });
+
+  it('infers personal bot metadata for older queued Slack DM replies', async () => {
+    const { gateway, store, workspace, postReply } = await setup();
+    const installation = store.upsertBotInstallation({
+      workspaceId: workspace.id,
+      provider: 'slack',
+      role: 'personal',
+      externalWorkspaceId: workspace.externalWorkspaceId,
+      botUserId: 'UPERSONALBOT',
+      representedUserId: 'UOWNER'
+    });
+    const item = store.insertAction({
+      workspaceId: workspace.id,
+      sessionId: undefined,
+      channelId: 'DOWNER',
+      threadTs: '1710000000.000200',
+      targetUserId: 'UOWNER',
+      actionType: 'reply',
+      disposition: 'queued',
+      message: 'Approved older personal reply',
+      reason: 'Needs operator approval',
+      confidence: 0.8
+    });
+
+    await gateway.handleReviewAction(item.id, { action: 'approve_send' });
+
+    expect(postReply).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'slack' }),
+      expect.objectContaining({
+        provider: 'slack',
+        botRole: 'personal',
+        botInstallationId: installation.id,
+        channelId: 'DOWNER',
+        threadTs: '1710000000.000200'
+      }),
+      'Approved older personal reply'
+    );
+  });
+
   it('falls back for legacy queued Discord replies without thread metadata', async () => {
     const { gateway, store, postReply } = await setup();
     postReply.mockRejectedValueOnce(new Error('Failed to post Discord message: Unknown Channel'));

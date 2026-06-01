@@ -67,6 +67,20 @@ export interface BotInstallation {
     updatedAt: string;
 }
 
+export interface BotAppConfig {
+    id: string;
+    provider: ChannelProvider;
+    role: BotRole;
+    appId?: string;
+    clientId?: string;
+    publicKey?: string;
+    eventsMode?: 'http' | 'socket';
+    redirectUri?: string;
+    metadata?: Record<string, unknown>;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface UserSchedule {
     timezone: string;
     workdayStartHour: number;
@@ -317,6 +331,7 @@ export interface ContextAssembly {
         thread: ThreadMemory;
     };
     artifacts: ContextArtifact[];
+    contextSources?: ExpandedContextSourceNames;
     skills: SkillManifest[];
     availableTools: AgentToolInventoryItem[];
     summary?: string;
@@ -547,6 +562,13 @@ export interface AuditRecord {
     createdAt: string;
 }
 
+export interface ChannelDisplay {
+    id: string;
+    label: string;
+    workspaceName?: string;
+    fallback: boolean;
+}
+
 export interface ReviewItem {
     id: string;
     workspaceId: string;
@@ -560,6 +582,7 @@ export interface ReviewItem {
     reason: string;
     confidence?: number;
     provider?: ProviderName;
+    channelDisplay?: ChannelDisplay;
     contextSnapshot?: ActionContextSnapshot;
     createdAt: string;
 }
@@ -578,6 +601,8 @@ export interface ActionContextSnapshot {
     evidenceStatus?: ThreadEvidenceStatus;
     thread: {
         provider?: ChannelProvider;
+        botRole?: BotRole;
+        botInstallationId?: string;
         channelId: string;
         threadTs: string;
         threadChannelId?: string;
@@ -727,6 +752,7 @@ export interface AgentRunRecord {
     status: AgentRunStatus;
     startedAt: string;
     completedAt?: string;
+    channelDisplay?: ChannelDisplay;
 }
 
 export interface AgentRunEventRecord {

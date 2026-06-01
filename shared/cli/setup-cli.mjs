@@ -1516,7 +1516,9 @@ async function postSetupConfig(values) {
 }
 
 function runMurphCommand(args) {
-  const binPath = path.join(appDir, 'bin', 'murph');
+  const binPath = existsSync(path.join(appDir, 'bin', 'murph'))
+    ? path.join(appDir, 'bin', 'murph')
+    : path.join(appDir, 'shared', 'cli', 'murph');
   const result = spawnSync('bash', [binPath, ...args], {
     cwd: appDir,
     stdio: 'inherit',
@@ -1529,7 +1531,11 @@ function runMurphCommand(args) {
 
 async function ensureServer() {
   if (await health()) return;
-  if (!existsSync(path.join(appDir, 'dist', 'products', currentDistribution(), 'server.js'))) {
+  const runtimeEntry =
+    currentDistribution() === 'personal'
+      ? path.join(appDir, 'dist', 'app', 'personal', 'runtime', 'server.js')
+      : path.join(appDir, 'dist', 'app', 'team', 'runtime', 'server.js');
+  if (!existsSync(runtimeEntry)) {
     fail('Murph is not built yet. Run: murph build');
   }
   runMurphCommand(['start', '--background']);

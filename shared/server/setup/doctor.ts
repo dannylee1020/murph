@@ -51,10 +51,7 @@ export function getSetupDoctor(): SetupDoctorPayload {
   const env = getRuntimeEnv();
   const store = getStore();
   const summary = store.getWorkspaceSummary();
-  const setupDefaults = {
-    ...(store.getAppSettings().setupDefaults ?? {}),
-    ...(readMurphConfig().setup ?? {})
-  };
+  const setupDefaults = store.getAppSettings().setupDefaults ?? {};
   const configuredOwnerCount = Number(Boolean(setupDefaults?.ownerUserId)) + (setupDefaults?.workspaceOwners?.length ?? 0);
   const slack = getSlackService();
   const slackWorkspace = slack.getUsableWorkspace();

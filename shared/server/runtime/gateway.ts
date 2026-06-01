@@ -91,6 +91,28 @@ function indexableArtifacts(artifacts: ContextAssembly['artifacts']): ContextAss
   return artifacts.filter((artifact) => !artifact.source.startsWith('memory.'));
 }
 
+function artifactSourceSummaries(artifacts: ContextAssembly['artifacts']): Array<{
+  name: string;
+  artifacts: number;
+  titles: string[];
+}> {
+  const bySource = new Map<string, { name: string; artifacts: number; titles: string[] }>();
+  for (const artifact of artifacts) {
+    if (artifact.source.startsWith('memory.')) continue;
+    const existing = bySource.get(artifact.source) ?? {
+      name: artifact.source,
+      artifacts: 0,
+      titles: []
+    };
+    existing.artifacts += 1;
+    if (artifact.title && existing.titles.length < 5) {
+      existing.titles.push(artifact.title);
+    }
+    bySource.set(artifact.source, existing);
+  }
+  return [...bySource.values()];
+}
+
 function runtimeProviderName(): AuditRecord['provider'] {
   return getRuntimeEnv().defaultProvider;
 }
@@ -111,6 +133,8 @@ function snapshotMessages(messages: ChannelMessage[]): ActionContextSnapshot['th
 function actionThreadSnapshot(thread: ChannelThreadRef, messages: ChannelMessage[]): ActionContextSnapshot['thread'] {
   return {
     provider: thread.provider,
+    botRole: thread.botRole,
+    botInstallationId: thread.botInstallationId,
     channelId: thread.channelId,
     threadTs: thread.threadTs,
     threadChannelId: thread.threadChannelId,
@@ -491,7 +515,9 @@ export class Gateway {
     const proposedAction = runResult.proposedAction;
     this.emitRunEvent(run.id, 'agent.context.built', {
       summary: context.summary,
-      artifacts: context.artifacts.length
+      artifacts: context.artifacts.length,
+      contextSources: context.contextSources,
+      artifactSources: artifactSourceSummaries(context.artifacts)
     });
     this.emitRunEvent(run.id, 'agent.skill.selected', {
       skills: runResult.selectedSkillNames,
@@ -806,13 +832,36 @@ export class Gateway {
 
   private reviewThreadRef(item: ReviewItem, workspace: Workspace): ChannelThreadRef {
     const snapshotThread = item.contextSnapshot?.thread;
+    const personalBotInstallation =
+      !snapshotThread?.botInstallationId && this.reviewLooksLikePersonalDirectItem(item, workspace)
+        ? this.store.listBotInstallations({
+            provider: workspace.provider,
+            role: 'personal',
+            workspaceId: workspace.id
+          }).find((installation) =>
+            installation.status === 'active' &&
+            (!item.targetUserId || !installation.representedUserId || installation.representedUserId === item.targetUserId)
+          )
+        : undefined;
     return {
       provider: snapshotThread?.provider ?? workspace.provider,
+      botRole: snapshotThread?.botRole ?? (personalBotInstallation ? 'personal' : undefined),
+      botInstallationId: snapshotThread?.botInstallationId ?? personalBotInstallation?.id,
       channelId: snapshotThread?.channelId ?? item.channelId,
       threadTs: snapshotThread?.threadTs ?? item.threadTs,
       threadChannelId: snapshotThread?.threadChannelId,
       rootMessageId: snapshotThread?.rootMessageId
     };
+  }
+
+  private reviewLooksLikePersonalDirectItem(item: ReviewItem, workspace: Workspace): boolean {
+    if (item.contextSnapshot?.thread.botRole === 'personal') {
+      return true;
+    }
+    if (workspace.provider === 'discord' && workspace.externalWorkspaceId.startsWith('personal:')) {
+      return true;
+    }
+    return workspace.provider === 'slack' && item.channelId.startsWith('D');
   }
 
   private async postReviewReply(

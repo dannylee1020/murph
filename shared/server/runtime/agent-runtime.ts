@@ -291,6 +291,7 @@ export class AgentRuntime {
     return {
       ...baseContext,
       artifacts,
+      contextSources: contextSourceNames,
       availableTools,
       continuityCase: inferCaseFromText(latestMessage),
       summary: latestMessage,

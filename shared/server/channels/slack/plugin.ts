@@ -1,6 +1,5 @@
-import { getRuntimeEnv } from '#shared/server/util/env';
+import { getStore } from '#shared/server/persistence/store';
 import { providerBotRoleEnabled } from '#shared/server/setup/bot-roles';
-import { readMurphConfig } from '#shared/server/setup/config-file';
 import type { ChannelPlugin } from '#shared/types';
 import { createSlackChannelAdapter } from './adapter.js';
 import { handleSlackEventEnvelope, verifySlackHttpSignature } from './events.js';
@@ -23,10 +22,9 @@ export function createSlackChannelPlugin(): ChannelPlugin {
         { key: 'SLACK_APP_TOKEN', label: 'App-level token', kind: 'secret', required: false }
       ],
       getStatus() {
-        const env = getRuntimeEnv();
         const workspace = slack.getUsableWorkspace();
         return {
-          configured: Boolean(env.slackClientId && env.slackClientSecret),
+          configured: slack.isRoleConfigured('channel') || slack.isRoleConfigured('personal'),
           installed: Boolean(workspace),
           workspace: workspace
             ? {
@@ -57,7 +55,7 @@ export function createSlackChannelPlugin(): ChannelPlugin {
     ingress: {
       start() {
         if (slack.getUsableWorkspace()) {
-          const setupDefaults = readMurphConfig().setup;
+          const setupDefaults = getStore().getAppSettings().setupDefaults;
           const channelClient = getSlackSocketModeClient('channel');
           const personalClient = getSlackSocketModeClient('personal');
           if (providerBotRoleEnabled(setupDefaults, 'slack', 'channel') && channelClient.isConfigured()) {

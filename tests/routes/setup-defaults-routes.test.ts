@@ -157,11 +157,19 @@ async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?
   const { getStore } = await import('#shared/server/persistence/store');
   const { writeSecret } = await import('#shared/server/credentials/local-store');
   const store = getStore();
+  store.upsertBotAppConfig({
+    provider: 'slack',
+    role: 'channel',
+    appId: 'A-channel-test',
+    clientId: 'client-id',
+    eventsMode: 'socket'
+  });
   const workspace = store.saveInstall({
     provider: 'slack',
     externalWorkspaceId: 'T1',
     name: 'Test Workspace',
-    botUserId: 'UTZBOT'
+    botUserId: 'UTZBOT',
+    appId: 'A-channel-test'
   });
   const botInstallation = store.getBotInstallation('slack', workspace.externalWorkspaceId, 'channel');
   if (!input.skipSlackToken) {
@@ -205,18 +213,19 @@ async function seedWorkspaceOwner(
   ownerDisplayName = 'Daniel'
 ) {
   const { getStore } = await import('#shared/server/persistence/store');
-  const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
   getStore().upsertUser({
     workspaceId: workspace.id,
     externalUserId: ownerUserId,
     displayName: ownerDisplayName
   });
-  updateMurphSetupDefaults({
-    channelProvider: workspace.provider,
-    workspaceId: workspace.id,
-    ownerUserId,
-    ownerDisplayName,
-    workspaceOwners: [{ workspaceId: workspace.id, ownerUserId, ownerDisplayName }]
+  getStore().upsertAppSettings({
+    setupDefaults: {
+      channelProvider: workspace.provider,
+      workspaceId: workspace.id,
+      ownerUserId,
+      ownerDisplayName,
+      workspaceOwners: [{ workspaceId: workspace.id, ownerUserId, ownerDisplayName }]
+    }
   });
 }
 
@@ -1093,6 +1102,108 @@ describe('setup defaults routes', () => {
       error: 'owner_identity_mismatch',
       owner: expect.objectContaining({ ownerUserId: 'U1' })
     }));
+  });
+
+  it('merges workspace owner updates instead of requiring every locked provider owner in each save', async () => {
+    const { request, store, workspace } = await setup();
+    const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'personal:1234567890',
+      name: 'Discord Daniel',
+      botUserId: 'discord-personal-bot',
+      role: 'personal',
+      representedUserId: '1234567890'
+    });
+    updateMurphSetupDefaults({
+      channelProvider: 'discord',
+      workspaceId: discordWorkspace.id,
+      ownerUserId: '1234567890',
+      ownerDisplayName: 'Discord Daniel',
+      workspaceOwners: [
+        { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
+        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
+      ]
+    });
+
+    const response = await request('PUT', '/api/setup/defaults', {
+      botRoles: ['personal'],
+      channelProvider: 'discord',
+      workspaceId: discordWorkspace.id,
+      workspaceOwners: [
+        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
+      ]
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body.defaults.workspaceOwners).toEqual(expect.arrayContaining([
+      expect.objectContaining({ workspaceId: workspace.id, ownerUserId: 'USLACK' }),
+      expect.objectContaining({ workspaceId: discordWorkspace.id, ownerUserId: '1234567890' })
+    ]));
+  });
+
+  it('rejects explicit workspace owner mismatches while merging omitted owners', async () => {
+    const { request, store, workspace } = await setup();
+    const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
+    const discordWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'personal:1234567890',
+      name: 'Discord Daniel',
+      botUserId: 'discord-personal-bot',
+      role: 'personal',
+      representedUserId: '1234567890'
+    });
+    updateMurphSetupDefaults({
+      channelProvider: 'discord',
+      workspaceId: discordWorkspace.id,
+      ownerUserId: '1234567890',
+      ownerDisplayName: 'Discord Daniel',
+      workspaceOwners: [
+        { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
+        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
+      ]
+    });
+
+    const response = await request('PUT', '/api/setup/defaults', {
+      botRoles: ['personal'],
+      channelProvider: 'discord',
+      workspaceId: discordWorkspace.id,
+      workspaceOwners: [
+        { workspaceId: discordWorkspace.id, ownerUserId: 'WRONG_OWNER', ownerDisplayName: 'Wrong Owner' }
+      ]
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual(expect.objectContaining({
+      ok: false,
+      error: 'owner_identity_mismatch',
+      owner: expect.objectContaining({ ownerUserId: '1234567890' })
+    }));
+  });
+
+  it('ignores empty owner fields from personal setup saves', async () => {
+    const { request, store } = await setup({ productMode: 'personal' });
+    const personalWorkspace = store.saveInstall({
+      provider: 'discord',
+      externalWorkspaceId: 'personal:U1',
+      name: 'Daniel',
+      botUserId: 'personal-bot-user',
+      role: 'personal',
+      representedUserId: 'U1'
+    });
+
+    const response = await request('PUT', '/api/setup/defaults', {
+      botRoles: ['personal'],
+      channelProvider: 'discord',
+      workspaceId: personalWorkspace.id,
+      ownerUserId: '',
+      ownerDisplayName: ''
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body.defaults.workspaceId).toBe(personalWorkspace.id);
+    expect(response.body.defaults.ownerUserId).toBeUndefined();
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).not.toContain('ownerUserId: ""');
   });
 
   it('does not expose member enumeration for OAuth-owned channel workspaces', async () => {

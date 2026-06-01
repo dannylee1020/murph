@@ -2,7 +2,7 @@ import { getStore } from '#shared/server/persistence/store';
 import { mergedSetupDefaults, setupOwnerForWorkspace } from '#shared/server/setup/owner-identity';
 import { readMurphConfig } from '#shared/server/setup/config-file';
 import type { SetupOwnerIdentity } from '#shared/server/setup/owner-identity';
-import type { ChannelProvider, Workspace } from '#shared/types';
+import type { BotInstallation, ChannelProvider, Workspace } from '#shared/types';
 
 export type PersonalDirectIgnoredReason =
   | 'owner_dm_unsupported'
@@ -22,6 +22,26 @@ export type PersonalDirectTarget =
       ignoredReason: PersonalDirectIgnoredReason;
     };
 
+function currentPersonalAppId(provider: ChannelProvider): string | undefined {
+  const store = getStore();
+  if (provider === 'slack') {
+    const config = store.getBotAppConfig('slack', 'personal');
+    return process.env.SLACK_PERSONAL_APP_ID ?? config?.appId;
+  }
+  if (provider === 'discord') {
+    const config = store.getBotAppConfig('discord', 'personal');
+    return process.env.DISCORD_PERSONAL_CLIENT_ID ?? config?.clientId ?? config?.appId;
+  }
+  return undefined;
+}
+
+function isCurrentPersonalInstallation(provider: ChannelProvider, installation: BotInstallation | undefined): installation is BotInstallation {
+  if (!installation || installation.status !== 'active') return false;
+  if (provider !== 'slack' && provider !== 'discord') return true;
+  const appId = currentPersonalAppId(provider);
+  return Boolean(appId && installation.appId === appId && installation.representedUserId);
+}
+
 export function resolvePersonalDirectTarget(
   provider: ChannelProvider,
   actorUserId: string | undefined,
@@ -38,7 +58,7 @@ export function resolvePersonalDirectTarget(
       ? store.getBotInstallation(provider, input.externalWorkspaceId, 'personal')
       : undefined;
   const distribution = readMurphConfig().app?.distribution ?? 'team';
-  if (botInstallation?.representedUserId) {
+  if (isCurrentPersonalInstallation(provider, botInstallation) && botInstallation.representedUserId) {
     if (botInstallation.representedUserId === actorUserId) {
       if (distribution !== 'personal') {
         return { ok: false, ignoredReason: 'owner_dm_unsupported' };
@@ -68,7 +88,17 @@ export function resolvePersonalDirectTarget(
   }
 
   const defaults = mergedSetupDefaults();
-  const providerWorkspaces = store.listWorkspaces().filter((workspace) => workspace.provider === provider);
+  const currentWorkspaceIds = new Set(store
+    .listBotInstallations({ provider, role: 'personal' })
+    .filter((installation) => isCurrentPersonalInstallation(provider, installation))
+    .map((installation) => installation.workspaceId));
+  const providerWorkspaces = store
+    .listWorkspaces()
+    .filter((workspace) => workspace.provider === provider && (
+      provider !== 'slack' && provider !== 'discord'
+        ? true
+        : currentWorkspaceIds.has(workspace.id)
+    ));
   const ownerTargets = providerWorkspaces
     .map((workspace) => ({ workspace, owner: setupOwnerForWorkspace(workspace, defaults) }))
     .filter((entry): entry is { workspace: Workspace; owner: SetupOwnerIdentity } =>

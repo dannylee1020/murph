@@ -176,6 +176,37 @@ function providerRoleStatus(
     return setup[provider].roles?.[role];
 }
 
+function providerRoleInstalled(
+    setup: SetupStatusPayload,
+    provider: ManagedProvider,
+    role: BotRole,
+): boolean {
+    const status = providerRoleStatus(setup, provider, role);
+    if (status) return Boolean(status.installed);
+    return Boolean(setup[provider].installed);
+}
+
+function providerRoleConfigured(
+    setup: SetupStatusPayload,
+    provider: ManagedProvider,
+    role: BotRole,
+): boolean {
+    const status = providerRoleStatus(setup, provider, role);
+    if (status) return Boolean(status.configured);
+    return provider === 'slack'
+        ? Boolean(setup.slack.oauthConfigured && setup.slack.socketConfigured)
+        : Boolean(setup.discord.botTokenConfigured && setup.discord.clientIdConfigured);
+}
+
+function providerRoleOwnerNeedsReconnect(
+    status: ProviderRoleSetupStatus | undefined,
+    role: BotRole,
+): boolean {
+    return role === 'personal'
+        ? status?.representedOwnerConfigured === false
+        : status?.ownerConfigured === false;
+}
+
 function providerModeRows(
     setup: SetupStatusPayload,
     provider: ManagedProvider,
@@ -267,22 +298,44 @@ export async function renderSettings(): Promise<void> {
     setTitle(isTeamDistribution ? 'Murph Admin' : 'Murph Settings');
     const runtimeLabel = distributionName(setup);
     const settingsLabel = isTeamDistribution ? 'Admin' : 'Settings';
-    const setupMode = isTeamDistribution ? 'channel' : 'personal';
+    const setupMode: BotRole = isTeamDistribution ? 'channel' : 'personal';
     const subscriptionsPayload: SubscriptionsPayload =
         isTeamDistribution && selectedWorkspaceId
         ? await getJson<SubscriptionsPayload>(
               `/api/gateway/subscriptions?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`,
           )
         : { subscriptions: [] };
-    const channelConnected = workspaces.length > 0;
-    const discordRuntimeConfigured =
-        setup.discord.botTokenConfigured && setup.discord.clientIdConfigured;
-    const discordSetupDetail =
-        setup.discord.installed && setup.discord.ownerConfigured === false
+    const slackRoleStatus = providerRoleStatus(setup, 'slack', setupMode);
+    const discordRoleStatus = providerRoleStatus(setup, 'discord', setupMode);
+    const slackConnected = providerRoleInstalled(setup, 'slack', setupMode);
+    const discordConnected = providerRoleInstalled(setup, 'discord', setupMode);
+    const slackConfigured = providerRoleConfigured(setup, 'slack', setupMode);
+    const discordConfigured = providerRoleConfigured(setup, 'discord', setupMode);
+    const channelConnected = slackConnected || discordConnected || workspaces.length > 0;
+    const slackOwnerNeedsReconnect = providerRoleOwnerNeedsReconnect(
+        slackRoleStatus,
+        setupMode,
+    );
+    const discordOwnerNeedsReconnect = providerRoleOwnerNeedsReconnect(
+        discordRoleStatus,
+        setupMode,
+    );
+    const slackSetupDetail =
+        slackConnected && slackOwnerNeedsReconnect
             ? 'Owner reconnect required'
-            : discordRuntimeConfigured
-              ? 'App values saved'
-              : 'Missing CLI settings';
+            : slackConnected
+              ? 'Connected'
+            : slackConfigured
+              ? 'Ready to install'
+              : 'Missing app settings';
+    const discordSetupDetail =
+        discordConnected && discordOwnerNeedsReconnect
+            ? 'Owner reconnect required'
+            : discordConnected
+              ? 'Connected'
+            : discordConfigured
+              ? 'Ready to install'
+              : 'Missing app settings';
 
     const subscriberSection = isTeamDistribution
         ? `
@@ -329,37 +382,37 @@ export async function renderSettings(): Promise<void> {
     <dl class="kpis">
       ${workspaceMetric(workspaces)}
       ${metric('AI provider', setup.provider.configured ? `${setup.provider.defaultProvider}` : 'Not configured')}
-      ${metric('Slack', setup.slack.installed ? 'Connected' : 'Not connected')}
-      ${metric('Discord', setup.discord.installed ? 'Connected' : 'Not connected')}
+      ${metric('Slack', slackConnected ? 'Connected' : 'Not connected')}
+      ${metric('Discord', discordConnected ? 'Connected' : 'Not connected')}
     </dl>
 
     <section class="grid three service-grid setup-entry-grid">
       <article class="panel panel-status setup-entry-card">
-        <h2><span class="status-dot ${setup.slack.installed && setup.slack.oauthConfigured ? 'ok' : 'off'}" aria-hidden="true"></span>Slack</h2>
+        <h2><span class="status-dot ${slackConnected ? 'ok' : 'off'}" aria-hidden="true"></span>Slack</h2>
         <p>Launch the guided setup for Slack ${isTeamDistribution ? 'channel' : 'owner-DM'} coverage.</p>
         <dl class="details">
-          <div><dt>Status</dt><dd>${setup.slack.installed ? 'Connected' : 'Not connected'}</dd></div>
+          <div><dt>Status</dt><dd>${slackConnected ? 'Connected' : 'Not connected'}</dd></div>
           <div><dt>Coverage</dt><dd>${escapeHtml(providerModeSummary(setup, 'slack'))}</dd></div>
           <div><dt>Events</dt><dd>${setup.slack.eventsMode === 'socket' ? 'Socket Mode' : 'HTTP'}</dd></div>
-          <div><dt>DM shortcut</dt><dd>${setup.slack.socketConfigured ? 'Socket Mode' : 'Needs app token'}</dd></div>
-          <div><dt>Setup</dt><dd>${setup.slack.oauthConfigured && setup.slack.socketConfigured ? 'Ready to install' : 'Missing app settings'}</dd></div>
+          <div><dt>DM shortcut</dt><dd>${(slackRoleStatus?.socketConfigured ?? setup.slack.socketConfigured) ? 'Socket Mode' : 'Needs app token'}</dd></div>
+          <div><dt>Setup</dt><dd>${slackSetupDetail}</dd></div>
         </dl>
         <div class="actions">
-          <a class="button" href="/setup?provider=slack&mode=${setupMode}">${setup.slack.installed ? 'Reconnect Slack' : 'Connect Slack'}</a>
+          <a class="button" href="/setup?provider=slack&mode=${setupMode}">${slackConnected ? 'Reconnect Slack' : 'Connect Slack'}</a>
           <button type="button" class="secondary manage-provider-modes" data-provider="slack">Coverage</button>
         </div>
       </article>
       <article class="panel panel-status setup-entry-card">
-        <h2><span class="status-dot ${setup.discord.installed && setup.discord.botTokenConfigured ? 'ok' : 'off'}" aria-hidden="true"></span>Discord</h2>
+        <h2><span class="status-dot ${discordConnected ? 'ok' : 'off'}" aria-hidden="true"></span>Discord</h2>
         <p>Launch the guided setup for Discord ${isTeamDistribution ? 'channel' : 'owner-DM'} coverage.</p>
         <dl class="details">
-          <div><dt>Status</dt><dd>${setup.discord.installed ? 'Connected' : 'Not connected'}</dd></div>
+          <div><dt>Status</dt><dd>${discordConnected ? 'Connected' : 'Not connected'}</dd></div>
           <div><dt>Coverage</dt><dd>${escapeHtml(providerModeSummary(setup, 'discord'))}</dd></div>
           <div><dt>DM shortcut</dt><dd>${setup.discord.publicKeyConfigured ? 'Ready' : 'Missing public key'}</dd></div>
           <div><dt>Setup</dt><dd>${discordSetupDetail}</dd></div>
         </dl>
         <div class="actions">
-          <a class="button" href="/setup?provider=discord&mode=${setupMode}">${setup.discord.installed ? 'Reconnect Discord' : 'Connect Discord'}</a>
+          <a class="button" href="/setup?provider=discord&mode=${setupMode}">${discordConnected ? 'Reconnect Discord' : 'Connect Discord'}</a>
           <button type="button" class="secondary manage-provider-modes" data-provider="discord">Coverage</button>
         </div>
       </article>

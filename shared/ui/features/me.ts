@@ -18,6 +18,24 @@ import type {
     TriagePayload,
 } from '../shared/types';
 
+function channelDisplayLabel(item: {
+    channelId: string;
+    channelDisplay?: { label?: string };
+}): string {
+    return item.channelDisplay?.label || item.channelId;
+}
+
+function channelDisplayTitle(item: {
+    channelId: string;
+    channelDisplay?: { workspaceName?: string };
+}): string {
+    const parts = [item.channelId];
+    if (item.channelDisplay?.workspaceName) {
+        parts.push(item.channelDisplay.workspaceName);
+    }
+    return parts.join(' · ');
+}
+
 function meShell(content: string): void {
     const themePreference = getThemePreference();
     app.innerHTML = `
@@ -82,7 +100,7 @@ function queueHtml(queue: QueuePayload['queue']): string {
                 ? '<article class="panel"><p class="empty">No drafts are waiting for review.</p></article>'
                 : queue.map((item) => `
                     <article class="panel draft-panel">
-                      <h3>${escapeHtml(item.channelId)} <code>${escapeHtml(item.threadTs)}</code></h3>
+                      <h3><span title="${escapeHtml(channelDisplayTitle(item))}">${escapeHtml(channelDisplayLabel(item))}</span> <code>${escapeHtml(item.threadTs)}</code></h3>
                       <p class="draft-text">${escapeHtml(item.message || 'No message drafted')}</p>
                       <dl class="details">
                         <div><dt>Action</dt><dd>${escapeHtml(titleCase(item.action))}</dd></div>
@@ -153,7 +171,7 @@ function triageHtml(payload: TriagePayload): string {
                 ? '<article class="panel"><p class="empty">No completed actions to triage yet.</p></article>'
                 : payload.items.map((item) => `
                     <article class="panel triage-item">
-                      <h3>${escapeHtml(titleCase(item.disposition ?? 'recorded'))} · ${escapeHtml(item.channelId)}</h3>
+                      <h3>${escapeHtml(titleCase(item.disposition ?? 'recorded'))} · <span title="${escapeHtml(channelDisplayTitle(item))}">${escapeHtml(channelDisplayLabel(item))}</span></h3>
                       <dl class="details">
                         <div><dt>Recorded</dt><dd title="${escapeHtml(formatExactIso(item.createdAt))}">${escapeHtml(formatRelative(item.createdAt))}</dd></div>
                         <div><dt>Response</dt><dd>${escapeHtml(item.message || 'No message drafted')}</dd></div>
@@ -177,7 +195,7 @@ function activityHtml(runs: RunsPayload, events: RunEventsPayload): string {
                   : `<ul class="list">${runs.runs.slice(0, 12).map((run) => `
                       <li class="list-row">
                         <strong>${escapeHtml(run.taskId)}</strong>
-                        <span>${escapeHtml(titleCase(run.status))} · ${escapeHtml(run.channelId)} · ${escapeHtml(formatRelative(run.startedAt))}</span>
+                        <span title="${escapeHtml(channelDisplayTitle(run))}">${escapeHtml(titleCase(run.status))} · ${escapeHtml(channelDisplayLabel(run))} · ${escapeHtml(formatRelative(run.startedAt))}</span>
                       </li>
                     `).join('')}</ul>`
           }

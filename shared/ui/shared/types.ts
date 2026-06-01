@@ -378,6 +378,7 @@ export type QueuePayload = {
         sessionId?: string;
         threadTs: string;
         channelId: string;
+        channelDisplay?: ChannelDisplay;
         targetUserId?: string;
         action: string;
         reason: string;
@@ -407,6 +408,7 @@ export type TriagePayload = {
         sessionId?: string;
         threadTs: string;
         channelId: string;
+        channelDisplay?: ChannelDisplay;
         targetUserId?: string;
         action: string;
         disposition?: string;
@@ -465,12 +467,20 @@ export type RunsPayload = {
         sessionId?: string;
         taskId: string;
         channelId: string;
+        channelDisplay?: ChannelDisplay;
         threadTs: string;
         targetUserId: string;
         status: string;
         startedAt: string;
         completedAt?: string;
     }>;
+};
+
+export type ChannelDisplay = {
+    id: string;
+    label: string;
+    workspaceName?: string;
+    fallback: boolean;
 };
 
 export type RunEventsPayload = {

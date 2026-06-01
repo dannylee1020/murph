@@ -8,6 +8,11 @@ if [[ ! -f "$APP_DIR/package.json" || ( ! -f "$APP_DIR/app/team/cli/murph" && ! 
   exit 1
 fi
 
+if [[ -d "$APP_DIR/.git" ]]; then
+  printf 'Skipping install pruning for Git checkout: %s\n' "$APP_DIR"
+  exit 0
+fi
+
 remove_path() {
   local target="$APP_DIR/$1"
   if [[ -e "$target" || -L "$target" ]]; then

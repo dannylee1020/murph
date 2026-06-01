@@ -39,14 +39,32 @@ function ownerMatches(target: PersonalHandoffTarget, hint: string | undefined): 
     target.ownerDisplayName.toLowerCase().includes(normalized);
 }
 
+function currentPersonalAppId(provider: ChannelProvider): string | undefined {
+  const store = getStore();
+  if (provider === 'slack') {
+    const config = store.getBotAppConfig('slack', 'personal');
+    return process.env.SLACK_PERSONAL_APP_ID ?? config?.appId;
+  }
+  if (provider === 'discord') {
+    const config = store.getBotAppConfig('discord', 'personal');
+    return process.env.DISCORD_PERSONAL_CLIENT_ID ?? config?.clientId ?? config?.appId;
+  }
+  return undefined;
+}
+
 export function listPersonalHandoffTargets(
   provider: ChannelProvider,
   input: { externalWorkspaceId?: string } = {}
 ): PersonalHandoffTarget[] {
   const store = getStore();
+  const appId = currentPersonalAppId(provider);
   return store
     .listBotInstallations({ provider, role: 'personal' })
-    .filter((installation) => installation.status === 'active' && Boolean(installation.representedUserId))
+    .filter((installation) => (
+      installation.status === 'active' &&
+      Boolean(installation.representedUserId) &&
+      (provider !== 'slack' && provider !== 'discord' ? true : Boolean(appId && installation.appId === appId))
+    ))
     .map((installation) => {
       const workspace = store.getWorkspaceById(installation.workspaceId);
       if (!workspace) return undefined;

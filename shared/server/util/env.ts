@@ -117,7 +117,7 @@ export function getRuntimeEnv(): RuntimeEnv {
     sqlitePath: envOrConfigString('MURPH_SQLITE_PATH', config.app?.sqlitePath, DEFAULT_SQLITE_PATH),
     memoryPath: envOrConfigString('MURPH_MEMORY_PATH', config.app?.memoryPath, path.join(homedir(), '.murph', 'memory')),
     encryptionKey: process.env.MURPH_ENCRYPTION_KEY ?? '',
-    slackClientId: process.env.SLACK_CLIENT_ID ?? config.channels?.slack?.clientId,
+    slackClientId: process.env.SLACK_CLIENT_ID,
     slackClientSecret: envOrSecret('SLACK_CLIENT_SECRET', 'slack', 'client_secret'),
     slackSigningSecret: envOrSecret('SLACK_SIGNING_SECRET', 'slack', 'signing_secret'),
     slackAppToken: envOrSecret('SLACK_APP_TOKEN', 'slack', 'app_token'),
@@ -125,12 +125,12 @@ export function getRuntimeEnv(): RuntimeEnv {
       ? 'http'
       : process.env.SLACK_EVENTS_MODE === 'socket'
         ? 'socket'
-        : config.channels?.slack?.eventsMode ?? 'socket',
+        : 'socket',
     discordBotToken: envOrSecret('DISCORD_BOT_TOKEN', 'discord', 'bot_token'),
-    discordClientId: process.env.DISCORD_CLIENT_ID ?? config.channels?.discord?.clientId,
+    discordClientId: process.env.DISCORD_CLIENT_ID,
     discordClientSecret: envOrSecret('DISCORD_CLIENT_SECRET', 'discord', 'client_secret'),
-    discordPublicKey: process.env.DISCORD_PUBLIC_KEY ?? config.channels?.discord?.publicKey,
-    discordRedirectUri: process.env.DISCORD_REDIRECT_URI ?? config.channels?.discord?.redirectUri,
+    discordPublicKey: process.env.DISCORD_PUBLIC_KEY,
+    discordRedirectUri: process.env.DISCORD_REDIRECT_URI,
     heartbeatIntervalMs: envOrConfigNumber('MURPH_HEARTBEAT_INTERVAL_MS', config.app?.heartbeatIntervalMs, DEFAULT_HEARTBEAT_INTERVAL_MS),
     openaiApiKey: envOrSecret('OPENAI_API_KEY', 'openai', 'api_key'),
     anthropicApiKey: envOrSecret('ANTHROPIC_API_KEY', 'anthropic', 'api_key'),

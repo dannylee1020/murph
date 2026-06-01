@@ -160,6 +160,29 @@ describe('Discord OAuth callback route', () => {
     expect(ensureStarted).toHaveBeenCalledOnce();
   });
 
+  it('saves a personal OAuth owner as the primary setup owner when none exists', async () => {
+    process.env.DISCORD_PERSONAL_CLIENT_ID = 'discord-personal-client-id';
+    process.env.DISCORD_PERSONAL_CLIENT_SECRET = 'discord-personal-client-secret';
+    process.env.DISCORD_PERSONAL_BOT_TOKEN = 'discord-personal-bot-token';
+    const { get, root } = await setup();
+    process.env.DISCORD_PERSONAL_CLIENT_ID = 'discord-personal-client-id';
+    process.env.DISCORD_PERSONAL_CLIENT_SECRET = 'discord-personal-client-secret';
+    process.env.DISCORD_PERSONAL_BOT_TOKEN = 'discord-personal-bot-token';
+    const installResult = await get('/api/discord/personal/install?source=setup');
+    const installLocation = new URL(installResult.headers.location);
+    const state = encodeURIComponent(installLocation.searchParams.get('state') ?? '');
+
+    const callbackResult = await get(`/api/discord/oauth/callback?code=abc&state=${state}`);
+
+    expect(callbackResult.status).toBe(302);
+    expect(callbackResult.headers.location).toMatch(/^\/setup\?step=discord&role=personal&success=1&workspaceId=/);
+    const config = readFileSync(path.join(root, 'config.yaml'), 'utf8');
+    expect(config).toContain('channelProvider: discord');
+    expect(config).toContain('ownerUserId: U_DISCORD');
+    expect(config).toContain('ownerDisplayName: Daniel Discord');
+    expect(config).toContain('workspaceOwners:');
+  });
+
   it('returns CLI-sourced Discord installs to the terminal completion page', async () => {
     const { get } = await setup();
     const installResult = await get('/api/discord/install?source=cli');

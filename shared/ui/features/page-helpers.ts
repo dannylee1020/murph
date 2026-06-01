@@ -122,6 +122,162 @@ type ToolCallEntry = {
     error?: string;
 };
 
+type ContextRetrievalEntry = {
+    name: string;
+    artifacts: number;
+    titles: string[];
+    status: 'ok' | 'empty' | 'error';
+};
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object'
+        ? (value as Record<string, unknown>)
+        : undefined;
+}
+
+function stringArray(value: unknown): string[] {
+    return Array.isArray(value)
+        ? value.filter((entry): entry is string => typeof entry === 'string')
+        : [];
+}
+
+function contextRetrievalName(name: string): string {
+    return name.endsWith('.thread_search') || name.endsWith('.upcoming_events')
+        ? name.split('.')[0] ?? name
+        : name;
+}
+
+function mergeContextRetrievalEntry(
+    entries: Map<string, ContextRetrievalEntry>,
+    name: string,
+    update?: Partial<Omit<ContextRetrievalEntry, 'name'>>,
+): void {
+    const normalizedName = contextRetrievalName(name);
+    const existing = entries.get(normalizedName) ?? {
+        name: normalizedName,
+        artifacts: 0,
+        titles: [],
+        status: 'empty' as const,
+    };
+    const titles = [
+        ...existing.titles,
+        ...(update?.titles ?? []),
+    ].filter((title, index, all) => title && all.indexOf(title) === index);
+    entries.set(normalizedName, {
+        ...existing,
+        ...update,
+        artifacts: Math.max(existing.artifacts, update?.artifacts ?? 0),
+        titles: titles.slice(0, 5),
+        status:
+            update?.status ??
+            (Math.max(existing.artifacts, update?.artifacts ?? 0) > 0
+                ? 'ok'
+                : existing.status),
+    });
+}
+
+function contextSourceNamesFromPayload(payload: Record<string, unknown>): string[] {
+    const sources = asRecord(payload.contextSources);
+    if (!sources) return [];
+    return [
+        ...stringArray(sources.explicit),
+        ...stringArray(sources.optional),
+    ].filter((name, index, all) => all.indexOf(name) === index);
+}
+
+function artifactSourcesFromPayload(
+    payload: Record<string, unknown>,
+): Array<{ name: string; artifacts: number; titles: string[] }> {
+    if (!Array.isArray(payload.artifactSources)) return [];
+    return payload.artifactSources
+        .map((entry) => {
+            const record = asRecord(entry);
+            if (!record || typeof record.name !== 'string') return undefined;
+            return {
+                name: record.name,
+                artifacts:
+                    typeof record.artifacts === 'number'
+                        ? record.artifacts
+                        : 0,
+                titles: stringArray(record.titles),
+            };
+        })
+        .filter(
+            (
+                entry,
+            ): entry is { name: string; artifacts: number; titles: string[] } =>
+                Boolean(entry),
+        );
+}
+
+function artifactSourcesFromIndexSource(
+    payload: Record<string, unknown>,
+): Array<{ name: string; artifacts: number; titles: string[] }> {
+    if (!Array.isArray(payload.artifacts)) return [];
+    const grouped = new Map<
+        string,
+        { name: string; artifacts: number; titles: string[] }
+    >();
+    for (const artifact of payload.artifacts) {
+        const record = asRecord(artifact);
+        if (!record || typeof record.source !== 'string') continue;
+        if (record.source.startsWith('memory.')) continue;
+        const existing = grouped.get(record.source) ?? {
+            name: record.source,
+            artifacts: 0,
+            titles: [],
+        };
+        existing.artifacts += 1;
+        if (typeof record.title === 'string' && existing.titles.length < 5) {
+            existing.titles.push(record.title);
+        }
+        grouped.set(record.source, existing);
+    }
+    return [...grouped.values()];
+}
+
+export function contextRetrievalEntries(
+    events: RunEventsPayload['events'],
+): ContextRetrievalEntry[] {
+    const entries = new Map<string, ContextRetrievalEntry>();
+    for (const event of events) {
+        const payload = asRecord(event.payload);
+        if (!payload) continue;
+        if (event.type === 'agent.context.built') {
+            for (const name of contextSourceNamesFromPayload(payload)) {
+                mergeContextRetrievalEntry(entries, name);
+            }
+            for (const source of artifactSourcesFromPayload(payload)) {
+                mergeContextRetrievalEntry(entries, source.name, {
+                    artifacts: source.artifacts,
+                    titles: source.titles,
+                    status: source.artifacts > 0 ? 'ok' : 'empty',
+                });
+            }
+        } else if (event.type === 'agent.memory.index_source') {
+            for (const source of artifactSourcesFromIndexSource(payload)) {
+                mergeContextRetrievalEntry(entries, source.name, {
+                    artifacts: source.artifacts,
+                    titles: source.titles,
+                    status: source.artifacts > 0 ? 'ok' : 'empty',
+                });
+            }
+        } else if (event.type === 'agent.memory.written') {
+            for (const name of stringArray(payload.successfulTools)) {
+                mergeContextRetrievalEntry(entries, name, { status: 'ok' });
+            }
+            for (const name of stringArray(payload.failedTools)) {
+                mergeContextRetrievalEntry(entries, name, { status: 'error' });
+            }
+        } else if (event.type === 'agent.memory.skipped') {
+            for (const name of stringArray(payload.failedTools)) {
+                mergeContextRetrievalEntry(entries, name, { status: 'error' });
+            }
+        }
+    }
+    return [...entries.values()];
+}
+
 export function pairToolCalls(events: RunEventsPayload['events']): ToolCallEntry[] {
     const ordered: ToolCallEntry[] = [];
     const byId = new Map<string, ToolCallEntry>();
@@ -210,6 +366,76 @@ export function statusPillForTool(call: ToolCallEntry): string {
     if (call.status === 'error')
         return '<span class="pill pill-warn">Error</span>';
     return '<span class="pill pill-muted">Pending</span>';
+}
+
+function statusPillForContext(entry: ContextRetrievalEntry): string {
+    if (entry.status === 'ok') return '<span class="pill pill-ok">OK</span>';
+    if (entry.status === 'error')
+        return '<span class="pill pill-warn">Error</span>';
+    return '<span class="pill pill-muted">No artifacts</span>';
+}
+
+function renderContextRetrievalEntry(entry: ContextRetrievalEntry): string {
+    const rows = [
+        `<div><dt>Artifacts</dt><dd>${escapeHtml(String(entry.artifacts))}</dd></div>`,
+    ];
+    if (entry.titles.length > 0) {
+        rows.push(
+            `<div><dt>Sources</dt><dd><ul>${entry.titles
+                .map((title) => `<li>${escapeHtml(title)}</li>`)
+                .join('')}</ul></dd></div>`,
+        );
+    }
+    return `
+    <li>
+      <details class="tool-call">
+        <summary>
+          <span aria-hidden="true"></span>
+          <span class="tool-call-name">${escapeHtml(entry.name)}</span>
+          ${statusPillForContext(entry)}
+          <span class="tool-call-duration">${escapeHtml(
+              `${entry.artifacts} artifact${entry.artifacts === 1 ? '' : 's'}`,
+          )}</span>
+        </summary>
+        <dl class="tool-call-body">
+          ${rows.join('')}
+        </dl>
+      </details>
+    </li>
+  `;
+}
+
+export function renderContextRetrievalDisclosure(
+    events: RunEventsPayload['events'],
+): string {
+    const entries = contextRetrievalEntries(events);
+    const artifactCount = entries.reduce(
+        (total, entry) => total + entry.artifacts,
+        0,
+    );
+    const errorCount = entries.filter((entry) => entry.status === 'error').length;
+    const meta =
+        errorCount > 0
+            ? `${entries.length} · ${errorCount} error${errorCount === 1 ? '' : 's'}`
+            : `${String(entries.length).padStart(2, '0')} · ${artifactCount} artifact${artifactCount === 1 ? '' : 's'}`;
+
+    return `
+    <section>
+      <details class="disclosure">
+        <summary>
+          <span>
+            <span class="disclosure-label">Context retrieval</span>
+            <span class="disclosure-count">${escapeHtml(meta)}</span>
+          </span>
+        </summary>
+        ${
+            entries.length === 0
+                ? '<p class="disclosure-empty">No context-source retrieval recorded for this run.</p>'
+                : `<ul class="tool-call-list">${entries.map(renderContextRetrievalEntry).join('')}</ul>`
+        }
+      </details>
+    </section>
+  `;
 }
 
 export function renderToolCallEntry(call: ToolCallEntry): string {
@@ -619,6 +845,24 @@ export function channelSummaryLabel(
         return channels[0].displayName;
     }
     return `${channels.length} channels`;
+}
+
+export function channelDisplayLabel(item: {
+    channelId: string;
+    channelDisplay?: { label?: string };
+}): string {
+    return item.channelDisplay?.label || item.channelId;
+}
+
+export function channelDisplayTitle(item: {
+    channelId: string;
+    channelDisplay?: { workspaceName?: string };
+}): string {
+    const parts = [item.channelId];
+    if (item.channelDisplay?.workspaceName) {
+        parts.push(item.channelDisplay.workspaceName);
+    }
+    return parts.join(' · ');
 }
 
 export function ownerDisplayName(ownerId: string, members: MemberChoice[]): string {

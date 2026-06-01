@@ -92,6 +92,8 @@ import {
     DEFAULT_HOME_WORKDAY_START_HOUR,
     activeSessionRows,
     calculateDurationHours,
+    channelDisplayLabel,
+    channelDisplayTitle,
     channelSummaryLabel,
     combinedChannelSummary,
     getTimezoneOptions,
@@ -108,6 +110,7 @@ import {
     policyProfileDialog,
     policyProfileOptions,
     policySummary,
+    renderContextRetrievalDisclosure,
     renderToolCallsDisclosure,
     sessionCreateErrorHtml,
     sessionErrorHtml,
@@ -139,10 +142,12 @@ export async function renderReview(): Promise<void> {
           queuePayload.queue.length === 0
               ? '<article class="panel"><p class="empty">Queued drafts appear here whenever Murph proposes a reply under manual review. Nothing waiting right now.</p></article>'
               : queuePayload.queue
-                    .map(
-                        (item) => `
+                    .map((item) => {
+                        const channelLabel = channelDisplayLabel(item);
+                        const channelTitle = channelDisplayTitle(item);
+                        return `
                   <article class="panel draft-panel">
-                    <h2><span>${escapeHtml(item.channelId)}</span><code>${escapeHtml(item.threadTs)}</code></h2>
+                    <h2><span title="${escapeHtml(channelTitle)}">${escapeHtml(channelLabel)}</span><code>${escapeHtml(item.threadTs)}</code></h2>
                     <p class="draft-text">${escapeHtml(item.message || 'No message drafted')}</p>
                     <dl class="details">
                       <div><dt>Session</dt><dd>${escapeHtml(item.sessionId ?? '—')}</dd></div>
@@ -156,8 +161,8 @@ export async function renderReview(): Promise<void> {
                       <button class="secondary" data-review-id="${escapeHtml(item.id)}" data-action="reject">Reject</button>
                     </div>
                   </article>
-                `,
-                    )
+                `;
+                    })
                     .join('')
       }
     </section>
@@ -444,6 +449,8 @@ async function renderRuns(): Promise<void> {
                       .map((run) => {
                           const isActive =
                               selectedRun && selectedRun.id === run.id;
+                          const channelLabel = channelDisplayLabel(run);
+                          const channelTitle = channelDisplayTitle(run);
                           return `
                     <li>
                       <a
@@ -453,7 +460,7 @@ async function renderRuns(): Promise<void> {
                         ${isActive ? 'aria-current="true"' : ''}
                       >
                         <strong>${escapeHtml(run.taskId)}</strong>
-                        <span>${escapeHtml(titleCase(run.status))} · ${escapeHtml(run.channelId)}</span>
+                        <span title="${escapeHtml(channelTitle)}">${escapeHtml(titleCase(run.status))} · ${escapeHtml(channelLabel)}</span>
                         <span title="${escapeHtml(formatExactIso(run.startedAt))}">${escapeHtml(formatRelative(run.startedAt))}</span>
                       </a>
                     </li>
@@ -553,6 +560,10 @@ export async function renderActivity(): Promise<void> {
               ? `
             <article class="panel event-panel">
               <h2>Events — ${escapeHtml(selectedRun.taskId)}</h2>
+              <dl class="details">
+                <div><dt>Channel</dt><dd title="${escapeHtml(channelDisplayTitle(selectedRun))}">${escapeHtml(channelDisplayLabel(selectedRun))}</dd></div>
+                <div><dt>Thread</dt><dd><code>${escapeHtml(selectedRun.threadTs)}</code></dd></div>
+              </dl>
               ${
                   eventsPayload.events.length === 0
                       ? '<p class="empty">This run has no events yet.</p>'
@@ -576,6 +587,7 @@ export async function renderActivity(): Promise<void> {
       }
     </section>
 
+    ${selectedRun ? renderContextRetrievalDisclosure(eventsPayload.events) : ''}
     ${selectedRun ? renderToolCallsDisclosure(eventsPayload.events) : ''}
 
     <section class="panel">

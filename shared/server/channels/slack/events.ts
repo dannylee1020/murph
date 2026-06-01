@@ -4,7 +4,6 @@ import { getGateway } from '#shared/server/runtime/gateway';
 import { getStore } from '#shared/server/persistence/store';
 import { markIngressIgnored } from '#shared/server/channels/ingress-health';
 import { providerBotRoleEnabled } from '#shared/server/setup/bot-roles';
-import { readMurphConfig } from '#shared/server/setup/config-file';
 import type { BotRole } from '#shared/types';
 
 export interface SlackEnvelopeHandleResult {
@@ -49,7 +48,7 @@ export async function handleSlackEventEnvelope(
     ? (payload.authorizations[0] as { team_id?: unknown } | undefined)?.team_id
     : undefined);
   const botRole = options.botRole ?? 'channel';
-  if (!providerBotRoleEnabled(readMurphConfig().setup, 'slack', botRole)) {
+  if (!providerBotRoleEnabled(getStore().getAppSettings().setupDefaults, 'slack', botRole)) {
     markIngressIgnored('slack', 'bot_role_disabled');
     console.info('[slack] ignored event', {
       ...slackLogFields(payload, event),
@@ -60,7 +59,17 @@ export async function handleSlackEventEnvelope(
     return { ok: false, ignored: true, reason: 'bot_role_disabled' };
   }
   const botInstallationId = options.botInstallationId ??
-    (teamId ? getStore().getBotInstallation('slack', teamId, botRole)?.id : undefined);
+    (() => {
+      if (!teamId) return undefined;
+      const installation = getStore().getBotInstallation('slack', teamId, botRole);
+      const roleConfig = getStore().getBotAppConfig('slack', botRole);
+      const appId = botRole === 'personal'
+        ? process.env.SLACK_PERSONAL_APP_ID ?? roleConfig?.appId
+        : process.env.SLACK_CHANNEL_APP_ID ?? process.env.SLACK_APP_ID ?? roleConfig?.appId;
+      if (!installation || !appId || installation.appId !== appId) return undefined;
+      if (botRole === 'personal' && !installation.representedUserId) return undefined;
+      return installation.id;
+    })();
   const normalized = normalizeSlackEvent(event, { eventId, teamId, botRole, botInstallationId });
 
   if (!normalized.task) {

@@ -1,5 +1,5 @@
 import { LogLevel, SocketModeClient } from '@slack/socket-mode';
-import { getRuntimeEnv } from '#shared/server/util/env';
+import { getStore } from '#shared/server/persistence/store';
 import { handleSlackEventEnvelope } from '#shared/server/channels/slack/events';
 import {
   handleSlackSocketInteractive,
@@ -43,9 +43,14 @@ export class SlackSocketModeClient {
   private started = false;
   private restartTimer: NodeJS.Timeout | null = null;
 
+  private eventsMode(): 'http' | 'socket' {
+    if (process.env.SLACK_EVENTS_MODE === 'http') return 'http';
+    if (process.env.SLACK_EVENTS_MODE === 'socket') return 'socket';
+    return getStore().getBotAppConfig('slack', this.role)?.eventsMode ?? 'socket';
+  }
+
   isConfigured(): boolean {
-    const env = getRuntimeEnv();
-    return env.slackEventsMode !== 'http' && Boolean(this.appToken());
+    return this.eventsMode() !== 'http' && Boolean(this.appToken());
   }
 
   private appToken(): string | undefined {
@@ -53,10 +58,8 @@ export class SlackSocketModeClient {
   }
 
   ensureStarted(): void {
-    const env = getRuntimeEnv();
-
-    if (this.started || env.slackEventsMode === 'http') {
-      markIngressConfigured('slack', env.slackEventsMode !== 'http' && Boolean(env.slackAppToken));
+    if (this.started || this.eventsMode() === 'http') {
+      markIngressConfigured('slack', this.eventsMode() !== 'http' && Boolean(this.appToken()));
       return;
     }
 

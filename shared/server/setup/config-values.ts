@@ -1,6 +1,9 @@
-import { SETUP_CONFIG_KEYS, updateMurphConfigValues } from '#shared/server/setup/config-file';
+import { SETUP_CONFIG_KEYS, pruneChannelRuntimeConfig, updateMurphConfigValues } from '#shared/server/setup/config-file';
 import { writeSecret } from '#shared/server/credentials/local-store';
+import { getStore } from '#shared/server/persistence/store';
+import { normalizeSetupBotRoles } from '#shared/server/setup/bot-roles';
 import { resetRuntimeEnvCache } from '#shared/server/util/env';
+import type { BotRole } from '#shared/types';
 
 const SETUP_SECRET_KEYS: Record<string, { provider: string; key: string }> = {
   OPENAI_API_KEY: { provider: 'openai', key: 'api_key' },
@@ -29,13 +32,77 @@ const SETUP_SECRET_KEYS: Record<string, { provider: string; key: string }> = {
   BRAVE_SEARCH_API_KEY: { provider: 'brave_search', key: 'api_key' }
 };
 
+type BotAppConfigTarget = {
+  provider: 'slack' | 'discord';
+  role: BotRole | 'both';
+  field: 'appId' | 'clientId' | 'publicKey' | 'eventsMode' | 'redirectUri' | 'teamId' | 'teamName';
+};
+
+const BOT_APP_CONFIG_KEYS: Record<string, BotAppConfigTarget> = {
+  SLACK_EVENTS_MODE: { provider: 'slack', role: 'both', field: 'eventsMode' },
+  SLACK_CLIENT_ID: { provider: 'slack', role: 'channel', field: 'clientId' },
+  SLACK_APP_ID: { provider: 'slack', role: 'channel', field: 'appId' },
+  SLACK_CHANNEL_CLIENT_ID: { provider: 'slack', role: 'channel', field: 'clientId' },
+  SLACK_CHANNEL_APP_ID: { provider: 'slack', role: 'channel', field: 'appId' },
+  SLACK_PERSONAL_CLIENT_ID: { provider: 'slack', role: 'personal', field: 'clientId' },
+  SLACK_PERSONAL_APP_ID: { provider: 'slack', role: 'personal', field: 'appId' },
+  SLACK_TEAM_ID: { provider: 'slack', role: 'both', field: 'teamId' },
+  SLACK_TEAM_NAME: { provider: 'slack', role: 'both', field: 'teamName' },
+  DISCORD_CLIENT_ID: { provider: 'discord', role: 'channel', field: 'clientId' },
+  DISCORD_PUBLIC_KEY: { provider: 'discord', role: 'channel', field: 'publicKey' },
+  DISCORD_CHANNEL_CLIENT_ID: { provider: 'discord', role: 'channel', field: 'clientId' },
+  DISCORD_CHANNEL_PUBLIC_KEY: { provider: 'discord', role: 'channel', field: 'publicKey' },
+  DISCORD_PERSONAL_CLIENT_ID: { provider: 'discord', role: 'personal', field: 'clientId' },
+  DISCORD_PERSONAL_PUBLIC_KEY: { provider: 'discord', role: 'personal', field: 'publicKey' },
+  DISCORD_REDIRECT_URI: { provider: 'discord', role: 'both', field: 'redirectUri' }
+};
+
+function updateBotAppConfigValue(key: string, value: string): void {
+  const target = BOT_APP_CONFIG_KEYS[key];
+  if (!target) return;
+  const roles: BotRole[] = target.role === 'both' ? ['channel', 'personal'] : [target.role];
+  for (const role of roles) {
+    const existing = getStore().getBotAppConfig(target.provider, role);
+    const input = {
+      provider: target.provider,
+      role,
+      ...(target.field === 'appId' ? { appId: value } : {}),
+      ...(target.field === 'clientId' ? { clientId: value, appId: target.provider === 'discord' ? value : undefined } : {}),
+      ...(target.field === 'publicKey' ? { publicKey: value } : {}),
+      ...(target.field === 'eventsMode' ? { eventsMode: value === 'http' ? 'http' as const : 'socket' as const } : {}),
+      ...(target.field === 'redirectUri' ? { redirectUri: value } : {}),
+      ...(target.field === 'teamId' ? { metadata: { ...(existing?.metadata ?? {}), teamId: value } } : {}),
+      ...(target.field === 'teamName' ? { metadata: { ...(existing?.metadata ?? {}), teamName: value } } : {})
+    };
+    getStore().upsertBotAppConfig(input);
+  }
+}
+
+function updateSetupDefaultValue(key: string, value: string): void {
+  if (key !== 'MURPH_BOT_ROLES') return;
+  const store = getStore();
+  const current = store.getAppSettings().setupDefaults ?? {};
+  store.upsertAppSettings({
+    setupDefaults: {
+      ...current,
+      botRoles: normalizeSetupBotRoles(value.split(',').map((entry) => entry.trim()))
+    }
+  });
+}
+
 export function updateSetupConfigValues(values: Record<string, string | undefined>): { updated: string[] } {
   const secretValues: Record<string, string | undefined> = {};
   const configValues: Record<string, string | undefined> = {};
+  const botAppConfigValues: Record<string, string | undefined> = {};
+  const setupDefaultValues: Record<string, string | undefined> = {};
 
   for (const [key, value] of Object.entries(values)) {
     if (SETUP_SECRET_KEYS[key]) {
       secretValues[key] = value;
+    } else if (BOT_APP_CONFIG_KEYS[key]) {
+      botAppConfigValues[key] = value;
+    } else if (key === 'MURPH_BOT_ROLES') {
+      setupDefaultValues[key] = value;
     } else if (SETUP_CONFIG_KEYS.has(key)) {
       configValues[key] = value;
     } else {
@@ -67,8 +134,29 @@ export function updateSetupConfigValues(values: Record<string, string | undefine
     }
   }
 
-  resetRuntimeEnvCache();
   updated.push(...configUpdated);
+
+  for (const [key, rawValue] of Object.entries(botAppConfigValues)) {
+    const value = rawValue?.trim();
+    if (!value) continue;
+    updateBotAppConfigValue(key, value);
+    process.env[key] = value;
+    updated.push(key);
+  }
+
+  for (const [key, rawValue] of Object.entries(setupDefaultValues)) {
+    const value = rawValue?.trim();
+    if (!value) continue;
+    updateSetupDefaultValue(key, value);
+    process.env[key] = value;
+    updated.push(key);
+  }
+
+  if (Object.keys(botAppConfigValues).length > 0 || Object.keys(setupDefaultValues).length > 0) {
+    pruneChannelRuntimeConfig();
+  }
+
+  resetRuntimeEnvCache();
 
   return { updated };
 }

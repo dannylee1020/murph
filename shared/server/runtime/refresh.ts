@@ -101,7 +101,7 @@ function sessionModeFromPolicyMode(mode: PolicyExecutionMode): SessionMode {
 }
 
 function configuredChannelScope(workspace: Workspace): string[] {
-  const setup = readMurphConfig().setup;
+  const setup = getStore().getAppSettings().setupDefaults;
   const workspaceDefaults = setup?.workspaceChannels?.find((entry) => entry.workspaceId === workspace.id);
   if (workspaceDefaults) {
     return workspaceDefaults.channelScopeMode === 'all_accessible'
@@ -179,7 +179,7 @@ async function computeRevision(workspace: Workspace): Promise<{
       }))
     }),
     setup: hash({
-      ownerUserId: readMurphConfig().setup?.workspaceOwners?.find((owner) => owner.workspaceId === workspace.id)?.ownerUserId,
+      ownerUserId: getStore().getAppSettings().setupDefaults?.workspaceOwners?.find((owner) => owner.workspaceId === workspace.id)?.ownerUserId,
       channelScope
     }),
     workspaceCapabilities: hash({

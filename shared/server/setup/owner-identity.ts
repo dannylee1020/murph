@@ -1,5 +1,4 @@
 import { getStore } from '#shared/server/persistence/store';
-import { readMurphConfig } from '#shared/server/setup/config-file';
 import type { SetupDefaults, Workspace } from '#shared/types';
 
 export type SetupOwnerIdentity = {
@@ -17,11 +16,7 @@ export function providerLocksOwnerIdentity(provider: string): boolean {
 }
 
 export function mergedSetupDefaults(): SetupDefaults {
-  const store = getStore();
-  return {
-    ...(store.getAppSettings().setupDefaults ?? {}),
-    ...(readMurphConfig().setup ?? {})
-  };
+  return getStore().getAppSettings().setupDefaults ?? {};
 }
 
 export function setupOwnerForWorkspace(
@@ -84,4 +79,3 @@ export function requireMatchingSetupOwner(
 
   return { ok: true, owner };
 }
-

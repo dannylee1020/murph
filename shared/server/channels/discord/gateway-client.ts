@@ -4,7 +4,6 @@ import { getGateway } from '#shared/server/runtime/gateway';
 import { getStore } from '#shared/server/persistence/store';
 import { normalizeDiscordEventWithReason } from '#shared/server/channels/discord/adapter';
 import { providerBotRoleEnabled } from '#shared/server/setup/bot-roles';
-import { readMurphConfig } from '#shared/server/setup/config-file';
 import type { BotRole } from '#shared/types';
 import {
   markIngressClosed,
@@ -29,6 +28,54 @@ const INTENTS =
   DISCORD_GATEWAY_INTENTS.DIRECT_MESSAGES |
   DISCORD_GATEWAY_INTENTS.MESSAGE_CONTENT;
 
+function discordEventAuthorId(event: Record<string, unknown>): string | undefined {
+  return typeof event.author === 'object' &&
+    event.author &&
+    typeof (event.author as { id?: unknown }).id === 'string'
+    ? (event.author as { id: string }).id
+    : undefined;
+}
+
+function currentDiscordAppId(role: BotRole): string | undefined {
+  const config = getStore().getBotAppConfig('discord', role);
+  return role === 'personal'
+    ? process.env.DISCORD_PERSONAL_CLIENT_ID ?? config?.clientId ?? config?.appId
+    : process.env.DISCORD_CHANNEL_CLIENT_ID ?? process.env.DISCORD_CLIENT_ID ?? config?.clientId ?? config?.appId;
+}
+
+function isCurrentDiscordInstallation(installation: ReturnType<ReturnType<typeof getStore>['listBotInstallations']>[number], role: BotRole): boolean {
+  const appId = currentDiscordAppId(role);
+  if (!appId || installation.appId !== appId) return false;
+  if (role === 'personal' && !installation.representedUserId) return false;
+  return true;
+}
+
+export function discordBotInstallationForEvent(
+  role: BotRole,
+  event: Record<string, unknown>,
+  guildId?: string
+) {
+  const store = getStore();
+  if (guildId) {
+    const installation = store.getBotInstallation('discord', guildId, role);
+    return installation && isCurrentDiscordInstallation(installation, role) ? installation : undefined;
+  }
+  if (role !== 'personal') {
+    return undefined;
+  }
+  const actorUserId = discordEventAuthorId(event);
+  if (!actorUserId) {
+    return undefined;
+  }
+  return store
+    .listBotInstallations({ provider: 'discord', role: 'personal' })
+    .find((installation) =>
+      installation.status === 'active' &&
+      isCurrentDiscordInstallation(installation, role) &&
+      installation.representedUserId === actorUserId
+    );
+}
+
 export class DiscordGatewayClient {
   constructor(private readonly role: BotRole = 'channel') {}
 
@@ -38,8 +85,10 @@ export class DiscordGatewayClient {
   private started = false;
 
   ensureStarted(): void {
-    const enabled = providerBotRoleEnabled(readMurphConfig().setup, 'discord', this.role);
-    const hasDiscordWorkspace = getStore().listBotInstallations({ provider: 'discord', role: this.role }).length > 0;
+    const enabled = providerBotRoleEnabled(getStore().getAppSettings().setupDefaults, 'discord', this.role);
+    const hasDiscordWorkspace = getStore()
+      .listBotInstallations({ provider: 'discord', role: this.role })
+      .some((installation) => installation.status === 'active' && isCurrentDiscordInstallation(installation, this.role));
     const configured = Boolean(getDiscordService().botToken(this.role));
     if (this.started || !enabled || !hasDiscordWorkspace || !configured) {
       markIngressConfigured('discord', enabled && hasDiscordWorkspace && configured);
@@ -113,12 +162,16 @@ export class DiscordGatewayClient {
 
     if (payload.op === 0 && payload.t === 'READY' && payload.d) {
       markIngressConnected('discord');
-      await this.saveReadyGuilds(payload.d as Record<string, unknown>);
+      if (this.role === 'channel') {
+        await this.saveReadyGuilds(payload.d as Record<string, unknown>);
+      }
       return;
     }
 
     if (payload.op === 0 && payload.t === 'GUILD_CREATE' && payload.d) {
-      await this.saveGuild(payload.d as Record<string, unknown>);
+      if (this.role === 'channel') {
+        await this.saveGuild(payload.d as Record<string, unknown>);
+      }
       return;
     }
 
@@ -126,7 +179,7 @@ export class DiscordGatewayClient {
       return;
     }
 
-    if (!providerBotRoleEnabled(readMurphConfig().setup, 'discord', this.role)) {
+    if (!providerBotRoleEnabled(getStore().getAppSettings().setupDefaults, 'discord', this.role)) {
       markIngressIgnored('discord', 'bot_role_disabled');
       console.info('[discord] ignored event', {
         eventId: typeof payload.d.id === 'string' ? payload.d.id : undefined,
@@ -141,9 +194,7 @@ export class DiscordGatewayClient {
 
     markIngressEvent('discord');
     const guildId = typeof payload.d.guild_id === 'string' ? payload.d.guild_id : undefined;
-    const botInstallation = guildId
-      ? getStore().getBotInstallation('discord', guildId, this.role)
-      : getStore().listBotInstallations({ provider: 'discord', role: this.role })[0];
+    const botInstallation = discordBotInstallationForEvent(this.role, payload.d as Record<string, unknown>, guildId);
     const normalized = normalizeDiscordEventWithReason(payload.d as Record<string, unknown>, {
       eventId: typeof payload.d.id === 'string' ? payload.d.id : undefined,
       teamId: guildId,

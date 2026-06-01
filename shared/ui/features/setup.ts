@@ -31,6 +31,7 @@ type SetupWizardState = {
     botRoles: BotRole[];
     selectedProviders: Array<'slack' | 'discord'>;
     selectedCoverage: CoverageKey[];
+    providerOnly?: ProviderOnlySetup;
     providerSelections: Record<
         string,
         {
@@ -60,6 +61,10 @@ type SetupWizardState = {
 
 type SetupChannelProvider = 'slack' | 'discord';
 type CoverageKey = `${SetupChannelProvider}:${BotRole}`;
+type ProviderOnlySetup = {
+    provider: SetupChannelProvider;
+    role: BotRole;
+};
 type SetupStepKey =
     | 'ai'
     | 'coverage'
@@ -70,6 +75,7 @@ type SetupStepKey =
 const SETUP_CHANNEL_PROVIDERS: SetupChannelProvider[] = ['slack', 'discord'];
 const SETUP_BOT_ROLES: BotRole[] = ['channel', 'personal'];
 const SETUP_QUEUE_STORAGE_KEY = 'murph_setup_queue';
+const SETUP_PROVIDER_ONLY_STORAGE_KEY = 'murph_setup_provider_only';
 
 function setupDistributionRoles(setup?: SetupStatusPayload): BotRole[] {
     return setup?.distribution === 'personal' ? ['personal'] : ['channel'];
@@ -91,6 +97,7 @@ let setupWizardState: SetupWizardState = {
     selectedProviders: [],
     selectedCoverage: [],
     providerSelections: {},
+    providerOnly: undefined,
     discordRedirectConfirmed: false,
     errorMessage: '',
     selectedUserId: '',
@@ -164,6 +171,19 @@ function validCoverageKeys(values: unknown): CoverageKey[] {
     );
 }
 
+function parseProviderOnlySetup(value: unknown): ProviderOnlySetup | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const record = value as Record<string, unknown>;
+    const provider = parseSetupProvider(
+        typeof record.provider === 'string' ? record.provider : undefined,
+    );
+    const role =
+        record.role === 'personal' || record.role === 'channel'
+            ? record.role
+            : undefined;
+    return provider && role ? { provider, role } : undefined;
+}
+
 function saveSetupQueue(): void {
     if (setupWizardState.selectedCoverage.length === 0) {
         sessionStorage.removeItem(SETUP_QUEUE_STORAGE_KEY);
@@ -173,6 +193,42 @@ function saveSetupQueue(): void {
         SETUP_QUEUE_STORAGE_KEY,
         JSON.stringify(setupWizardState.selectedCoverage),
     );
+}
+
+function saveProviderOnlySetup(): void {
+    if (!setupWizardState.providerOnly) {
+        sessionStorage.removeItem(SETUP_PROVIDER_ONLY_STORAGE_KEY);
+        return;
+    }
+    sessionStorage.setItem(
+        SETUP_PROVIDER_ONLY_STORAGE_KEY,
+        JSON.stringify(setupWizardState.providerOnly),
+    );
+}
+
+function restoreProviderOnlySetup(): void {
+    if (setupWizardState.providerOnly) return;
+    const raw = sessionStorage.getItem(SETUP_PROVIDER_ONLY_STORAGE_KEY);
+    if (!raw) return;
+    try {
+        const providerOnly = parseProviderOnlySetup(JSON.parse(raw));
+        if (!providerOnly) {
+            sessionStorage.removeItem(SETUP_PROVIDER_ONLY_STORAGE_KEY);
+            return;
+        }
+        setupWizardState.providerOnly = providerOnly;
+        setupWizardState.selectedCoverage = [
+            `${providerOnly.provider}:${providerOnly.role}` as CoverageKey,
+        ];
+        syncCoverageStateFromKeys();
+    } catch {
+        sessionStorage.removeItem(SETUP_PROVIDER_ONLY_STORAGE_KEY);
+    }
+}
+
+function clearProviderOnlySetup(): void {
+    setupWizardState.providerOnly = undefined;
+    sessionStorage.removeItem(SETUP_PROVIDER_ONLY_STORAGE_KEY);
 }
 
 function restoreSetupQueue(): void {
@@ -193,12 +249,15 @@ function applySetupLaunchParams(params: URLSearchParams): boolean {
     const provider = parseSetupProvider(params.get('provider'));
     if (!provider) return false;
     const roles = parseSetupMode(params.get('mode'));
-    setupWizardState.selectedCoverage = roles.map(
-        (role) => `${provider}:${role}` as CoverageKey,
-    );
+    const role = roles[0] ?? 'channel';
+    setupWizardState.providerOnly = { provider, role };
+    setupWizardState.selectedCoverage = [
+        `${provider}:${role}` as CoverageKey,
+    ];
     setupWizardState.currentStep = 0;
     syncCoverageStateFromKeys();
     saveSetupQueue();
+    saveProviderOnlySetup();
     return true;
 }
 
@@ -459,8 +518,8 @@ function ensureSetupProviderState(
                 : []);
         setupWizardState.providerSelections[provider] = {
             workspaceId: workspace?.id ?? existing?.workspaceId,
-            ownerUserId: existing?.ownerUserId || owner.id,
-            ownerDisplayName: existing?.ownerDisplayName || owner.name,
+            ownerUserId: owner.id || existing?.ownerUserId || '',
+            ownerDisplayName: owner.name || existing?.ownerDisplayName || '',
             channelScopeMode:
                 existing?.channelScopeMode ??
                 workspaceChannels?.channelScopeMode ??
@@ -478,6 +537,14 @@ function ensureSetupProviderState(
 }
 
 function setupStepKeys(setup?: SetupStatusPayload): SetupStepKey[] {
+    if (setupWizardState.providerOnly) {
+        const { provider, role } = setupWizardState.providerOnly;
+        return [
+            `connect:${provider}:${role}`,
+            ...(role === 'channel' ? [`channels:${provider}` as const] : []),
+            'finish',
+        ];
+    }
     return [
         'ai',
         'coverage',
@@ -1134,7 +1201,12 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
     const returnedRole = parseSetupRole(params.get('role'));
     const launchedFromAdmin = applySetupLaunchParams(params);
     if (!launchedFromAdmin) {
-        restoreSetupQueue();
+        if (returnedProvider) {
+            restoreProviderOnlySetup();
+        }
+        if (!setupWizardState.providerOnly) {
+            restoreSetupQueue();
+        }
     }
     const slackCliReturn =
         returnedStep === 'slack' && params.get('source') === 'cli';
@@ -1152,6 +1224,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
             syncCoverageStateFromKeys();
         }
         saveSetupQueue();
+        saveProviderOnlySetup();
         history.replaceState(null, '', '/setup');
     } else if (returnedStep === 'discord' && params.get('success') === '1') {
         setupNotice = `<div class="setup-success">Discord ${escapeHtml(returnedRole)} bot connected</div>`;
@@ -1163,6 +1236,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
             syncCoverageStateFromKeys();
         }
         saveSetupQueue();
+        saveProviderOnlySetup();
         history.replaceState(null, '', '/setup');
     } else if (params.get('error')) {
         const provider =
@@ -1181,6 +1255,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
             ];
             syncCoverageStateFromKeys();
             saveSetupQueue();
+            saveProviderOnlySetup();
         }
         history.replaceState(null, '', '/setup');
     } else if (launchedFromAdmin) {
@@ -1406,6 +1481,10 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                 Boolean(setupWizardState.slackConfigurationToken) &&
                 !slackOauthConfigured;
             const savedSlackAppId = roleStatus?.links?.appId;
+            const providerOnlyReconnect =
+                setupWizardState.providerOnly?.provider === stepProvider &&
+                setupWizardState.providerOnly.role === role &&
+                slackInstalled;
             stepContent = `
       <div class="wizard-step">
         <h1>Set up Slack ${escapeHtml(roleLabel(role).toLowerCase())}</h1>
@@ -1435,6 +1514,8 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
           ${
               slackOwnerMissing
 	                  ? `<a class="button" href="/api/slack/${role}/install?source=setup">Reconnect Slack</a>`
+	                  : providerOnlyReconnect
+	                    ? `<a class="button" href="/api/slack/${role}/install?source=setup">Reconnect Slack ${role} bot</a>`
 	                  : slackInstalled
 	                    ? '<button type="button" id="wizard-next">Continue</button>'
 	                    : slackConfigured
@@ -1469,6 +1550,10 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
             const discordOwnerMissing =
                 discordInstalled &&
                 !setupProviderOwnerConfigured(setup, 'discord', role);
+            const providerOnlyReconnect =
+                setupWizardState.providerOnly?.provider === stepProvider &&
+                setupWizardState.providerOnly.role === role &&
+                discordInstalled;
             stepContent = `
       <div class="wizard-step">
         <h1>Set up Discord ${escapeHtml(roleLabel(role).toLowerCase())}</h1>
@@ -1507,6 +1592,8 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                ${
                    discordOwnerMissing
                        ? `<a class="button" href="/api/discord/${role}/install?source=setup">Reconnect Discord ${role} bot</a>`
+                       : providerOnlyReconnect
+                         ? `<a class="button" href="/api/discord/${role}/install?source=setup">Reconnect Discord ${role} bot</a>`
                        : discordInstalled
                          ? '<button type="button" id="wizard-next">Continue</button>'
                          : prepared
@@ -2172,6 +2259,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                     }
 
                     sessionStorage.removeItem(SETUP_QUEUE_STORAGE_KEY);
+                    clearProviderOnlySetup();
                     setCurrentUser(
                         primary.ownerUserId,
                         primary.ownerDisplayName,
