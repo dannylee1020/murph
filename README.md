@@ -4,105 +4,75 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-b96f22.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-murph--agent.com-b96f22.svg)](https://murph-agent.com/docs)
 
-Murph is a self-hosted agent runtime for async work, built to keep teams moving across time zones without trading away control, context, or review.
+Murph is a self-hosted agent runtime for async work. It runs on a machine you control, uses your configured context, follows your policy, and keeps review/audit history close to the runtime.
 
-Run Murph Team for shared channels, or Murph Personal for private owner DMs and local data sources.
+Use Murph Team for shared channels. Use Murph Personal for one person's direct messages.
 
-Run one Murph host anywhere you choose: your laptop, a VPS, a home server, or another machine you control. That host owns bot ingress, agent execution, SQLite state, generated memory, config, credentials, integrations, policy, review, plugins, and the operator UI.
+| Runtime | Use it for | How it works |
+| --- | --- | --- |
+| **Murph Team** | Shared Slack or Discord channels | Monitors subscribed channels and routes each message to the right represented user. Tools, integrations, policy, credentials, plugins, and config are shared by the runtime host. |
+| **Murph Personal** | One owner's bot DMs | Monitors direct messages to a personal bot. Tools, integrations, policy, credentials, plugins, and config belong to that single local user. |
 
-Choose the distribution that matches the job. Murph Team is the shared host for subscribed users in Slack or Discord channels. Murph Personal is a local single-user runtime for private DMs and local data sources. Both reuse the same core agent runtime, policy, queue, triage, integrations, and plugin system.
-
-| What you need | What Murph does |
-| --- | --- |
-| **Cover async work** | Routes subscribed shared-channel messages in Team or owner DMs in Personal |
-| **Keep control explicit** | Sends safe work, queues risky work, and skips anything it should not answer |
-| **Use your real context** | Pulls from docs, tickets, email, calendar, meetings, GitHub, and local notes |
-| **Review what happened** | Shows what was sent, queued, skipped, and why |
-| **Run it yourself** | Keeps runtime state, generated memory, config, and credentials on the Murph host you control |
-
-
-Murph is built for people and teams that want async work covered without handing over control: indie developers, founders, operators, and distributed teams.
+Murph can retrieve context, draft replies, apply policy, queue risky work for review, send approved work, and show what happened afterward.
 
 ## Getting started
 
-Install Murph:
+Install Murph Team:
 
 ```bash
 curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
-Team is the default install. For Personal, use:
+Install Murph Personal:
 
 ```bash
 curl -fsSL https://murph-agent.com/install-personal.sh | bash
 ```
 
-Run setup on the host where you installed Murph:
+Then run setup and start the runtime:
 
 ```bash
 murph setup
-```
-
-Start the installed Murph runtime:
-
-```bash
 murph start
 ```
-
-The `murph` command is product-local: in a Team deployment it runs Murph Team, and in a Personal deployment it runs Murph Personal.
 
 ## Documentation
 
 | Topic | What's covered |
 | --- | --- |
-| [Quickstart](https://murph-agent.com/docs/quickstart) | Install Murph, run setup, start the local server, and check health. |
-| [Installation](https://murph-agent.com/docs/installation) | Installer behavior, local setup, and manual install paths. |
-| [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy profiles, and runtime-host settings. |
-| [Policy](https://murph-agent.com/docs/policy) | Create custom policy profiles with Murph Agent or local profile files. |
-| [Usage](https://murph-agent.com/docs/usage) | Use `murph`, the browser UI, and `murph agent` for setup, sessions, review, and daily operation. |
-| [Plugins](https://murph-agent.com/docs/plugins) | Create scoped plugins with custom integrations, skills, and read-only tools. |
-| [Channels](https://murph-agent.com/docs/channels) | Connect Slack or Discord, lock owner identity through OAuth, and choose watched channels. |
-| [Integrations](https://murph-agent.com/docs/integrations) | Connect context sources like docs, scoped GitHub repositories, Gmail, Calendar, and meetings. |
-| [Core Concepts](https://murph-agent.com/docs/core-concepts) | Sessions, context, skills, policy, triage, and audit trails. |
-| [Contributing](https://murph-agent.com/docs/contributing) | Local development, project structure, and contribution workflow. |
+| [Quickstart](https://murph-agent.com/docs/quickstart) | Install, set up, start, and check health. |
+| [Installation](https://murph-agent.com/docs/installation) | Installer behavior and manual install paths. |
+| [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy, and runtime settings. |
+| [Usage](https://murph-agent.com/docs/usage) | CLI, browser UI, sessions, review, and daily operation. |
+| [Channels](https://murph-agent.com/docs/channels) | Team watched channels and Personal bot DMs. |
+| [Integrations](https://murph-agent.com/docs/integrations) | Context sources such as GitHub, Gmail, Calendar, meetings, docs, and notes. |
+| [Plugins](https://murph-agent.com/docs/plugins) | Extend Murph with Murph Agent, plugins, skills, and read-only tools. |
+| [Policy](https://murph-agent.com/docs/policy) | Autonomy and review rules. |
+| [Contributing](https://murph-agent.com/docs/contributing) | Local development and contribution workflow. |
 
 ## Murph Agent
 
-Murph includes a local coding agent for setup, debugging, policy changes, and scoped integration work.
+Murph Agent is the primary interface for extending Murph. Use it to add tools, create plugins, connect new context sources, adjust policy, and debug setup from the same host that runs the runtime.
 
 ```bash
 murph agent
 ```
 
-Use it to connect services, inspect setup issues, and create scoped plugins without editing Murph core. By default, it can write plugin and configuration files; source edits require an explicit `--source-edits` flag.
-
-Learn more in [Murph Agent](https://murph-agent.com/docs/usage/murph-agent).
+Just ask away and it shall deliver. Learn more in [Murph Agent](https://murph-agent.com/docs/usage/murph-agent).
 
 ## What you can connect
 
 | Category | Options |
 | --- | --- |
-| Channels | Slack, Discord + any channel of your choice |
+| Channels | Slack and Discord for Team channels or Personal bot DMs |
 | LLM providers | OpenAI, Anthropic |
-| Integrations | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian + custom plugins |
-| Tools | web search, web fetch, file read, shell + custom tools |
-| Storage | SQLite + local file system|
+| Integrations | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian, and custom plugins |
+| Tools | Web search, web fetch, file read, shell, and custom tools |
+| Storage | SQLite and local files |
 
 ## Contributing
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. Keep changes focused, include validation, and update docs for user-facing behavior.
-
-Murph is organized around a few extension points:
-
-- **Channels** for messaging surfaces.
-- **Integrations** for connected external work sources.
-- **Plugins** for local extensions.
-- **Skills** for request-specific behavior.
-- **Tools** for individual callable actions.
-- **Policies** for autonomy and review rules.
-- **Providers** for model backends.
-
-The listed integrations and tools are defaults, not a closed set. Custom integrations and tools should start as scoped plugins before changing Murph core.
 
 For local development:
 
