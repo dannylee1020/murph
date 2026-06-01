@@ -32,7 +32,7 @@ function jsonResponse(): any & { result: () => JsonResponse } {
   };
 }
 
-async function setup(options: { githubPat?: string; distribution?: 'team' | 'personal' } = {}) {
+async function setup(options: { githubPat?: string; linearApiKey?: string; distribution?: 'team' | 'personal' } = {}) {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-integrations-route-'));
   const murphHome = join(root, '.murph');
@@ -52,7 +52,7 @@ async function setup(options: { githubPat?: string; distribution?: 'team' | 'per
   process.env.GOOGLE_ACCESS_TOKEN = '';
   process.env.GOOGLE_CLIENT_ID = '';
   process.env.GOOGLE_CLIENT_SECRET = '';
-  process.env.LINEAR_API_KEY = '';
+  process.env.LINEAR_API_KEY = options.linearApiKey ?? '';
   mkdirSync(join(murphHome, 'plugins'), { recursive: true });
 
   const { getStore } = await import('#shared/server/persistence/store');
@@ -190,6 +190,30 @@ describe('integration routes', () => {
     expect(github.source).toBeUndefined();
     expect(linear).toEqual(expect.objectContaining({ status: 'reconnect_required' }));
     expect(linear.source).toBeUndefined();
+  });
+
+  it('reports GitHub and Linear connected from server env credentials', async () => {
+    const { request, workspace } = await setup({
+      distribution: 'team',
+      githubPat: 'env-github-token',
+      linearApiKey: 'env-linear-token'
+    });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const github = response.body.integrations.find((integration: any) => integration.provider === 'github');
+    const linear = response.body.integrations.find((integration: any) => integration.provider === 'linear');
+
+    expect(response.status).toBe(200);
+    expect(github).toEqual(expect.objectContaining({
+      status: 'connected',
+      source: 'env',
+      envKey: 'GITHUB_PAT'
+    }));
+    expect(linear).toEqual(expect.objectContaining({
+      status: 'connected',
+      source: 'env',
+      envKey: 'LINEAR_API_KEY'
+    }));
   });
 
   it('rejects personal-only integration connects in Team runtime', async () => {

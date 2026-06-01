@@ -9,6 +9,8 @@ import {
   integrationCredentialKey,
 } from './global-scope.js';
 import { getObsidianConnectionStatus } from '#shared/server/context-sources/obsidian';
+import { getToolRegistry } from '#shared/server/capabilities/tool-registry';
+import { getContextSourceRegistry } from '#shared/server/capabilities/context-source-registry';
 
 export const MISSING_INTEGRATION_CREDENTIAL_MESSAGE = 'Local credential is missing. Reconnect this integration.';
 
@@ -24,6 +26,11 @@ const CHANNEL_PROVIDER_CAPABILITIES: Record<string, Pick<IntegrationDefinition, 
     contextSources: ['slack.thread_search']
   }
 };
+const DEPRECATED_CAPABILITY_IDS = new Set([
+  'linear.search',
+  'linear.getIssue',
+  'Linear issues'
+]);
 
 function unionUnique(existing: string[], additions: string[]): string[] {
   const set = new Set(existing);
@@ -36,6 +43,51 @@ function unionUnique(existing: string[], additions: string[]): string[] {
 function difference(existing: string[], removals: string[]): string[] {
   const remove = new Set(removals);
   return existing.filter((value) => !remove.has(value));
+}
+
+function filterKnown(existing: string[], known: Set<string>): string[] {
+  return existing.filter((value) => known.has(value) && !DEPRECATED_CAPABILITY_IDS.has(value));
+}
+
+function knownCapabilityIds(): { tools: Set<string>; contextSources: Set<string> } {
+  const tools = new Set<string>();
+  const contextSources = new Set<string>();
+
+  for (const capabilities of Object.values(CHANNEL_PROVIDER_CAPABILITIES)) {
+    for (const tool of capabilities.tools) tools.add(tool);
+    for (const source of capabilities.contextSources) contextSources.add(source);
+  }
+
+  for (const definition of listIntegrations({ includeUnavailable: true })) {
+    for (const tool of definition.tools) tools.add(tool);
+    for (const source of definition.contextSources) contextSources.add(source);
+  }
+
+  for (const tool of getToolRegistry().list()) tools.add(tool.name);
+  for (const source of getContextSourceRegistry().list()) contextSources.add(source.name);
+
+  return { tools, contextSources };
+}
+
+function pruneUnknownWorkspaceCapabilities(workspaceId: string): void {
+  const store = getStore();
+  const memory = store.getOrCreateWorkspaceMemory(workspaceId);
+  const known = knownCapabilityIds();
+  const enabledOptionalTools = filterKnown(memory.enabledOptionalTools, known.tools);
+  const enabledContextSources = filterKnown(memory.enabledContextSources, known.contextSources);
+
+  if (
+    enabledOptionalTools.length === memory.enabledOptionalTools.length &&
+    enabledContextSources.length === memory.enabledContextSources.length
+  ) {
+    return;
+  }
+
+  store.upsertWorkspaceMemory({
+    ...memory,
+    enabledOptionalTools,
+    enabledContextSources
+  });
 }
 
 function normalizeRepositories(value: unknown): string[] {
@@ -142,6 +194,8 @@ export function disableIntegrationCapabilitiesForAllWorkspaces(
  * Stale connections without an effective credential are removed from memory and marked for reconnect.
  */
 export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string): void {
+  pruneUnknownWorkspaceCapabilities(workspaceId);
+
   const store = getStore();
   const workspace = store.getWorkspaceById(workspaceId);
   const channelCapabilities = workspace ? CHANNEL_PROVIDER_CAPABILITIES[workspace.provider] : undefined;

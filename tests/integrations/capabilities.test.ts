@@ -183,6 +183,34 @@ describe('integration capability wiring', () => {
     expect(memory.enabledContextSources).toContain('linear.thread_search');
   });
 
+  it('reconcileIntegrationCapabilitiesForWorkspace prunes legacy unknown capability ids', async () => {
+    const { store, workspace } = await setup({ linearApiKey: 'linear-token' });
+    store.upsertWorkspaceMemory({
+      workspaceId: workspace.id,
+      channelMappings: [],
+      escalationRules: [],
+      enabledOptionalTools: ['linear.search', 'linear.getIssue', 'linear.search_issues'],
+      enabledContextSources: ['Linear issues', 'linear.thread_search'],
+      enabledPlugins: [],
+      confirmedChannels: []
+    });
+    const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');
+    registerBuiltInIntegrationAdapters();
+    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
+      '#shared/server/integrations/capabilities'
+    );
+
+    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
+
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).not.toContain('linear.search');
+    expect(memory.enabledOptionalTools).not.toContain('linear.getIssue');
+    expect(memory.enabledContextSources).not.toContain('Linear issues');
+    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['linear.search_issues', 'linear.read_issue']));
+    expect(memory.enabledContextSources).toContain('linear.thread_search');
+  });
+
+
   it('reconcileIntegrationCapabilitiesForWorkspace does not enable personal-only integrations in Team runtime', async () => {
     const { store, workspace } = await setup();
     process.env.GOOGLE_ACCESS_TOKEN = 'google-token';

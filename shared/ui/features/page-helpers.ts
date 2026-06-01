@@ -1257,7 +1257,10 @@ export function integrationCard(
             );
         } else if (integration.source === 'env') {
             detailRows.push(
-                `<div><dt>Key</dt><dd>Set on this server</dd></div>`,
+                `<div><dt>Source</dt><dd>Connected from server env</dd></div>`,
+            );
+            detailRows.push(
+                `<div><dt>Env key</dt><dd><code>${escapeHtml(integration.envKey)}</code></dd></div>`,
             );
         } else if (integration.metadata.masked) {
             detailRows.push(
