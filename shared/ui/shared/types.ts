@@ -185,6 +185,15 @@ export type SetupStatusPayload = {
         agentInheritsRuntime?: boolean;
         defaultAgentModels?: Record<string, string>;
     };
+    murphConfig?: {
+        scheduleConfigured: boolean;
+        timezone?: string;
+        workdayStartHour?: number;
+        workdayEndHour?: number;
+        policyConfigured: boolean;
+        policyProfileName?: string;
+        policyMode?: string;
+    };
     notion: {
         configured: boolean;
         version: string;

@@ -10,6 +10,7 @@ import { openDiscordPersonalHandoff } from '#shared/server/channels/personal-han
 import { readBody, readJson, redirect, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 import { pruneChannelRuntimeConfig } from '#shared/server/setup/config-file';
+import { scheduleWithConfigFallback } from '#shared/server/setup/config-schedule';
 import type { DiscordInstallResult } from '#shared/server/channels/discord/service';
 import type { BotRole, SetupDefaults } from '#shared/types';
 
@@ -166,6 +167,7 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
 
   const store = getStore();
   const currentDefaults = mergedSetupDefaults();
+  const schedule = scheduleWithConfigFallback(currentDefaults);
   const ownerDisplayName = result.authedUser.displayName || result.authedUser.id;
   const replacedPersonalWorkspaceIds = result.role === 'personal'
     ? new Set(store.listBotInstallations({ provider: 'discord', role: 'personal' }).map((installation) => installation.workspaceId))
@@ -186,29 +188,40 @@ function saveAuthedDiscordUserAsWorkspaceOwner(result: DiscordInstallResult): vo
     workspaceId: result.workspace.id,
     externalUserId: result.authedUser.id,
     displayName: ownerDisplayName,
-    timezone: currentDefaults.timezone,
-    workdayStartHour: currentDefaults.workdayStartHour,
-    workdayEndHour: currentDefaults.workdayEndHour
+    timezone: schedule.timezone,
+    workdayStartHour: schedule.workdayStartHour,
+    workdayEndHour: schedule.workdayEndHour
   });
   if (result.role === 'channel') {
     const workspaceChannelDefaults = currentDefaults.workspaceChannels?.find(
       (entry) => entry.workspaceId === result.workspace.id
     );
+    const configuredChannelScope =
+      workspaceChannelDefaults?.selectedChannels.map((channel) => channel.id) ??
+      currentDefaults.selectedChannels?.map((channel) => channel.id) ??
+      [];
+    const configuredChannelScopeMode =
+      workspaceChannelDefaults?.channelScopeMode ?? currentDefaults.channelScopeMode ?? 'all_accessible';
+    const channelScopeMode =
+      configuredChannelScopeMode === 'selected' && configuredChannelScope.length === 0
+        ? 'all_accessible'
+        : configuredChannelScopeMode;
     store.ensureWorkspaceSubscriptionForUser(user, {
       provider: 'discord',
       status: 'active',
-      channelScopeMode:
-        workspaceChannelDefaults?.channelScopeMode ?? currentDefaults.channelScopeMode ?? 'all_accessible',
-      channelScope:
-        workspaceChannelDefaults?.selectedChannels.map((channel) => channel.id) ??
-        currentDefaults.selectedChannels?.map((channel) => channel.id) ??
-        []
+      channelScopeMode,
+      channelScope: channelScopeMode === 'selected' ? configuredChannelScope : []
     });
   }
   store.upsertAppSettings({
     ...store.getAppSettings(),
     setupDefaults: {
       ...currentDefaults,
+      botRoles: [result.role],
+      providerBotRoles: {
+        ...(currentDefaults.providerBotRoles ?? {}),
+        discord: [result.role]
+      },
       workspaceOwners: nextOwners,
       ...(currentDefaults.ownerUserId?.trim() && result.role !== 'personal'
         ? {}

@@ -7,6 +7,7 @@ import { loadPolicyProfiles, normalizePolicyProfileName } from '#shared/server/p
 import { loadSkills } from '#shared/server/skills/loader';
 import { getStore } from '#shared/server/persistence/store';
 import { readMurphConfig } from '#shared/server/setup/config-file';
+import { syncConfigScheduleToSetupOwners } from '#shared/server/setup/config-schedule';
 import { getRuntimeEnv } from '#shared/server/util/env';
 import {
   buildUserPolicyProfile,
@@ -276,6 +277,7 @@ export async function refreshRuntimeState(input: {
   deferIfRunActive?: boolean;
 }): Promise<RuntimeRefreshResult> {
   const store = getStore();
+  syncConfigScheduleToSetupOwners();
   const workspaces = targetWorkspaces(input.workspaceIds);
   const workspaceIds = workspaces.map((workspace) => workspace.id);
 

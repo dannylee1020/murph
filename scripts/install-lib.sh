@@ -400,10 +400,8 @@ NODE
 write_config_file() {
   local provider="openai"
   local product_mode="channel"
-  local bot_role="channel"
   if [[ "$product" == "personal" ]]; then
     product_mode="personal"
-    bot_role="personal"
   fi
 
   if [[ "${LLM_PROVIDER:-}" == "openai" ]]; then
@@ -422,18 +420,14 @@ app:
   productMode: $product_mode
   url: $APP_URL_DEFAULT
   sqlitePath: $SQLITE_PATH_DEFAULT
+  timezone: America/Los_Angeles
+  workdayStartHour: 9
+  workdayEndHour: 17
 ai:
   defaultProvider: $provider
-channels:
-  slack:
-    eventsMode: socket
-    clientId: ""
-  discord:
-    clientId: ""
-    redirectUri: ""
-setup:
-  botRoles:
-    - $bot_role
+policy:
+  profile: ""
+  mode: ""
 EOF
 }
 

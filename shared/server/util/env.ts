@@ -50,6 +50,9 @@ export interface RuntimeEnv {
   contextSourceTimeoutMs: number;
   contextSourceMaxOptional: number;
   runEventRetentionDays: number;
+  timezone?: string;
+  workdayStartHour?: number;
+  workdayEndHour?: number;
 }
 
 let cachedEnv: RuntimeEnv | null = null;
@@ -73,6 +76,15 @@ function envOrConfigNumber(envKey: string, configValue: number | undefined, fall
   const raw = process.env[envKey];
   if (raw !== undefined) return Number(raw);
   return configValue ?? fallback;
+}
+
+function envOrConfigOptionalNumber(envKey: string, configValue: number | undefined): number | undefined {
+  const raw = process.env[envKey];
+  if (raw !== undefined) {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return configValue;
 }
 
 function envOrConfigCsv(envKey: string, configValue: string[] | undefined): string[] {
@@ -168,7 +180,10 @@ export function getRuntimeEnv(): RuntimeEnv {
     shellAllowedCommandsJson: envOrConfigString('MURPH_SHELL_ALLOWED_COMMANDS_JSON', config.integrations?.localTools?.shellAllowedCommandsJson),
     contextSourceTimeoutMs: envOrConfigNumber('MURPH_CONTEXT_SOURCE_TIMEOUT_MS', config.app?.contextSourceTimeoutMs, 3000),
     contextSourceMaxOptional: envOrConfigNumber('MURPH_CONTEXT_SOURCE_MAX_OPTIONAL', config.app?.contextSourceMaxOptional, 3),
-    runEventRetentionDays: envOrConfigNumber('MURPH_RUN_EVENT_RETENTION_DAYS', config.app?.runEventRetentionDays, 30)
+    runEventRetentionDays: envOrConfigNumber('MURPH_RUN_EVENT_RETENTION_DAYS', config.app?.runEventRetentionDays, 30),
+    timezone: envOrConfigString('MURPH_TIMEZONE', config.app?.timezone) || undefined,
+    workdayStartHour: envOrConfigOptionalNumber('MURPH_WORKDAY_START_HOUR', config.app?.workdayStartHour),
+    workdayEndHour: envOrConfigOptionalNumber('MURPH_WORKDAY_END_HOUR', config.app?.workdayEndHour)
   };
 
   return cachedEnv;

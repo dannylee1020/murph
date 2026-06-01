@@ -2,6 +2,11 @@ import { ApiError, getJson, postJson, putJson } from '../shared/api';
 import { agentModel, agentModelFields, agentProvider } from '../shared/agent';
 import { escapeHtml, setTitle } from '../shared/format';
 import { providerLabel, roleDescription, roleLabel } from '../shared/labels';
+import {
+    getTimezoneOptions,
+    policyProfileOptions,
+    timezoneLabel,
+} from './page-helpers';
 import { app } from '../shared/shell';
 import {
     setCurrentUser,
@@ -19,6 +24,7 @@ import type {
     ChannelWorkspace,
     DiscordSetupPreparePayload,
     ProviderRoleSetupStatus,
+    PolicyConfigPayload,
     SetupChannelsPayload,
     SetupDefaultsPayload,
     SetupDoctorPayload,
@@ -57,6 +63,7 @@ type SetupWizardState = {
     selectedChannels: Array<{ id: string; displayName: string }>;
     timezone: string;
     workdayStartHour: number;
+    workdayEndHour: number;
 };
 
 type SetupChannelProvider = 'slack' | 'discord';
@@ -68,6 +75,8 @@ type ProviderOnlySetup = {
 type SetupStepKey =
     | 'ai'
     | 'coverage'
+    | 'schedule'
+    | 'policy'
     | 'finish'
     | `connect:${SetupChannelProvider}:${BotRole}`
     | `channels:${SetupChannelProvider}`;
@@ -109,6 +118,7 @@ let setupWizardState: SetupWizardState = {
         Intl.DateTimeFormat().resolvedOptions().timeZone ||
         'America/Los_Angeles',
     workdayStartHour: 9,
+    workdayEndHour: 17,
 };
 
 function applySetupDefaults(payload: SetupDefaultsPayload): void {
@@ -128,11 +138,17 @@ function applySetupDefaults(payload: SetupDefaultsPayload): void {
     }
     const schedule = payload.user?.schedule;
     setupWizardState.timezone =
-        defaults.timezone ?? schedule?.timezone ?? setupWizardState.timezone;
+        defaults.timezone ??
+        schedule?.timezone ??
+        setupWizardState.timezone;
     setupWizardState.workdayStartHour =
         defaults.workdayStartHour ??
         schedule?.workdayStartHour ??
         setupWizardState.workdayStartHour;
+    setupWizardState.workdayEndHour =
+        defaults.workdayEndHour ??
+        schedule?.workdayEndHour ??
+        setupWizardState.workdayEndHour;
 }
 
 function setupErrorMessage(error: unknown, fallback: string): string {
@@ -428,8 +444,12 @@ function ensureSetupProviderState(
     setup: SetupStatusPayload,
     defaults: SetupDefaultsPayload,
 ): void {
-    const allowedRoles = setupDistributionRoles(setup);
-    const configuredRoles = setup.botRoles?.length
+    const allowedRoles = setupWizardState.providerOnly
+        ? [setupWizardState.providerOnly.role]
+        : setupDistributionRoles(setup);
+    const configuredRoles = setupWizardState.providerOnly
+        ? [setupWizardState.providerOnly.role]
+        : setup.botRoles?.length
         ? setup.botRoles
         : setupWizardState.botRoles;
     const selectedRoles = configuredRoles.filter((role) =>
@@ -537,11 +557,20 @@ function ensureSetupProviderState(
 }
 
 function setupStepKeys(setup?: SetupStatusPayload): SetupStepKey[] {
+    const murphConfigSteps: SetupStepKey[] = [
+        ...(setup?.murphConfig?.scheduleConfigured === false
+            ? (['schedule'] as const)
+            : []),
+        ...(setup?.murphConfig?.policyConfigured === false
+            ? (['policy'] as const)
+            : []),
+    ];
     if (setupWizardState.providerOnly) {
         const { provider, role } = setupWizardState.providerOnly;
         return [
             `connect:${provider}:${role}`,
             ...(role === 'channel' ? [`channels:${provider}` as const] : []),
+            ...murphConfigSteps,
             'finish',
         ];
     }
@@ -559,6 +588,7 @@ function setupStepKeys(setup?: SetupStatusPayload): SetupStepKey[] {
                     : []),
             ];
         }),
+        ...murphConfigSteps,
         'finish',
     ];
 }
@@ -566,6 +596,8 @@ function setupStepKeys(setup?: SetupStatusPayload): SetupStepKey[] {
 function setupStepLabel(stepKey: SetupStepKey): string {
     if (stepKey === 'ai') return 'AI model';
     if (stepKey === 'coverage') return 'Channel and mode';
+    if (stepKey === 'schedule') return 'Schedule';
+    if (stepKey === 'policy') return 'Policy';
     if (stepKey === 'finish') return 'Finish setup';
     const split = splitSetupStep(stepKey);
     if (split.provider && split.role) {
@@ -616,6 +648,18 @@ function setupSelectedQueuePreview(): string {
     `;
 }
 
+function scheduleTimezoneOptions(selectedTimezone: string): string {
+    const options = Array.from(
+        new Set([selectedTimezone, ...getTimezoneOptions()].filter(Boolean)),
+    );
+    return options
+        .map(
+            (tz) =>
+                `<option value="${escapeHtml(tz)}" ${tz === selectedTimezone ? 'selected' : ''}>${escapeHtml(timezoneLabel(tz))}</option>`,
+        )
+        .join('');
+}
+
 function nextSetupStepAfterPair(
     provider: SetupChannelProvider,
     role: BotRole,
@@ -646,7 +690,11 @@ function nextSetupStepAfterPair(
         }
     }
 
-    return Math.max(0, stepKeys.indexOf('finish'));
+    for (const nextKey of ['schedule', 'policy', 'finish'] as const) {
+        const index = stepKeys.indexOf(nextKey);
+        if (index >= 0) return index;
+    }
+    return Math.max(0, stepKeys.length - 1);
 }
 
 function advanceSetupStep(
@@ -931,6 +979,38 @@ function discordRoleConfigKeys(role: BotRole): string {
     return `${prefix}_BOT_TOKEN, ${prefix}_CLIENT_SECRET`;
 }
 
+function discordVisibleSetupValues(
+    redirectUri?: string,
+    interactionsUrl?: string,
+    role: BotRole = 'channel',
+): string {
+    const values = [
+        ...(redirectUri
+            ? [{ label: 'OAuth redirect URI', value: redirectUri }]
+            : []),
+        ...(role === 'channel' && interactionsUrl
+            ? [{ label: 'Interactions URL', value: interactionsUrl }]
+            : []),
+    ];
+    if (values.length === 0) return '';
+    return `
+      <div class="setup-visible-values">
+        <div class="setup-value-list">
+          ${values
+              .map(
+                  (row) => `
+            <div class="setup-value-row">
+              <span>${escapeHtml(row.label)}</span>
+              <code>${escapeHtml(row.value)}</code>
+            </div>
+          `,
+              )
+              .join('')}
+        </div>
+      </div>
+    `;
+}
+
 function discordConnectGuide(input: {
     role: BotRole;
     roleStatus?: ProviderRoleSetupStatus;
@@ -988,18 +1068,19 @@ function discordConnectGuide(input: {
             { label: 'Discord bot settings', url: links?.botConfigUrl },
         ],
         values: [
-            ...(redirectUri
-                ? [{ label: 'OAuth redirect URI', value: redirectUri }]
-                : []),
-            ...(input.role === 'channel' && input.interactionsUrl
-                ? [{ label: 'Interactions URL', value: input.interactionsUrl }]
-                : []),
             {
                 label: 'Config fields',
                 value: discordRoleConfigKeys(input.role),
             },
         ],
-    });
+    }) +
+        (input.prepared
+            ? ''
+            : discordVisibleSetupValues(
+                  redirectUri,
+                  input.interactionsUrl,
+                  input.role,
+              ));
 }
 
 function slackPreparationDetails(
@@ -1151,6 +1232,7 @@ function discordPreparationDetails(
 
     return `
       <div class="setup-success">Discord bot validated: ${escapeHtml(preparation.botName)} (${escapeHtml(preparation.botUserId)})</div>
+      ${discordVisibleSetupValues(preparation.redirectUri)}
       ${redirectNotice}
       ${configurationNotice}
       ${intentNotice}
@@ -1265,11 +1347,13 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
     let setup: SetupStatusPayload;
     let doctor: SetupDoctorPayload;
     let defaults: SetupDefaultsPayload;
+    let policyConfig: PolicyConfigPayload;
     try {
-        [setup, doctor, defaults] = await Promise.all([
+        [setup, doctor, defaults, policyConfig] = await Promise.all([
             getJson<SetupStatusPayload>('/api/setup/status'),
             getJson<SetupDoctorPayload>('/api/setup/doctor'),
             getJson<SetupDefaultsPayload>('/api/setup/defaults'),
+            getJson<PolicyConfigPayload>('/api/gateway/policy/config'),
         ]);
     } catch (error) {
         app.innerHTML = `
@@ -1297,6 +1381,13 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
         return;
     }
     applySetupDefaults(defaults);
+    setupWizardState.timezone =
+        setup.murphConfig?.timezone ?? setupWizardState.timezone;
+    setupWizardState.workdayStartHour =
+        setup.murphConfig?.workdayStartHour ??
+        setupWizardState.workdayStartHour;
+    setupWizardState.workdayEndHour =
+        setup.murphConfig?.workdayEndHour ?? setupWizardState.workdayEndHour;
     ensureSetupProviderState(setup, defaults);
 
     if (slackCliReturn) {
@@ -1652,15 +1743,77 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
         </div>
       </div>
     `;
+    } else if (stepKey === 'schedule') {
+        stepContent = `
+      <div class="wizard-step">
+        <h1>Configure schedule</h1>
+        <p>Set the default workday Murph uses for reminders, availability, and time-aware context.</p>
+        <form class="form" id="schedule-config-form">
+          <label>
+            <span>Timezone</span>
+            <select name="timezone">
+              ${scheduleTimezoneOptions(setupWizardState.timezone)}
+            </select>
+          </label>
+          <label>
+            <span>Workday start hour</span>
+            <input type="number" name="workdayStartHour" min="0" max="23" value="${escapeHtml(String(setupWizardState.workdayStartHour))}" required />
+          </label>
+          <label>
+            <span>Workday end hour</span>
+            <input type="number" name="workdayEndHour" min="1" max="24" value="${escapeHtml(String(setupWizardState.workdayEndHour))}" required />
+          </label>
+        </form>
+        <div class="wizard-actions">
+          <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
+          <button type="button" id="wizard-next">Save and continue</button>
+        </div>
+      </div>
+    `;
+    } else if (stepKey === 'policy') {
+        stepContent = `
+      <div class="wizard-step">
+        <h1>Configure policy</h1>
+        <p>Choose how Murph handles drafts and routine replies by default.</p>
+        <form class="form" id="policy-config-form">
+          <label>
+            <span>Policy profile</span>
+            <select name="profileName">
+              ${policyProfileOptions(policyConfig.profiles, policyConfig.selectedProfileName)}
+            </select>
+          </label>
+          <label>
+            <span>Execution mode</span>
+            <select name="mode">
+              <option value="manual_review" ${policyConfig.mode === 'manual_review' ? 'selected' : ''}>Show me drafts first</option>
+              <option value="auto_send_low_risk" ${policyConfig.mode === 'auto_send_low_risk' ? 'selected' : ''}>Auto-handle routine stuff</option>
+            </select>
+          </label>
+        </form>
+        <div class="wizard-actions">
+          <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
+          <button type="button" id="wizard-next">Save and continue</button>
+        </div>
+      </div>
+    `;
     } else if (stepKey === 'finish') {
+        const isPersonalSetup = setup.distribution === 'personal';
         stepContent = `
       <div class="wizard-step">
         <h1>Finish setup</h1>
-        <p>Murph has the selected channel and mode configuration. Finish setup to save these defaults and open the dashboard.</p>
+        <p>${isPersonalSetup ? 'Murph has the selected personal bot and Murph configuration. Finish setup to open the dashboard.' : 'Murph has the selected channel and mode configuration. Finish setup to save these defaults and open the dashboard.'}</p>
         <div class="setup-summary-list">
           <div class="setup-summary-row ok">
             <span>AI model</span>
             <strong>${setup.provider.configured ? escapeHtml(setup.provider.defaultProvider) : 'Needs API key'}</strong>
+          </div>
+          <div class="setup-summary-row ${setup.murphConfig?.scheduleConfigured ? 'ok' : 'warning'}">
+            <span>Schedule</span>
+            <strong>${setup.murphConfig?.scheduleConfigured ? escapeHtml(`${setup.murphConfig.workdayStartHour}:00-${setup.murphConfig.workdayEndHour}:00 ${setup.murphConfig.timezone}`) : 'Needs configuration'}</strong>
+          </div>
+          <div class="setup-summary-row ${setup.murphConfig?.policyConfigured ? 'ok' : 'warning'}">
+            <span>Policy</span>
+            <strong>${setup.murphConfig?.policyConfigured ? escapeHtml(`${setup.murphConfig.policyProfileName} · ${setup.murphConfig.policyMode}`) : 'Needs configuration'}</strong>
           </div>
           ${setupWizardState.selectedCoverage
               .map((key) => {
@@ -2181,6 +2334,77 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                     return;
                 }
 
+                if (stepKey === 'schedule') {
+                    const form =
+                        app.querySelector<HTMLFormElement>(
+                            '#schedule-config-form',
+                        );
+                    const formData = form ? new FormData(form) : new FormData();
+                    const timezone = String(
+                        formData.get('timezone') ?? setupWizardState.timezone,
+                    ).trim();
+                    const workdayStartHour = Number(
+                        formData.get('workdayStartHour'),
+                    );
+                    const workdayEndHour = Number(
+                        formData.get('workdayEndHour'),
+                    );
+                    if (
+                        !timezone ||
+                        !Number.isFinite(workdayStartHour) ||
+                        !Number.isFinite(workdayEndHour) ||
+                        workdayStartHour < 0 ||
+                        workdayStartHour > 23 ||
+                        workdayEndHour < 1 ||
+                        workdayEndHour > 24 ||
+                        workdayEndHour <= workdayStartHour
+                    ) {
+                        setupWizardState.errorMessage =
+                            'Schedule must include a timezone and a valid workday range.';
+                        await renderSetup(onComplete);
+                        return;
+                    }
+                    setupWizardState.timezone = timezone;
+                    setupWizardState.workdayStartHour = workdayStartHour;
+                    setupWizardState.workdayEndHour = workdayEndHour;
+                    await postJson('/api/setup/config', {
+                        MURPH_TIMEZONE: timezone,
+                        MURPH_WORKDAY_START_HOUR: String(workdayStartHour),
+                        MURPH_WORKDAY_END_HOUR: String(workdayEndHour),
+                    });
+                    const updatedSetup =
+                        await getJson<SetupStatusPayload>('/api/setup/status');
+                    const updatedStepKeys = setupStepKeys(updatedSetup);
+                    const policyIndex = updatedStepKeys.indexOf('policy');
+                    setupWizardState.currentStep =
+                        policyIndex >= 0
+                            ? policyIndex
+                            : Math.max(0, updatedStepKeys.indexOf('finish'));
+                    await renderSetup(onComplete);
+                    return;
+                }
+
+                if (stepKey === 'policy') {
+                    const form =
+                        app.querySelector<HTMLFormElement>(
+                            '#policy-config-form',
+                        );
+                    const formData = form ? new FormData(form) : new FormData();
+                    await putJson('/api/gateway/policy/config', {
+                        profileName: String(formData.get('profileName') ?? ''),
+                        mode: String(formData.get('mode') ?? 'manual_review'),
+                    });
+                    const updatedSetup =
+                        await getJson<SetupStatusPayload>('/api/setup/status');
+                    const updatedStepKeys = setupStepKeys(updatedSetup);
+                    setupWizardState.currentStep = Math.max(
+                        0,
+                        updatedStepKeys.indexOf('finish'),
+                    );
+                    await renderSetup(onComplete);
+                    return;
+                }
+
                 if (
                     stepProvider &&
                     stepKey.startsWith('channels:') &&
@@ -2235,9 +2459,6 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                             primary.channelScopeMode === 'selected'
                                 ? primary.selectedChannels
                                 : [],
-                        timezone: setupWizardState.timezone,
-                        workdayStartHour: setupWizardState.workdayStartHour,
-                        workdayEndHour: setupWizardState.workdayStartHour + 8,
                     });
                     const setupStatus =
                         await getJson<SetupStatusPayload>('/api/setup/status');

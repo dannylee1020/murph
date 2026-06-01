@@ -6,6 +6,7 @@ import { registerBuiltInIntegrationAdapters } from '#shared/server/integrations/
 import { loadScopedPlugins } from '#shared/server/plugins/loader';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#shared/server/integrations/capabilities';
 import { getStore } from '#shared/server/persistence/store';
+import { syncConfigScheduleToSetupOwners } from '#shared/server/setup/config-schedule';
 
 let initialized = false;
 let pending: Promise<void> | null = null;
@@ -33,6 +34,7 @@ export async function ensureRuntimeInitialized(): Promise<void> {
       await loadScopedPlugins();
       await loadRuntimePlugins();
       await getChannelRegistry().startIngress();
+      syncConfigScheduleToSetupOwners();
       reconcileIntegrationCapabilities();
       initialized = true;
     })().finally(() => {

@@ -106,6 +106,9 @@ const CONFIG_KEY_SETTERS = {
   MURPH_DISTRIBUTION: (config, value) => setPath(config, ['app', 'distribution'], normalizeRuntimeDistribution(value)),
   MURPH_PRODUCT_MODE: (config, value) => setPath(config, ['app', 'productMode'], normalizeProductMode(value)),
   MURPH_SQLITE_PATH: (config, value) => setPath(config, ['app', 'sqlitePath'], value),
+  MURPH_TIMEZONE: (config, value) => setPath(config, ['app', 'timezone'], value),
+  MURPH_WORKDAY_START_HOUR: (config, value) => setPath(config, ['app', 'workdayStartHour'], Number(value)),
+  MURPH_WORKDAY_END_HOUR: (config, value) => setPath(config, ['app', 'workdayEndHour'], Number(value)),
   MURPH_DEFAULT_PROVIDER: (config, value) => setPath(config, ['ai', 'defaultProvider'], normalizeProvider(value)),
   MURPH_DEFAULT_MODEL: (config, value) => setPath(config, ['ai', 'defaultModel'], value),
   MURPH_AGENT_PROVIDER: (config, value) => setPath(config, ['ai', 'agent', 'provider'], normalizeProvider(value)),
@@ -432,6 +435,9 @@ function readConfigValue(key) {
   if (key === 'MURPH_DISTRIBUTION') return getPath(config, ['app', 'distribution']);
   if (key === 'MURPH_PRODUCT_MODE') return getPath(config, ['app', 'productMode']);
   if (key === 'MURPH_SQLITE_PATH') return getPath(config, ['app', 'sqlitePath']);
+  if (key === 'MURPH_TIMEZONE') return getPath(config, ['app', 'timezone']);
+  if (key === 'MURPH_WORKDAY_START_HOUR') return getPath(config, ['app', 'workdayStartHour']);
+  if (key === 'MURPH_WORKDAY_END_HOUR') return getPath(config, ['app', 'workdayEndHour']);
   if (key === 'MURPH_DEFAULT_PROVIDER') return getPath(config, ['ai', 'defaultProvider']);
   if (key === 'MURPH_DEFAULT_MODEL') return getPath(config, ['ai', 'defaultModel']);
   if (key === 'MURPH_AGENT_PROVIDER') return getPath(config, ['ai', 'agent', 'provider']);
@@ -2013,24 +2019,35 @@ async function setupDiscordChannelsManually(current, workspaceId, cause) {
 async function setupSchedule() {
   sectionTitle('Schedule');
   const current = await getDefaults();
-  if (options.quick && current.defaults?.timezone && current.defaults?.workdayStartHour !== undefined) {
-    success(`Schedule is configured: ${current.defaults.workdayStartHour}:00 ${current.defaults.timezone}`);
+  const configuredTimezone = readSetupValue('MURPH_TIMEZONE');
+  const configuredStartHour = readSetupValue('MURPH_WORKDAY_START_HOUR');
+  const configuredEndHour = readSetupValue('MURPH_WORKDAY_END_HOUR');
+  const configScheduleReady = Boolean(configuredTimezone && configuredStartHour !== '' && configuredEndHour !== '');
+  if (options.quick && configScheduleReady) {
+    success(`Schedule is configured: ${configuredStartHour}:00 ${configuredTimezone}`);
     return current.defaults;
   }
-  if (options.nonInteractive && (!current.defaults?.timezone || current.defaults?.workdayStartHour === undefined)) {
+  if (options.nonInteractive && !configScheduleReady) {
     fail('Missing schedule defaults. Run murph setup schedule.');
   }
   if (!current.defaults?.ownerUserId && !(current.defaults?.workspaceOwners?.length > 0)) {
     fail('Connect a bot through OAuth first so Murph can identify the represented owner.');
   }
 
-  const timezone = await ask('Timezone', current.defaults.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles');
-  const startHour = await askHour('Workday start hour (0-23)', current.defaults.workdayStartHour ?? 9);
+  const timezone = await ask('Timezone', configuredTimezone || current.defaults.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles');
+  const startHourDefault = configuredStartHour || String(current.defaults.workdayStartHour ?? 9);
+  const startHour = await askHour('Workday start hour (0-23)', Number(startHourDefault));
+  const endHour = Math.min(startHour + 8, 24);
+  writeSetupValues({
+    MURPH_TIMEZONE: timezone,
+    MURPH_WORKDAY_START_HOUR: String(startHour),
+    MURPH_WORKDAY_END_HOUR: String(endHour)
+  });
   const next = {
     ...current.defaults,
     timezone,
     workdayStartHour: startHour,
-    workdayEndHour: Math.min(startHour + 8, 24)
+    workdayEndHour: endHour
   };
   await saveDefaults(next);
   success(`Saved schedule: ${startHour}:00 ${timezone}`);

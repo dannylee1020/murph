@@ -6,6 +6,7 @@ import { getChannelRegistry } from '#shared/server/capabilities/channel-registry
 import { getStore } from '#shared/server/persistence/store';
 import { handleSlackInteractionPayload, parseSlackInteractionPayload } from '#shared/server/channels/slack/interactions';
 import { pruneChannelRuntimeConfig } from '#shared/server/setup/config-file';
+import { scheduleWithConfigFallback } from '#shared/server/setup/config-schedule';
 import { readBody, redirect, sendJson, toHeaders } from '../http.js';
 import { route, type Route } from '../router.js';
 import type { SlackInstallResult } from '#shared/server/channels/slack/service';
@@ -77,29 +78,36 @@ function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
 
   const store = getStore();
   const currentDefaults = store.getAppSettings().setupDefaults ?? {};
+  const schedule = scheduleWithConfigFallback(currentDefaults);
   const ownerDisplayName = result.authedUser.displayName || result.authedUser.id;
 
   const user = store.upsertUser({
     workspaceId: result.workspace.id,
     externalUserId: result.authedUser.id,
     displayName: ownerDisplayName,
-    timezone: currentDefaults.timezone,
-    workdayStartHour: currentDefaults.workdayStartHour,
-    workdayEndHour: currentDefaults.workdayEndHour
+    timezone: schedule.timezone,
+    workdayStartHour: schedule.workdayStartHour,
+    workdayEndHour: schedule.workdayEndHour
   });
   if (result.role === 'channel') {
     const workspaceChannelDefaults = currentDefaults.workspaceChannels?.find(
       (entry) => entry.workspaceId === result.workspace.id
     );
+    const configuredChannelScope =
+      workspaceChannelDefaults?.selectedChannels.map((channel) => channel.id) ??
+      currentDefaults.selectedChannels?.map((channel) => channel.id) ??
+      [];
+    const configuredChannelScopeMode =
+      workspaceChannelDefaults?.channelScopeMode ?? currentDefaults.channelScopeMode ?? 'all_accessible';
+    const channelScopeMode =
+      configuredChannelScopeMode === 'selected' && configuredChannelScope.length === 0
+        ? 'all_accessible'
+        : configuredChannelScopeMode;
     store.ensureWorkspaceSubscriptionForUser(user, {
       provider: 'slack',
       status: 'active',
-      channelScopeMode:
-        workspaceChannelDefaults?.channelScopeMode ?? currentDefaults.channelScopeMode ?? 'all_accessible',
-      channelScope:
-        workspaceChannelDefaults?.selectedChannels.map((channel) => channel.id) ??
-        currentDefaults.selectedChannels?.map((channel) => channel.id) ??
-        []
+      channelScopeMode,
+      channelScope: channelScopeMode === 'selected' ? configuredChannelScope : []
     });
   }
 
@@ -116,6 +124,11 @@ function saveAuthedUserAsSetupOwner(result: SlackInstallResult): void {
     ...store.getAppSettings(),
     setupDefaults: {
       ...currentDefaults,
+      botRoles: [result.role],
+      providerBotRoles: {
+        ...(currentDefaults.providerBotRoles ?? {}),
+        slack: [result.role]
+      },
       workspaceOwners,
       ...(currentDefaults.ownerUserId?.trim()
         ? {}

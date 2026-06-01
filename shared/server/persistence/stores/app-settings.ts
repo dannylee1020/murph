@@ -1,4 +1,5 @@
 import type { AppSettings } from '#shared/types';
+import { normalizeProviderBotRoleMap, normalizeSetupBotRoles } from '#shared/server/setup/bot-roles';
 import type { Db } from './_shared.js';
 import { parseJsonObject } from './_shared.js';
 
@@ -7,6 +8,8 @@ const SETTINGS_KEY = 'local';
 function normalizeSettings(settings: AppSettings): AppSettings {
   const setupDefaults = settings.setupDefaults
     ? {
+        botRoles: normalizeSetupBotRoles(settings.setupDefaults.botRoles),
+        providerBotRoles: normalizeProviderBotRoleMap(settings.setupDefaults.providerBotRoles),
         channelProvider: settings.setupDefaults.channelProvider?.trim() || undefined,
         workspaceId: settings.setupDefaults.workspaceId?.trim() || undefined,
         ownerUserId: settings.setupDefaults.ownerUserId?.trim() || undefined,

@@ -9,6 +9,9 @@ const envKeys = [
   'MURPH_CONFIG_PATH',
   'MURPH_CREDENTIALS_PATH',
   'MURPH_APP_URL',
+  'MURPH_TIMEZONE',
+  'MURPH_WORKDAY_START_HOUR',
+  'MURPH_WORKDAY_END_HOUR',
   'MURPH_DISTRIBUTION',
   'MURPH_SQLITE_PATH',
   'MURPH_DEFAULT_PROVIDER',
@@ -98,10 +101,16 @@ describe('setup config value writer', () => {
     expect(readFileSync('config.yaml', 'utf8')).toContain('defaultModel: gpt-5.5');
     expect(readFileSync('config.yaml', 'utf8')).toContain('provider: anthropic');
     expect(readFileSync('config.yaml', 'utf8')).toContain('model: claude-opus-4-7');
-    expect(readFileSync('config.yaml', 'utf8')).toContain('eventsMode: socket');
-    expect(readFileSync('config.yaml', 'utf8')).toContain('appId: A123');
-    expect(readFileSync('config.yaml', 'utf8')).toContain('teamId: T123');
-    expect(readFileSync('config.yaml', 'utf8')).toContain('teamName: Murph Test');
+    expect(readFileSync('config.yaml', 'utf8')).not.toContain('channels:');
+    const { getStore } = await import('../shared/server/persistence/store');
+    expect(getStore().getBotAppConfig('slack', 'channel')).toMatchObject({
+      appId: 'A123',
+      eventsMode: 'socket',
+      metadata: {
+        teamId: 'T123',
+        teamName: 'Murph Test'
+      }
+    });
     expect(process.env.OPENAI_API_KEY).toBe('sk-new');
   });
 
@@ -109,5 +118,26 @@ describe('setup config value writer', () => {
     const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
 
     expect(() => updateSetupConfigValues({ NOT_A_SETUP_KEY: 'nope' })).toThrow('Unsupported setup key');
+  });
+
+  it('writes schedule setup keys to app config', async () => {
+    writeFileSync('config.yaml', 'app:\n  url: http://localhost:5173\n');
+    const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
+
+    const result = updateSetupConfigValues({
+      MURPH_TIMEZONE: 'Asia/Seoul',
+      MURPH_WORKDAY_START_HOUR: '10',
+      MURPH_WORKDAY_END_HOUR: '18'
+    });
+
+    const config = readFileSync('config.yaml', 'utf8');
+    expect(result.updated).toEqual([
+      'MURPH_TIMEZONE',
+      'MURPH_WORKDAY_START_HOUR',
+      'MURPH_WORKDAY_END_HOUR'
+    ]);
+    expect(config).toContain('timezone: Asia/Seoul');
+    expect(config).toContain('workdayStartHour: 10');
+    expect(config).toContain('workdayEndHour: 18');
   });
 });

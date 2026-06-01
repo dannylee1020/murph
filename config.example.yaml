@@ -6,6 +6,9 @@ app:
   runEventRetentionDays: 30
   contextSourceTimeoutMs: 3000
   contextSourceMaxOptional: 3
+  timezone: America/Los_Angeles
+  workdayStartHour: 9
+  workdayEndHour: 17
 
 ai:
   defaultProvider: openai
@@ -33,3 +36,4 @@ integrations:
 
 policy:
   profile: ""
+  mode: ""

@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,6 +58,14 @@ async function setup(
       ensureStarted
     })
   }));
+  vi.doMock('#shared/server/runtime/bootstrap', () => ({
+    ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
+  }));
+  vi.doMock('#shared/server/capabilities/channel-registry', () => ({
+    getChannelRegistry: () => ({
+      getIngress: () => ({ start: ensureStarted })
+    })
+  }));
 
   const { slackRoutes } = await import('../shared/server/routes/slack');
   const { dispatchRoute } = await import('../shared/server/router');
@@ -91,7 +99,7 @@ describe('Slack OAuth callback route', () => {
   });
 
   it('starts Socket Mode and uses the Slack OAuth user as setup owner', async () => {
-    const { get, root, store } = await setup({
+    const { get, store } = await setup({
       ok: true,
       team: { id: 'T1', name: 'Murph Test' },
       access_token: 'xoxb-test',
@@ -110,29 +118,29 @@ describe('Slack OAuth callback route', () => {
     const result = await get('/api/slack/oauth/callback?code=abc');
 
     expect(result.status).toBe(302);
-    const config = readFileSync(path.join(root, 'config.yaml'), 'utf8');
-    expect(config).toContain('ownerUserId: U1');
-    expect(config).toContain('ownerDisplayName: Daniel');
-    expect(config).toContain('workspaceOwners:');
+    expect(store.getAppSettings().setupDefaults).toMatchObject({
+      ownerUserId: 'U1',
+      ownerDisplayName: 'Daniel',
+      workspaceOwners: [
+        expect.objectContaining({
+          ownerUserId: 'U1',
+          ownerDisplayName: 'Daniel'
+        })
+      ]
+    });
     const workspace = store.getWorkspaceByExternalId('slack', 'T1');
     expect(workspace && store.getUser(workspace.id, 'U1')?.displayName).toBe('Daniel');
     expect(workspace && store.getProviderSettings(workspace.id)).toBeUndefined();
   });
 
   it('preserves an existing setup owner while saving the Slack workspace owner on reconnect', async () => {
-    const { get, root } = await setup({
+    const { get, store } = await setup({
       ok: true,
       team: { id: 'T1', name: 'Murph Test' },
       access_token: 'xoxb-test',
       bot_user_id: 'UTZBOT',
       authed_user: { id: 'U1', access_token: 'xoxp-test' }
     }, {
-      configYaml: [
-        'setup:',
-        '  ownerUserId: UEXISTING',
-        '  ownerDisplayName: Existing Owner',
-        ''
-      ].join('\n'),
       userInfoPayload: {
         ok: true,
         user: {
@@ -141,16 +149,26 @@ describe('Slack OAuth callback route', () => {
         }
       }
     });
+    store.upsertAppSettings({
+      setupDefaults: {
+        ownerUserId: 'UEXISTING',
+        ownerDisplayName: 'Existing Owner'
+      }
+    });
 
     const result = await get('/api/slack/oauth/callback?code=abc');
 
     expect(result.status).toBe(302);
-    const config = readFileSync(path.join(root, 'config.yaml'), 'utf8');
-    expect(config).toContain('ownerUserId: UEXISTING');
-    expect(config).toContain('ownerDisplayName: Existing Owner');
-    expect(config).toContain('workspaceOwners:');
-    expect(config).toContain('ownerUserId: U1');
-    expect(config).toContain('ownerDisplayName: Daniel');
+    expect(store.getAppSettings().setupDefaults).toMatchObject({
+      ownerUserId: 'UEXISTING',
+      ownerDisplayName: 'Existing Owner',
+      workspaceOwners: [
+        expect.objectContaining({
+          ownerUserId: 'U1',
+          ownerDisplayName: 'Daniel'
+        })
+      ]
+    });
   });
 
   it('returns CLI-sourced workspace installs to the terminal completion page', async () => {

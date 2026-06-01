@@ -111,24 +111,34 @@ export function consoleStateHtml(
     label: string,
     status: 'ok' | 'off' | 'warn',
 ): string {
-    return `<span class="console-state"><span class="status-dot ${status}" aria-hidden="true"></span>${escapeHtml(label)}</span>`;
+    return `<span class="console-state status-${status}"><span class="status-dot ${status}" aria-hidden="true"></span>${escapeHtml(label)}</span>`;
 }
 
 export function sidebarWatchingStatusHtml(): string {
     const count = sidebarActiveSessionCount;
     const active = (count ?? 0) > 0;
+    const personal = productSurface === 'personal';
     const label =
-        count === undefined ? 'Checking' : active ? 'Watching' : 'Idle';
+        count === undefined
+            ? 'Checking'
+            : active
+              ? personal
+                  ? 'Receiving'
+                  : 'Watching'
+              : 'Idle';
     const detail =
         count === undefined
-            ? 'Session status'
+            ? personal
+                ? 'DM status'
+                : 'Session status'
             : count === 1
               ? '1 active session'
               : `${count} active sessions`;
+    const status = active ? 'ok' : count === undefined ? 'warn' : 'off';
 
     return `
-    <div class="sidebar-watch-status" aria-label="${escapeHtml(`Watching status: ${label}`)}">
-      <span class="status-dot ${active ? 'ok' : count === undefined ? 'warn' : 'off'}" aria-hidden="true"></span>
+    <div class="sidebar-watch-status status-${status}" aria-label="${escapeHtml(`${personal ? 'DM' : 'Watching'} status: ${label}`)}">
+      <span class="status-dot ${status}" aria-hidden="true"></span>
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(detail)}</strong>
     </div>

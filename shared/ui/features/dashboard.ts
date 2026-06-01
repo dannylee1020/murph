@@ -93,10 +93,10 @@ import {
     activeSessionRows,
     calculateDurationHours,
     channelSummaryLabel,
-    combinedChannelSummary,
     getTimezoneOptions,
     googleOAuthDialog,
     homeChannelGroups,
+    homeCoverageSummaryHtml,
     integrationCard,
     integrationCredentialDialog,
     list,
@@ -132,6 +132,7 @@ export async function renderDashboard(): Promise<void> {
         getJson<PolicyConfigPayload>('/api/gateway/policy/config'),
     ]);
     setSidebarWatchingCount(data.summary.activeSessionCount);
+    const isPersonal = setupStatus.distribution === 'personal';
 
     const currentUserId =
         setupDefaults.defaults.ownerUserId ?? getCurrentUserId();
@@ -144,16 +145,19 @@ export async function renderDashboard(): Promise<void> {
             async (workspace): Promise<HomeWorkspaceChannelState> => {
                 let availableChannels: ChannelChoice[] = [];
                 let channelLoadError = '';
-                try {
-                    const channelsPayload = await getJson<SetupChannelsPayload>(
-                        `/api/setup/channels?workspaceId=${encodeURIComponent(workspace.id)}`,
-                    );
-                    availableChannels = channelsPayload.channels ?? [];
-                } catch (error) {
-                    channelLoadError =
-                        error instanceof Error
-                            ? error.message
-                            : 'Murph could not load channels right now.';
+                if (!isPersonal) {
+                    try {
+                        const channelsPayload =
+                            await getJson<SetupChannelsPayload>(
+                                `/api/setup/channels?workspaceId=${encodeURIComponent(workspace.id)}`,
+                            );
+                        availableChannels = channelsPayload.channels ?? [];
+                    } catch (error) {
+                        channelLoadError =
+                            error instanceof Error
+                                ? error.message
+                                : 'Murph could not load channels right now.';
+                    }
                 }
 
                 const defaults = setupDefaults.defaults;
@@ -176,7 +180,7 @@ export async function renderDashboard(): Promise<void> {
                           },
                       ]
                     : [];
-                if (channelLoadError || availableChannels.length === 0) {
+                if (isPersonal || channelLoadError || availableChannels.length === 0) {
                     mode = 'all_accessible';
                     selectedChannels = [];
                 }
@@ -254,15 +258,21 @@ export async function renderDashboard(): Promise<void> {
     const policyModeLabel = policyExecutionModeLabel(policyConfig.mode);
     const hasActiveSessions = data.sessions.length > 0;
     const watchButtonLabel = hasActiveSessions
-        ? 'Stop watching'
-        : 'Start watching';
+        ? isPersonal
+            ? 'Stop DM coverage'
+            : 'Stop watching'
+        : isPersonal
+          ? 'Start DM coverage'
+          : 'Start watching';
     const providerBanner = !setupStatus.provider.configured
         ? `<div class="setup-banner">
         <p>Connect an AI provider to let Murph draft replies for you.</p>
         <a class="button secondary" href="/admin">Configure</a>
       </div>`
         : '';
-    const ownerNotice = missingOwnerNotice(channelStates);
+    const ownerNotice = missingOwnerNotice(channelStates, {
+        personal: isPersonal,
+    });
 
     shell(`
     <section class="page-head console-head">
@@ -280,12 +290,12 @@ export async function renderDashboard(): Promise<void> {
     <section class="launch-section">
       <article class="panel go-to-sleep-card">
         <h2>Go to sleep</h2>
-        <p>Murph will watch your accessible channels using your policy default.</p>
+        <p>${isPersonal ? 'Murph will receive owner DMs through your personal bot using your policy default.' : 'Murph will watch your accessible channels using your policy default.'}</p>
         <form id="go-to-sleep-form">
           <dl class="go-to-sleep-summary">
             <div class="summary-cell">
-              <dt>Watching</dt>
-              <dd>${escapeHtml(combinedChannelSummary(channelStates))}</dd>
+              <dt>${isPersonal ? 'Coverage' : 'Watching'}</dt>
+              <dd class="coverage-summary-value">${homeCoverageSummaryHtml(channelStates, { personal: isPersonal })}</dd>
             </div>
             <div class="summary-cell">
               <dt>Until</dt>
@@ -301,7 +311,7 @@ export async function renderDashboard(): Promise<void> {
 
           <details class="customize-section">
             <summary>Customize</summary>
-            ${homeChannelGroups(channelStates)}
+            ${homeChannelGroups(channelStates, { personal: isPersonal })}
             <fieldset class="customize-fieldset">
               <legend>Session mode</legend>
               <div class="mode-selector">
@@ -323,7 +333,7 @@ export async function renderDashboard(): Promise<void> {
               </div>
             </fieldset>
             <fieldset class="customize-fieldset">
-              <legend>Stop watching at</legend>
+              <legend>${isPersonal ? 'Stop receiving DMs at' : 'Stop watching at'}</legend>
               <div class="form">
                 <label>
                   <span>Time</span>
@@ -351,10 +361,10 @@ export async function renderDashboard(): Promise<void> {
 
         <section class="active-session-inline">
           <div class="section-head">
-            <h2>Currently watching</h2>
+            <h2>${isPersonal ? 'Current DM coverage' : 'Currently watching'}</h2>
             <span class="section-meta">${escapeHtml(formatSessionStatus(data.summary.activeSessionCount))}</span>
           </div>
-          ${activeSessionRows(data.sessions, selectedChannelNames, workspaceNames)}
+          ${activeSessionRows(data.sessions, selectedChannelNames, workspaceNames, { personal: isPersonal })}
         </section>
       </article>
     </section>
@@ -373,9 +383,12 @@ export async function renderDashboard(): Promise<void> {
                 )?.checked,
             );
             const mode: 'selected' | 'all_accessible' =
-                group?.querySelector<HTMLInputElement>(
+                (group?.querySelector<HTMLInputElement>(
                     `input[name="channelScopeMode:${state.workspace.id}"]:checked`,
-                )?.value === 'all_accessible'
+                ) ??
+                    group?.querySelector<HTMLInputElement>(
+                        `input[name="channelScopeMode:${state.workspace.id}"]`,
+                    ))?.value === 'all_accessible'
                     ? 'all_accessible'
                     : 'selected';
             const checkboxes = Array.from(
@@ -404,12 +417,18 @@ export async function renderDashboard(): Promise<void> {
                                   checkbox.dataset.displayName ??
                                   checkbox.value,
                           }));
-            const label = channelSummaryLabel(mode, currentChannels);
+            const label = channelSummaryLabel(mode, currentChannels, {
+                personal: isPersonal,
+            });
             const toggleLabel = group?.querySelector<HTMLElement>(
                 '.workspace-channel-scope',
             );
             if (toggleLabel)
-                toggleLabel.textContent = enabled ? label : 'Not watched';
+                toggleLabel.textContent = enabled
+                    ? label
+                    : isPersonal
+                      ? 'Not receiving DMs'
+                      : 'Not watched';
             group?.classList.toggle('disabled', !enabled);
             group
                 ?.querySelectorAll<HTMLLabelElement>(
@@ -438,7 +457,9 @@ export async function renderDashboard(): Promise<void> {
             '.go-to-sleep-summary .summary-cell:first-child dd',
         );
         if (summaryCell)
-            summaryCell.textContent = combinedChannelSummary(nextStates);
+            summaryCell.innerHTML = homeCoverageSummaryHtml(nextStates, {
+                personal: isPersonal,
+            });
         const submitButton = form.querySelector<HTMLButtonElement>(
             'button[type="submit"]',
         );
@@ -629,7 +650,9 @@ export async function renderDashboard(): Promise<void> {
                 });
                 const payload: Record<string, unknown> = {
                     ownerUserId: currentUserId,
-                    title: 'Watching overnight',
+                    title: isPersonal
+                        ? 'DM coverage overnight'
+                        : 'Watching overnight',
                     stopLocalTime: endTimeVal,
                     timezone: tz,
                     targets: targets.map((target) => ({
@@ -648,8 +671,12 @@ export async function renderDashboard(): Promise<void> {
                 clearDashboardError();
                 setDashboardNotice(
                     targets.length > 1
-                        ? `Murph is watching ${targets.map((target) => providerLabel(target.workspace.provider)).join(' and ')}.`
-                        : 'Murph is watching.',
+                        ? isPersonal
+                            ? `Murph is receiving DMs through ${targets.map((target) => providerLabel(target.workspace.provider)).join(' and ')}.`
+                            : `Murph is watching ${targets.map((target) => providerLabel(target.workspace.provider)).join(' and ')}.`
+                        : isPersonal
+                          ? 'Murph is receiving DMs.'
+                          : 'Murph is watching.',
                 );
                 await renderDashboard();
             } catch (error) {

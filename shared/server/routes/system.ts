@@ -17,6 +17,11 @@ import {
   pruneChannelRuntimeConfig,
   readMurphConfig
 } from '#shared/server/setup/config-file';
+import {
+  configScheduleConfigured,
+  readConfigSchedule,
+  syncConfigScheduleToSetupOwners
+} from '#shared/server/setup/config-schedule';
 import { getSlackService } from '#shared/server/channels/slack/service';
 import { getDiscordService } from '#shared/server/channels/discord/service';
 import { getIngressHealth } from '#shared/server/channels/ingress-health';
@@ -753,6 +758,8 @@ export const systemRoutes: Route[] = [
         installedAt: workspace.installedAt
       }));
     const config = readMurphConfig();
+    const configSchedule = readConfigSchedule();
+    const policyConfigured = Boolean(config.policy?.profile && config.policy?.mode);
     const agentInheritsRuntime = process.env.MURPH_AGENT_PROVIDER === undefined &&
       process.env.MURPH_AGENT_MODEL === undefined &&
       !config.ai?.agent?.provider &&
@@ -873,6 +880,15 @@ export const systemRoutes: Route[] = [
         path: murphConfigPath(),
         configured: murphConfigExists(),
         envOverrides: envOverrides()
+      },
+      murphConfig: {
+        scheduleConfigured: configScheduleConfigured(configSchedule),
+        timezone: configSchedule.timezone,
+        workdayStartHour: configSchedule.workdayStartHour,
+        workdayEndHour: configSchedule.workdayEndHour,
+        policyConfigured,
+        policyProfileName: config.policy?.profile,
+        policyMode: config.policy?.mode
       },
       channelWorkspaces,
       notion: getNotionStatus(),
@@ -1179,6 +1195,7 @@ export const systemRoutes: Route[] = [
 
     try {
       const result = updateSetupConfigValues(body);
+      syncConfigScheduleToSetupOwners();
       const refresh = await refreshRuntimeState({
         reason: 'setup_config_updated',
         deferIfRunActive: true

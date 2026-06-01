@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -107,24 +107,28 @@ describe('Discord OAuth callback route', () => {
   });
 
   it('saves the OAuth user as the Discord workspace owner', async () => {
-    const { get, root, store } = await setup({
-      configYaml: [
-        'setup:',
-        '  ownerUserId: U_SLACK',
-        '  ownerDisplayName: Slack Owner',
-        ''
-      ].join('\n')
+    const { get, store } = await setup();
+    store.upsertAppSettings({
+      setupDefaults: {
+        ownerUserId: 'U_SLACK',
+        ownerDisplayName: 'Slack Owner'
+      }
     });
 
     const result = await get('/api/discord/oauth/callback?code=abc&guild_id=G1');
 
     expect(result.status).toBe(302);
     expect(result.headers.location).toMatch(/^\/settings\?installed=discord&workspaceId=/);
-    const config = readFileSync(path.join(root, 'config.yaml'), 'utf8');
-    expect(config).toContain('ownerUserId: U_SLACK');
-    expect(config).toContain('workspaceOwners:');
-    expect(config).toContain('ownerUserId: U_DISCORD');
-    expect(config).toContain('ownerDisplayName: Danny');
+    expect(store.getAppSettings().setupDefaults).toMatchObject({
+      ownerUserId: 'U_SLACK',
+      ownerDisplayName: 'Slack Owner',
+      workspaceOwners: [
+        expect.objectContaining({
+          ownerUserId: 'U_DISCORD',
+          ownerDisplayName: 'Danny'
+        })
+      ]
+    });
     const workspace = store.getWorkspaceByExternalId('discord', 'G1');
     expect(workspace && store.getUser(workspace.id, 'U_DISCORD')?.displayName).toBe('Danny');
     expect(workspace && store.getProviderSettings(workspace.id)).toBeUndefined();
@@ -164,7 +168,7 @@ describe('Discord OAuth callback route', () => {
     process.env.DISCORD_PERSONAL_CLIENT_ID = 'discord-personal-client-id';
     process.env.DISCORD_PERSONAL_CLIENT_SECRET = 'discord-personal-client-secret';
     process.env.DISCORD_PERSONAL_BOT_TOKEN = 'discord-personal-bot-token';
-    const { get, root } = await setup();
+    const { get, store } = await setup();
     process.env.DISCORD_PERSONAL_CLIENT_ID = 'discord-personal-client-id';
     process.env.DISCORD_PERSONAL_CLIENT_SECRET = 'discord-personal-client-secret';
     process.env.DISCORD_PERSONAL_BOT_TOKEN = 'discord-personal-bot-token';
@@ -176,11 +180,21 @@ describe('Discord OAuth callback route', () => {
 
     expect(callbackResult.status).toBe(302);
     expect(callbackResult.headers.location).toMatch(/^\/setup\?step=discord&role=personal&success=1&workspaceId=/);
-    const config = readFileSync(path.join(root, 'config.yaml'), 'utf8');
-    expect(config).toContain('channelProvider: discord');
-    expect(config).toContain('ownerUserId: U_DISCORD');
-    expect(config).toContain('ownerDisplayName: Daniel Discord');
-    expect(config).toContain('workspaceOwners:');
+    expect(store.getAppSettings().setupDefaults).toMatchObject({
+      botRoles: ['personal'],
+      providerBotRoles: {
+        discord: ['personal']
+      },
+      channelProvider: 'discord',
+      ownerUserId: 'U_DISCORD',
+      ownerDisplayName: 'Daniel Discord',
+      workspaceOwners: [
+        expect.objectContaining({
+          ownerUserId: 'U_DISCORD',
+          ownerDisplayName: 'Daniel Discord'
+        })
+      ]
+    });
   });
 
   it('returns CLI-sourced Discord installs to the terminal completion page', async () => {

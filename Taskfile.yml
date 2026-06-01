@@ -1,0 +1,35 @@
+version: '3'
+
+tasks:
+  db:clear-workflow:
+    desc: Clear workflow/test data and messenger bot installs from the local Murph SQLite DB while preserving credentials.
+    cmds:
+      - |
+        set -eu
+        db="${MURPH_SQLITE_PATH:-data/murph.sqlite}"
+
+        if [ ! -f "$db" ]; then
+          echo "No SQLite database found at $db"
+          exit 0
+        fi
+
+        sqlite3 "$db" <<'SQL'
+        PRAGMA foreign_keys = OFF;
+        BEGIN IMMEDIATE;
+        DELETE FROM agent_run_events;
+        DELETE FROM agent_runs;
+        DELETE FROM continuity_actions;
+        DELETE FROM audit_entries;
+        DELETE FROM reminders;
+        DELETE FROM recurring_jobs;
+        DELETE FROM thread_states;
+        DELETE FROM thread_memory;
+        DELETE FROM slack_events;
+        DELETE FROM direct_conversations;
+        DELETE FROM bot_installations;
+        DELETE FROM autopilot_sessions;
+        COMMIT;
+        VACUUM;
+        SQL
+
+        echo "Cleared workflow/test data from $db"

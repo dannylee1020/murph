@@ -732,19 +732,19 @@ export function sessionCreateErrorDetails(payload: SessionCreateResponse): strin
     const fallbackMessage =
         payload.message ??
         (payload.error === 'subscription_channel_scope_mismatch'
-            ? 'The selected channels do not match the saved setup. Save channel selection and try again.'
+            ? 'The selected scope does not match the saved setup. Save the defaults and try again.'
             : undefined) ??
         (payload.error === 'subscription_required'
             ? 'This user is not subscribed in the selected workspace.'
             : undefined) ??
         (payload.error === 'owner_required'
-            ? 'Choose an owner before starting a watch session.'
+            ? 'Choose an owner before starting this session.'
             : undefined) ??
         (payload.error === 'workspace_not_installed'
             ? 'Connect this workspace before starting a watch session.'
             : undefined) ??
         payload.error ??
-        'Murph could not start watching this workspace.';
+        'Murph could not start this session.';
 
     return `
     ${
@@ -806,7 +806,10 @@ export function resolveAdminWorkspaceId(workspaces: ChannelWorkspace[]): string 
     return first;
 }
 
-export function workspaceMetric(workspaces: ChannelWorkspace[]): string {
+export function workspaceMetric(
+    workspaces: ChannelWorkspace[],
+    options: { personal?: boolean } = {},
+): string {
     if (workspaces.length === 0) {
         return metric('Workspace', 'Not installed');
     }
@@ -824,7 +827,7 @@ export function workspaceMetric(workspaces: ChannelWorkspace[]): string {
                 (target) => `
           <span class="workspace-target-line">
             <strong>${escapeHtml(workspaceOptionLabel(target.workspace))}</strong>
-            <small>${escapeHtml(channelSummaryLabel(target.mode, target.selectedChannels))}</small>
+            <small>${escapeHtml(channelSummaryLabel(target.mode, target.selectedChannels, options))}</small>
           </span>
         `,
             )
@@ -837,7 +840,11 @@ export function workspaceMetric(workspaces: ChannelWorkspace[]): string {
 export function channelSummaryLabel(
     mode: 'selected' | 'all_accessible',
     channels: Array<{ id: string; displayName: string }>,
+    options: { personal?: boolean } = {},
 ): string {
+    if (options.personal) {
+        return 'Owner DMs';
+    }
     if (mode === 'all_accessible' || channels.length === 0) {
         return 'All accessible channels';
     }
@@ -871,10 +878,18 @@ export function ownerDisplayName(ownerId: string, members: MemberChoice[]): stri
     );
 }
 
-export function combinedChannelSummary(states: HomeWorkspaceChannelState[]): string {
+export function combinedChannelSummary(
+    states: HomeWorkspaceChannelState[],
+    options: { personal?: boolean } = {},
+): string {
     const enabled = states.filter((state) => state.enabled);
     if (enabled.length === 0) {
-        return 'No channels selected';
+        return options.personal ? 'No personal bots connected' : 'No channels selected';
+    }
+    if (options.personal) {
+        return enabled
+            .map((state) => `${providerLabel(state.workspace.provider)} · Owner DMs`)
+            .join(' + ');
     }
     if (enabled.length === 1) {
         return `${providerLabel(enabled[0].workspace.provider)} · ${channelSummaryLabel(enabled[0].mode, enabled[0].selectedChannels)}`;
@@ -896,7 +911,43 @@ export function combinedChannelSummary(states: HomeWorkspaceChannelState[]): str
         : `${providerNames.join(' + ')} · all accessible`;
 }
 
-export function missingOwnerNotice(states: HomeWorkspaceChannelState[]): string {
+export function homeCoverageSummaryHtml(
+    states: HomeWorkspaceChannelState[],
+    options: { personal?: boolean } = {},
+): string {
+    const enabled = states.filter((state) => state.enabled);
+    if (enabled.length === 0) {
+        return `<span>${escapeHtml(options.personal ? 'No personal bots connected' : 'No channels selected')}</span>`;
+    }
+
+    const providerNames = enabled
+        .map((state) => providerLabel(state.workspace.provider))
+        .join(' + ');
+    const scope = options.personal
+        ? 'Owner DMs'
+        : enabled.length === 1
+          ? channelSummaryLabel(enabled[0].mode, enabled[0].selectedChannels)
+          : enabled.every((state) => state.mode === 'all_accessible')
+            ? 'All accessible channels'
+            : `${enabled.reduce(
+                  (count, state) =>
+                      count +
+                      (state.mode === 'selected'
+                          ? state.selectedChannels.length
+                          : 0),
+                  0,
+              )} selected channels`;
+
+    return `
+      <span>${escapeHtml(providerNames)}</span>
+      <small>${escapeHtml(scope)}</small>
+    `;
+}
+
+export function missingOwnerNotice(
+    states: HomeWorkspaceChannelState[],
+    options: { personal?: boolean } = {},
+): string {
     const missing = states.filter(
         (state) => state.enabled && !state.selectedOwnerId,
     );
@@ -909,7 +960,7 @@ export function missingOwnerNotice(states: HomeWorkspaceChannelState[]): string 
         return `
       <div class="notice warning">
         <strong>Discord owner required</strong>
-        <p>Run <code>murph setup discord</code> to identify the Discord account Murph should watch for ${escapeHtml(discordMissing.workspace.name)}.</p>
+        <p>Run <code>murph setup discord</code> to identify the Discord account Murph should ${options.personal ? 'receive DMs for' : 'watch for'} ${escapeHtml(discordMissing.workspace.name)}.</p>
       </div>
     `;
     }
@@ -922,13 +973,37 @@ export function missingOwnerNotice(states: HomeWorkspaceChannelState[]): string 
   `;
 }
 
-export function homeChannelGroup(state: HomeWorkspaceChannelState): string {
+export function homeChannelGroup(
+    state: HomeWorkspaceChannelState,
+    options: { personal?: boolean } = {},
+): string {
     const selected = new Set(
         state.selectedChannels.map((channel) => channel.id),
     );
-    const label = channelSummaryLabel(state.mode, state.selectedChannels);
+    const label = channelSummaryLabel(
+        state.mode,
+        state.selectedChannels,
+        options,
+    );
     const allSelected = state.mode === 'all_accessible';
     const workspaceId = state.workspace.id;
+    if (options.personal) {
+        return `
+    <section class="workspace-channel-group ${state.enabled ? '' : 'disabled'}" data-workspace-id="${escapeHtml(workspaceId)}">
+      <div class="workspace-channel-header">
+        <label class="workspace-channel-toggle">
+          <input type="checkbox" name="workspaceTarget" value="${escapeHtml(workspaceId)}" ${state.enabled ? 'checked' : ''} />
+          <input type="hidden" name="channelScopeMode:${escapeHtml(workspaceId)}" value="all_accessible" />
+          <input type="hidden" name="workspaceOwner:${escapeHtml(workspaceId)}" value="${escapeHtml(state.selectedOwnerId)}" />
+          <span>
+            <strong>${escapeHtml(workspaceOptionLabel(state.workspace))}</strong>
+            <small class="workspace-channel-scope">${escapeHtml(state.enabled ? label : 'Not receiving DMs')}</small>
+          </span>
+        </label>
+      </div>
+    </section>
+  `;
+    }
     return `
     <section class="workspace-channel-group ${state.enabled ? '' : 'disabled'}" data-workspace-id="${escapeHtml(workspaceId)}">
       <div class="workspace-channel-header">
@@ -987,15 +1062,20 @@ export function homeChannelGroup(state: HomeWorkspaceChannelState): string {
   `;
 }
 
-export function homeChannelGroups(states: HomeWorkspaceChannelState[]): string {
+export function homeChannelGroups(
+    states: HomeWorkspaceChannelState[],
+    options: { personal?: boolean } = {},
+): string {
     return `
     <fieldset class="customize-fieldset home-channel-fieldset">
-      <legend>Channels</legend>
+      <legend>${options.personal ? 'DM inboxes' : 'Channels'}</legend>
       <div class="home-workspace-groups">
         ${
             states.length > 0
-                ? states.map((state) => homeChannelGroup(state)).join('')
-                : '<p class="empty">Connect Slack or Discord to choose channels.</p>'
+                ? states
+                      .map((state) => homeChannelGroup(state, options))
+                      .join('')
+                : `<p class="empty">${options.personal ? 'Connect Slack or Discord to receive owner DMs.' : 'Connect Slack or Discord to choose channels.'}</p>`
         }
       </div>
     </fieldset>
@@ -1013,18 +1093,20 @@ export function sessionScopeLabel(
     session: SummaryPayload['sessions'][number],
     channelNames: Map<string, string>,
     workspaceNames: Map<string, string>,
+    options: { personal?: boolean } = {},
 ): string {
-    const scope =
-        session.channelScope.length > 0
-            ? session.channelScope
-                  .map(
-                      (id) =>
-                          channelNames.get(`${session.workspaceId}:${id}`) ??
-                          channelNames.get(id) ??
-                          id,
-                  )
-                  .join(', ')
-            : 'All accessible channels';
+    const scope = options.personal
+        ? 'Owner DMs'
+        : session.channelScope.length > 0
+          ? session.channelScope
+                .map(
+                    (id) =>
+                        channelNames.get(`${session.workspaceId}:${id}`) ??
+                        channelNames.get(id) ??
+                        id,
+                )
+                .join(', ')
+          : 'All accessible channels';
     const workspace = workspaceNames.get(session.workspaceId);
     return workspace ? `${workspace}: ${scope}` : scope;
 }
@@ -1033,9 +1115,12 @@ export function activeSessionRows(
     sessions: SummaryPayload['sessions'],
     channelNames: Map<string, string>,
     workspaceNames: Map<string, string>,
+    options: { personal?: boolean } = {},
 ): string {
     if (sessions.length === 0) {
-        return '<p class="empty">Murph is not watching right now.</p>';
+        return options.personal
+            ? '<p class="empty">Murph is not receiving DMs right now.</p>'
+            : '<p class="empty">Murph is not watching right now.</p>';
     }
 
     return `<ul class="list active-session-list">${sessions
@@ -1046,7 +1131,7 @@ export function activeSessionRows(
             <strong>${escapeHtml(session.title)}</strong>
             <span>${escapeHtml(plainLanguageModeLabel(session.mode))}</span>
             <span title="${escapeHtml(formatExactIso(session.endsAt))}">Until ${escapeHtml(formatDateTime(session.endsAt))}</span>
-            <span>${escapeHtml(sessionScopeLabel(session, channelNames, workspaceNames))}</span>
+            <span>${escapeHtml(sessionScopeLabel(session, channelNames, workspaceNames, options))}</span>
             <button class="secondary stop-session" data-session-id="${escapeHtml(session.id)}">Stop</button>
           </div>
         </li>

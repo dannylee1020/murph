@@ -9,6 +9,9 @@ const envKeys = [
   'MURPH_CONFIG_PATH',
   'MURPH_CREDENTIALS_PATH',
   'MURPH_APP_URL',
+  'MURPH_TIMEZONE',
+  'MURPH_WORKDAY_START_HOUR',
+  'MURPH_WORKDAY_END_HOUR',
   'MURPH_DISTRIBUTION',
   'MURPH_PRODUCT_MODE',
   'MURPH_DEFAULT_PROVIDER',
@@ -53,15 +56,15 @@ describe('murph config file', () => {
       'app:',
       '  url: https://murph.example',
       '  distribution: personal',
+      '  timezone: Asia/Seoul',
+      '  workdayStartHour: 10',
+      '  workdayEndHour: 18',
       'ai:',
       '  defaultProvider: anthropic',
       '  defaultModel: claude-opus-4-7',
       '  agent:',
       '    provider: anthropic',
       '    model: claude-opus-4-7',
-      'channels:',
-      '  slack:',
-      '    eventsMode: http',
       'integrations:',
       '  github:',
       '    repositories:',
@@ -76,11 +79,13 @@ describe('murph config file', () => {
     expect(env.appUrl).toBe('https://murph.example');
     expect(env.distribution).toBe('personal');
     expect(env.productMode).toBe('personal');
+    expect(env.timezone).toBe('Asia/Seoul');
+    expect(env.workdayStartHour).toBe(10);
+    expect(env.workdayEndHour).toBe(18);
     expect(env.defaultProvider).toBe('anthropic');
     expect(env.defaultModel).toBe('claude-opus-4-7');
     expect(env.agentProvider).toBe('anthropic');
     expect(env.agentModel).toBe('claude-opus-4-7');
-    expect(env.slackEventsMode).toBe('http');
     expect(env.githubRepositories).toEqual(['acme/app', 'acme/api']);
   });
 

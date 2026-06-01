@@ -380,7 +380,7 @@ export async function renderSettings(): Promise<void> {
     </section>
 
     <dl class="kpis">
-      ${workspaceMetric(workspaces)}
+      ${workspaceMetric(workspaces, { personal: !isTeamDistribution })}
       ${metric('AI provider', setup.provider.configured ? `${setup.provider.defaultProvider}` : 'Not configured')}
       ${metric('Slack', slackConnected ? 'Connected' : 'Not connected')}
       ${metric('Discord', discordConnected ? 'Connected' : 'Not connected')}

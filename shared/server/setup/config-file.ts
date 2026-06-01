@@ -19,6 +19,9 @@ export interface MurphConfig {
     runEventRetentionDays?: number;
     contextSourceTimeoutMs?: number;
     contextSourceMaxOptional?: number;
+    timezone?: string;
+    workdayStartHour?: number;
+    workdayEndHour?: number;
   };
   ai?: {
     defaultProvider?: ProviderName;
@@ -94,6 +97,9 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   MURPH_RUN_EVENT_RETENTION_DAYS: (config, value) => setPath(config, ['app', 'runEventRetentionDays'], numberFromString(value)),
   MURPH_CONTEXT_SOURCE_TIMEOUT_MS: (config, value) => setPath(config, ['app', 'contextSourceTimeoutMs'], numberFromString(value)),
   MURPH_CONTEXT_SOURCE_MAX_OPTIONAL: (config, value) => setPath(config, ['app', 'contextSourceMaxOptional'], numberFromString(value)),
+  MURPH_TIMEZONE: (config, value) => setPath(config, ['app', 'timezone'], value),
+  MURPH_WORKDAY_START_HOUR: (config, value) => setPath(config, ['app', 'workdayStartHour'], numberFromString(value)),
+  MURPH_WORKDAY_END_HOUR: (config, value) => setPath(config, ['app', 'workdayEndHour'], numberFromString(value)),
   MURPH_DEFAULT_PROVIDER: (config, value) => setPath(config, ['ai', 'defaultProvider'], providerFromString(value)),
   MURPH_DEFAULT_MODEL: (config, value) => setPath(config, ['ai', 'defaultModel'], value),
   MURPH_AGENT_PROVIDER: (config, value) => setPath(config, ['ai', 'agent', 'provider'], providerFromString(value)),
@@ -410,7 +416,10 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
       heartbeatIntervalMs: numberValue(app.heartbeatIntervalMs),
       runEventRetentionDays: numberValue(app.runEventRetentionDays),
       contextSourceTimeoutMs: numberValue(app.contextSourceTimeoutMs),
-      contextSourceMaxOptional: numberValue(app.contextSourceMaxOptional)
+      contextSourceMaxOptional: numberValue(app.contextSourceMaxOptional),
+      timezone: stringValue(app.timezone),
+      workdayStartHour: numberValue(app.workdayStartHour),
+      workdayEndHour: numberValue(app.workdayEndHour)
     },
     ai: {
       defaultProvider: providerValue(ai.defaultProvider),
