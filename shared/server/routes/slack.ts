@@ -1,4 +1,5 @@
 import { ensureRuntimeInitialized } from '#shared/server/runtime/bootstrap';
+import { resolvePublicAppUrl } from '#shared/server/auth/dashboard-access';
 import { refreshRuntimeState } from '#shared/server/runtime/refresh';
 import { handleSlackEventEnvelope, verifySlackHttpSignature } from '#shared/server/channels/slack/events';
 import { getSlackService } from '#shared/server/channels/slack/service';
@@ -14,16 +15,8 @@ import type { BotRole } from '#shared/types';
 
 type OAuthSource = 'cli' | 'setup' | 'settings';
 
-function firstHeaderValue(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 function publicAppUrl(req: Parameters<typeof toHeaders>[0], url: URL): string {
-  const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
-  const host = forwardedHost ?? req.headers.host ?? url.host;
-  const forwardedProto = firstHeaderValue(req.headers['x-forwarded-proto']);
-  const proto = forwardedProto ?? (host.includes('localhost') || host.startsWith('127.') ? 'http' : 'https');
-  return `${proto}://${host}`;
+  return resolvePublicAppUrl(req, url);
 }
 
 function getSlackWorkspace() {

@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -85,6 +85,23 @@ describe('integration credential resolution', () => {
       source: 'env',
       value: 'env-token'
     });
+  });
+
+  it('ignores blank stored credentials and blank env fallback', async () => {
+    const { workspace } = await setup({ githubPat: '   ' });
+    writeFileSync(process.env.MURPH_CREDENTIALS_PATH!, JSON.stringify({
+      version: 1,
+      credentials: [{
+        provider: 'github',
+        key: 'api_key',
+        value: '   ',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }]
+    }));
+
+    const { resolveCredential } = await import('#shared/server/integrations/credentials');
+    expect(resolveCredential(workspace.id, 'github')).toBeUndefined();
   });
 
   it('ignores legacy workspace-scoped credentials', async () => {

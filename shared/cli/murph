@@ -724,32 +724,30 @@ remove_uninstall_path() {
 
 remove_cli_link() {
   local dry_run="$1"
-  local cli_name cli_path
+  local cli_path
 
-  for cli_name in murph; do
-    cli_path="$MURPH_BIN_DIR/$cli_name"
-    [[ -e "$cli_path" || -L "$cli_path" ]] || continue
+  cli_path="$HOME/.local/bin/murph"
+  [[ -e "$cli_path" || -L "$cli_path" ]] || return
 
-    if [[ -L "$cli_path" ]]; then
-      local target
-      target="$(readlink "$cli_path")"
-      if [[ "$target" != /* ]]; then
-        target="$(canonical_path "$(dirname "$cli_path")/$target")"
-      fi
-      if path_is_within "$target" "$MURPH_HOME" || path_is_within "$target" "$MURPH_APP_DIR"; then
-        remove_uninstall_path "$dry_run" "CLI link" "$cli_path"
-        continue
-      fi
-      printf 'Skip CLI link: %s points outside this Murph install.\n' "$cli_path"
-      continue
+  if [[ -L "$cli_path" ]]; then
+    local target
+    target="$(readlink "$cli_path")"
+    if [[ "$target" != /* ]]; then
+      target="$(canonical_path "$(dirname "$cli_path")/$target")"
     fi
-
-    if grep -q 'Murph' "$cli_path" 2>/dev/null && grep -q 'MURPH_HOME' "$cli_path" 2>/dev/null; then
-      remove_uninstall_path "$dry_run" "CLI file" "$cli_path"
-    else
-      printf 'Skip CLI path: %s is not a Murph-managed link.\n' "$cli_path"
+    if path_is_within "$target" "$MURPH_HOME" || path_is_within "$target" "$MURPH_APP_DIR"; then
+      remove_uninstall_path "$dry_run" "CLI link" "$cli_path"
+      return
     fi
-  done
+    printf 'Skip CLI link: %s points outside this Murph install.\n' "$cli_path"
+    return
+  fi
+
+  if grep -q 'Murph' "$cli_path" 2>/dev/null && grep -q 'MURPH_HOME' "$cli_path" 2>/dev/null; then
+    remove_uninstall_path "$dry_run" "CLI file" "$cli_path"
+  else
+    printf 'Skip CLI path: %s is not a Murph-managed link.\n' "$cli_path"
+  fi
 }
 
 remove_murph_home() {
@@ -803,12 +801,33 @@ stop_for_uninstall() {
     if [[ "$dry_run" == true ]]; then
       printf 'Would stop Murph PID: %s\n' "$pid"
     elif [[ "$force" == true ]]; then
-      stop_background --force
+      kill -9 "$pid" >/dev/null 2>&1 || true
     else
-      stop_background
+      kill "$pid" >/dev/null 2>&1 || true
+      local attempt
+      for attempt in {1..20}; do
+        if ! is_pid_running "$pid"; then
+          break
+        fi
+        sleep 0.25
+      done
+      if is_pid_running "$pid"; then
+        fail "Murph did not stop within 5 seconds. Re-run with: murph uninstall --force"
+      fi
     fi
-  elif [[ -f "$MURPH_PID_FILE" && "$dry_run" == false ]]; then
-    rm -f "$MURPH_PID_FILE"
+    if [[ "$dry_run" == false && ( -f "$MURPH_PID_FILE" || -L "$MURPH_PID_FILE" ) ]]; then
+      if path_is_within "$MURPH_PID_FILE" "$MURPH_HOME"; then
+        rm -f "$MURPH_PID_FILE"
+      else
+        printf 'Skip PID file outside home: %s\n' "$MURPH_PID_FILE"
+      fi
+    fi
+  elif [[ ( -f "$MURPH_PID_FILE" || -L "$MURPH_PID_FILE" ) && "$dry_run" == false ]]; then
+    if path_is_within "$MURPH_PID_FILE" "$MURPH_HOME"; then
+      rm -f "$MURPH_PID_FILE"
+    else
+      printf 'Skip PID file outside home: %s\n' "$MURPH_PID_FILE"
+    fi
   fi
 
   if health_check; then
@@ -850,7 +869,7 @@ uninstall_command() {
   printf 'Murph uninstall plan\n'
   printf 'App dir:  %s\n' "$MURPH_APP_DIR"
   printf 'Home dir: %s\n' "$MURPH_HOME"
-  printf 'CLI path: %s/murph\n' "$MURPH_BIN_DIR"
+  printf 'CLI path: %s/.local/bin/murph\n' "$HOME"
   printf '\n'
 
   assert_safe_murph_home

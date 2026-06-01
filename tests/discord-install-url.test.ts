@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const envKeys = ['MURPH_CONFIG_PATH', 'MURPH_CREDENTIALS_PATH', 'DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_TOKEN', 'DISCORD_PERSONAL_CLIENT_ID'] as const;
+const envKeys = ['MURPH_CONFIG_PATH', 'MURPH_CREDENTIALS_PATH', 'DISCORD_CLIENT_ID', 'DISCORD_CLIENT_SECRET', 'DISCORD_BOT_TOKEN', 'DISCORD_PERSONAL_CLIENT_ID', 'DISCORD_REDIRECT_URI'] as const;
 const originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 
 describe('Discord install URL', () => {
@@ -40,6 +40,16 @@ describe('Discord install URL', () => {
     expect(params.get('permissions')).toBe(DISCORD_BOT_PERMISSIONS);
     expect(params.get('redirect_uri')).toBe('http://murph.test/api/discord/oauth/callback');
     expect(params.get('response_type')).toBe('code');
+  });
+
+  it('lets DISCORD_REDIRECT_URI explicitly override the dynamic app URL', async () => {
+    process.env.DISCORD_REDIRECT_URI = 'https://override.example/api/discord/oauth/callback';
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
+
+    const url = new DiscordService().buildInstallUrl({ appUrl: 'https://request.example' });
+
+    expect(url).toBeTruthy();
+    expect(new URL(url!).searchParams.get('redirect_uri')).toBe('https://override.example/api/discord/oauth/callback');
   });
 
   it('configures install permissions and limited privileged intent flags', async () => {

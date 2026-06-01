@@ -158,6 +158,40 @@ describe('integration routes', () => {
     expect(providers).toEqual(['github', 'notion', 'linear', 'obsidian', 'granola', 'google']);
   });
 
+  it('does not report GitHub or Linear connected from blank credentials', async () => {
+    const { request, store, workspace } = await setup({ distribution: 'team' });
+    const now = new Date().toISOString();
+    writeFileSync(process.env.MURPH_CREDENTIALS_PATH!, JSON.stringify({
+      version: 1,
+      credentials: [
+        { provider: 'github', key: 'api_key', value: '', createdAt: now, updatedAt: now },
+        { provider: 'linear', key: 'api_key', value: '   ', createdAt: now, updatedAt: now }
+      ]
+    }));
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'github',
+      credentialKind: 'api_key',
+      metadata: { masked: '****' }
+    });
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'linear',
+      credentialKind: 'api_key',
+      metadata: { masked: '****' }
+    });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const github = response.body.integrations.find((integration: any) => integration.provider === 'github');
+    const linear = response.body.integrations.find((integration: any) => integration.provider === 'linear');
+
+    expect(response.status).toBe(200);
+    expect(github).toEqual(expect.objectContaining({ status: 'reconnect_required' }));
+    expect(github.source).toBeUndefined();
+    expect(linear).toEqual(expect.objectContaining({ status: 'reconnect_required' }));
+    expect(linear.source).toBeUndefined();
+  });
+
   it('rejects personal-only integration connects in Team runtime', async () => {
     const { request, workspace } = await setup({ distribution: 'team' });
 

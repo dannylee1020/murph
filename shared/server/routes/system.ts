@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { resolvePublicAppUrl } from '#shared/server/auth/dashboard-access';
 import { readJson, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 import { DEFAULT_AGENT_MODEL } from '#shared/config';
@@ -101,16 +102,8 @@ function cliOAuthCompleteHtml(url: URL): string {
 </html>`;
 }
 
-function firstHeaderValue(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 function publicAppUrl(req: IncomingMessage, url: URL): string {
-  const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
-  const host = forwardedHost ?? req.headers.host ?? url.host;
-  const forwardedProto = firstHeaderValue(req.headers['x-forwarded-proto']);
-  const proto = forwardedProto ?? (host.includes('localhost') || host.startsWith('127.') ? 'http' : 'https');
-  return `${proto}://${host}`;
+  return resolvePublicAppUrl(req, url);
 }
 
 function discordDeveloperPortalOAuthUrl(applicationId: string): string {
@@ -319,9 +312,7 @@ function slackRoleLinks(role: 'channel' | 'personal', appUrl: string) {
 
 function discordRoleLinks(role: 'channel' | 'personal', appUrl: string) {
   const clientId = discordRoleClientId(role);
-  const redirectUri = process.env.DISCORD_REDIRECT_URI ??
-    getStore().getBotAppConfig('discord', role)?.redirectUri ??
-    `${appUrl}/api/discord/oauth/callback`;
+  const redirectUri = process.env.DISCORD_REDIRECT_URI ?? `${appUrl}/api/discord/oauth/callback`;
   return {
     redirectUri,
     developerPortalUrl: clientId ? discordDeveloperPortalOAuthUrl(clientId) : 'https://discord.com/developers/applications',
@@ -1155,9 +1146,7 @@ export const systemRoutes: Route[] = [
       });
       const configuration = await discord.configureApplication(botToken, role);
       const appUrl = publicAppUrl(req, url);
-      const redirectUri = process.env.DISCORD_REDIRECT_URI ??
-        getStore().getBotAppConfig('discord', role)?.redirectUri ??
-        `${appUrl}/api/discord/oauth/callback`;
+      const redirectUri = process.env.DISCORD_REDIRECT_URI ?? `${appUrl}/api/discord/oauth/callback`;
       getStore().upsertBotAppConfig({
         provider: 'discord',
         role,

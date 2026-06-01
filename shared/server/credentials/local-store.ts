@@ -113,13 +113,17 @@ function exactRefMatches(record: CredentialRecord, ref: SecretRef = {}): boolean
   );
 }
 
+function hasCredentialValue(record: CredentialRecord): boolean {
+  return record.value.trim().length > 0;
+}
+
 export function listSecrets(): CredentialRecord[] {
   return readCredentialFile().credentials;
 }
 
 export function readSecret(provider: string, key: string, ref: SecretRef = {}): string | undefined {
   const candidates = readCredentialFile().credentials
-    .filter((record) => record.provider === provider && record.key === key && refMatches(record, ref));
+    .filter((record) => record.provider === provider && record.key === key && refMatches(record, ref) && hasCredentialValue(record));
 
   candidates.sort((a, b) => {
     const aScore = Number(Boolean(a.workspaceId)) + Number(Boolean(a.externalWorkspaceId)) + Number(Boolean(a.botInstallationId)) + Number(Boolean(a.userId));
@@ -127,13 +131,16 @@ export function readSecret(provider: string, key: string, ref: SecretRef = {}): 
     return bScore - aScore;
   });
 
-  return candidates[0]?.value;
+  return candidates[0]?.value.trim();
 }
 
 export function readSecretRecord(provider: string, key: string, ref: SecretRef = {}): CredentialRecord | undefined {
-  return readCredentialFile().credentials
-    .filter((record) => record.provider === provider && record.key === key && refMatches(record, ref))
+  const record = readCredentialFile().credentials
+    .filter((entry) => entry.provider === provider && entry.key === key && refMatches(entry, ref) && hasCredentialValue(entry))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  return record
+    ? { ...record, value: record.value.trim() }
+    : undefined;
 }
 
 export function hasSecret(provider: string, key: string, ref: SecretRef = {}): boolean {

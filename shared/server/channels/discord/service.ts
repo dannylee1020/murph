@@ -428,9 +428,7 @@ export class DiscordService {
   }
 
   private resolveRedirectUri(appUrl = this.env.appUrl, role: BotRole = 'channel'): string {
-    return process.env.DISCORD_REDIRECT_URI ??
-      this.store.getBotAppConfig('discord', role)?.redirectUri ??
-      `${appUrl}/api/discord/oauth/callback`;
+    return process.env.DISCORD_REDIRECT_URI ?? `${appUrl}/api/discord/oauth/callback`;
   }
 
   getBotToken(role: BotRole = 'channel', botInstallationId?: string): string {

@@ -6,10 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ensureStarted = vi.fn();
 
-function request(): any {
+function request(headers: Record<string, string> = {}): any {
   const req = Readable.from([]) as any;
   req.method = 'GET';
-  req.headers = { host: 'localhost:5173' };
+  req.headers = { host: 'localhost:5173', ...headers };
   return req;
 }
 
@@ -46,9 +46,13 @@ async function setup(
     writeFileSync(process.env.MURPH_CONFIG_PATH, options.configYaml);
   }
 
-  vi.stubGlobal('fetch', vi.fn(async (url) => {
+  const tokenRequests: URLSearchParams[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init) => {
     if (String(url).includes('/users.info')) {
       return Response.json(options.userInfoPayload ?? { ok: false, error: 'not_found' });
+    }
+    if (String(url).includes('/oauth.v2.access')) {
+      tokenRequests.push(new URLSearchParams(String(init?.body ?? '')));
     }
     return Response.json(slackPayload);
   }));
@@ -71,17 +75,17 @@ async function setup(
   const { dispatchRoute } = await import('../shared/server/router');
   const { getStore } = await import('#shared/server/persistence/store');
 
-  async function get(pathname: string) {
+  async function get(pathname: string, headers: Record<string, string> = {}) {
     const res = response();
     await dispatchRoute(slackRoutes, {
-      req: request(),
+      req: request(headers),
       res,
       url: new URL(pathname, 'http://localhost:5173')
     });
     return res.result();
   }
 
-  return { get, root, store: getStore() };
+  return { get, root, store: getStore(), tokenRequests };
 }
 
 describe('Slack OAuth callback route', () => {
@@ -98,8 +102,21 @@ describe('Slack OAuth callback route', () => {
     delete process.env.OPENAI_API_KEY;
   });
 
+  it('builds Slack OAuth URLs from the forwarded request host', async () => {
+    const { get } = await setup({ ok: true });
+
+    const result = await get('/api/slack/install?source=setup', {
+      'x-forwarded-host': 'murph.example.com',
+      'x-forwarded-proto': 'https'
+    });
+
+    expect(result.status).toBe(302);
+    const location = new URL(result.headers.location);
+    expect(location.searchParams.get('redirect_uri')).toBe('https://murph.example.com/api/slack/oauth/callback');
+  });
+
   it('starts Socket Mode and uses the Slack OAuth user as setup owner', async () => {
-    const { get, store } = await setup({
+    const { get, store, tokenRequests } = await setup({
       ok: true,
       team: { id: 'T1', name: 'Murph Test' },
       access_token: 'xoxb-test',
@@ -115,9 +132,13 @@ describe('Slack OAuth callback route', () => {
       }
     });
 
-    const result = await get('/api/slack/oauth/callback?code=abc');
+    const result = await get('/api/slack/oauth/callback?code=abc', {
+      'x-forwarded-host': 'murph.example.com',
+      'x-forwarded-proto': 'https'
+    });
 
     expect(result.status).toBe(302);
+    expect(tokenRequests[0].get('redirect_uri')).toBe('https://murph.example.com/api/slack/oauth/callback');
     expect(store.getAppSettings().setupDefaults).toMatchObject({
       ownerUserId: 'U1',
       ownerDisplayName: 'Daniel',

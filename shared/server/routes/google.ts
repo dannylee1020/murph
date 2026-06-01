@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import { resolvePublicAppUrl } from '#shared/server/auth/dashboard-access';
 import { getStore } from '#shared/server/persistence/store';
 import { getSlackService } from '#shared/server/channels/slack/service';
 import { getIntegration } from '#shared/server/integrations/registry';
@@ -17,16 +18,8 @@ import { refreshRuntimeState } from '#shared/server/runtime/refresh';
 import { redirect, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 
-function firstHeaderValue(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 function publicAppUrl(req: IncomingMessage, url: URL): string {
-  const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
-  const host = forwardedHost ?? req.headers.host ?? url.host;
-  const forwardedProto = firstHeaderValue(req.headers['x-forwarded-proto']);
-  const proto = forwardedProto ?? (host.includes('localhost') || host.startsWith('127.') ? 'http' : 'https');
-  return `${proto}://${host}`;
+  return resolvePublicAppUrl(req, url);
 }
 
 function getTargetWorkspace(workspaceId?: string) {

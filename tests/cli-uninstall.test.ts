@@ -98,6 +98,27 @@ describe('murph uninstall', () => {
     expect(existsSync(join(fixture.appDir, 'data/murph.sqlite'))).toBe(true);
   });
 
+  it('does not remove custom bin or pid paths outside home', () => {
+    const fixture = createInstalledFixture();
+    const customBinDir = join(fixture.home, 'custom-bin');
+    const externalPidFile = join(fixture.home, 'external.pid');
+    mkdirSync(customBinDir, { recursive: true });
+    writeFileSync(join(customBinDir, 'murph'), '#!/usr/bin/env bash\n# Murph\nMURPH_HOME=x\n');
+    writeFileSync(externalPidFile, '999999\n');
+
+    const result = runMurph(['uninstall', '--yes'], {
+      ...fixture.env,
+      MURPH_BIN_DIR: customBinDir,
+      MURPH_PID_FILE: externalPidFile
+    });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(join(fixture.binDir, 'murph'))).toBe(false);
+    expect(existsSync(join(customBinDir, 'murph'))).toBe(true);
+    expect(existsSync(externalPidFile)).toBe(true);
+    expect(existsSync(fixture.appDir)).toBe(true);
+  });
+
   it('rejects ambiguous custom home paths before removing files', () => {
     const fixture = createInstalledFixture();
     const unsafeHome = join(fixture.home, 'state');

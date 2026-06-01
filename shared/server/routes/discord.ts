@@ -1,5 +1,6 @@
 import { createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
+import { resolvePublicAppUrl } from '#shared/server/auth/dashboard-access';
 import { getDiscordService } from '#shared/server/channels/discord/service';
 import { ensureRuntimeInitialized } from '#shared/server/runtime/bootstrap';
 import { refreshRuntimeState } from '#shared/server/runtime/refresh';
@@ -23,11 +24,7 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
 }
 
 function publicAppUrl(req: IncomingMessage, url: URL): string {
-  const forwardedHost = firstHeaderValue(req.headers['x-forwarded-host']);
-  const host = forwardedHost ?? req.headers.host ?? url.host;
-  const forwardedProto = firstHeaderValue(req.headers['x-forwarded-proto']);
-  const proto = forwardedProto ?? (host.includes('localhost') || host.startsWith('127.') ? 'http' : 'https');
-  return `${proto}://${host}`;
+  return resolvePublicAppUrl(req, url);
 }
 
 function discordStateSecret(): string {
@@ -331,9 +328,7 @@ export const discordRoutes: Route[] = [
 
     try {
       await ensureRuntimeInitialized();
-      const redirectUri = process.env.DISCORD_REDIRECT_URI ??
-        getStore().getBotAppConfig('discord', role)?.redirectUri ??
-        `${publicAppUrl(req, url)}/api/discord/oauth/callback`;
+      const redirectUri = process.env.DISCORD_REDIRECT_URI ?? `${publicAppUrl(req, url)}/api/discord/oauth/callback`;
       const install = await getDiscordService().exchangeCode(code, guildId, redirectUri, role);
       const { workspace } = install;
       saveAuthedDiscordUserAsWorkspaceOwner(install);

@@ -6,10 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ensureStarted = vi.fn();
 
-function request(): any {
+function request(headers: Record<string, string> = {}): any {
   const req = Readable.from([]) as any;
   req.method = 'GET';
-  req.headers = { host: 'localhost:5173' };
+  req.headers = { host: 'localhost:5173', ...headers };
   return req;
 }
 
@@ -44,10 +44,12 @@ async function setup(options: { configYaml?: string } = {}) {
     writeFileSync(process.env.MURPH_CONFIG_PATH, options.configYaml);
   }
 
+  const tokenRequests: URLSearchParams[] = [];
   vi.stubGlobal('fetch', vi.fn(async (url, init = {}) => {
     const auth = new Headers((init as RequestInit).headers).get('authorization') ?? '';
     const target = String(url);
     if (target.includes('/oauth2/token')) {
+      tokenRequests.push(new URLSearchParams(String((init as RequestInit).body ?? '')));
       return Response.json({ access_token: 'discord-user-token', token_type: 'Bearer', scope: 'identify' });
     }
     if (target.endsWith('/guilds/G1')) {
@@ -80,17 +82,17 @@ async function setup(options: { configYaml?: string } = {}) {
   const { dispatchRoute } = await import('../shared/server/router');
   const { getStore } = await import('#shared/server/persistence/store');
 
-  async function get(pathname: string) {
+  async function get(pathname: string, headers: Record<string, string> = {}) {
     const res = response();
     await dispatchRoute(discordRoutes, {
-      req: request(),
+      req: request(headers),
       res,
       url: new URL(pathname, 'http://localhost:5173')
     });
     return res.result();
   }
 
-  return { get, root, store: getStore() };
+  return { get, root, store: getStore(), tokenRequests };
 }
 
 describe('Discord OAuth callback route', () => {
@@ -138,7 +140,10 @@ describe('Discord OAuth callback route', () => {
   it('redirects install requests to Discord advanced bot authorization', async () => {
     const { get } = await setup();
 
-    const result = await get('/api/discord/install?source=setup');
+    const result = await get('/api/discord/install?source=setup', {
+      'x-forwarded-host': 'murph.example.com',
+      'x-forwarded-proto': 'https'
+    });
 
     expect(result.status).toBe(302);
     const location = new URL(result.headers.location);
@@ -147,19 +152,24 @@ describe('Discord OAuth callback route', () => {
     expect(location.searchParams.get('client_id')).toBe('discord-client-id');
     expect(location.searchParams.get('scope')).toBe('bot identify');
     expect(location.searchParams.get('response_type')).toBe('code');
-    expect(location.searchParams.get('redirect_uri')).toBe('http://localhost:5173/api/discord/oauth/callback');
+    expect(location.searchParams.get('redirect_uri')).toBe('https://murph.example.com/api/discord/oauth/callback');
     expect(location.searchParams.get('state')).toBeTruthy();
   });
 
   it('returns setup-sourced Discord installs to the setup wizard', async () => {
-    const { get } = await setup();
-    const installResult = await get('/api/discord/install?source=setup');
+    const { get, tokenRequests } = await setup();
+    const headers = {
+      'x-forwarded-host': 'murph.example.com',
+      'x-forwarded-proto': 'https'
+    };
+    const installResult = await get('/api/discord/install?source=setup', headers);
     const installLocation = new URL(installResult.headers.location);
     const state = encodeURIComponent(installLocation.searchParams.get('state') ?? '');
 
-    const callbackResult = await get(`/api/discord/oauth/callback?code=abc&guild_id=G1&state=${state}`);
+    const callbackResult = await get(`/api/discord/oauth/callback?code=abc&guild_id=G1&state=${state}`, headers);
 
     expect(callbackResult.status).toBe(302);
+    expect(tokenRequests[0].get('redirect_uri')).toBe('https://murph.example.com/api/discord/oauth/callback');
     expect(callbackResult.headers.location).toMatch(/^\/setup\?step=discord&role=channel&success=1&workspaceId=/);
     expect(ensureStarted).toHaveBeenCalledOnce();
   });

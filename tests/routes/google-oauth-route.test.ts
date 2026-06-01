@@ -14,10 +14,10 @@ type JsonResult = {
   body: any;
 };
 
-function request(method = 'GET'): any {
+function request(method = 'GET', headers: Record<string, string> = {}): any {
   const req = Readable.from([]) as any;
   req.method = method;
-  req.headers = { host: 'localhost:5173' };
+  req.headers = { host: 'localhost:5173', ...headers };
   return req;
 }
 
@@ -58,14 +58,17 @@ async function setup(options: { tokenStatus?: number; tokenPayload?: Record<stri
   process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
+  process.env.MURPH_DISTRIBUTION = 'personal';
   delete process.env.MURPH_ENCRYPTION_KEY;
   process.env.GOOGLE_CLIENT_ID = 'google-client-id';
   process.env.GOOGLE_CLIENT_SECRET = 'google-client-secret';
   process.env.OPENAI_API_KEY = 'sk-test';
 
-  vi.stubGlobal('fetch', vi.fn(async (url) => {
+  const tokenRequests: URLSearchParams[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (url, init) => {
     const target = String(url);
     if (target.includes('oauth2.googleapis.com/token')) {
+      tokenRequests.push(new URLSearchParams(String(init?.body ?? '')));
       return Response.json(options.tokenPayload ?? {
         access_token: 'access-token',
         refresh_token: 'refresh-token',
@@ -91,10 +94,20 @@ async function setup(options: { tokenStatus?: number; tokenPayload?: Record<stri
   const { googleRoutes } = await import('../../shared/server/routes/google');
   const { dispatchRoute } = await import('../../shared/server/router');
 
-  async function callback(pathname: string) {
+  async function install(pathname: string, headers: Record<string, string> = {}) {
     const res = redirectResponse();
     await dispatchRoute(googleRoutes, {
-      req: request(),
+      req: request('GET', headers),
+      res,
+      url: new URL(pathname, 'http://localhost:5173')
+    });
+    return res.result();
+  }
+
+  async function callback(pathname: string, headers: Record<string, string> = {}) {
+    const res = redirectResponse();
+    await dispatchRoute(googleRoutes, {
+      req: request('GET', headers),
       res,
       url: new URL(pathname, 'http://localhost:5173')
     });
@@ -112,7 +125,7 @@ async function setup(options: { tokenStatus?: number; tokenPayload?: Record<stri
     return res.result();
   }
 
-  return { callback, integrationStatus, root, store, workspace };
+  return { callback, install, integrationStatus, root, store, tokenRequests, workspace };
 }
 
 describe('Google OAuth callback route', () => {
@@ -123,19 +136,37 @@ describe('Google OAuth callback route', () => {
     delete process.env.MURPH_SQLITE_PATH;
     delete process.env.MURPH_CREDENTIALS_PATH;
     delete process.env.MURPH_ENCRYPTION_KEY;
+    delete process.env.MURPH_DISTRIBUTION;
     delete process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_SECRET;
     delete process.env.OPENAI_API_KEY;
   });
 
-  it('stores the OAuth bundle and reports Google connected without an encryption key', async () => {
-    const { callback, integrationStatus, workspace } = await setup();
+  it('builds Google install URLs from the forwarded request host', async () => {
+    const { install, workspace } = await setup();
 
-    const result = await callback(`/api/google/oauth/callback?code=abc&state=${encodeURIComponent(workspace.id)}`);
+    const result = await install(`/api/google/install?workspaceId=${encodeURIComponent(workspace.id)}`, {
+      'x-forwarded-host': 'murph.example.com',
+      'x-forwarded-proto': 'https'
+    });
+
+    expect(result.status).toBe(302);
+    const location = new URL(String(result.headers.location));
+    expect(location.searchParams.get('redirect_uri')).toBe('https://murph.example.com/api/google/oauth/callback');
+  });
+
+  it('stores the OAuth bundle and reports Google connected without an encryption key', async () => {
+    const { callback, integrationStatus, tokenRequests, workspace } = await setup();
+
+    const result = await callback(`/api/google/oauth/callback?code=abc&state=${encodeURIComponent(workspace.id)}`, {
+      'x-forwarded-host': 'murph.example.com',
+      'x-forwarded-proto': 'https'
+    });
 
     expect(result.status).toBe(302);
     expect(result.headers.location).toBe(`/settings?google=connected&workspaceId=${encodeURIComponent(workspace.id)}`);
     expect(process.env.MURPH_ENCRYPTION_KEY).toBeUndefined();
+    expect(tokenRequests[0].get('redirect_uri')).toBe('https://murph.example.com/api/google/oauth/callback');
 
     const { readSecretRecord } = await import('#shared/server/credentials/local-store');
     const stored = readSecretRecord('google', 'oauth_bundle');

@@ -24,5 +24,6 @@ export function readEnvCredential(provider: string): string | undefined {
     return undefined;
   }
 
-  return entry.reader?.() ?? process.env[entry.envKey];
+  const value = entry.reader?.() ?? process.env[entry.envKey];
+  return value?.trim() || undefined;
 }
