@@ -39,9 +39,11 @@ Reconnect or reinstall the personal Slack app after changing those settings.
 
 ## Missing channels
 
-If no Slack channels load, reconnect Slack and verify the app is installed in the expected workspace.
+Watched-channel setup is Team-only. Murph Personal uses the Slack or Discord personal bot for DMs and does not ask for channels to monitor.
 
-If no Discord channels load, verify the bot is installed in the expected server and has channel-level access to View Channels, Send Messages, Read Message History, and Send Messages in Threads. If listing still fails, run:
+If no Slack channels load in Murph Team, reconnect Slack and verify the app is installed in the expected workspace.
+
+If no Discord channels load in Murph Team, verify the bot is installed in the expected server and has channel-level access to View Channels, Send Messages, Read Message History, and Send Messages in Threads. If listing still fails, run:
 
 ```bash
 murph setup channels
@@ -55,7 +57,7 @@ Invite the app to private channels before selecting them. Murph cannot self-join
 
 ## Channel defaults
 
-Run channel setup again when Murph has no saved default channel scope:
+In Murph Team, run channel setup again when Murph has no saved default channel scope:
 
 ```bash
 murph setup channels

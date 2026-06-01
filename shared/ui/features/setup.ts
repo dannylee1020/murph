@@ -1689,7 +1689,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                          ? '<button type="button" id="wizard-next">Continue</button>'
                          : prepared
                            ? canInstallDiscord
-                               ? `<a class="button" href="${escapeHtml(prepared.installUrl)}">Connect Discord server</a>`
+                               ? `<a class="button" href="${escapeHtml(prepared.installUrl)}">${role === 'personal' ? 'Connect Discord DM bot' : 'Connect Discord server'}</a>`
                                : canRecheckDiscord
                                  ? '<button type="button" id="wizard-next">Re-check redirect URI</button>'
                                  : '<button type="button" id="wizard-next" disabled>Confirm redirect URI</button>'

@@ -7,7 +7,7 @@ description: Add read-only callable actions from scoped plugins.
 
 A tool is one callable action Murph can run.
 
-Examples include built-in web search and plugin-provided source search. A Linear integration can expose a `linear.search` tool.
+Examples include built-in web search and plugin-provided source search. A Jira integration can expose a `jira.search` tool.
 
 For the full tool contract, retrieval settings, and examples, use [Extending Tools](/docs/developing/extending/tools).
 
@@ -74,7 +74,7 @@ Common profiles include `title_keywords`, `work_item`, `code_review`, `email_thr
 
 ## Tool names
 
-Use source-prefixed names such as `linear.search` or `docs.search` so tool purpose is clear in traces and triage.
+Use source-prefixed names such as `jira.search` or `docs.search` so tool purpose is clear in traces and triage.
 
 ## Extending search and fetch
 

@@ -15,14 +15,14 @@ Plugin skills are Markdown files with frontmatter and instructions.
 
 ```md
 ---
-name: linear
-description: Use Linear evidence for issue, project, cycle, and blocker questions.
+name: jira
+description: Use Jira evidence for issue, project, cycle, and blocker questions.
 knowledgeDomains: [work_item]
-contextSourceNames: [linear.thread_search]
+contextSourceNames: [jira.thread_search]
 priority: 20
 ---
 
-Use Linear evidence when the request mentions issues, projects, cycles, or blockers.
+Use Jira evidence when the request mentions issues, projects, cycles, or blockers.
 ```
 
 ## Name

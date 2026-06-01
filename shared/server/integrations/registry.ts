@@ -1,13 +1,18 @@
 import { listAdapters } from './adapter-registry.js';
 import { readEnvCredential } from './env-credentials.js';
+import type { RuntimeDistribution } from '#shared/types';
 
 export type IntegrationProvider = string;
 export type IntegrationAuthType = 'api_key' | 'oauth' | 'path';
+export type IntegrationDistribution = RuntimeDistribution;
+
+const DEFAULT_DISTRIBUTIONS: IntegrationDistribution[] = ['team', 'personal'];
 
 export interface IntegrationDefinition {
   provider: IntegrationProvider;
   name: string;
   description: string;
+  distributions: IntegrationDistribution[];
   authType: IntegrationAuthType;
   credentialKind: 'api_key' | 'oauth_bundle' | 'config_path';
   envKey: string;
@@ -22,6 +27,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     provider: 'github',
     name: 'GitHub',
     description: 'Issues, pull requests, and repository context.',
+    distributions: ['team', 'personal'],
     authType: 'api_key',
     credentialKind: 'api_key',
     envKey: 'GITHUB_PAT',
@@ -33,6 +39,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     provider: 'notion',
     name: 'Notion',
     description: 'Team docs and knowledge pages.',
+    distributions: ['team', 'personal'],
     authType: 'api_key',
     credentialKind: 'api_key',
     envKey: 'NOTION_API_KEY',
@@ -41,9 +48,22 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     contextSources: ['notion.thread_search']
   },
   {
+    provider: 'linear',
+    name: 'Linear',
+    description: 'Team issues, projects, and product work.',
+    distributions: ['team', 'personal'],
+    authType: 'api_key',
+    credentialKind: 'api_key',
+    envKey: 'LINEAR_API_KEY',
+    credentialLabel: 'Linear API key',
+    tools: ['linear.search_issues', 'linear.read_issue'],
+    contextSources: ['linear.thread_search']
+  },
+  {
     provider: 'granola',
     name: 'Granola',
     description: 'Meeting notes and transcripts.',
+    distributions: ['personal'],
     authType: 'api_key',
     credentialKind: 'api_key',
     envKey: 'GRANOLA_API_KEY',
@@ -55,6 +75,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     provider: 'obsidian',
     name: 'Obsidian',
     description: 'Local Markdown vault notes and knowledge base context.',
+    distributions: ['personal'],
     authType: 'path',
     credentialKind: 'config_path',
     envKey: 'OBSIDIAN_VAULT_PATH',
@@ -66,6 +87,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     provider: 'google',
     name: 'Google',
     description: 'Gmail threads and Google Calendar events.',
+    distributions: ['personal'],
     authType: 'oauth',
     credentialKind: 'oauth_bundle',
     envKey: 'GOOGLE_ACCESS_TOKEN',
@@ -76,16 +98,40 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   }
 ];
 
-export function listIntegrations(): IntegrationDefinition[] {
-  const adapters = listAdapters();
-  if (adapters.length === 0) {
-    return INTEGRATIONS;
+export interface IntegrationListOptions {
+  distribution?: IntegrationDistribution;
+  includeUnavailable?: boolean;
+}
+
+export function integrationAvailableFor(
+  integration: Pick<IntegrationDefinition, 'distributions'>,
+  distribution: IntegrationDistribution
+): boolean {
+  return integration.distributions.includes(distribution);
+}
+
+function filterByDistribution(
+  integrations: IntegrationDefinition[],
+  options: IntegrationListOptions = {}
+): IntegrationDefinition[] {
+  if (!options.distribution || options.includeUnavailable) {
+    return integrations;
   }
 
-  return adapters.map((adapter) => ({
+  return integrations.filter((integration) => integrationAvailableFor(integration, options.distribution!));
+}
+
+export function listIntegrations(options: IntegrationListOptions = {}): IntegrationDefinition[] {
+  const adapters = listAdapters();
+  if (adapters.length === 0) {
+    return filterByDistribution(INTEGRATIONS, options);
+  }
+
+  return filterByDistribution(adapters.map((adapter) => ({
     provider: adapter.id,
     name: adapter.name,
     description: adapter.description,
+    distributions: adapter.distributions ?? DEFAULT_DISTRIBUTIONS,
     authType: adapter.credential.authType,
     credentialKind: adapter.credential.credentialKind,
     envKey: adapter.credential.envKey,
@@ -93,11 +139,11 @@ export function listIntegrations(): IntegrationDefinition[] {
     installPath: adapter.credential.installPath,
     tools: (adapter.tools ?? []).map((tool) => tool.name),
     contextSources: (adapter.contextSources ?? []).map((source) => source.name)
-  }));
+  })), options);
 }
 
-export function getIntegration(provider: string): IntegrationDefinition | undefined {
-  return listIntegrations().find((integration) => integration.provider === provider);
+export function getIntegration(provider: string, options: IntegrationListOptions = {}): IntegrationDefinition | undefined {
+  return listIntegrations(options).find((integration) => integration.provider === provider);
 }
 
 export { readEnvCredential };

@@ -95,7 +95,7 @@ Murph uses a few capability types consistently.
 | Term | Meaning |
 | --- | --- |
 | Channels | Messaging places Murph watches and replies in, such as Slack and Discord. |
-| Integrations | Connected work sources Murph can read for context, such as Notion, GitHub, Gmail, Calendar, Granola, and Obsidian. |
+| Integrations | Connected work sources Murph can read for context. Team defaults are Notion, GitHub, and Linear. Personal also includes Google, Granola, and Obsidian. |
 | Tools | Callable runtime actions, usually read-only retrieval or source access. |
 | Skills | Instructions that teach Murph when and how to use a source, workflow, or evidence type. |
 | Plugins | Local extension packages that add channels, integrations, tools, or skills. |

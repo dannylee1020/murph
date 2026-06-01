@@ -37,8 +37,8 @@ For scoped plugins, `sideEffectClass` must be `read`.
 Use source-prefixed names:
 
 ```text
-linear.search
-linear.read_issue
+jira.search
+jira.read_issue
 docs.search
 crm.find_account
 ```
@@ -92,9 +92,9 @@ Use `optional: true` when the tool is not required for core runtime behavior.
 ## Example
 
 ```js
-export const linearSearchTool = {
-  name: 'linear.search',
-  description: 'Search Linear issues by query text.',
+export const jiraSearchTool = {
+  name: 'jira.search',
+  description: 'Search Jira issues by query text.',
   sideEffectClass: 'read',
   retrievalEligible: true,
   retrieval: { profile: 'work_item' },
@@ -113,10 +113,9 @@ export const linearSearchTool = {
   supportsDryRun: true,
   async execute(input, context) {
     const limit = input.limit ?? 5;
-    return await searchLinear(input.query, limit, context.workspace.id);
+    return await searchJira(input.query, limit, context.workspace.id);
   }
 };
 ```
 
 Connector modules usually expose tools through their integration descriptor instead of manually registering them.
-

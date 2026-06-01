@@ -109,4 +109,4 @@ murph uninstall --dry-run
 murph uninstall
 ```
 
-Use maintenance commands from the installed product host. Uninstall is app-wide for that host: it removes `~/.murph`, the installed CLI link, runtime-host credentials, logs, managed deps, and SQLite data, but leaves unrelated system tools alone.
+Use maintenance commands from the installed product host. Uninstall removes the installed CLI link and Murph home contents only. It preserves the app directory, including the default `~/.murph/app`, and leaves unrelated system tools alone.

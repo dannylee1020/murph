@@ -189,7 +189,7 @@ async function computeRevision(workspace: Workspace): Promise<{
       enabledPlugins: workspaceMemory.enabledPlugins
     }),
     integrations: hash({
-      definitions: listIntegrations().map((integration) => ({
+      definitions: listIntegrations({ distribution: env.distribution }).map((integration) => ({
         provider: integration.provider,
         tools: integration.tools,
         contextSources: integration.contextSources

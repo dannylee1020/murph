@@ -246,17 +246,18 @@ export class DiscordService {
     };
   }
 
-  async configureInstallParams(): Promise<boolean> {
-    const result = await this.configureApplication();
+  async configureInstallParams(role: BotRole = 'channel'): Promise<boolean> {
+    const result = await this.configureApplication(undefined, role);
     return result.permissionsConfigured;
   }
 
-  async configureApplication(botToken?: string): Promise<DiscordAppConfigurationResult> {
+  async configureApplication(botToken?: string, role: BotRole = 'channel'): Promise<DiscordAppConfigurationResult> {
     const application = await this.fetchCurrentApplication(botToken).catch(() => undefined);
     const flags = typeof application?.flags === 'number'
       ? application.flags |
         DISCORD_REQUIRED_LIMITED_INTENT_FLAGS.MESSAGE_CONTENT
       : undefined;
+    const permissions = role === 'personal' ? '0' : DISCORD_BOT_PERMISSIONS;
 
     try {
       const response = await fetch('https://discord.com/api/v10/applications/@me', {
@@ -268,13 +269,13 @@ export class DiscordService {
         body: JSON.stringify({
           install_params: {
             scopes: ['bot'],
-            permissions: DISCORD_BOT_PERMISSIONS
+            permissions
           },
           integration_types_config: {
             0: {
               oauth2_install_params: {
                 scopes: ['bot'],
-                permissions: DISCORD_BOT_PERMISSIONS
+                permissions
               }
             }
           },

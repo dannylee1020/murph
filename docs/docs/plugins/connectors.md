@@ -13,7 +13,7 @@ For the full connector contract, credential shape, context source examples, and 
 
 Examples:
 
-- Linear integration implemented by a Linear connector
+- Jira integration implemented by a Jira connector
 - internal docs integration implemented by an internal docs connector
 - customer CRM integration implemented by a CRM connector
 
@@ -31,13 +31,13 @@ The module must export a default connector object or a named `integration` expor
 
 ```js
 export default {
-  id: 'linear',
-  name: 'Linear',
-  description: 'Linear connector',
+  id: 'jira',
+  name: 'Jira',
+  description: 'Jira connector',
   credential: {
     authType: 'api_key',
     credentialKind: 'api_key',
-    envKey: 'LINEAR_API_KEY',
+    envKey: 'JIRA_API_KEY',
     credentialLabel: 'API key'
   },
   tools: [],
@@ -62,7 +62,7 @@ Use `contextSources` when the source can return grounding context for Murph.
 
 Use `tools` for specific callable actions owned by the connector.
 
-Example: a Linear integration can expose a `linear.search` tool through its connector.
+Example: a Jira integration can expose a `jira.search` tool through its connector.
 
 ## Connector ids
 

@@ -43,7 +43,7 @@ A scoped plugin can contribute:
 Use one plugin directory per plugin under a capability category:
 
 ```text
-~/.murph/plugins/tools/linear
+~/.murph/plugins/tools/jira
 ~/.murph/plugins/channels/teams
 ~/.murph/plugins/context/internal-docs
 ```
@@ -54,13 +54,13 @@ Every plugin needs `plugin.json`:
 
 ```json
 {
-  "id": "linear",
-  "name": "Linear",
-  "description": "Linear plugin",
+  "id": "jira",
+  "name": "Jira",
+  "description": "Jira plugin",
   "version": "0.1.0",
   "capabilities": {
-    "skills": ["skills/linear.md"],
-    "integrations": ["integrations/linear.mjs"]
+    "skills": ["skills/jira.md"],
+    "integrations": ["integrations/jira.mjs"]
   }
 }
 ```
@@ -91,9 +91,9 @@ Manifest paths must stay inside the plugin root. Paths that escape the package r
 
 ## Integrations and tools
 
-An integration is the connected source users think about, such as Linear or an internal docs index. In a plugin package, that integration is implemented by a connector module.
+An integration is the connected source users think about, such as Jira or an internal docs index. In a plugin package, that integration is implemented by a connector module.
 
-A tool is one callable action Murph can run. Some tools are built in, such as `web.search`; others are exposed by plugin-provided integrations, such as `linear.search`.
+A tool is one callable action Murph can run. Some tools are built in, such as `web.search`; others are exposed by plugin-provided integrations, such as `jira.search`.
 
 After plugins are reloaded, connector metadata is exposed through integration status and appears as a generic integration card in the browser UI.
 
@@ -109,6 +109,6 @@ Use [Murph Agent](/docs/usage/murph-agent) to create or update scoped plugins:
 murph agent
 ```
 
-Then ask it to create or update a plugin under the right category root, such as `~/.murph/plugins/tools/linear`.
+Then ask it to create or update a plugin under the right category root, such as `~/.murph/plugins/tools/jira`.
 
 For a new messaging provider, ask Murph Agent to create a channel plugin under `~/.murph/plugins/channels/<id>`. A custom channel should not require edits to Murph core runtime files, but it may still require manual app, bot, scope, webhook, or approval steps in the provider's console.

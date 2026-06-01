@@ -161,7 +161,7 @@ Then Murph will:
 - save the authorizing Slack user as Murph's owner identity;
 - start Socket Mode when the workspace is connected.
 
-## Step 9: Approve OAuth And Choose Channels
+## Step 9: Approve OAuth
 
 When the browser opens:
 
@@ -171,7 +171,9 @@ When the browser opens:
 
 Murph uses the OAuth callback to save the Slack workspace and identify the Slack user who authorized the app. That user becomes the Slack owner Murph watches for by default.
 
-If you are running the full `murph setup` wizard, setup continues into channel selection. If you ran only `murph setup slack`, choose channels afterward:
+Watched channels are Team-only. Murph Personal does not ask for channels to monitor and does not join Slack channels.
+
+In Murph Team, the full `murph setup` wizard continues into channel selection. If you ran only `murph setup slack`, choose channels afterward:
 
 ```bash
 murph setup channels
@@ -264,7 +266,7 @@ Reinstall or reconnect the personal Slack app after changing scopes or App Home 
 
 ### Channels Do Not Load
 
-Reconnect Slack and verify the app is installed in the expected workspace.
+This applies to Murph Team only. Reconnect Slack and verify the app is installed in the expected workspace.
 
 For public channels, check that the app has `channels:read`, `channels:join`, and the required message history scopes. For private channels, invite the Slack app directly into the channel.
 

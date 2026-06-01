@@ -32,7 +32,7 @@ function jsonResponse(): any & { result: () => JsonResponse } {
   };
 }
 
-async function setup(options: { githubPat?: string } = {}) {
+async function setup(options: { githubPat?: string; distribution?: 'team' | 'personal' } = {}) {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-integrations-route-'));
   const murphHome = join(root, '.murph');
@@ -41,6 +41,7 @@ async function setup(options: { githubPat?: string } = {}) {
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_HOME = murphHome;
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
+  process.env.MURPH_DISTRIBUTION = options.distribution ?? 'team';
   if (options.githubPat) {
     process.env.GITHUB_PAT = options.githubPat;
   } else {
@@ -79,47 +80,47 @@ async function setup(options: { githubPat?: string } = {}) {
   return { request, store, workspace, murphHome };
 }
 
-function writeLinearPlugin(murphHome: string): void {
-  const root = join(murphHome, 'plugins', 'context', 'linear');
+function writeZendeskPlugin(murphHome: string): void {
+  const root = join(murphHome, 'plugins', 'context', 'zendesk');
   mkdirSync(join(root, 'integrations'), { recursive: true });
   writeFileSync(join(root, 'plugin.json'), JSON.stringify({
-    id: 'linear',
-    name: 'Linear',
-    description: 'Linear issue and project context',
+    id: 'zendesk',
+    name: 'Zendesk',
+    description: 'Zendesk ticket context',
     version: '0.1.0',
     capabilities: {
-      integrations: ['integrations/linear.mjs']
+      integrations: ['integrations/zendesk.mjs']
     }
   }));
-  writeFileSync(join(root, 'integrations', 'linear.mjs'), `
+  writeFileSync(join(root, 'integrations', 'zendesk.mjs'), `
 export default {
-  id: 'linear',
-  name: 'Linear',
-  description: 'Linear issues, projects, and specs.',
+  id: 'zendesk',
+  name: 'Zendesk',
+  description: 'Zendesk tickets and support context.',
   credential: {
     authType: 'api_key',
     credentialKind: 'api_key',
-    envKey: 'LINEAR_API_KEY',
-    credentialLabel: 'Linear API key'
+    envKey: 'ZENDESK_API_KEY',
+    credentialLabel: 'Zendesk API key'
   },
   tools: [{
-    name: 'linear.read_issue',
-    description: 'Read a Linear issue by id.',
+    name: 'zendesk.read_ticket',
+    description: 'Read a Zendesk ticket by id.',
     sideEffectClass: 'read',
     async execute() {
       return { ok: true };
     }
   }],
   contextSources: [{
-    name: 'linear.thread_search',
-    description: 'Search Linear issues from thread context.',
+    name: 'zendesk.thread_search',
+    description: 'Search Zendesk tickets from thread context.',
     optional: true,
     async retrieve() {
       return [];
     }
   }],
   isConfigured() {
-    return Boolean(process.env.LINEAR_API_KEY);
+    return Boolean(process.env.ZENDESK_API_KEY);
   }
 };
 `);
@@ -132,7 +133,41 @@ describe('integration routes', () => {
 
   afterEach(() => {
     delete process.env.MURPH_HOME;
+    delete process.env.MURPH_DISTRIBUTION;
     delete process.env.LINEAR_API_KEY;
+    delete process.env.ZENDESK_API_KEY;
+  });
+
+  it('lists only team-safe default integrations in Team runtime', async () => {
+    const { request, workspace } = await setup({ distribution: 'team' });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const providers = response.body.integrations.map((integration: any) => integration.provider);
+
+    expect(response.status).toBe(200);
+    expect(providers).toEqual(['github', 'notion', 'linear']);
+  });
+
+  it('lists team and private-source default integrations in Personal runtime', async () => {
+    const { request, workspace } = await setup({ distribution: 'personal' });
+
+    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
+    const providers = response.body.integrations.map((integration: any) => integration.provider);
+
+    expect(response.status).toBe(200);
+    expect(providers).toEqual(['github', 'notion', 'linear', 'obsidian', 'granola', 'google']);
+  });
+
+  it('rejects personal-only integration connects in Team runtime', async () => {
+    const { request, workspace } = await setup({ distribution: 'team' });
+
+    const response = await request('POST', '/api/integrations/obsidian/connect', {
+      workspaceId: workspace.id,
+      vaultPath: '/tmp/example-vault'
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe('unsupported_provider');
   });
 
   it('validates, stores, and reports a GitHub credential', async () => {
@@ -253,8 +288,8 @@ describe('integration routes', () => {
     expect(memory.enabledContextSources).toContain('notion.thread_search');
   });
 
-  it('lists Obsidian as a path-based connector for the integration card UI', async () => {
-    const { request, workspace } = await setup();
+  it('lists Obsidian as a path-based connector for the integration card UI in Personal runtime', async () => {
+    const { request, workspace } = await setup({ distribution: 'personal' });
 
     const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
     const obsidian = response.body.integrations.find((integration: any) => integration.provider === 'obsidian');
@@ -274,38 +309,65 @@ describe('integration routes', () => {
 
   it('surfaces plugin-provided integrations in status after plugin reload', async () => {
     const { request, workspace, murphHome } = await setup();
-    writeLinearPlugin(murphHome);
+    writeZendeskPlugin(murphHome);
 
     const { reloadScopedPlugins } = await import('#shared/server/plugins/loader');
     const pluginStatuses = await reloadScopedPlugins();
     const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
-    const linear = response.body.integrations.find((integration: any) => integration.provider === 'linear');
+    const zendesk = response.body.integrations.find((integration: any) => integration.provider === 'zendesk');
 
     expect(pluginStatuses).toEqual([
       expect.objectContaining({
-        id: 'linear',
+        id: 'zendesk',
         status: 'loaded',
         capabilities: expect.objectContaining({
-          integrations: ['linear']
+          integrations: ['zendesk']
         })
       })
     ]);
     expect(response.status).toBe(200);
-    expect(linear).toEqual(expect.objectContaining({
-      provider: 'linear',
-      name: 'Linear',
-      description: 'Linear issues, projects, and specs.',
+    expect(zendesk).toEqual(expect.objectContaining({
+      provider: 'zendesk',
+      name: 'Zendesk',
+      description: 'Zendesk tickets and support context.',
       status: 'disconnected',
       authType: 'api_key',
-      credentialLabel: 'Linear API key',
-      envKey: 'LINEAR_API_KEY',
-      tools: ['linear.read_issue'],
-      contextSources: ['linear.thread_search']
+      credentialLabel: 'Zendesk API key',
+      envKey: 'ZENDESK_API_KEY',
+      tools: ['zendesk.read_ticket'],
+      contextSources: ['zendesk.thread_search']
     }));
   });
 
-  it('connects Obsidian with a local vault path without storing a secret', async () => {
+  it('validates, stores, and reports a Linear credential', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { viewer: { name: 'Murph Linear', email: 'linear@example.com' } } })
+    }));
     const { request, store, workspace } = await setup();
+
+    const response = await request('POST', '/api/integrations/linear/connect', {
+      workspaceId: workspace.id,
+      credential: 'lin_api_key'
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration).toEqual(expect.objectContaining({
+      provider: 'linear',
+      status: 'connected',
+      source: 'credentials',
+      tools: ['linear.search_issues', 'linear.read_issue'],
+      contextSources: ['linear.thread_search']
+    }));
+    const { readSecret } = await import('#shared/server/credentials/local-store');
+    expect(readSecret('linear', 'api_key')).toBe('lin_api_key');
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['linear.search_issues', 'linear.read_issue']));
+    expect(memory.enabledContextSources).toContain('linear.thread_search');
+  });
+
+  it('connects Obsidian with a local vault path without storing a secret', async () => {
+    const { request, store, workspace } = await setup({ distribution: 'personal' });
     const vault = mkdtempSync(join(tmpdir(), 'murph-obsidian-vault-'));
     const realVault = realpathSync(vault);
     writeFileSync(join(vault, 'Plan.md'), 'Launch readiness notes');
@@ -336,7 +398,7 @@ describe('integration routes', () => {
   });
 
   it('rejects invalid Obsidian vault paths', async () => {
-    const { request, workspace } = await setup();
+    const { request, workspace } = await setup({ distribution: 'personal' });
     const file = join(mkdtempSync(join(tmpdir(), 'murph-obsidian-file-')), 'note.md');
     writeFileSync(file, 'not a vault directory');
 
@@ -350,7 +412,7 @@ describe('integration routes', () => {
   });
 
   it('disconnects Obsidian config and disables its retrieval capabilities', async () => {
-    const { request, store, workspace } = await setup();
+    const { request, store, workspace } = await setup({ distribution: 'personal' });
     const vault = mkdtempSync(join(tmpdir(), 'murph-obsidian-vault-'));
     mkdirSync(join(vault, 'Notes'));
     writeFileSync(join(vault, 'Notes', 'Plan.md'), 'Launch readiness notes');
@@ -471,7 +533,7 @@ describe('integration routes', () => {
   });
 
   it('reports Google as connected when an OAuth bundle is stored for the workspace', async () => {
-    const { request, store, workspace } = await setup();
+    const { request, store, workspace } = await setup({ distribution: 'personal' });
     const { writeSecret } = await import('#shared/server/credentials/local-store');
     const metadata = {
       account: 'person@example.com',
@@ -507,7 +569,7 @@ describe('integration routes', () => {
   });
 
   it('reports Google as connected from a global OAuth bundle across channel workspaces', async () => {
-    const { request, store, workspace } = await setup();
+    const { request, store, workspace } = await setup({ distribution: 'personal' });
     const { writeSecret } = await import('#shared/server/credentials/local-store');
     const discordWorkspace = store.saveInstall({
       provider: 'discord',
@@ -549,7 +611,7 @@ describe('integration routes', () => {
   });
 
   it('ignores legacy scoped Google OAuth bundles in status', async () => {
-    const { request, workspace } = await setup();
+    const { request, workspace } = await setup({ distribution: 'personal' });
     const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('google', 'oauth_bundle', JSON.stringify({
       access_token: 'access-token',

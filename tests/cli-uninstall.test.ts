@@ -82,16 +82,20 @@ describe('murph uninstall', () => {
     expect(existsSync(join(fixture.appDir, 'data/murph.sqlite'))).toBe(true);
   });
 
-  it('removes the default install so install can start clean again', () => {
+  it('removes the CLI link and home dir while preserving the app dir', () => {
     const fixture = createInstalledFixture();
 
     const result = runMurph(['uninstall', '--yes'], fixture.env);
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Murph uninstall complete');
-    expect(existsSync(fixture.murphHome)).toBe(false);
+    expect(existsSync(fixture.murphHome)).toBe(true);
+    expect(existsSync(join(fixture.murphHome, '.credentials'))).toBe(false);
+    expect(existsSync(join(fixture.murphHome, 'config.yaml'))).toBe(false);
+    expect(existsSync(join(fixture.murphHome, 'deps'))).toBe(false);
     expect(existsSync(join(fixture.binDir, 'murph'))).toBe(false);
-    expect(existsSync(fixture.appDir)).toBe(false);
+    expect(existsSync(fixture.appDir)).toBe(true);
+    expect(existsSync(join(fixture.appDir, 'data/murph.sqlite'))).toBe(true);
   });
 
   it('rejects ambiguous custom home paths before removing files', () => {
@@ -111,7 +115,7 @@ describe('murph uninstall', () => {
     expect(existsSync(join(fixture.appDir, 'data/murph.sqlite'))).toBe(true);
   });
 
-  it('keeps a source checkout while removing generated local files', () => {
+  it('keeps a source checkout without removing app-local files', () => {
     const root = mkdtempSync(join(tmpdir(), 'murph-uninstall-source-'));
     const home = join(root, 'home');
     const sourceDir = join(root, 'source');
@@ -142,8 +146,8 @@ describe('murph uninstall', () => {
     expect(result.status).toBe(0);
     expect(existsSync(sourceDir)).toBe(true);
     expect(existsSync(join(sourceDir, 'package.json'))).toBe(true);
-    expect(existsSync(join(sourceDir, 'data'))).toBe(false);
-    expect(existsSync(join(sourceDir, '.murph-install.log'))).toBe(false);
+    expect(existsSync(join(sourceDir, 'data/murph.sqlite'))).toBe(true);
+    expect(existsSync(join(sourceDir, '.murph-install.log'))).toBe(true);
     expect(existsSync(murphHome)).toBe(false);
     expect(existsSync(join(binDir, 'murph'))).toBe(false);
   });

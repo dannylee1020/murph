@@ -44,7 +44,7 @@ murph start
 | [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy, and runtime settings. |
 | [Usage](https://murph-agent.com/docs/usage) | CLI, browser UI, sessions, review, and daily operation. |
 | [Channels](https://murph-agent.com/docs/channels) | Team watched channels and Personal bot DMs. |
-| [Integrations](https://murph-agent.com/docs/integrations) | Context sources such as GitHub, Gmail, Calendar, meetings, docs, and notes. |
+| [Integrations](https://murph-agent.com/docs/integrations) | Context sources such as Notion, GitHub, Linear, Gmail, Calendar, meetings, and notes. |
 | [Plugins](https://murph-agent.com/docs/plugins) | Extend Murph with Murph Agent, plugins, skills, and read-only tools. |
 | [Policy](https://murph-agent.com/docs/policy) | Autonomy and review rules. |
 | [Contributing](https://murph-agent.com/docs/contributing) | Local development and contribution workflow. |
@@ -65,7 +65,7 @@ Just ask away and it shall deliver. Learn more in [Murph Agent](https://murph-ag
 | --- | --- |
 | Channels | Slack and Discord for Team channels or Personal bot DMs |
 | LLM providers | OpenAI, Anthropic |
-| Integrations | Notion, GitHub, Gmail, Google Calendar, Granola, Obsidian, and custom plugins |
+| Integrations | Team: Notion, GitHub, Linear. Personal: Team integrations plus Google, Granola, Obsidian, and custom plugins |
 | Tools | Web search, web fetch, file read, shell, and custom tools |
 | Storage | SQLite and local files |
 

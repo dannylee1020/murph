@@ -21,6 +21,7 @@ export function createGoogleAdapter(): IntegrationAdapter {
     id: 'google',
     name: 'Google',
     description: 'Gmail threads and Google Calendar events.',
+    distributions: ['personal'],
     credential: {
       authType: 'oauth',
       credentialKind: 'oauth_bundle',

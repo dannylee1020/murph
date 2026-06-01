@@ -8,6 +8,7 @@ export function createGranolaAdapter(): IntegrationAdapter {
     id: 'granola',
     name: 'Granola',
     description: 'Meeting notes and transcripts.',
+    distributions: ['personal'],
     credential: {
       authType: 'api_key',
       credentialKind: 'api_key',

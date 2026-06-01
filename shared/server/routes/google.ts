@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { getStore } from '#shared/server/persistence/store';
 import { getSlackService } from '#shared/server/channels/slack/service';
 import { getIntegration } from '#shared/server/integrations/registry';
+import { getRuntimeEnv } from '#shared/server/util/env';
 import {
   isGoogleOAuthConfigured,
   buildGoogleInstallUrl,
@@ -40,6 +41,11 @@ function getTargetWorkspace(workspaceId?: string) {
 
 export const googleRoutes: Route[] = [
   route('GET', '/api/google/install', ({ req, res, url }) => {
+    if (!getIntegration('google', { distribution: getRuntimeEnv().distribution })) {
+      redirect(res, '/settings?error=google_not_available');
+      return;
+    }
+
     if (!isGoogleOAuthConfigured()) {
       redirect(res, '/settings?error=google_not_configured');
       return;
@@ -78,11 +84,16 @@ export const googleRoutes: Route[] = [
     }
 
     try {
+      const definition = getIntegration('google', { distribution: getRuntimeEnv().distribution });
+      if (!definition) {
+        redirect(res, '/settings?error=google_not_available');
+        return;
+      }
+
       const base = publicAppUrl(req, url);
       const redirectUri = `${base}/api/google/oauth/callback`;
       await exchangeGoogleCode(code, redirectUri, workspace.id);
 
-      const definition = getIntegration('google')!;
       enableIntegrationCapabilitiesForAllWorkspaces(definition);
       await refreshRuntimeState({
         reason: 'integration_updated',
@@ -96,6 +107,12 @@ export const googleRoutes: Route[] = [
     }
   }),
   route('DELETE', '/api/google/disconnect', async ({ res, url }) => {
+    const definition = getIntegration('google', { distribution: getRuntimeEnv().distribution });
+    if (!definition) {
+      sendJson(res, { ok: false, error: 'unsupported_provider' }, 404);
+      return;
+    }
+
     const workspace = getTargetWorkspace(url.searchParams.get('workspaceId') ?? undefined);
     if (!workspace) {
       sendJson(res, { ok: false, error: 'workspace_required' }, 400);
@@ -104,7 +121,6 @@ export const googleRoutes: Route[] = [
 
     await revokeGoogleToken(workspace.id);
     const store = getStore();
-    const definition = getIntegration('google')!;
     for (const installedWorkspace of store.listWorkspaces()) {
       store.deleteIntegrationConnection(installedWorkspace.id, 'google');
     }

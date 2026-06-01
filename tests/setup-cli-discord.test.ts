@@ -661,6 +661,33 @@ describe('setup CLI Discord setup', () => {
     }));
   });
 
+  it('does not run watched-channel setup for the personal distribution', () => {
+    const appDir = createAppDir();
+    const { callsPath, mockPath, setupStatusesPath } = createFetchMock(appDir);
+    const result = spawnSync(process.execPath, ['--import', mockPath, setupCli, 'channels'], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        MURPH_APP_DIR: appDir,
+        MURPH_CONFIG_PATH: path.join(appDir, 'config.yaml'),
+        MURPH_CREDENTIALS_PATH: path.join(appDir, '.credentials'),
+        MURPH_DISTRIBUTION: 'personal',
+        MURPH_URL: 'http://murph.test',
+        MOCK_FETCH_CALLS: callsPath,
+        MOCK_SETUP_STATUSES: setupStatusesPath,
+        PATH: '/usr/bin:/bin'
+      },
+      encoding: 'utf8'
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr + result.stdout).toContain('Watched channel setup is Team-only');
+
+    const calls = readCalls(callsPath);
+    expect(calls.some((call) => call.url.includes('/api/setup/channels'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/api/setup/defaults'))).toBe(false);
+  });
+
   it('fails clearly when manual Discord channel validation fails', () => {
     const appDir = createAppDir();
     writeFileSync(path.join(appDir, 'config.yaml'), [

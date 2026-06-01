@@ -19,19 +19,19 @@ Export a default integration object or a named `integration` export:
 
 ```js
 export default {
-  id: 'linear',
-  name: 'Linear',
-  description: 'Linear issue and project context.',
+  id: 'jira',
+  name: 'Jira',
+  description: 'Jira issue and project context.',
   credential: {
     authType: 'api_key',
     credentialKind: 'api_key',
-    envKey: 'LINEAR_API_KEY',
+    envKey: 'JIRA_API_KEY',
     credentialLabel: 'API key'
   },
   contextSources: [],
   tools: [],
   isConfigured() {
-    return Boolean(process.env.LINEAR_API_KEY);
+    return Boolean(process.env.JIRA_API_KEY);
   }
 };
 ```
@@ -59,15 +59,15 @@ Use context sources when a source can add grounding artifacts before Murph draft
 ```js
 contextSources: [
   {
-    name: 'linear.thread_search',
-    description: 'Search Linear issues from the current thread text.',
+    name: 'jira.thread_search',
+    description: 'Search Jira issues from the current thread text.',
     optional: true,
     knowledgeDomains: ['work_item'],
     async retrieve(input) {
-      const results = await searchLinearFromThread(input.task, input.workspace.id);
+      const results = await searchJiraFromThread(input.task, input.workspace.id);
       return results.map((issue) => ({
         id: issue.id,
-        source: 'linear',
+        source: 'jira',
         type: 'issue',
         title: issue.title,
         text: issue.summary,
@@ -87,8 +87,8 @@ Use tools for explicit model calls such as search, read, lookup, or fetch:
 ```js
 tools: [
   {
-    name: 'linear.read_issue',
-    description: 'Read a Linear issue by identifier.',
+    name: 'jira.read_issue',
+    description: 'Read a Jira issue by identifier.',
     sideEffectClass: 'read',
     inputSchema: {
       type: 'object',
@@ -98,7 +98,7 @@ tools: [
     },
     supportsDryRun: true,
     async execute(input, context) {
-      return await readLinearIssue(input.id, context.workspace.id);
+      return await readJiraIssue(input.id, context.workspace.id);
     }
   }
 ]

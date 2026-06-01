@@ -28,7 +28,7 @@ Use the rest of this section as the implementation reference when you want to re
 | Add a local package Murph can discover | [Plugins](/docs/developing/extending/plugins) |
 | Add one callable read-only action | [Tools](/docs/developing/extending/tools) |
 | Teach Murph when and how to use a source | [Skills](/docs/developing/extending/skills) |
-| Add a private source such as Linear, CRM, or docs | [Connectors / Integrations](/docs/developing/extending/connectors) |
+| Add a private source such as Jira, CRM, or docs | [Connectors / Integrations](/docs/developing/extending/connectors) |
 | Add a messaging provider such as Teams | [Channels](/docs/developing/extending/channels) |
 | Change send, queue, and abstain behavior | [Policy](/docs/developing/extending/policy) |
 

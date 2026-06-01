@@ -5,7 +5,7 @@ description: Connect Discord as a Murph channel.
 
 # Discord
 
-Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup discord` or `murph setup discord` validate the app, open the authorization flow, and save the product's Discord defaults.
+Discord setup has a few manual Developer Portal steps. Do those first, then let `murph setup` or `murph setup discord` validate the app, open the authorization flow, and save the product's Discord defaults.
 
 Murph Team uses a channel Discord application for shared-channel coverage. Murph Personal uses a personal Discord application for explicit DMs to the local owner's Murph bot. Use `/api/discord/channel/install` and `DISCORD_CHANNEL_*` variables for Team. Use `/api/discord/personal/install` and `DISCORD_PERSONAL_*` variables for Personal. The unqualified `/api/discord/install` endpoint and legacy `DISCORD_*` variables remain compatibility aliases for the channel bot.
 
@@ -16,7 +16,8 @@ Murph does not read private Discord DMs between two people. For represented-owne
 ## What You Need
 
 - Access to the [Discord Developer Portal](https://discord.com/developers/applications).
-- Permission to add a bot to the Discord server Murph should watch.
+- For Murph Team: permission to add a bot to the Discord server Murph should watch.
+- For Murph Personal: permission to authorize the personal bot and identify your Discord account.
 - Murph running on the same local URL you will register as the OAuth redirect URI. The default is:
 
 ```text
@@ -97,16 +98,18 @@ Then Murph will:
 
 When the browser opens:
 
-1. Choose the Discord server Murph should use.
-2. Approve the requested bot permissions.
+1. In Murph Team, choose the Discord server Murph should use.
+2. In Murph Personal, authorize the personal bot for DMs. It requests zero server permissions.
 3. Approve account identification.
 4. Return to the terminal and press Enter when setup asks.
 
-Murph uses the OAuth callback to save the Discord server and identify the Discord user who authorized the app. That user becomes the Discord owner Murph watches for by default.
+Murph uses the OAuth callback to save the Discord user who authorized the app. In Team, it also saves the Discord server. The authorizing user becomes the Discord owner Murph watches for by default.
 
-## Step 8: Choose Channels
+## Step 8: Choose Channels In Team
 
-If you are running the full `murph setup` wizard, setup continues into channel selection. If you ran only `murph setup discord`, choose channels afterward:
+Watched channels are Team-only. Murph Personal does not ask for channels to monitor and does not join Discord channels.
+
+In Murph Team, the full `murph setup` wizard continues into channel selection. If you ran only `murph setup discord`, choose channels afterward:
 
 ```bash
 murph setup channels
@@ -118,7 +121,7 @@ Discord owner identity is still saved only through the OAuth authorization step.
 
 ## Bot Permissions
 
-Murph requests this scoped permission set:
+Murph Personal requests zero Discord server permissions for the personal bot. Murph Team requests this scoped permission set:
 
 - View Channels
 - Send Messages
@@ -172,11 +175,11 @@ Discord rejected Murph's best-effort application update. Continue with manual se
 
 1. Open the **Bot** page.
 2. Enable **Message Content Intent**.
-3. Re-run `murph setup discord` or `murph setup discord` if needed.
+3. Re-run `murph setup` or `murph setup discord` if needed.
 
 ### Missing Access Or Channel Listing Fails
 
-The bot cannot see the selected channel.
+The Team bot cannot see the selected channel. This section does not apply to Murph Personal, which only uses the Discord personal bot for DMs.
 
 Check that the bot is installed in the server and has channel-level access to:
 

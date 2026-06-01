@@ -1153,7 +1153,7 @@ export const systemRoutes: Route[] = [
               DISCORD_CLIENT_SECRET: clientSecret
             })
       });
-      const configuration = await discord.configureApplication(botToken);
+      const configuration = await discord.configureApplication(botToken, role);
       const appUrl = publicAppUrl(req, url);
       const redirectUri = process.env.DISCORD_REDIRECT_URI ??
         getStore().getBotAppConfig('discord', role)?.redirectUri ??

@@ -13,6 +13,7 @@ export function createObsidianAdapter(): IntegrationAdapter {
     id: 'obsidian',
     name: 'Obsidian',
     description: 'Local Markdown vault notes and knowledge base context.',
+    distributions: ['personal'],
     credential: {
       authType: 'path',
       credentialKind: 'config_path',

@@ -8,6 +8,7 @@ export function createNotionAdapter(): IntegrationAdapter {
     id: 'notion',
     name: 'Notion',
     description: 'Team docs and knowledge pages.',
+    distributions: ['team', 'personal'],
     credential: {
       authType: 'api_key',
       credentialKind: 'api_key',

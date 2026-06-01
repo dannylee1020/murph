@@ -2,7 +2,7 @@ import { getStore } from '#shared/server/persistence/store';
 import { getRuntimeEnv } from '#shared/server/util/env';
 import type { CredentialRecord } from '#shared/server/credentials/local-store';
 import type { IntegrationDefinition } from './registry.js';
-import { listIntegrations, readEnvCredential } from './registry.js';
+import { integrationAvailableFor, listIntegrations, readEnvCredential } from './registry.js';
 import { findGoogleOAuthRecord } from './google-oauth.js';
 import {
   globalIntegrationCredential,
@@ -149,7 +149,13 @@ export function reconcileIntegrationCapabilitiesForWorkspace(workspaceId: string
     enableIntegrationCapabilities(workspaceId, channelCapabilities);
   }
 
-  for (const definition of listIntegrations()) {
+  const distribution = getRuntimeEnv().distribution;
+  for (const definition of listIntegrations({ includeUnavailable: true })) {
+    if (!integrationAvailableFor(definition, distribution)) {
+      disableIntegrationCapabilities(workspaceId, definition);
+      continue;
+    }
+
     const effectiveCredential = effectiveIntegrationCredential(definition, workspaceId);
     const hasCredential = Boolean(effectiveCredential.source);
     if (definition.provider === 'github' && hasCredential && !githubHasRepositoryScope(workspaceId)) {

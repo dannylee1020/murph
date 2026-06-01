@@ -1293,7 +1293,8 @@ async function ensureDiscordRedirectUriConfigured(token, applicationId, redirect
   return false;
 }
 
-async function configureDiscordApplication(token, applicationFlags) {
+async function configureDiscordApplication(token, applicationFlags, role = 'channel') {
+  const permissions = role === 'personal' ? '0' : discordBotPermissions;
   const flags = typeof applicationFlags === 'number'
     ? applicationFlags | discordRequiredLimitedIntentFlags
     : undefined;
@@ -1303,13 +1304,13 @@ async function configureDiscordApplication(token, applicationFlags) {
       body: JSON.stringify({
         install_params: {
           scopes: ['bot'],
-          permissions: discordBotPermissions
+          permissions
         },
         integration_types_config: {
           0: {
             oauth2_install_params: {
               scopes: ['bot'],
-              permissions: discordBotPermissions
+              permissions
             }
           }
         },
@@ -1317,8 +1318,8 @@ async function configureDiscordApplication(token, applicationFlags) {
       })
     });
     success(flags === undefined
-      ? 'Saved Discord bot install permissions.'
-      : 'Saved Discord bot install permissions and privileged intent settings.');
+      ? `Saved Discord ${roleLabel(role)} bot install permissions.`
+      : `Saved Discord ${roleLabel(role)} bot install permissions and privileged intent settings.`);
     if (flags === undefined) {
       warn('Could not read current Discord app flags, so privileged intents may still need to be enabled manually.');
     }
@@ -1326,7 +1327,11 @@ async function configureDiscordApplication(token, applicationFlags) {
   } catch (error) {
     warn(`Discord app configuration automation failed: ${error instanceof Error ? error.message : String(error)}`);
     warn('If Discord blocks the API update, open Developer Portal > Bot and enable Message Content Intent.');
-    warn(`Set bot install permissions to: ${discordPermissionLabels.join(', ')}.`);
+    if (role === 'channel') {
+      warn(`Set bot install permissions to: ${discordPermissionLabels.join(', ')}.`);
+    } else {
+      warn('Set personal bot install permissions to 0; Murph Personal only needs DMs and account identification.');
+    }
     return false;
   }
 }
@@ -1807,7 +1812,7 @@ async function setupDiscord(role = 'channel') {
   writeSetupValues(values);
   await postSetupConfig(values);
   success(`Discord ${roleLabel(role)} bot validated: ${bot.botName} (${bot.botUserId}).`);
-  const configuredApp = await configureDiscordApplication(token, bot.applicationFlags);
+  const configuredApp = await configureDiscordApplication(token, bot.applicationFlags, role);
 
   await ensureServer();
   let status = await request('/api/setup/status');
@@ -1821,7 +1826,9 @@ async function setupDiscord(role = 'channel') {
     if (configuredApp) {
       const reinstallUrl = discordInstallUrl(bot.applicationId, role);
       if (reinstallUrl) {
-        info('If this bot was installed before setup configured permissions, re-open the Discord install URL and approve the updated server permissions.');
+        info(role === 'personal'
+          ? 'If this bot was authorized before setup configured permissions, re-open the Discord authorization URL and approve the zero-permission personal bot install.'
+          : 'If this bot was installed before setup configured permissions, re-open the Discord install URL and approve the updated server permissions.');
         callout('Discord install URL', reinstallUrl);
       }
     }
@@ -1834,9 +1841,15 @@ async function setupDiscord(role = 'channel') {
   }
   const redirectUri = discordRedirectUrl();
   await ensureDiscordRedirectUriConfigured(token, bot.applicationId, redirectUri, bot.applicationRedirectUris);
-  info('Install Murph in your Discord server and approve account identification with this URL:');
+  info(role === 'personal'
+    ? 'Authorize the Murph Personal Discord bot and identify the represented owner with this URL:'
+    : 'Install Murph in your Discord server and approve account identification with this URL:');
   callout('Discord install URL', installUrl);
-  info(`Murph requests these bot permissions: ${discordPermissionLabels.join(', ')}.`);
+  if (role === 'personal') {
+    info('Murph Personal requests zero Discord server permissions. It uses this bot for owner DMs.');
+  } else {
+    info(`Murph requests these bot permissions: ${discordPermissionLabels.join(', ')}.`);
+  }
   if (!configuredApp) {
     info('In the Discord Developer Portal, enable Message Content Intent before continuing.');
   }
@@ -1924,6 +1937,9 @@ async function setupIdentity() {
 
 async function setupChannels(providerOverride = currentChannelProvider()) {
   sectionTitle('Channels');
+  if (!distributionRoles(currentDistribution()).includes('channel')) {
+    fail('Watched channel setup is Team-only. Murph Personal uses personal Slack or Discord bots for DMs and does not monitor channels.');
+  }
   const provider = providerOverride;
   selectedChannelProvider = provider;
   const workspaceId = currentWorkspaceId();

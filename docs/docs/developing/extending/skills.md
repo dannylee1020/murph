@@ -21,16 +21,16 @@ Murph loads shipped skills first, then user skills. A user skill with the same `
 
 ```md
 ---
-name: linear
-description: Use Linear evidence for issue, project, cycle, and blocker questions.
+name: jira
+description: Use Jira evidence for issue, project, cycle, and blocker questions.
 knowledgeDomains: [work_item]
-contextSourceNames: [linear.thread_search]
+contextSourceNames: [jira.thread_search]
 groundingPolicy: prefer_search
 priority: 20
 riskLevel: low
 ---
 
-Use Linear evidence when the request mentions issues, projects, cycles, blockers, or roadmap status.
+Use Jira evidence when the request mentions issues, projects, cycles, blockers, or roadmap status.
 Prefer issue titles, current status, assignee, labels, and recent comments over memory.
 ```
 

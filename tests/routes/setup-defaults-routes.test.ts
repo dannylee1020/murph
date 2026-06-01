@@ -405,6 +405,20 @@ describe('setup defaults routes', () => {
     expect(after.body.nextStep).toBe('ready');
   });
 
+  it('does not require watched-channel defaults in the personal distribution', async () => {
+    const { request, workspace } = await setup({ productMode: 'personal', botRolesEnv: 'personal' });
+    await seedWorkspaceOwner(workspace);
+
+    const response = await request('GET', '/api/setup/doctor');
+
+    expect(response.body.nextStep).toBe('ready');
+    expect(response.body.ready).toBe(true);
+    expect(response.body.checks.some((entry: { id: string }) => entry.id === 'channels')).toBe(false);
+    expect(response.body.checks).toContainEqual(expect.objectContaining({
+      id: 'personal_bots'
+    }));
+  });
+
   it('round-trips workspace-specific owner defaults', async () => {
     const { request, store, workspace } = await setup();
     const discordWorkspace = store.saveInstall({
@@ -1085,6 +1099,47 @@ describe('setup defaults routes', () => {
     const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('discord', 'bot_token')).toBe('discord-bot-token');
     expect(readSecret('discord', 'client_secret')).toBe('discord-client-secret');
+  });
+
+  it('prepares Discord personal setup with zero server permissions', async () => {
+    const { request } = await setup({ productMode: 'personal', botRolesEnv: 'personal' });
+    const calls: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      const body = options.body ? JSON.parse(String(options.body)) : undefined;
+      calls.push({ url: String(url), method: options.method ?? 'GET', body });
+      if (String(url).includes('/users/@me')) {
+        return Response.json({ id: 'bot-123', username: 'murphbot', global_name: 'Murph Bot' });
+      }
+      if (String(url).includes('/oauth2/applications/@me')) {
+        return Response.json({
+          id: 'app-123',
+          name: 'Murph',
+          flags: 4,
+          redirect_uris: ['http://localhost/api/discord/oauth/callback']
+        });
+      }
+      return Response.json({});
+    });
+
+    const response = await request('POST', '/api/setup/discord/prepare', {
+      role: 'personal',
+      botToken: 'discord-personal-bot-token',
+      clientSecret: 'discord-personal-client-secret'
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toEqual(expect.objectContaining({
+      ok: true,
+      installUrl: '/api/discord/personal/install?source=setup',
+      permissionsConfigured: true
+    }));
+    const patch = calls.find((call) => call.url.includes('/applications/@me') && call.method === 'PATCH');
+    expect(patch?.body).toEqual(expect.objectContaining({
+      install_params: expect.objectContaining({ permissions: '0' })
+    }));
+    const { readSecret } = await import('../../shared/server/credentials/local-store');
+    expect(readSecret('discord', 'personal_bot_token')).toBe('discord-personal-bot-token');
+    expect(readSecret('discord', 'personal_client_secret')).toBe('discord-personal-client-secret');
   });
 
   it('rejects manual owner changes for OAuth-owned channel workspaces', async () => {

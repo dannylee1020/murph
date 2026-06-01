@@ -9,16 +9,21 @@ Integrations are connected work sources Murph can use for context while groundin
 
 Connect default integrations from setup or the browser UI. Murph stores runtime-host secrets in `~/.murph/.credentials` and stores non-secret runtime-host settings, such as repository scope or vault paths, in `~/.murph/config.yaml`.
 
-In V1, integration credentials are runtime-level credentials. In Murph Team, connected integrations are available to the shared host and should be safe for that host to read. In Murph Personal, connected integrations can point at local private sources such as an Obsidian vault because the personal runtime runs on the owner's machine.
+In V1, integration credentials are runtime-level credentials. In Murph Team, connected integrations are available to the shared host and should be safe for that host to read. In Murph Personal, connected integrations can point at local private sources such as Gmail, Calendar, Granola, or an Obsidian vault because the personal runtime runs on the owner's machine.
 
 Team does not reach into subscriber-local private tools or files. Run Murph Personal when the context source must stay on an individual user's machine.
 
 ## Connect Default Integrations
 
+Murph Team ships shared-source defaults: Notion, GitHub, and Linear.
+
+Murph Personal ships the Team defaults plus personal-source defaults: Google, Granola, and Obsidian.
+
 | Integration | How to connect | What Murph can use |
 | --- | --- | --- |
 | Notion | Paste a Notion integration token. | Shared pages and docs. |
 | GitHub | Paste a personal access token, then select repositories. | Issues, pull requests, and repository context from selected repos. |
+| Linear | Paste a Linear API key. | Issues, projects, and product work. |
 | Google | Connect with Google OAuth. | Gmail threads and Google Calendar events. |
 | Granola | Paste a Granola API key. | Meeting notes and transcripts. |
 | Obsidian | Enter the local vault folder path. | Markdown notes in that vault. |

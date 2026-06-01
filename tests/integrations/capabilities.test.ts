@@ -3,15 +3,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-async function setup(options: { notionApiKey?: string } = {}) {
+async function setup(options: {
+  distribution?: 'team' | 'personal';
+  notionApiKey?: string;
+  linearApiKey?: string;
+} = {}) {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-capabilities-'));
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
   process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
+  process.env.MURPH_DISTRIBUTION = options.distribution ?? 'team';
   // Set explicitly, even to empty string, so this test does not read local credentials.
   process.env.NOTION_API_KEY = options.notionApiKey ?? '';
+  process.env.LINEAR_API_KEY = options.linearApiKey ?? '';
   process.env.GITHUB_PAT = '';
   process.env.GOOGLE_ACCESS_TOKEN = '';
   process.env.GRANOLA_API_KEY = '';
@@ -33,6 +39,8 @@ describe('integration capability wiring', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     process.env.NOTION_API_KEY = '';
+    process.env.LINEAR_API_KEY = '';
+    process.env.MURPH_DISTRIBUTION = '';
   });
 
   it('enableIntegrationCapabilities unions notion tools and context sources into workspace memory', async () => {
@@ -160,8 +168,45 @@ describe('integration capability wiring', () => {
     expect(memory.enabledContextSources).toContain('notion.thread_search');
   });
 
-  it('reconcileIntegrationCapabilitiesForWorkspace disables stale Google capabilities without credentials', async () => {
+  it('reconcileIntegrationCapabilitiesForWorkspace enables Linear from env fallback in Team runtime', async () => {
+    const { store, workspace } = await setup({ linearApiKey: 'linear-token' });
+    const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');
+    registerBuiltInIntegrationAdapters();
+    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
+      '#shared/server/integrations/capabilities'
+    );
+
+    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
+
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['linear.search_issues', 'linear.read_issue']));
+    expect(memory.enabledContextSources).toContain('linear.thread_search');
+  });
+
+  it('reconcileIntegrationCapabilitiesForWorkspace does not enable personal-only integrations in Team runtime', async () => {
     const { store, workspace } = await setup();
+    process.env.GOOGLE_ACCESS_TOKEN = 'google-token';
+    process.env.GRANOLA_API_KEY = 'granola-token';
+    process.env.OBSIDIAN_VAULT_PATH = mkdtempSync(join(tmpdir(), 'murph-obsidian-team-'));
+    const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');
+    registerBuiltInIntegrationAdapters();
+    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
+      '#shared/server/integrations/capabilities'
+    );
+
+    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
+
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).not.toContain('gmail.search');
+    expect(memory.enabledOptionalTools).not.toContain('granola.search');
+    expect(memory.enabledOptionalTools).not.toContain('obsidian.search');
+    expect(memory.enabledContextSources).not.toContain('gmail.thread_search');
+    expect(memory.enabledContextSources).not.toContain('granola.thread_search');
+    expect(memory.enabledContextSources).not.toContain('obsidian.thread_search');
+  });
+
+  it('reconcileIntegrationCapabilitiesForWorkspace disables stale Google capabilities without credentials', async () => {
+    const { store, workspace } = await setup({ distribution: 'personal' });
     const {
       enableIntegrationCapabilities,
       reconcileIntegrationCapabilitiesForWorkspace,
@@ -189,7 +234,7 @@ describe('integration capability wiring', () => {
   });
 
   it('reconcileIntegrationCapabilitiesForWorkspace restores Google capabilities when OAuth credentials exist', async () => {
-    const { store, workspace } = await setup();
+    const { store, workspace } = await setup({ distribution: 'personal' });
     const { writeSecret } = await import('#shared/server/credentials/local-store');
     writeSecret('google', 'oauth_bundle', JSON.stringify({
       access_token: 'google-access-token',
@@ -222,7 +267,7 @@ describe('integration capability wiring', () => {
   });
 
   it('reconcileIntegrationCapabilitiesForWorkspace enables Obsidian from a configured vault path', async () => {
-    const { store, workspace } = await setup();
+    const { store, workspace } = await setup({ distribution: 'personal' });
     const root = mkdtempSync(join(tmpdir(), 'murph-obsidian-capabilities-'));
     process.env.OBSIDIAN_VAULT_PATH = root;
     const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');

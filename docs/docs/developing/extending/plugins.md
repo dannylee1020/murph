@@ -15,7 +15,7 @@ Create one package under a category root:
 
 ```text
 ~/.murph/plugins/channels/teams
-~/.murph/plugins/context/linear
+~/.murph/plugins/context/jira
 ~/.murph/plugins/skills/escalation
 ~/.murph/plugins/tools/internal-search
 ~/.murph/plugins/bundles/customer-ops
@@ -29,13 +29,13 @@ Every scoped plugin needs `plugin.json`:
 
 ```json
 {
-  "id": "linear",
-  "name": "Linear",
-  "description": "Linear issue and project context",
+  "id": "jira",
+  "name": "Jira",
+  "description": "Jira issue and project context",
   "version": "0.1.0",
   "capabilities": {
-    "skills": ["skills/linear.md"],
-    "integrations": ["integrations/linear.mjs"]
+    "skills": ["skills/jira.md"],
+    "integrations": ["integrations/jira.mjs"]
   }
 }
 ```

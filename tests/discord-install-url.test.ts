@@ -80,6 +80,38 @@ describe('Discord install URL', () => {
     ]));
   });
 
+  it('configures personal installs with zero server permissions', async () => {
+    const calls: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
+      const body = options.body ? JSON.parse(String(options.body)) : undefined;
+      calls.push({ url: String(url), method: options.method ?? 'GET', body });
+      if (String(url).includes('/oauth2/applications/@me')) {
+        return Response.json({ id: 'app-123', flags: 4 });
+      }
+      return Response.json({ id: 'app-123' });
+    });
+    const { DiscordService } = await import('../shared/server/channels/discord/service');
+
+    const result = await new DiscordService().configureApplication(undefined, 'personal');
+
+    expect(result).toEqual({ permissionsConfigured: true, intentsConfigured: true, commandsConfigured: true });
+    const patch = calls.find((call) => call.url.includes('/applications/@me') && call.method === 'PATCH');
+    expect(patch?.body).toEqual(expect.objectContaining({
+      install_params: {
+        scopes: ['bot'],
+        permissions: '0'
+      },
+      integration_types_config: {
+        0: {
+          oauth2_install_params: {
+            scopes: ['bot'],
+            permissions: '0'
+          }
+        }
+      }
+    }));
+  });
+
   it('uses a zero-permission bot install for personal OAuth so the personal bot can receive DMs', async () => {
     process.env.DISCORD_PERSONAL_CLIENT_ID = 'personal-client';
     const { DiscordService } = await import('../shared/server/channels/discord/service');

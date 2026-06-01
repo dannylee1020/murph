@@ -8,6 +8,7 @@ import {
   getObsidianConnectionStatus,
   validateObsidianVaultPath
 } from '#shared/server/context-sources/obsidian';
+import { getLinearService } from '#shared/server/context-sources/linear';
 import { getIntegration, listIntegrations, readEnvCredential } from '#shared/server/integrations/registry';
 import { loadIntegrationAdapters } from '#shared/server/integrations/adapter-loader';
 import { registerBuiltInIntegrationAdapters } from '#shared/server/integrations/register-builtins';
@@ -110,6 +111,10 @@ async function validateCredential(provider: string, credential: string): Promise
     return {};
   }
 
+  if (provider === 'linear') {
+    return await getLinearService().validateCredential(credential);
+  }
+
   return {};
 }
 
@@ -119,7 +124,8 @@ async function ensureIntegrationRegistryLoaded(): Promise<void> {
 }
 
 function statusFor(provider: string, workspaceId: string) {
-  const definition = getIntegration(provider)!;
+  const distribution = getRuntimeEnv().distribution;
+  const definition = getIntegration(provider, { distribution })!;
   const stored = getStore().getIntegrationConnection(workspaceId, provider);
   const pathStatus = definition.credentialKind === 'config_path' && provider === 'obsidian'
     ? getObsidianConnectionStatus()
@@ -185,12 +191,13 @@ export const integrationRoutes: Route[] = [
     sendJson(res, {
       ok: true,
       workspaceId: workspace.id,
-      integrations: listIntegrations().map((integration) => statusFor(integration.provider, workspace.id))
+      integrations: listIntegrations({ distribution: getRuntimeEnv().distribution })
+        .map((integration) => statusFor(integration.provider, workspace.id))
     });
   }),
   route('POST', '/api/integrations/:provider/connect', async ({ req, res, params }) => {
     await ensureIntegrationRegistryLoaded();
-    const definition = getIntegration(params.provider);
+    const definition = getIntegration(params.provider, { distribution: getRuntimeEnv().distribution });
     if (!definition) {
       sendJson(res, { ok: false, error: 'unsupported_provider' }, 404);
       return;
@@ -288,7 +295,7 @@ export const integrationRoutes: Route[] = [
   }),
   route('PUT', '/api/integrations/github/repositories', async ({ req, res }) => {
     await ensureIntegrationRegistryLoaded();
-    const definition = getIntegration('github')!;
+    const definition = getIntegration('github', { distribution: getRuntimeEnv().distribution })!;
     const body = await readJson<GitHubRepositoriesBody>(req);
     const workspace = getTargetWorkspace(body.workspaceId);
     if (!workspace) {
@@ -334,7 +341,7 @@ export const integrationRoutes: Route[] = [
   }),
   route('DELETE', '/api/integrations/:provider/disconnect', async ({ res, params, url }) => {
     await ensureIntegrationRegistryLoaded();
-    const definition = getIntegration(params.provider);
+    const definition = getIntegration(params.provider, { distribution: getRuntimeEnv().distribution });
     if (!definition) {
       sendJson(res, { ok: false, error: 'unsupported_provider' }, 404);
       return;

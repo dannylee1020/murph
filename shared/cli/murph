@@ -14,8 +14,6 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"
 DEFAULT_APP_DIR="$(cd "$SCRIPT_DIR/../.." >/dev/null 2>&1 && pwd)"
 
-MURPH_APP_DIR_EXPLICIT="${MURPH_APP_DIR+x}"
-MURPH_INSTALL_DIR_EXPLICIT="${MURPH_INSTALL_DIR+x}"
 MURPH_HOME="${MURPH_HOME:-$HOME/.murph}"
 MURPH_APP_DIR="${MURPH_APP_DIR:-${MURPH_INSTALL_DIR:-$DEFAULT_APP_DIR}}"
 MURPH_PID_FILE="${MURPH_PID_FILE:-$MURPH_HOME/murph.pid}"
@@ -694,12 +692,6 @@ dangerous_path() {
   [[ -z "$target" || "$target" == "/" || "$target" == "." || "$target" == "$HOME" ]]
 }
 
-is_murph_app_dir() {
-  local dir="$1"
-  [[ -f "$dir/package.json" && ( -f "$dir/app/team/cli/murph" || -f "$dir/app/personal/cli/murph" ) ]] &&
-    grep -q '"name"[[:space:]]*:[[:space:]]*"murph"' "$dir/package.json"
-}
-
 print_uninstall_usage() {
   cat <<'EOF'
 Usage: murph uninstall [--dry-run] [--yes] [--force]
@@ -758,6 +750,26 @@ remove_cli_link() {
       printf 'Skip CLI path: %s is not a Murph-managed link.\n' "$cli_path"
     fi
   done
+}
+
+remove_murph_home() {
+  local dry_run="$1"
+
+  [[ -d "$MURPH_HOME" || -f "$MURPH_HOME" || -L "$MURPH_HOME" ]] || return
+  if [[ -e "$MURPH_APP_DIR" || -L "$MURPH_APP_DIR" ]] && path_is_within "$MURPH_APP_DIR" "$MURPH_HOME"; then
+    printf 'Preserve app dir:   %s\n' "$MURPH_APP_DIR"
+    local entry
+    for entry in "$MURPH_HOME"/* "$MURPH_HOME"/.[!.]* "$MURPH_HOME"/..?*; do
+      [[ -e "$entry" || -L "$entry" ]] || continue
+      if path_is_within "$MURPH_APP_DIR" "$entry"; then
+        continue
+      fi
+      remove_uninstall_path "$dry_run" "home item" "$entry"
+    done
+    return
+  fi
+
+  remove_uninstall_path "$dry_run" "home dir" "$MURPH_HOME"
 }
 
 confirm_uninstall() {
@@ -849,23 +861,7 @@ uninstall_command() {
   stop_for_uninstall "$dry_run" "$force"
   remove_cli_link "$dry_run"
 
-  local remove_app_dir=false
-  if path_is_within "$MURPH_APP_DIR" "$MURPH_HOME"; then
-    remove_app_dir=false
-  elif [[ -n "$MURPH_APP_DIR_EXPLICIT" || -n "$MURPH_INSTALL_DIR_EXPLICIT" ]] && is_murph_app_dir "$MURPH_APP_DIR"; then
-    remove_app_dir=true
-  fi
-
-  if [[ "$remove_app_dir" == true ]]; then
-    remove_uninstall_path "$dry_run" "app dir" "$MURPH_APP_DIR"
-  elif [[ -d "$MURPH_APP_DIR" ]]; then
-    remove_uninstall_path "$dry_run" "app data" "$MURPH_APP_DIR/data"
-    remove_uninstall_path "$dry_run" "install log" "$MURPH_APP_DIR/.murph-install.log"
-  fi
-
-  if [[ -d "$MURPH_HOME" || -f "$MURPH_HOME" || -L "$MURPH_HOME" ]]; then
-    remove_uninstall_path "$dry_run" "home dir" "$MURPH_HOME"
-  fi
+  remove_murph_home "$dry_run"
 
   if [[ "$dry_run" == true ]]; then
     printf '\nDry run complete. Nothing was removed.\n'

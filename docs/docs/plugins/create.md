@@ -29,7 +29,7 @@ Ask Murph Agent to create a plugin under the matching category root:
 Example request:
 
 ```text
-Create a scoped plugin for Linear that adds a custom integration, a skill, and a read-only search tool.
+Create a scoped plugin for Jira that adds a custom integration, a skill, and a read-only search tool.
 ```
 
 For a channel:

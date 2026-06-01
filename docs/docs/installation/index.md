@@ -79,7 +79,7 @@ After rebuilding, the updater applies the same install-payload pruning as the in
 murph uninstall
 ```
 
-This reverses the default local install: it stops Murph, removes `~/.murph`, removes installed Murph CLI links from `~/.local/bin`, and clears Murph-owned runtime-host credentials, logs, managed deps, and SQLite data. Preview first with:
+This stops Murph, removes the installed Murph CLI link from `~/.local/bin`, and removes the Murph home directory at `~/.murph`. It does not delete the app directory. If the app is inside `~/.murph/app`, uninstall removes the other home-directory contents and leaves `~/.murph/app` in place. Preview first with:
 
 ```bash
 murph uninstall --dry-run
