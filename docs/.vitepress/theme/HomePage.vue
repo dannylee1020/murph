@@ -43,7 +43,7 @@ onBeforeUnmount(() => {
   <main class="murph-home">
     <div class="murph-frame">
       <nav class="murph-home-nav" aria-label="Murph home navigation">
-        <a class="murph-brand" href="/">
+        <a class="murph-brand" href="/docs">
           <span class="murph-mark" aria-hidden="true">
             <img src="/img/murph-logo.svg" alt="" />
           </span>

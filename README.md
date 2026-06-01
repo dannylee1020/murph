@@ -1,6 +1,5 @@
 ![Murph](./docs/public/img/social-preview-clean.png)
 
-[![CI](https://github.com/dannylee1020/murph/actions/workflows/ci.yml/badge.svg)](https://github.com/dannylee1020/murph/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-b96f22.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-murph--agent.com-b96f22.svg)](https://murph-agent.com/docs)
 
