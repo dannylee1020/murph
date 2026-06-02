@@ -1,5 +1,5 @@
-import { getModel, type Message, type Model, type ToolResultMessage, type UserMessage } from '@mariozechner/pi-ai';
-import { runAgentLoop, type AgentContext as PiAgentContext, type AgentEvent, type AgentMessage, type AgentTool } from '@mariozechner/pi-agent-core';
+import { getModel, type Message, type Model, type ToolResultMessage, type UserMessage } from '@earendil-works/pi-ai';
+import { runAgentLoop, type AgentContext as PiAgentContext, type AgentEvent, type AgentMessage, type AgentTool } from '@earendil-works/pi-agent-core';
 import { getToolRegistry } from '#shared/server/capabilities/tool-registry';
 import { DEFAULT_PROVIDER_MODEL } from '#shared/config';
 import { readSecret } from '#shared/server/credentials/local-store';

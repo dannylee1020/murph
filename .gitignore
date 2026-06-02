@@ -39,6 +39,8 @@ pnpm-debug.log*
 .claudeignore
 *.todo
 *.html
+!app/team/ui/index.html
+!app/personal/ui/index.html
 scripts/*
 !scripts/install-lib.sh
 !scripts/install-deps.sh

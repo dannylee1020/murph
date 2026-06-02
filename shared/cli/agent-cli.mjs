@@ -10,7 +10,7 @@ import {
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { main as runPiMain, defineTool } from '@mariozechner/pi-coding-agent';
+import { main as runPiMain, defineTool } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import { parse } from 'yaml';
 
