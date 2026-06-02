@@ -1,11 +1,11 @@
 ---
 title: Quickstart
-description: Get Murph installed, configured, and running.
+description: Get Murph installed, configured, and ready for async coverage.
 ---
 
 # Quickstart
 
-Murph is a self-hosted agent runtime for async work, built to keep teams moving across time zones without sacrificing productivity. Run Murph Team for shared channels, or Murph Personal for DMs.
+Murph is a self-hosted handoff agent for async coverage across time zones. Run Murph Team for shared messenger channels, or Murph Personal for direct messages.
 
 ## 1. Install
 
@@ -31,7 +31,7 @@ Choose a product when installing, then run setup on that host:
 murph setup
 ```
 
-In a Team deployment, `murph setup` configures shared-channel coverage, team integrations, session scope, and policy. In a Personal deployment, it configures owner-DM coverage for the local user and private local data sources.
+In a Team deployment, `murph setup` configures shared messenger channel coverage, team integrations, session scope, and policy. In a Personal deployment, it configures direct message coverage for the local user and private local data sources.
 
 ## 3. Start
 
@@ -62,5 +62,5 @@ Use `murph status` to check whether the background process is running.
 ## Next
 
 - [Configuration](/docs/configuration): understand provider keys, storage, policy profiles, and local health.
-- [Usage](/docs/usage): use `murph`, the browser UI, and `murph agent` for setup, status, sessions, and plugin work.
-- [Channels](/docs/channels): connect Slack or Discord and verify the messenger runtime.
+- [Usage](/docs/usage): use `murph`, the browser UI, and `murph agent` for setup, status, coverage sessions, and plugin work.
+- [Channels](/docs/channels): connect messenger channels and verify the runtime.

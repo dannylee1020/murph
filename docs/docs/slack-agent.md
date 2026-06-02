@@ -1,6 +1,6 @@
 ---
 title: Slack Agent
-description: Use Murph as a self-hosted agent runtime for Slack async work.
+description: Use Murph for Slack async coverage.
 ---
 
 # Slack Agent
@@ -9,10 +9,10 @@ This guide has moved to [Channels: Slack](/docs/channels/slack).
 
 ## Usage
 
-Use Murph for Slack when you want async-work coverage that stays under your control.
+Use Murph for Slack when you want async coverage that stays under your control.
 
 - cover important Slack channels during active sessions
-- route explicit personal-bot DMs to the represented owner's Murph runtime
+- route direct messages to Murph Personal
 - answer routine questions from your real workspace context
 - queue risky replies for review instead of sending automatically
 - review what was sent, queued, skipped, and why

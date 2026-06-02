@@ -1,23 +1,23 @@
 ---
 title: Channels
-description: Connect messaging surfaces that Murph can watch.
+description: Connect messenger channels that Murph can cover during sessions.
 ---
 
 # Channels
 
-Channels are messaging surfaces that Murph can use for async-work coverage during bounded sessions. The active distribution decides the bot role:
+Channels are messenger surfaces that Murph can cover during bounded async coverage sessions. The active distribution decides the role:
 
-- Murph Team uses a channel bot. This shared bot watches subscribed channels during active sessions and routes messages to the right represented owner through subscription and channel-scope rules.
-- Murph Personal uses a personal bot. The local owner explicitly DMs this bot when they want Murph to handle a request. Murph does not read arbitrary private DMs between two people.
+- Murph Team covers selected shared messenger channels during active sessions.
+- Murph Personal covers direct messages for the local user. Murph does not read arbitrary private conversations between two people.
 
-Use separate Slack or Discord app identities when you run both distributions. Runtime storage, SQLite, memory, config, credentials, policy, review, and plugin code stay on the machine hosting each Murph runtime.
+Use separate provider app identities when you run both distributions. Runtime storage, SQLite, memory, config, credentials, policy, review, and plugin code stay on the machine hosting each Murph runtime.
 
 ## Built-in channels
 
 - Slack
 - Discord
 
-Slack and Discord are the channels Murph ships with today.
+These are the built-in messenger channels Murph ships with today.
 
 ## Additional channels
 

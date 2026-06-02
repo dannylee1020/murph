@@ -5,11 +5,11 @@ description: Add messaging providers without editing Murph core runtime code.
 
 # Channel Plugins
 
-Channel plugins are an advanced extension path for Slack/Discord-style messaging providers.
+Channel plugins are an advanced extension path for messenger providers.
 
 For the full channel plugin contract, runtime adapter shape, setup hooks, and ingress behavior, use [Extending Channels](/docs/developing/extending/channels).
 
-Murph ships with Slack and Discord as built-in channels. Other providers can be added locally as channel plugins, but they are not turnkey built-in support.
+Murph ships with built-in messenger channels. Other providers can be added locally as channel plugins, but they are not turnkey built-in support.
 
 Channel plugins solve the Murph-side boundary: provider-specific runtime code, setup metadata, and ingress behavior can live outside core source. They do not remove the provider-side setup work required by each platform.
 
@@ -57,7 +57,7 @@ The descriptor has three parts:
 
 Custom channels should not change Murph core runtime files. Core discovers the package, validates the channel descriptor, registers it, exposes setup APIs, starts ingress, and hands normalized tasks to the gateway.
 
-Built-in Slack and Discord use the same contract as custom channel plugins.
+Built-in messenger channels use the same contract as custom channel plugins.
 
 ## Setup responsibility
 
@@ -87,4 +87,4 @@ GET  /api/channels/:provider/oauth/callback
 POST /api/channels/:provider/events
 ```
 
-Existing Slack and Discord compatibility endpoints remain available. Custom channel plugins should target the generic channel APIs.
+Existing provider compatibility endpoints remain available. Custom channel plugins should target the generic channel APIs.

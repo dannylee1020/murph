@@ -1,6 +1,6 @@
 ---
 title: Best Practices
-description: Operate Murph safely as a self-hosted async-work runtime.
+description: Operate Murph safely for self-hosted async coverage.
 ---
 
 # Best Practices
@@ -9,7 +9,7 @@ Use conservative defaults first, then widen Murph's scope after you have verifie
 
 ## Start narrow
 
-Begin with selected channels instead of all accessible channels. Expand the watched scope after a short test session.
+Begin with selected messenger channels instead of all accessible channels. Expand the watched scope after a short test session.
 
 ## Verify setup
 

@@ -3,16 +3,16 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-b96f22.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-murph--agent.com-b96f22.svg)](https://murph-agent.com/docs)
 
-Murph is a self-hosted agent runtime for async work. It runs on a machine you control, uses your configured context, follows your policy, and keeps review/audit history close to the runtime.
+Murph is a self-hosted handoff agent for async coverage across time zones. Start a session before you log off; Murph watches selected messenger channels, uses connected work context, and sends, queues, or skips replies based on your policy.
 
-Use Murph Team for shared channels. Use Murph Personal for one person's direct messages.
+Use Murph Team for shared messenger channels. Use Murph Personal for one person's direct messages.
 
 | Runtime | Use it for | How it works |
 | --- | --- | --- |
-| **Murph Team** | Shared, team level channels | Runs a team-level agent for external stakeholder questions in selected public channels. tools, integrations, policy, credentials, plugins, and config are shared by the runtime host. |
-| **Murph Personal** | direct messages | Monitors direct messages to a personal bot. Tools, integrations, policy, credentials, plugins, and config belong to that single local user. |
+| **Murph Team** | Shared messenger channels | Covers selected team channels during active sessions. Tools, integrations, policy, credentials, plugins, and config are shared by the runtime host. |
+| **Murph Personal** | Direct messages | Covers direct messages for one local user. Tools, integrations, policy, credentials, plugins, and config belong to that user. |
 
-Murph can retrieve context, draft replies, apply policy, queue risky work for review, send approved work, and show what happened afterward.
+Murph is not a general work assistant or enterprise search layer. It is built for one workflow: keep work moving while someone is away, then show what happened afterward.
 
 ## Getting started
 
@@ -43,7 +43,7 @@ murph start
 | [Installation](https://murph-agent.com/docs/installation) | Installer behavior and manual install paths. |
 | [Configuration](https://murph-agent.com/docs/configuration) | Provider keys, storage, policy, and runtime settings. |
 | [Usage](https://murph-agent.com/docs/usage) | CLI, browser UI, sessions, review, and daily operation. |
-| [Channels](https://murph-agent.com/docs/channels) | Team watched channels and Personal bot DMs. |
+| [Channels](https://murph-agent.com/docs/channels) | Messenger channels for Team coverage and direct messages for Personal. |
 | [Integrations](https://murph-agent.com/docs/integrations) | Context sources such as Notion, GitHub, Linear, Gmail, Calendar, meetings, and notes. |
 | [Plugins](https://murph-agent.com/docs/plugins) | Extend Murph with Murph Agent, plugins, skills, and read-only tools. |
 | [Policy](https://murph-agent.com/docs/policy) | Autonomy and review rules. |
@@ -51,19 +51,19 @@ murph start
 
 ## Murph Agent
 
-Murph Agent is the primary interface for extending Murph. Use it to add tools, create plugins, connect new context sources, adjust policy, and debug setup from the same host that runs the runtime.
+Murph Agent is the primary interface for local setup and extension work. Use it to add tools, create plugins, connect new context sources, adjust policy, and debug setup from the same host that runs Murph.
 
 ```bash
 murph agent
 ```
 
-Just ask away and it shall deliver. Learn more in [Murph Agent](https://murph-agent.com/docs/usage/murph-agent).
+Learn more in [Murph Agent](https://murph-agent.com/docs/usage/murph-agent).
 
 ## What you can connect
 
 | Category | Options |
 | --- | --- |
-| Channels | Slack and Discord for Team channels or Personal bot DMs |
+| Channels | Built-in messenger channels for Team coverage or Personal direct messages |
 | LLM providers | OpenAI, Anthropic |
 | Integrations | Team: Notion, GitHub, Linear. Personal: Team integrations plus Google, Granola, Obsidian, and custom plugins |
 | Tools | Web search, web fetch, file read, shell, and custom tools |

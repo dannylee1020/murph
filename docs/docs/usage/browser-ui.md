@@ -5,7 +5,7 @@ description: Use Murph from the local browser interface.
 
 # Browser UI
 
-The browser UI is the host-served visual control surface for setup, sessions, status, review, and runtime control.
+The browser UI is the host-served visual control surface for setup, coverage sessions, status, review, and runtime control.
 
 ## Open the UI
 
@@ -28,17 +28,17 @@ If `5173` is occupied, stop the other process or choose a port intentionally wit
 
 ## Setup wizard
 
-Use the setup wizard to configure the AI provider, Slack or Discord connection, team channel defaults, and policy profile. Murph Personal is fixed to owner-DM coverage and private local sources.
+Use the setup wizard to configure the AI provider, messenger channel connection, team channel defaults, and policy profile. Murph Personal is fixed to direct message coverage and private local sources.
 
 Changes made through setup refresh active config-bound sessions automatically. If a request is already running, Murph applies the refresh at the next run boundary.
 
 ## Status
 
-Use status views to confirm provider setup, channel connection state, and runtime readiness before starting async-work coverage.
+Use status views to confirm provider setup, channel connection state, and runtime readiness before starting async coverage.
 
 ## Sessions
 
-Use sessions when you want Murph Team to watch selected channels during a bounded async-work coverage window, or when you want Murph Personal to handle owner DMs in a local runtime window.
+Use sessions when you want Murph Team to watch selected messenger channels during a bounded async coverage window, or when you want Murph Personal to handle direct messages in a local runtime window.
 
 The stop time is interpreted in the selected timezone and enforced by the local runtime. Murph expires the session at that workday start time, with heartbeat reconciliation as a backup if the process sleeps or restarts.
 

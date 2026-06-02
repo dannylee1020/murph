@@ -109,7 +109,7 @@ Runtime hard stops still apply for empty context, out-of-scope threads, high-ris
 
 ## Team hosts
 
-In a shared Slack or Discord Team host, policy resolves at the team runtime level. New config-bound Team sessions snapshot the selected Team policy profile.
+In a shared messenger channel Team host, policy resolves at the team runtime level. New config-bound Team sessions snapshot the selected Team policy profile.
 
 Session overrides cannot raise autonomy beyond the selected profile mode. A `manual_review` profile still prevents a session request from raising execution to `auto_send_low_risk`.
 

@@ -81,9 +81,9 @@ onBeforeUnmount(() => {
 
       <section class="murph-hero" aria-labelledby="hero-heading">
         <div class="murph-hero-inner">
-          <h1 id="hero-heading">Self-hosted agent for async work.</h1>
+          <h1 id="hero-heading">Async coverage for teams across time zones.</h1>
           <p class="murph-lede">
-            Keep work moving after you log off, <br/> without giving up control of your stack.
+            Start a session before you log off. Murph watches selected messenger channels, answers from connected context, and leaves every send, queue, and skip reviewable.
           </p>
 
           <div class="murph-install" aria-label="Install Murph">
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Channels</h2>
-          <p>Cover personal bot DMs, subscribed shared channels, or both. Slack and Discord work out of the box.</p>
+          <p>Cover shared messenger channels, direct messages, or both. Built-in channels work out of the box.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">

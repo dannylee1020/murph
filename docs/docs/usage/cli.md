@@ -7,8 +7,8 @@ description: Use the murph command-line interface.
 
 Murph installs one product-local CLI for normal use:
 
-- In a Team deployment, `murph` controls the shared-channel Team runtime.
-- In a Personal deployment, `murph` controls the local owner-DM Personal runtime.
+- In a Team deployment, `murph` controls the shared messenger channel Team runtime.
+- In a Personal deployment, `murph` controls the direct message Personal runtime.
 
 ## Setup commands
 
@@ -22,7 +22,7 @@ murph setup policy
 murph setup status
 ```
 
-Use `murph setup` on the host where the product is installed. The wizard creates core local config, chooses the runtime AI provider, chooses Slack or Discord, captures OAuth owner identity, saves product-specific defaults, sets the schedule, selects policy, and prints setup status.
+Use `murph setup` on the host where the product is installed. The wizard creates core local config, chooses the runtime AI provider, chooses a messenger provider, captures OAuth owner identity, saves product-specific defaults, sets the schedule, selects policy, and prints setup status.
 
 Setup changes refresh active config-bound sessions automatically. If Murph is already handling a request, the refresh is marked pending and applied at the next run boundary.
 
@@ -38,7 +38,7 @@ murph setup channels
 
 `murph setup channels` is Team-only. Personal setup skips watched-channel selection.
 
-`murph setup identity` remains as a compatibility check for OAuth owner identity. If identity is missing, reconnect Slack or Discord; Murph does not accept a manual owner ID.
+`murph setup identity` remains as a compatibility check for OAuth owner identity. If identity is missing, reconnect the messenger provider; Murph does not accept a manual owner ID.
 
 ## Runtime commands
 

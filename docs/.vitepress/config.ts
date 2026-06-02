@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress';
 
 const siteUrl = 'https://murph-agent.com';
 const siteDescription =
-    'Self-hosted agent runtime for async work across time zones.';
+    'Self-hosted handoff agent for async coverage across time zones.';
 const socialPreviewUrl = `${siteUrl}/img/social-preview.png`;
 
 export default defineConfig({
@@ -167,7 +167,7 @@ export default defineConfig({
             ],
         },
         footer: {
-            message: 'Self-hosted agent runtime for async work.',
+            message: 'Self-hosted handoff agent for async coverage.',
             copyright: `Copyright © ${new Date().getFullYear()} Murph`,
         },
         outline: {

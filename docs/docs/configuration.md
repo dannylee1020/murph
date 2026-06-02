@@ -1,13 +1,13 @@
 ---
 title: Configuration
-description: Configure providers, policy, storage, and runtime defaults.
+description: Configure providers, policy, storage, and coverage defaults.
 ---
 
 # Configuration
 
 Murph stores non-secret process settings in `~/.murph/config.yaml`, runtime-host secrets in `~/.murph/.credentials`, and runtime state in SQLite. Setup does not read or write `.env` files. Environment variables are an advanced override path for process control, development, and hosted deployments.
 
-The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, bot ingress, and agent execution are colocated on that host. Choose Murph Team for shared-channel coverage or Murph Personal for local owner-DM coverage.
+The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, bot ingress, and agent execution are colocated on that host. Choose Murph Team for shared messenger channel coverage or Murph Personal for direct message coverage.
 
 ## Setup wizard
 
@@ -135,7 +135,7 @@ MURPH_PORT=5173
 
 `MURPH_DISTRIBUTION=team|personal` selects the runtime distribution. Team is the default. The legacy `MURPH_PRODUCT_MODE=channel|personal` still works as a compatibility alias; `channel` maps to Team and `personal` maps to Personal unless `MURPH_DISTRIBUTION` is set.
 
-Most runtime config keys also have environment-variable equivalents, but those should be treated as explicit overrides. If you override the local origin with `MURPH_URL`, `MURPH_PORT`, `MURPH_APP_URL`, or `DISCORD_REDIRECT_URI`, update Slack and Discord callback URLs to match before reconnecting the channel.
+Most runtime config keys also have environment-variable equivalents, but those should be treated as explicit overrides. If you override the local origin with `MURPH_URL`, `MURPH_PORT`, `MURPH_APP_URL`, or `DISCORD_REDIRECT_URI`, update provider callback URLs to match before reconnecting the channel.
 
 ## Policy
 

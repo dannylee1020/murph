@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Murph
-description: Self-hosted agent runtime for async work across time zones.
+description: Self-hosted handoff agent for async coverage across time zones.
 sidebar: false
 aside: false
 editLink: false

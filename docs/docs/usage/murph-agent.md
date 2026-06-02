@@ -129,7 +129,7 @@ Policy files are part of the default Plugin+Config write scope, so source-edit m
 
 ## Channel setup
 
-Murph Agent can lead setup for built-in channels such as Slack and Discord.
+Murph Agent can lead setup for built-in messenger channels.
 
 For custom channels, Murph Agent can scaffold a channel plugin and guide the work, but it uses Murph's docs, setup APIs, and plugin metadata as its source of truth. A plugin-local `README.md` or `SETUP.md` can be useful maintenance documentation after the plugin exists, but it is not required for Murph Agent to begin setup.
 

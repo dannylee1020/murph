@@ -5,7 +5,7 @@ description: Fix channel setup and access issues.
 
 # Channel Troubleshooting
 
-Start with the matching product doctor when channel setup or runtime behavior fails.
+Start with the matching product doctor when messenger channel setup or runtime behavior fails.
 
 ## Health check
 
@@ -19,7 +19,7 @@ The doctor check reports missing app settings, missing credentials, disconnected
 
 Reconnect a channel when saved credentials are missing, stale, or created before the latest required scopes.
 
-If Murph reports missing owner identity, reconnect the channel through OAuth. Slack and Discord owner identity comes from the authorizing account; Murph no longer lists workspace/server members or accepts a manual user ID.
+If Murph reports missing owner identity, reconnect the channel through OAuth. Provider owner identity comes from the authorizing account; Murph no longer lists workspace/server members or accepts a manual user ID.
 
 ## Missing scopes
 
@@ -39,7 +39,7 @@ Reconnect or reinstall the personal Slack app after changing those settings.
 
 ## Missing channels
 
-Watched-channel setup is Team-only. Murph Personal uses the Slack or Discord personal bot for DMs and does not ask for channels to monitor.
+Watched-channel setup is Team-only. Murph Personal uses direct messages and does not ask for channels to monitor.
 
 If no Slack channels load in Murph Team, reconnect Slack and verify the app is installed in the expected workspace.
 
@@ -65,7 +65,7 @@ murph setup channels
 
 ## OAuth callback mismatch
 
-Slack and Discord callback URLs must match the local Murph origin exactly. The default callbacks are:
+Provider callback URLs must match the local Murph origin exactly. The default callbacks are:
 
 ```text
 http://localhost:5173/api/slack/oauth/callback
