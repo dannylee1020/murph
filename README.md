@@ -9,8 +9,8 @@ Use Murph Team for shared channels. Use Murph Personal for one person's direct m
 
 | Runtime | Use it for | How it works |
 | --- | --- | --- |
-| **Murph Team** | Shared Slack or Discord channels | Runs a team-level agent for external stakeholder questions in selected public channels. Tools, integrations, policy, credentials, plugins, and config are shared by the runtime host. |
-| **Murph Personal** | One owner's bot DMs | Monitors direct messages to a personal bot. Tools, integrations, policy, credentials, plugins, and config belong to that single local user. |
+| **Murph Team** | Shared, team level channels | Runs a team-level agent for external stakeholder questions in selected public channels. Tools, integrations, policy, credentials, plugins, and config are shared by the runtime host. |
+| **Murph Personal** | direct messages | Monitors direct messages to a personal bot. Tools, integrations, policy, credentials, plugins, and config belong to that single local user. |
 
 Murph can retrieve context, draft replies, apply policy, queue risky work for review, send approved work, and show what happened afterward.
 
