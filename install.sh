@@ -21,8 +21,51 @@ if [[ -f "$SCRIPT_DIR/scripts/install-lib.sh" ]]; then
 fi
 
 DEFAULT_INSTALL_DIR="$HOME/.murph/app"
-SOURCE_ARCHIVE_URL="${MURPH_SOURCE_ARCHIVE:-https://github.com/dannylee1020/murph/archive/refs/heads/main.tar.gz}"
+MURPH_RELEASE_ENV_URL="${MURPH_RELEASE_ENV_URL:-https://murph-agent.com/release.env}"
 install_dir="${MURPH_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+
+is_release_version() {
+  [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+resolve_release_version() {
+  if [[ -n "${MURPH_RELEASE_VERSION:-}" ]]; then
+    if ! is_release_version "$MURPH_RELEASE_VERSION"; then
+      printf 'MURPH_RELEASE_VERSION must look like v0.1.0.\n' >&2
+      exit 1
+    fi
+    printf '%s\n' "$MURPH_RELEASE_VERSION"
+    return
+  fi
+
+  local release_env release_version line
+  release_env="$(curl -fsSL "$MURPH_RELEASE_ENV_URL")"
+  while IFS= read -r line; do
+    case "$line" in
+      MURPH_RELEASE_VERSION=*)
+        release_version="${line#MURPH_RELEASE_VERSION=}"
+        ;;
+    esac
+  done <<< "$release_env"
+
+  if [[ -z "${release_version:-}" ]] || ! is_release_version "$release_version"; then
+    printf 'Could not resolve MURPH_RELEASE_VERSION from %s.\n' "$MURPH_RELEASE_ENV_URL" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$release_version"
+}
+
+resolve_source_archive_url() {
+  if [[ -n "${MURPH_SOURCE_ARCHIVE:-}" ]]; then
+    printf '%s\n' "$MURPH_SOURCE_ARCHIVE"
+    return
+  fi
+
+  local release_version
+  release_version="$(resolve_release_version)" || exit 1
+  printf 'https://github.com/dannylee1020/murph/archive/refs/tags/%s.tar.gz\n' "$release_version"
+}
 
 for required in curl tar mktemp; do
   if ! command -v "$required" >/dev/null 2>&1; then
@@ -33,6 +76,7 @@ done
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/murph-install.XXXXXX")"
 archive_file="$tmp_dir/murph.tar.gz"
+SOURCE_ARCHIVE_URL="$(resolve_source_archive_url)"
 
 cleanup() {
   rm -rf "$tmp_dir"

@@ -6,7 +6,7 @@ SQLITE_PATH_DEFAULT="data/murph.sqlite"
 LOG_FILE=".murph-install.log"
 DEFAULT_INSTALL_DIR="$HOME/.murph/app"
 CONFIG_PATH_DEFAULT="$HOME/.murph/config.yaml"
-SOURCE_ARCHIVE_URL="https://github.com/dannylee1020/murph/archive/refs/heads/main.tar.gz"
+MURPH_RELEASE_ENV_URL="${MURPH_RELEASE_ENV_URL:-https://murph-agent.com/release.env}"
 BIN_DIR_DEFAULT="$HOME/.local/bin"
 MURPH_DEPS_BIN="${MURPH_DEPS_DIR:-$HOME/.murph/deps}/bin"
 export PATH="$MURPH_DEPS_BIN:$HOME/.local/bin:$PATH"
@@ -21,6 +21,49 @@ original_args=("$@")
 
 have_command() {
   command -v "$1" >/dev/null 2>&1
+}
+
+is_release_version() {
+  [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+resolve_release_version() {
+  if [[ -n "${MURPH_RELEASE_VERSION:-}" ]]; then
+    if ! is_release_version "$MURPH_RELEASE_VERSION"; then
+      printf 'MURPH_RELEASE_VERSION must look like v0.1.0.\n'
+      exit 1
+    fi
+    printf '%s\n' "$MURPH_RELEASE_VERSION"
+    return
+  fi
+
+  local release_env release_version line
+  release_env="$(curl -fsSL "$MURPH_RELEASE_ENV_URL")"
+  while IFS= read -r line; do
+    case "$line" in
+      MURPH_RELEASE_VERSION=*)
+        release_version="${line#MURPH_RELEASE_VERSION=}"
+        ;;
+    esac
+  done <<< "$release_env"
+
+  if [[ -z "${release_version:-}" ]] || ! is_release_version "$release_version"; then
+    printf 'Could not resolve MURPH_RELEASE_VERSION from %s.\n' "$MURPH_RELEASE_ENV_URL"
+    exit 1
+  fi
+
+  printf '%s\n' "$release_version"
+}
+
+resolve_source_archive_url() {
+  if [[ -n "${MURPH_SOURCE_ARCHIVE:-}" ]]; then
+    printf '%s\n' "$MURPH_SOURCE_ARCHIVE"
+    return
+  fi
+
+  local release_version
+  release_version="$(resolve_release_version)" || exit 1
+  printf 'https://github.com/dannylee1020/murph/archive/refs/tags/%s.tar.gz\n' "$release_version"
 }
 
 install_entrypoint() {
@@ -96,7 +139,8 @@ bootstrap_from_archive() {
   fi
 
   local install_dir="${MURPH_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-  local archive_url="${MURPH_SOURCE_ARCHIVE:-$SOURCE_ARCHIVE_URL}"
+  local archive_url
+  archive_url="$(resolve_source_archive_url)"
   local tmp_dir archive_file source_dir
 
   for required in curl tar mktemp; do
@@ -427,7 +471,6 @@ ai:
   defaultProvider: $provider
 policy:
   profile: ""
-  mode: ""
 EOF
 }
 

@@ -20,7 +20,7 @@ MURPH_PID_FILE="${MURPH_PID_FILE:-$MURPH_HOME/murph.pid}"
 MURPH_LOG_FILE="${MURPH_LOG_FILE:-$MURPH_HOME/murph.log}"
 MURPH_PORT="${MURPH_PORT:-5173}"
 MURPH_URL="${MURPH_URL:-http://localhost:$MURPH_PORT}"
-SOURCE_ARCHIVE_URL="${MURPH_SOURCE_ARCHIVE:-https://github.com/dannylee1020/murph/archive/refs/heads/main.tar.gz}"
+MURPH_RELEASE_ENV_URL="${MURPH_RELEASE_ENV_URL:-https://murph-agent.com/release.env}"
 MURPH_BIN_DIR="${MURPH_BIN_DIR:-$HOME/.local/bin}"
 MURPH_DEPS_BIN="${MURPH_DEPS_DIR:-$MURPH_HOME/deps}/bin"
 export PATH="$MURPH_DEPS_BIN:$MURPH_BIN_DIR:$PATH"
@@ -89,6 +89,47 @@ fail() {
 
 have_command() {
   command -v "$1" >/dev/null 2>&1
+}
+
+is_release_version() {
+  [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+resolve_release_version() {
+  if [[ -n "${MURPH_RELEASE_VERSION:-}" ]]; then
+    if ! is_release_version "$MURPH_RELEASE_VERSION"; then
+      fail "MURPH_RELEASE_VERSION must look like v0.1.0."
+    fi
+    printf '%s\n' "$MURPH_RELEASE_VERSION"
+    return
+  fi
+
+  local release_env release_version line
+  release_env="$(curl -fsSL "$MURPH_RELEASE_ENV_URL")"
+  while IFS= read -r line; do
+    case "$line" in
+      MURPH_RELEASE_VERSION=*)
+        release_version="${line#MURPH_RELEASE_VERSION=}"
+        ;;
+    esac
+  done <<< "$release_env"
+
+  if [[ -z "${release_version:-}" ]] || ! is_release_version "$release_version"; then
+    fail "Could not resolve MURPH_RELEASE_VERSION from $MURPH_RELEASE_ENV_URL."
+  fi
+
+  printf '%s\n' "$release_version"
+}
+
+resolve_source_archive_url() {
+  if [[ -n "${MURPH_SOURCE_ARCHIVE:-}" ]]; then
+    printf '%s\n' "$MURPH_SOURCE_ARCHIVE"
+    return
+  fi
+
+  local release_version
+  release_version="$(resolve_release_version)" || fail "Could not resolve Murph release version."
+  printf 'https://github.com/dannylee1020/murph/archive/refs/tags/%s.tar.gz\n' "$release_version"
 }
 
 require_app() {
@@ -619,8 +660,10 @@ update_app() {
   have_command curl || fail "curl is required for murph update."
   have_command tar || fail "tar is required for murph update."
 
-  printf 'Downloading latest Murph source.\n'
-  curl -fsSL "$SOURCE_ARCHIVE_URL" -o "$archive_file"
+  local archive_url
+  archive_url="$(resolve_source_archive_url)"
+  printf 'Downloading Murph source from %s\n' "$archive_url"
+  curl -fsSL "$archive_url" -o "$archive_file"
   tar -xzf "$archive_file" -C "$tmp_dir"
 
   source_dir=""

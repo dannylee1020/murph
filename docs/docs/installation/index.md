@@ -28,6 +28,21 @@ curl -fsSL https://murph-agent.com/install-personal.sh | bash
 
 By default, Murph installs Team into `~/.murph/app`, places the product-local CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`. Install Personal with `install-personal.sh`.
 
+The internet installer downloads the current stable release archive by default, not the `main` branch. The stable installer URL stays the same, while `https://murph-agent.com/release.env` points it at the current versioned GitHub tag archive.
+
+Pin a specific release when you need repeatable installs:
+
+```bash
+MURPH_RELEASE_VERSION=v0.1.0 bash install.sh
+```
+
+For development or testing, override the source archive explicitly:
+
+```bash
+MURPH_SOURCE_ARCHIVE=https://github.com/dannylee1020/murph/archive/refs/heads/main.tar.gz \
+  bash install.sh
+```
+
 After building, the installer removes development-only payload such as CI workflows, tests, and docs-site source from `~/.murph/app`. It keeps the app source, UI source, policy profiles, runtime skills, bundled Murph Agent skill templates, themes, and setup assets so product CLI build, update, setup, and local extension work still function.
 
 If you want to inspect the installer first:
@@ -90,7 +105,7 @@ Murph uses `http://localhost:5173` by default. If another process owns that port
 murph update
 ```
 
-The updater preserves local state such as `~/.murph/config.yaml`, `~/.murph/.credentials`, and `data/`.
+The updater downloads the current stable release archive by default and preserves local state such as `~/.murph/config.yaml`, `~/.murph/.credentials`, and `data/`. It uses the same release pointer as the installer unless you set `MURPH_RELEASE_VERSION` for a pinned update or `MURPH_SOURCE_ARCHIVE` for a branch/custom archive.
 
 After rebuilding, the updater applies the same install-payload pruning as the initial installer.
 
