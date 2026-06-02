@@ -151,6 +151,28 @@ export class LinearService {
     };
   }
 
+  async listRecentIssues(limit = 25, workspaceId?: string): Promise<{ results: LinearIssueResult[] }> {
+    const credential = resolveCredential(workspaceId, 'linear')?.value;
+    if (!credential) {
+      throw new Error('LINEAR_API_KEY is not configured');
+    }
+
+    const first = Math.max(1, Math.min(limit, 50));
+    const result = await this.graphql<LinearIssuesResponse>(credential, `
+      query RecentLinearIssues($first: Int!) {
+        issues(first: $first, orderBy: updatedAt) {
+          nodes {
+            ${ISSUE_FIELDS}
+          }
+        }
+      }
+    `, { first });
+
+    return {
+      results: (result.issues?.nodes ?? []).map(nodeToResult)
+    };
+  }
+
   async readIssue(issueId: string, workspaceId?: string): Promise<LinearIssueResult> {
     const credential = resolveCredential(workspaceId, 'linear')?.value;
     if (!credential) {

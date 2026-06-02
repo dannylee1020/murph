@@ -48,7 +48,8 @@ describe('sqlite schema cleanup', () => {
       '008_add_subscription_policy_mode',
       '009_scope_thread_memory_by_subscriber',
       '010_add_bot_app_configs',
-      '011_team_scoped_runtime'
+      '011_team_scoped_runtime',
+      '012_add_source_index_runs'
     ]);
     expect(tableExists(db, 'runtime_refresh_state')).toBe(true);
     expect(columns(db, 'autopilot_sessions')).toEqual(expect.arrayContaining([
@@ -70,7 +71,8 @@ describe('sqlite schema cleanup', () => {
       '008_add_subscription_policy_mode',
       '009_scope_thread_memory_by_subscriber',
       '010_add_bot_app_configs',
-      '011_team_scoped_runtime'
+      '011_team_scoped_runtime',
+      '012_add_source_index_runs'
     ]);
     expect(columns(db, 'workspace_subscriptions')).toEqual(expect.arrayContaining([
       'policy_profile_name',
@@ -234,7 +236,8 @@ describe('sqlite schema cleanup', () => {
       '008_add_subscription_policy_mode',
       '009_scope_thread_memory_by_subscriber',
       '010_add_bot_app_configs',
-      '011_team_scoped_runtime'
+      '011_team_scoped_runtime',
+      '012_add_source_index_runs'
     ]);
     expect(columns(migrated, 'workspace_subscriptions')).toContain('policy_mode');
     expect(

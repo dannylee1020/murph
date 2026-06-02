@@ -8,6 +8,7 @@ import { ensureRuntimeInitialized } from '#shared/server/runtime/bootstrap';
 import { getStore } from '#shared/server/persistence/store';
 import { getToolRegistry } from '#shared/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#shared/server/util/env';
+import { getSourceIndexScheduler } from '../source-index/scheduler.js';
 import { evaluatePolicy } from '#shared/server/runtime/policy';
 import { classifyPolicyExecution } from '#shared/server/runtime/policy-classifier';
 import { outputSummary } from '#shared/server/runtime/tool-output';
@@ -153,6 +154,7 @@ export class Gateway {
     const { heartbeatIntervalMs } = getRuntimeEnv();
     this.heartbeatHandle = this.startHeartbeat(heartbeatIntervalMs);
     this.reconcileSessionExpirations();
+    void getSourceIndexScheduler().tick('startup');
   }
 
   startHeartbeat(intervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS): NodeJS.Timeout {
@@ -204,6 +206,7 @@ export class Gateway {
       await this.runRecurringJob(job);
       this.store.updateRecurringJobNextRun(job.id, nextDailyRun(job.localTime, job.timezone, new Date(nowIso)).toISOString());
     }
+    void getSourceIndexScheduler().tick('heartbeat');
   }
 
   reconcileSessionExpirations(nowIso = new Date().toISOString()): void {

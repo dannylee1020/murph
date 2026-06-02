@@ -46,6 +46,10 @@ function collectText(context: ContextAssembly): { rawText: string; sourceTitles:
     addUnique(sourceTitles, artifact.title);
     sourceParts.push(artifact.title, artifact.text);
   }
+  for (const hint of context.sourceIndexHints ?? []) {
+    addUnique(sourceTitles, hint.title);
+    sourceParts.push(hint.title, hint.provider, hint.resourceType, hint.tags?.join(' ') ?? '', hint.text);
+  }
 
   const sourceText = sourceParts.filter(Boolean).join('\n');
   return {
@@ -94,7 +98,7 @@ export function buildNormalizedRetrievalRequest(context: ContextAssembly): Norma
   const threadText = context.thread.latestMessage ||
     context.thread.recentMessages.map((message) => message.text).join(' ');
   const intentQuery = buildRetrievalQuery(threadText || rawText);
-  const combinedText = [rawText, sourceText].filter(Boolean).join('\n');
+  const combinedText = rawText;
   const entities = entityTerms(combinedText);
   const releases = entities.filter((term) => /\bv\d+(?:\.\d+){1,2}\b/i.test(term));
   const hasTestPrefix = entities.some((term) => term.toLowerCase() === '[test]');

@@ -88,6 +88,16 @@ export class GranolaService {
     };
   }
 
+  async listRecentMeetings(limit = 25): Promise<{ results: GranolaNoteResult[] }> {
+    if (!this.env.granolaApiKey) {
+      throw new Error('GRANOLA_API_KEY is not configured');
+    }
+
+    const list = await this.fetchJson<GranolaListResponse>(`https://public-api.granola.ai/v1/notes?page_size=${Math.max(1, Math.min(limit, 50))}`);
+    const notes = await Promise.all((list.notes ?? []).slice(0, limit).map((note) => this.readMeeting(note.id, false)));
+    return { results: notes };
+  }
+
   async readMeeting(noteId: string, includeTranscript = true): Promise<GranolaNoteResult> {
     if (!this.env.granolaApiKey) {
       throw new Error('GRANOLA_API_KEY is not configured');

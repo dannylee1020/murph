@@ -35,6 +35,7 @@ function describeMemoryBoundary(): string {
     'The triggerMessage in the task is the current request and the primary authority.',
     'Use recentMessages only when the trigger clearly continues that same thread; do not let old thread history override an unrelated current trigger.',
     'Current-run artifacts may include broad fanout results from connected read-only sources; compare all relevant artifacts before drafting.',
+    'Source index hints are routing hints only; they are not source-of-truth evidence.',
     'If sources conflict, say which source says what instead of guessing.',
     'Use it to understand what the thread has been discussing, but do not answer factual or current-state questions from thread memory alone.',
     'For factual or current claims, rely on current-run source artifacts, successful current-run tool results, or explicit source documents retrieved in this run.'

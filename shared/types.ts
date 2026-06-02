@@ -331,6 +331,7 @@ export interface ContextAssembly {
         thread: ThreadMemory;
     };
     artifacts: ContextArtifact[];
+    sourceIndexHints?: SourceIndexHint[];
     contextSources?: ExpandedContextSourceNames;
     skills: SkillManifest[];
     availableTools: AgentToolInventoryItem[];
@@ -338,6 +339,18 @@ export interface ContextAssembly {
     unresolvedQuestions: string[];
     continuityCase: ContinuityCase;
     linkedArtifacts: string[];
+}
+
+export interface SourceIndexHint {
+    provider: string;
+    resourceType: string;
+    title: string;
+    externalId: string;
+    url?: string;
+    readTool?: string;
+    readInput?: Record<string, unknown>;
+    tags?: string[];
+    text: string;
 }
 
 export interface ContinuityTask {

@@ -9,6 +9,7 @@ import { addSubscriptionPolicyMode } from './008_add_subscription_policy_mode.js
 import { scopeThreadMemoryBySubscriber } from './009_scope_thread_memory_by_subscriber.js';
 import { addBotAppConfigs } from './010_add_bot_app_configs.js';
 import { teamScopedRuntime } from './011_team_scoped_runtime.js';
+import { addSourceIndexRuns } from './012_add_source_index_runs.js';
 import type { Migration } from './types.js';
 
 export const migrations: Migration[] = [
@@ -22,5 +23,6 @@ export const migrations: Migration[] = [
   addSubscriptionPolicyMode,
   scopeThreadMemoryBySubscriber,
   addBotAppConfigs,
-  teamScopedRuntime
+  teamScopedRuntime,
+  addSourceIndexRuns
 ];

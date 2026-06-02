@@ -6,6 +6,7 @@ import { googleRoutes } from '../../../shared/server/routes/google.js';
 import { integrationRoutes } from '../../../shared/server/routes/integrations.js';
 import { pluginRoutes } from '../../../shared/server/routes/plugins.js';
 import { slackRoutes } from '../../../shared/server/routes/slack.js';
+import { sourceIndexRoutes } from '../../../shared/server/routes/source-index.js';
 import { systemRoutes } from '../../../shared/server/routes/system.js';
 import type { Route } from '../../../shared/server/router.js';
 
@@ -16,6 +17,7 @@ export function teamRoutes(): Route[] {
     ...channelRoutes,
     ...integrationRoutes,
     ...pluginRoutes,
+    ...sourceIndexRoutes,
     ...googleRoutes,
     ...slackRoutes,
     ...discordRoutes,

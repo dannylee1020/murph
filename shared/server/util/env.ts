@@ -1,4 +1,10 @@
-import { DEFAULT_PROVIDER_MODEL, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_PATH } from '#shared/config';
+import {
+  DEFAULT_PROVIDER_MODEL,
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_SOURCE_INDEX_INTERVAL_MS,
+  DEFAULT_SOURCE_INDEX_RETRY_INTERVAL_MS,
+  DEFAULT_SQLITE_PATH
+} from '#shared/config';
 import type { ProductMode, ProviderName, RuntimeDistribution } from '#shared/types';
 import { readMurphConfig } from '#shared/server/setup/config-file';
 import { readSecret } from '#shared/server/credentials/local-store';
@@ -46,6 +52,9 @@ export interface RuntimeEnv {
   shellAllowedCommandsJson: string;
   contextSourceTimeoutMs: number;
   contextSourceMaxOptional: number;
+  sourceIndexEnabled: boolean;
+  sourceIndexIntervalMs: number;
+  sourceIndexRetryIntervalMs: number;
   runEventRetentionDays: number;
   timezone?: string;
   workdayStartHour?: number;
@@ -72,6 +81,14 @@ function envOrSecret(envKey: string, provider: string, key: string): string | un
 function envOrConfigNumber(envKey: string, configValue: number | undefined, fallback: number): number {
   const raw = process.env[envKey];
   if (raw !== undefined) return Number(raw);
+  return configValue ?? fallback;
+}
+
+function envOrConfigBoolean(envKey: string, configValue: boolean | undefined, fallback: boolean): boolean {
+  const raw = process.env[envKey];
+  if (raw !== undefined) {
+    return /^(true|yes|1|on)$/i.test(raw);
+  }
   return configValue ?? fallback;
 }
 
@@ -176,6 +193,9 @@ export function getRuntimeEnv(): RuntimeEnv {
     shellAllowedCommandsJson: envOrConfigString('MURPH_SHELL_ALLOWED_COMMANDS_JSON', config.integrations?.localTools?.shellAllowedCommandsJson),
     contextSourceTimeoutMs: envOrConfigNumber('MURPH_CONTEXT_SOURCE_TIMEOUT_MS', config.app?.contextSourceTimeoutMs, 3000),
     contextSourceMaxOptional: envOrConfigNumber('MURPH_CONTEXT_SOURCE_MAX_OPTIONAL', config.app?.contextSourceMaxOptional, 3),
+    sourceIndexEnabled: envOrConfigBoolean('MURPH_SOURCE_INDEX_ENABLED', config.app?.sourceIndexEnabled, true),
+    sourceIndexIntervalMs: envOrConfigNumber('MURPH_SOURCE_INDEX_INTERVAL_MS', config.app?.sourceIndexIntervalMs, DEFAULT_SOURCE_INDEX_INTERVAL_MS),
+    sourceIndexRetryIntervalMs: envOrConfigNumber('MURPH_SOURCE_INDEX_RETRY_INTERVAL_MS', config.app?.sourceIndexRetryIntervalMs, DEFAULT_SOURCE_INDEX_RETRY_INTERVAL_MS),
     runEventRetentionDays: envOrConfigNumber('MURPH_RUN_EVENT_RETENTION_DAYS', config.app?.runEventRetentionDays, 30),
     timezone: envOrConfigString('MURPH_TIMEZONE', config.app?.timezone) || undefined,
     workdayStartHour: envOrConfigOptionalNumber('MURPH_WORKDAY_START_HOUR', config.app?.workdayStartHour),

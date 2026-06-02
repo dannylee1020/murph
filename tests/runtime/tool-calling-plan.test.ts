@@ -265,4 +265,26 @@ describe('buildRuntimeToolCallingPlan', () => {
     expect(plan.groundingDirective.required).toBe(true);
   });
 
+  it('does not let source index hints satisfy source evidence', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        sourceIndexHints: [{
+          provider: 'github',
+          resourceType: 'issue',
+          title: 'Checkout launch blocker',
+          externalId: 'murph/murph#42',
+          readTool: 'github.read_issue',
+          readInput: { repository: 'murph/murph', number: 42 },
+          tags: ['checkout'],
+          text: 'Checkout launch is blocked on callback verification.'
+        }]
+      }),
+      allTools,
+      policy: policy()
+    });
+
+    expect(plan.groundingDirective.required).toBe(true);
+    expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.retrieve_all']);
+  });
+
 });

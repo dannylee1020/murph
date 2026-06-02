@@ -10,6 +10,7 @@ import { loadSkills } from '#shared/server/skills/loader';
 import { getStore } from '#shared/server/persistence/store';
 import { getToolRegistry } from '#shared/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#shared/server/util/env';
+import { getSourceIndexCatalog } from '../source-index/catalog.js';
 import {
   buildNormalizedRetrievalRequest,
   deterministicRetrievalInputForTool
@@ -276,7 +277,8 @@ export class AgentRuntime {
       },
       skills: selectedSkills,
       availableTools,
-      linkedArtifacts: threadMemory.linkedArtifacts
+      linkedArtifacts: threadMemory.linkedArtifacts,
+      sourceIndexHints: await this.sourceIndexHints(workspace.id, latestMessage)
     };
     const contextSourceNames = expandContextSources({
       selectedSkills,
@@ -299,6 +301,20 @@ export class AgentRuntime {
       summary: latestMessage,
       unresolvedQuestions: latestMessage.includes('?') ? [latestMessage] : []
     };
+  }
+
+  private async sourceIndexHints(workspaceId: string, query: string): Promise<ContextAssembly['sourceIndexHints']> {
+    if (!query.trim()) {
+      return [];
+    }
+    try {
+      const catalog = getSourceIndexCatalog();
+      await catalog.reload();
+      return catalog.hintsFor({ workspaceId, query });
+    } catch (error) {
+      console.warn('[runtime] failed to load source index hints:', error instanceof Error ? error.message : error);
+      return [];
+    }
   }
 
   private async proposeAction(

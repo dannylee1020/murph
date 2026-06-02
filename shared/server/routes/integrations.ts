@@ -28,6 +28,11 @@ import {
   saveIntegrationConnectionForAllWorkspaces
 } from '#shared/server/integrations/global-scope';
 import { updateMurphConfigValues } from '#shared/server/setup/config-file';
+import { getSourceIndexScheduler } from '../source-index/scheduler.js';
+import {
+  getSourceIndexCatalog,
+  markSourceIndexProviderResourcesStatus
+} from '../source-index/catalog.js';
 import { readJson, sendJson } from '../http.js';
 import { route, type Route } from '../router.js';
 
@@ -68,6 +73,41 @@ async function refreshIntegrations(workspaceId?: string) {
     workspaceIds: workspaceId ? [workspaceId] : undefined,
     deferIfRunActive: true
   });
+}
+
+function triggerSourceIndexProvider(provider: string, reason: string): void {
+  if (provider === 'google') {
+    return;
+  }
+  void (async () => {
+    for (const workspace of getStore().listWorkspaces()) {
+      await getSourceIndexScheduler().triggerWorkspace({
+        workspaceId: workspace.id,
+        providers: [provider],
+        reason
+      }).catch((error) => {
+        console.warn('[source-index] integration-triggered refresh skipped:', error instanceof Error ? error.message : error);
+      });
+    }
+  })();
+}
+
+async function markSourceIndexProviderUnauthorized(provider: string): Promise<void> {
+  if (provider === 'google') {
+    return;
+  }
+  try {
+    for (const workspace of getStore().listWorkspaces()) {
+      await markSourceIndexProviderResourcesStatus({
+        workspaceId: workspace.id,
+        provider,
+        status: 'unauthorized'
+      });
+    }
+    await getSourceIndexCatalog().reload();
+  } catch (error) {
+    console.warn('[source-index] integration disconnect invalidation skipped:', error instanceof Error ? error.message : error);
+  }
 }
 
 async function validateCredential(provider: string, credential: string): Promise<Record<string, unknown>> {
@@ -232,6 +272,7 @@ export const integrationRoutes: Route[] = [
         });
         enableIntegrationCapabilitiesForAllWorkspaces(definition);
         const refresh = await refreshIntegrations(workspace.id);
+        triggerSourceIndexProvider(definition.provider, 'integration_connect');
         sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id), refresh });
       } catch (error) {
         sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
@@ -264,6 +305,7 @@ export const integrationRoutes: Route[] = [
         enableIntegrationCapabilitiesForAllWorkspaces(definition);
       }
       const refresh = await refreshIntegrations(workspace.id);
+      triggerSourceIndexProvider(definition.provider, 'integration_connect');
       sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id), refresh });
     } catch (error) {
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'validation_failed' }, 400);
@@ -337,6 +379,7 @@ export const integrationRoutes: Route[] = [
     }
 
     const refresh = await refreshIntegrations(workspace.id);
+    triggerSourceIndexProvider('github', 'github_repository_scope_updated');
     sendJson(res, { ok: true, integration: statusFor('github', workspace.id), refresh });
   }),
   route('DELETE', '/api/integrations/:provider/disconnect', async ({ res, params, url }) => {
@@ -364,6 +407,7 @@ export const integrationRoutes: Route[] = [
       if (!getObsidianConnectionStatus().configured) {
         disableIntegrationCapabilitiesForAllWorkspaces(definition);
       }
+      await markSourceIndexProviderUnauthorized(definition.provider);
       const refresh = await refreshIntegrations(workspace.id);
       sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id), refresh });
       return;
@@ -374,6 +418,7 @@ export const integrationRoutes: Route[] = [
     if (!readEnvCredential(definition.provider)) {
       disableIntegrationCapabilitiesForAllWorkspaces(definition);
     }
+    await markSourceIndexProviderUnauthorized(definition.provider);
     const refresh = await refreshIntegrations(workspace.id);
     sendJson(res, { ok: true, integration: statusFor(definition.provider, workspace.id), refresh });
   })

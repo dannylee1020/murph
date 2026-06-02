@@ -10,6 +10,8 @@ export const V0_ALLOWED_ACTIONS = [
 ] as const;
 
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000;
+export const DEFAULT_SOURCE_INDEX_INTERVAL_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_SOURCE_INDEX_RETRY_INTERVAL_MS = 60 * 60 * 1000;
 
 export const MEMORY_ROOT = 'memory';
 export const SKILLS_ROOT = 'skills/runtime';

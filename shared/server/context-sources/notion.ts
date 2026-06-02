@@ -11,6 +11,7 @@ interface NotionSearchResult {
   id: string;
   url?: string;
   public_url?: string | null;
+  last_edited_time?: string;
   parent?: { type?: string; data_source_id?: string; database_id?: string; page_id?: string };
   properties?: Record<string, unknown>;
 }
@@ -33,6 +34,7 @@ export interface NotionSearchItem {
   title: string;
   url?: string;
   object: string;
+  updatedAt?: string;
 }
 
 export interface NotionSearchOutput {
@@ -181,6 +183,15 @@ export class NotionService {
     };
   }
 
+  async listRecentPages(limit = 25, workspaceId?: string): Promise<NotionSearchItem[]> {
+    const credential = resolveCredential(workspaceId, 'notion')?.value;
+    if (!credential) {
+      throw new Error('NOTION_API_KEY is required');
+    }
+
+    return await this.searchByTitle('', limit, credential);
+  }
+
   async readPage(pageId: string, maxBlocks = 40, workspaceId?: string): Promise<NotionPageText> {
     const credential = resolveCredential(workspaceId, 'notion')?.value;
     if (!credential) {
@@ -239,7 +250,8 @@ export class NotionService {
         id: result.id,
         title: titleFromProperties(result.properties),
         url: result.public_url ?? result.url,
-        object: result.object ?? 'page'
+        object: result.object ?? 'page',
+        updatedAt: result.last_edited_time
       }));
   }
 

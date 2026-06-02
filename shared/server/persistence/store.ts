@@ -1,4 +1,4 @@
-import { getDb } from '#shared/server/persistence/db';
+import { getDb } from './db.js';
 import type {
   ActionDisposition,
   AgentRunEventRecord,
@@ -44,6 +44,7 @@ import * as reminder from './stores/reminder.js';
 import * as run from './stores/run.js';
 import * as runtimeRefresh from './stores/runtime-refresh.js';
 import * as session from './stores/session.js';
+import * as sourceIndex from './stores/source-index.js';
 import * as subscription from './stores/subscription.js';
 import * as directConversation from './stores/direct-conversation.js';
 import * as threadState from './stores/thread-state.js';
@@ -201,6 +202,29 @@ export class Store {
   }
   listMemoryIndexBacklog(limit = 20): AgentRunRecord[] {
     return memoryIndex.listMemoryIndexBacklog(this.db, limit);
+  }
+  startSourceIndexRun(input: { id: string; workspaceId: string; provider: string }): sourceIndex.SourceIndexRunRecord {
+    return sourceIndex.startSourceIndexRun(this.db, input);
+  }
+  finishSourceIndexRun(
+    input: {
+      id: string;
+      status: Extract<sourceIndex.SourceIndexRunStatus, 'indexed' | 'skipped'>;
+      resourceCount: number;
+      changedPaths: string[];
+      cursor?: string;
+    }
+  ): sourceIndex.SourceIndexRunRecord {
+    return sourceIndex.finishSourceIndexRun(this.db, input);
+  }
+  failSourceIndexRun(input: { id: string; error: string }): sourceIndex.SourceIndexRunRecord {
+    return sourceIndex.failSourceIndexRun(this.db, input);
+  }
+  listSourceIndexRuns(input: { workspaceId?: string; limit?: number } = {}): sourceIndex.SourceIndexRunRecord[] {
+    return sourceIndex.listSourceIndexRuns(this.db, input);
+  }
+  latestSourceIndexRunForProvider(input: { workspaceId: string; provider: string }): sourceIndex.SourceIndexRunRecord | undefined {
+    return sourceIndex.latestSourceIndexRunForProvider(this.db, input);
   }
 
   // Session

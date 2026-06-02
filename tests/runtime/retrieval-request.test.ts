@@ -3,7 +3,7 @@ import type { ContextAssembly } from '../../shared/types';
 import {
   buildNormalizedRetrievalRequest,
   deterministicRetrievalInputForTool
-} from '#shared/server/runtime/retrieval-request';
+} from '../../shared/server/runtime/retrieval-request';
 
 function releaseContext(): ContextAssembly {
   return {
@@ -95,5 +95,29 @@ describe('normalized retrieval requests', () => {
         properties: { query: { type: 'string' }, projectId: { type: 'string' } }
       }
     }, request)).toBeUndefined();
+  });
+
+  it('uses source index hints as retrieval candidates without requiring artifacts', () => {
+    const request = buildNormalizedRetrievalRequest({
+      ...releaseContext(),
+      artifacts: [],
+      sourceIndexHints: [{
+        provider: 'github',
+        resourceType: 'issue',
+        title: '[TEST] Murph v0.9 Release Plan',
+        externalId: 'murph/murph#9',
+        readTool: 'github.read_issue',
+        readInput: { repository: 'murph/murph', number: 9 },
+        tags: ['release'],
+        text: 'F2 dark mode PR #6 needs contrast check. F5 evidence trail is still todo.'
+      }]
+    });
+
+    expect(request.sourceTerms).toEqual(expect.arrayContaining(['[TEST] Murph v0.9 Release Plan']));
+    expect(request.entityTerms).toEqual(expect.arrayContaining(['Murph v0.9', '[TEST]', 'F2', 'F5']));
+    expect(request.candidateQueries).toEqual(expect.arrayContaining([
+      '[TEST] Murph v0.9 Release Plan',
+      '[TEST] Murph v0.9'
+    ]));
   });
 });

@@ -17,6 +17,9 @@ export interface MurphConfig {
     runEventRetentionDays?: number;
     contextSourceTimeoutMs?: number;
     contextSourceMaxOptional?: number;
+    sourceIndexEnabled?: boolean;
+    sourceIndexIntervalMs?: number;
+    sourceIndexRetryIntervalMs?: number;
     timezone?: string;
     workdayStartHour?: number;
     workdayEndHour?: number;
@@ -93,6 +96,9 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   MURPH_RUN_EVENT_RETENTION_DAYS: (config, value) => setPath(config, ['app', 'runEventRetentionDays'], numberFromString(value)),
   MURPH_CONTEXT_SOURCE_TIMEOUT_MS: (config, value) => setPath(config, ['app', 'contextSourceTimeoutMs'], numberFromString(value)),
   MURPH_CONTEXT_SOURCE_MAX_OPTIONAL: (config, value) => setPath(config, ['app', 'contextSourceMaxOptional'], numberFromString(value)),
+  MURPH_SOURCE_INDEX_ENABLED: (config, value) => setPath(config, ['app', 'sourceIndexEnabled'], booleanFromString(value)),
+  MURPH_SOURCE_INDEX_INTERVAL_MS: (config, value) => setPath(config, ['app', 'sourceIndexIntervalMs'], numberFromString(value)),
+  MURPH_SOURCE_INDEX_RETRY_INTERVAL_MS: (config, value) => setPath(config, ['app', 'sourceIndexRetryIntervalMs'], numberFromString(value)),
   MURPH_TIMEZONE: (config, value) => setPath(config, ['app', 'timezone'], value),
   MURPH_WORKDAY_START_HOUR: (config, value) => setPath(config, ['app', 'workdayStartHour'], numberFromString(value)),
   MURPH_WORKDAY_END_HOUR: (config, value) => setPath(config, ['app', 'workdayEndHour'], numberFromString(value)),
@@ -186,6 +192,10 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 function providerValue(value: unknown): ProviderName | undefined {
   return value === 'anthropic' ? 'anthropic' : value === 'openai' ? 'openai' : undefined;
 }
@@ -216,6 +226,12 @@ function productModeFromString(value: string): ProductMode {
   const normalized = normalizeProductMode(value);
   if (normalized) return normalized;
   throw new Error(`Expected product mode to be personal or channel, received: ${value}`);
+}
+
+function booleanFromString(value: string): boolean {
+  if (/^(true|yes|1|on)$/i.test(value)) return true;
+  if (/^(false|no|0|off)$/i.test(value)) return false;
+  throw new Error(`Expected boolean value, received: ${value}`);
 }
 
 function stringArray(value: unknown): string[] | undefined {
@@ -412,6 +428,9 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
       runEventRetentionDays: numberValue(app.runEventRetentionDays),
       contextSourceTimeoutMs: numberValue(app.contextSourceTimeoutMs),
       contextSourceMaxOptional: numberValue(app.contextSourceMaxOptional),
+      sourceIndexEnabled: booleanValue(app.sourceIndexEnabled),
+      sourceIndexIntervalMs: numberValue(app.sourceIndexIntervalMs),
+      sourceIndexRetryIntervalMs: numberValue(app.sourceIndexRetryIntervalMs),
       timezone: stringValue(app.timezone),
       workdayStartHour: numberValue(app.workdayStartHour),
       workdayEndHour: numberValue(app.workdayEndHour)
