@@ -81,11 +81,9 @@ onBeforeUnmount(() => {
 
       <section class="murph-hero" aria-labelledby="hero-heading">
         <div class="murph-hero-inner">
-          <h1 id="hero-heading">Self-hosted agent runtime for async work across time zones.</h1>
+          <h1 id="hero-heading">Self-hosted agent for async work.</h1>
           <p class="murph-lede">
-            Run one host you control. Murph covers shared channels or private
-            owner DMs, drafts with your context and policy, and keeps every
-            send, queue, and skip reviewable.
+            Keep work moving after you log off, <br/> without giving up control of your stack.
           </p>
 
           <div class="murph-install" aria-label="Install Murph">
@@ -97,7 +95,7 @@ onBeforeUnmount(() => {
             >
               <span class="murph-command-copy">
                 <span class="murph-command-label">Install</span>
-                <code><span>curl</span> -fsSL https://murph-agent.com/install.sh | bash</code>
+                <code><span>curl</span> -fsSL https://<wbr>murph-agent.com/<wbr>install.sh | bash</code>
               </span>
               <svg v-if="copiedCommand === installCommand" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="m5 12.5 4.2 4.2L19 7" />

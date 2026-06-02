@@ -480,12 +480,12 @@ body:has(.murph-home) .VPFooter {
 
 .murph-hero h1 {
   color: var(--murph-ink);
-  font-size: clamp(2.55rem, 4.6vw, 4.15rem);
+  font-size: clamp(2.35rem, 4.2vw, 3.8rem);
   font-weight: 900;
   letter-spacing: 0;
   line-height: 1;
   margin: 0;
-  max-width: 20.5ch;
+  max-width: 15ch;
   text-wrap: balance;
 }
 
@@ -500,9 +500,9 @@ body:has(.murph-home) .VPFooter {
 .murph-install {
   display: grid;
   gap: 0.75rem;
-  margin: clamp(2.4rem, 4.2vw, 3.4rem) auto 0;
-  max-width: 920px;
-  width: min(100%, 920px);
+  margin: clamp(2.1rem, 3.8vw, 3rem) auto 0;
+  max-width: 760px;
+  width: 100%;
 }
 
 .murph-install button {
@@ -518,7 +518,7 @@ body:has(.murph-home) .VPFooter {
   justify-content: space-between;
   line-height: 1.32;
   min-height: 3.55rem;
-  padding: 0.82rem 1.6rem;
+  padding: 0.82rem 1.45rem;
   position: relative;
   text-align: left;
   transform: translateZ(0);
@@ -569,9 +569,10 @@ body:has(.murph-home) .VPFooter {
   font-size: inherit;
   line-height: inherit;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
   padding: 0;
   white-space: normal;
+  word-break: normal;
 }
 
 .murph-install code span {
@@ -736,11 +737,11 @@ body:has(.murph-home) .VPFooter {
   }
 
   .murph-hero {
-    padding-block: var(--space-xl);
+    padding-block: clamp(3rem, 12vw, 3.55rem);
   }
 
   .murph-hero h1 {
-    font-size: clamp(2.25rem, 10.5vw, 3.2rem);
+    font-size: clamp(2.1rem, 8.8vw, 2.85rem);
   }
 
   .murph-install {
@@ -749,6 +750,7 @@ body:has(.murph-home) .VPFooter {
 
   .murph-install button {
     align-items: flex-start;
+    font-size: 0.9rem;
     padding-inline: 1.1rem;
   }
 
