@@ -3,21 +3,23 @@ set -euo pipefail
 
 export MURPH_DISTRIBUTION=team
 
-SCRIPT_SOURCE="${BASH_SOURCE[0]}"
-while [[ -L "$SCRIPT_SOURCE" ]]; do
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+if [[ -n "$SCRIPT_SOURCE" ]]; then
+  while [[ -L "$SCRIPT_SOURCE" ]]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"
+    LINK_TARGET="$(readlink "$SCRIPT_SOURCE")"
+    if [[ "$LINK_TARGET" == /* ]]; then
+      SCRIPT_SOURCE="$LINK_TARGET"
+    else
+      SCRIPT_SOURCE="$SCRIPT_DIR/$LINK_TARGET"
+    fi
+  done
   SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"
-  LINK_TARGET="$(readlink "$SCRIPT_SOURCE")"
-  if [[ "$LINK_TARGET" == /* ]]; then
-    SCRIPT_SOURCE="$LINK_TARGET"
-  else
-    SCRIPT_SOURCE="$SCRIPT_DIR/$LINK_TARGET"
-  fi
-done
-SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"
 
-if [[ -f "$SCRIPT_DIR/scripts/install-lib.sh" ]]; then
-  cd "$SCRIPT_DIR"
-  exec bash "$SCRIPT_DIR/scripts/install-lib.sh" "$@"
+  if [[ -f "$SCRIPT_DIR/scripts/install-lib.sh" ]]; then
+    cd "$SCRIPT_DIR"
+    exec bash "$SCRIPT_DIR/scripts/install-lib.sh" "$@"
+  fi
 fi
 
 DEFAULT_INSTALL_DIR="$HOME/.murph/app"
