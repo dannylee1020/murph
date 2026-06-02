@@ -13,9 +13,8 @@ import type {
   BotInstallation,
   BotRole,
   ContinuityActionType,
-  MorningBriefing,
+  SessionBriefing,
   ProviderSettings,
-  RecurringJobRecord,
   ReminderRecord,
   ReviewItem,
   SessionStatus,
@@ -39,7 +38,6 @@ import * as integrationCredentials from './stores/integration-credentials.js';
 import * as memoryIndex from './stores/memory-index.js';
 import * as memory from './stores/memory.js';
 import * as providerSettings from './stores/provider-settings.js';
-import * as recurringJob from './stores/recurring-job.js';
 import * as reminder from './stores/reminder.js';
 import * as run from './stores/run.js';
 import * as runtimeRefresh from './stores/runtime-refresh.js';
@@ -357,26 +355,6 @@ export class Store {
     reminder.markReminderStatus(this.db, id, status);
   }
 
-  // Recurring jobs
-  createRecurringJob(input: recurringJob.RecurringJobInput): RecurringJobRecord {
-    return recurringJob.createRecurringJob(this.db, input);
-  }
-  listRecurringJobs(sessionId?: string): RecurringJobRecord[] {
-    return recurringJob.listRecurringJobs(this.db, sessionId);
-  }
-  listDueRecurringJobs(nowIso: string): RecurringJobRecord[] {
-    return recurringJob.listDueRecurringJobs(this.db, nowIso);
-  }
-  updateRecurringJobNextRun(id: string, nextRunAt: string): RecurringJobRecord | undefined {
-    return recurringJob.updateRecurringJobNextRun(this.db, id, nextRunAt);
-  }
-  deleteRecurringJob(id: string): boolean {
-    return recurringJob.deleteRecurringJob(this.db, id);
-  }
-  getRecurringJob(id: string): RecurringJobRecord | undefined {
-    return recurringJob.getRecurringJob(this.db, id);
-  }
-
   // Provider settings
   upsertProviderSettings(settings: ProviderSettings): void {
     providerSettings.upsertProviderSettings(this.db, settings);
@@ -386,10 +364,10 @@ export class Store {
   }
 
   // Briefings + summary
-  getMorningBriefing(sessionId: string): MorningBriefing | undefined {
-    return briefing.getMorningBriefing(this.db, sessionId);
+  getSessionBriefing(sessionId: string): SessionBriefing | undefined {
+    return briefing.getSessionBriefing(this.db, sessionId);
   }
-  getLatestBriefing(workspaceId: string): MorningBriefing | undefined {
+  getLatestBriefing(workspaceId: string): SessionBriefing | undefined {
     return briefing.getLatestBriefing(this.db, workspaceId);
   }
   getWorkspaceSummary(): WorkspaceSummary {

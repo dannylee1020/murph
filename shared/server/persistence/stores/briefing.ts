@@ -1,7 +1,7 @@
 import type {
   ActionDisposition,
   ContinuityActionType,
-  MorningBriefing,
+  SessionBriefing,
   WorkspaceSummary
 } from '#shared/types';
 import type { Db } from './_shared.js';
@@ -11,7 +11,7 @@ import { getProviderSettings } from './provider-settings.js';
 import { getSessionById } from './session.js';
 import { getFirstWorkspace } from './workspace.js';
 
-export function getMorningBriefing(db: Db, sessionId: string): MorningBriefing | undefined {
+export function getSessionBriefing(db: Db, sessionId: string): SessionBriefing | undefined {
   const session = getSessionById(db, sessionId);
 
   if (!session) {
@@ -70,7 +70,7 @@ export function getMorningBriefing(db: Db, sessionId: string): MorningBriefing |
   };
 }
 
-export function getLatestBriefing(db: Db, workspaceId: string): MorningBriefing | undefined {
+export function getLatestBriefing(db: Db, workspaceId: string): SessionBriefing | undefined {
   const row = db
     .prepare(
       `SELECT id FROM autopilot_sessions
@@ -80,7 +80,7 @@ export function getLatestBriefing(db: Db, workspaceId: string): MorningBriefing 
     )
     .get(workspaceId) as { id: string } | undefined;
 
-  return row ? getMorningBriefing(db, row.id) : undefined;
+  return row ? getSessionBriefing(db, row.id) : undefined;
 }
 
 export function getWorkspaceSummary(db: Db): WorkspaceSummary {

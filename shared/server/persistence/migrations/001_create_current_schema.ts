@@ -174,21 +174,6 @@ export const createCurrentSchema: Migration = {
         status TEXT NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS recurring_jobs (
-        id TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL,
-        session_id TEXT,
-        job_type TEXT NOT NULL,
-        local_time TEXT NOT NULL,
-        timezone TEXT NOT NULL,
-        payload_json TEXT NOT NULL,
-        next_run_at TEXT NOT NULL,
-        status TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_recurring_jobs_due ON recurring_jobs(status, next_run_at);
-
       CREATE TABLE IF NOT EXISTS provider_settings (
         workspace_id TEXT PRIMARY KEY,
         provider TEXT NOT NULL,

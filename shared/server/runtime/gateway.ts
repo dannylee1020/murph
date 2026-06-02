@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { DEFAULT_HEARTBEAT_INTERVAL_MS } from '#shared/config';
 import { AgentRuntime } from '#shared/server/runtime/agent-runtime';
 import { emitControlPlaneEvent } from '#shared/server/runtime/control-plane';
-import { nextDailyRun } from '#shared/server/util/cron';
 import { getMemoryService } from '#shared/server/memory/service';
 import { ensureRuntimeInitialized } from '#shared/server/runtime/bootstrap';
 import { getStore } from '#shared/server/persistence/store';
@@ -23,7 +22,6 @@ import type {
   ChannelThreadRef,
   ContextAssembly,
   ContinuityTask,
-  RecurringJobRecord,
   ReviewItem,
   RuntimeEventType,
   ThreadEvidenceStatus,
@@ -201,11 +199,6 @@ export class Gateway {
       this.store.markReminderStatus(reminder.id, 'done');
     }
 
-    const recurringJobs = this.store.listDueRecurringJobs(nowIso);
-    for (const job of recurringJobs) {
-      await this.runRecurringJob(job);
-      this.store.updateRecurringJobNextRun(job.id, nextDailyRun(job.localTime, job.timezone, new Date(nowIso)).toISOString());
-    }
     void getSourceIndexScheduler().tick('heartbeat');
   }
 
@@ -220,125 +213,6 @@ export class Gateway {
       emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
     }
     return expired;
-  }
-
-  async runRecurringJob(job: RecurringJobRecord): Promise<void> {
-    if (job.jobType !== 'morning_digest') {
-      return;
-    }
-
-    const workspace = this.store.getWorkspaceById(job.workspaceId);
-    const session = job.sessionId ? this.store.getSessionById(job.sessionId) : undefined;
-
-    if (!workspace || !session || session.status !== 'active') {
-      return;
-    }
-
-    if (job.payload.ownerUserId && !this.subscriptionAllowsChannel(workspace, job.payload.ownerUserId, job.payload.channelId)) {
-      return;
-    }
-
-    const message = this.composeMorningDigest(session);
-    const threadTs = `digest:${job.id}:${Date.now()}`;
-    const run = this.store.createAgentRun({
-      workspaceId: workspace.id,
-      sessionId: session.id,
-      taskId: `recurring:${job.id}:${Date.now()}`,
-      channelId: job.payload.channelId,
-      threadTs,
-      targetUserId: job.payload.ownerUserId
-    });
-    emitControlPlaneEvent({ type: 'agent.run.updated', run });
-    this.emitRunEvent(run.id, 'agent.run.started', { recurringJobId: job.id, jobType: job.jobType });
-    this.emitRunEvent(run.id, 'agent.skill.selected', { skills: [] });
-    this.emitRunEvent(run.id, 'agent.model.completed', {
-      action: 'reply',
-      reason: 'Scheduled morning digest',
-      confidence: 1
-    });
-    const action = {
-      workspaceId: workspace.id,
-      sessionId: session.id,
-      channelId: job.payload.channelId,
-      threadTs,
-      targetUserId: job.payload.ownerUserId,
-      actionType: 'reply' as const,
-      message,
-      reason: 'Scheduled morning digest',
-      confidence: 1,
-      provider: runtimeProviderName(),
-      contextSnapshot: {
-        summary: 'Scheduled morning digest.',
-        continuityCase: 'unknown' as const,
-        thread: {
-          provider: workspace.provider,
-          channelId: job.payload.channelId,
-          threadTs,
-          messages: []
-        }
-      }
-    };
-
-    if (session.mode === 'auto_send_low_risk') {
-      await this.tools.execute<{ channelId: string; text: string }, { ok: true; ts?: string }>(
-        'channel.post_message',
-        { channelId: job.payload.channelId, text: message },
-        { workspace, session, workspaceMemory: this.memory.getWorkspaceMemory(workspace.id) }
-      );
-      const item = this.store.insertAction({ ...action, disposition: 'auto_sent' });
-      this.emitRunEvent(run.id, 'agent.action.sent', { action: 'reply' });
-      this.emitRunEvent(run.id, 'agent.run.completed', { executionResult: 'Posted morning digest.' });
-      const completedRun = this.store.finishAgentRun(run.id, 'completed');
-      if (completedRun) {
-        emitControlPlaneEvent({ type: 'agent.run.updated', run: completedRun });
-      }
-      emitControlPlaneEvent({ type: 'queue.updated', item });
-      return;
-    }
-
-    const item = this.store.insertAction({ ...action, disposition: 'queued' });
-    this.emitRunEvent(run.id, 'agent.action.queued', { itemId: item.id, action: 'reply' });
-    this.emitRunEvent(run.id, 'agent.run.completed', { executionResult: 'Queued morning digest for review.' });
-    const completedRun = this.store.finishAgentRun(run.id, 'completed');
-    if (completedRun) {
-      emitControlPlaneEvent({ type: 'agent.run.updated', run: completedRun });
-    }
-    emitControlPlaneEvent({ type: 'queue.updated', item });
-    emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
-  }
-
-  private composeMorningDigest(session: AutopilotSession): string {
-    const briefing = this.store.getMorningBriefing(session.id);
-    const runs = this.store.listRunSummaries(session.id, 10);
-
-    if (!briefing) {
-      return `Morning digest for ${session.title}\n\nNo session activity was found.`;
-    }
-
-    const lines = [
-      `Morning digest for ${session.title}`,
-      '',
-      `Handled: ${briefing.handledCount}`,
-      `Queued: ${briefing.queuedCount}`,
-      `Abstained: ${briefing.abstainedCount}`,
-      `Failed: ${briefing.failedCount}`
-    ];
-
-    if (runs.length > 0) {
-      lines.push('', 'Recent activity:');
-      for (const run of runs.slice(0, 5)) {
-        lines.push(`- ${run.run.channelId}/${run.run.threadTs}: ${run.executionResult || run.providerResponse || run.contextSummary}`);
-      }
-    }
-
-    if (briefing.unresolvedItems.length > 0) {
-      lines.push('', 'Queued review:');
-      for (const item of briefing.unresolvedItems.slice(0, 5)) {
-        lines.push(`- ${item.channelId}/${item.threadTs}: ${item.message || item.reason}`);
-      }
-    }
-
-    return lines.join('\n');
   }
 
   private async buildActionContextSnapshot(input: {

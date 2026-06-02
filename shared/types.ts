@@ -657,22 +657,6 @@ export interface ReminderRecord {
     status: 'pending' | 'claimed' | 'done';
 }
 
-export interface RecurringJobRecord {
-    id: string;
-    workspaceId: string;
-    sessionId?: string;
-    jobType: 'morning_digest';
-    localTime: string;
-    timezone: string;
-    payload: {
-        channelId: string;
-        ownerUserId?: string;
-    };
-    nextRunAt: string;
-    status: 'active' | 'paused';
-    createdAt: string;
-}
-
 export interface ProviderSettings {
     workspaceId: string;
     provider: ProviderName;
@@ -808,7 +792,7 @@ export interface AutopilotSession {
     stoppedAt?: string;
 }
 
-export interface MorningBriefing {
+export interface SessionBriefing {
     session: AutopilotSession;
     handledCount: number;
     queuedCount: number;
@@ -930,7 +914,7 @@ export interface WorkspaceSummary {
     queuedCount: number;
     reminderCount: number;
     activeSessionCount: number;
-    latestBriefing?: MorningBriefing;
+    latestBriefing?: SessionBriefing;
     channelCount?: number;
     contextSourceCount?: number;
     toolCount?: number;

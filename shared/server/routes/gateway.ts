@@ -583,82 +583,6 @@ export const gatewayRoutes: Route[] = [
       ).map(withChannelDisplay)
     });
   }),
-  route('GET', '/api/gateway/recurring-jobs', ({ res, url }) => {
-    sendJson(res, {
-      jobs: getStore().listRecurringJobs(url.searchParams.get('sessionId') ?? undefined)
-    });
-  }),
-  route('POST', '/api/gateway/recurring-jobs', async ({ req, res }) => {
-    const body = await readJson<{
-      workspaceId?: string;
-      sessionId?: string;
-      channelId?: string;
-      ownerUserId?: string;
-      localTime?: string;
-      timezone?: string;
-    }>(req);
-    const store = getStore();
-    const workspace =
-      (body.workspaceId ? store.getWorkspaceById(body.workspaceId) : undefined) ?? store.getFirstWorkspace();
-    const session = body.sessionId ? store.getSessionById(body.sessionId) : undefined;
-
-    if (!workspace) {
-      sendJson(res, { ok: false, error: 'workspace_not_installed' }, 400);
-      return;
-    }
-
-    if (body.sessionId && !session) {
-      sendJson(res, { ok: false, error: 'session_not_found' }, 404);
-      return;
-    }
-
-    const ownerUserId = body.ownerUserId;
-    if (!body.channelId) {
-      sendJson(res, { ok: false, error: 'channel_required' }, 400);
-      return;
-    }
-
-    if (ownerUserId) {
-      const ownerCheck = requireMatchingSetupOwner(workspace, ownerUserId);
-      if (!ownerCheck.ok) {
-        sendJson(res, {
-          ok: false,
-          error: ownerCheck.error,
-          workspace: workspaceDescriptor(workspace),
-          ownerUserId,
-          owner: ownerCheck.owner
-        }, 400);
-        return;
-      }
-    }
-
-    const localTime = body.localTime ?? '08:30';
-    try {
-      parseLocalTime(localTime);
-    } catch (error) {
-      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'invalid_local_time' }, 400);
-      return;
-    }
-
-    const timezone = body.timezone ?? 'America/Los_Angeles';
-    const job = store.createRecurringJob({
-      workspaceId: workspace.id,
-      sessionId: session?.id ?? body.sessionId,
-      jobType: 'morning_digest',
-      localTime,
-      timezone,
-      payload: {
-        channelId: body.channelId,
-        ...(ownerUserId ? { ownerUserId } : {})
-      },
-      nextRunAt: nextDailyRun(localTime, timezone).toISOString()
-    });
-
-    sendJson(res, { ok: true, job }, 201);
-  }),
-  route('DELETE', '/api/gateway/recurring-jobs/:id', ({ res, params }) => {
-    sendJson(res, { ok: getStore().deleteRecurringJob(params.id) });
-  }),
   route('POST', '/api/gateway/queue/:id', async ({ req, res, params }) => {
     const body = await readJson<{
       action?: 'approve_send' | 'edit_send' | 'reject' | 'mark_abstain';
@@ -773,7 +697,7 @@ export const gatewayRoutes: Route[] = [
 
     sendJson(res, {
       session,
-      briefing: getStore().getMorningBriefing(params.id)
+      briefing: getStore().getSessionBriefing(params.id)
     });
   }),
   route('POST', '/api/gateway/sessions/:id/stop', ({ res, params }) => {
@@ -797,7 +721,7 @@ export const gatewayRoutes: Route[] = [
     sendJson(res, {
       ok: true,
       session,
-      briefing: getStore().getMorningBriefing(params.id)
+      briefing: getStore().getSessionBriefing(params.id)
     });
   })
 ];

@@ -317,56 +317,6 @@ describe('Gateway session-first policy', () => {
     expect(events.some((event) => event.type === 'agent.memory.skipped')).toBe(true);
   });
 
-  it('does not run recurring subscriber jobs for paused subscriptions', async () => {
-    const { gateway, store, workspace, session, postMessage } = await setup({
-      sessionMode: 'auto_send_low_risk'
-    });
-    store.upsertWorkspaceSubscription({
-      workspaceId: workspace.id,
-      provider: 'slack',
-      externalUserId: 'UOWNER',
-      displayName: 'Owner',
-      status: 'paused',
-      channelScopeMode: 'selected',
-      channelScope: ['C1']
-    });
-    const job = store.createRecurringJob({
-      workspaceId: workspace.id,
-      sessionId: session.id,
-      jobType: 'morning_digest',
-      localTime: '08:30',
-      timezone: 'America/Los_Angeles',
-      payload: { channelId: 'C1', ownerUserId: 'UOWNER' },
-      nextRunAt: new Date().toISOString()
-    });
-
-    await gateway.runRecurringJob(job);
-
-    expect(postMessage).not.toHaveBeenCalled();
-    expect(store.listAgentRuns(session.id, 10)).toEqual([]);
-  });
-
-  it('does not run recurring subscriber jobs without a subscription', async () => {
-    const { gateway, store, workspace, session, postMessage } = await setup({
-      sessionMode: 'auto_send_low_risk',
-      subscribeOwner: false
-    });
-    const job = store.createRecurringJob({
-      workspaceId: workspace.id,
-      sessionId: session.id,
-      jobType: 'morning_digest',
-      localTime: '08:30',
-      timezone: 'America/Los_Angeles',
-      payload: { channelId: 'C1', ownerUserId: 'UOWNER' },
-      nextRunAt: new Date().toISOString()
-    });
-
-    await gateway.runRecurringJob(job);
-
-    expect(postMessage).not.toHaveBeenCalled();
-    expect(store.listAgentRuns(session.id, 10)).toEqual([]);
-  });
-
   it('abstains when the event actor is the session owner', async () => {
     const { gateway, runSpy } = await setup();
 

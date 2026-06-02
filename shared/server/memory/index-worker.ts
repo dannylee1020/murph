@@ -1,24 +1,11 @@
 import { getStore } from '#shared/server/persistence/store';
 import { rebuildMemoryPagesForRun } from '#shared/server/memory/wiki';
 
-const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 10;
 
 export class MemoryIndexWorker {
   private readonly store = getStore();
-  private timer: NodeJS.Timeout | null = null;
   private running = false;
-
-  ensureStarted(intervalMs = DEFAULT_INTERVAL_MS): void {
-    if (this.timer) {
-      return;
-    }
-
-    this.timer = setInterval(() => {
-      void this.drain();
-    }, intervalMs);
-    void this.drain();
-  }
 
   enqueue(runId: string): void {
     this.store.markMemoryIndexQueued(runId);
