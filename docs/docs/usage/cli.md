@@ -86,13 +86,13 @@ Use these commands to inspect runtime-host credential readiness without printing
 ```bash
 murph policy profiles
 murph policy get
-murph policy preview --profile engineering --mode manual_review
+murph policy preview --profile engineering
+murph policy preview --profile engineering --session-mode dry_run
 murph policy set --profile engineering
-murph policy set --mode auto_send_low_risk
 murph policy set --profile yolo
 ```
 
-Use policy commands to inspect or switch the local autonomy profile and default execution mode. New sessions inherit policy mode unless you choose a temporary session override. For custom profiles, prefer `murph agent`; direct file editing lives in `~/.murph/policies/*.md`.
+Use policy commands to inspect or switch the local autonomy profile. New sessions inherit the selected profile's mode unless you choose a temporary session override. There is no separate durable `--mode` policy setting. For custom profiles, prefer `murph agent`; direct file editing lives in `~/.murph/policies/*.md`.
 
 Policy changes also refresh active config-bound sessions. Sessions started with an explicit policy override keep that explicit policy.
 

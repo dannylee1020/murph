@@ -4,6 +4,7 @@ import { escapeHtml, setTitle } from '../shared/format';
 import { providerLabel, roleDescription, roleLabel } from '../shared/labels';
 import {
     getTimezoneOptions,
+    policyExecutionModeLabel,
     policyProfileOptions,
     timezoneLabel,
 } from './page-helpers';
@@ -1774,7 +1775,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
         stepContent = `
       <div class="wizard-step">
         <h1>Configure policy</h1>
-        <p>Choose how Murph handles drafts and routine replies by default.</p>
+        <p>Choose the policy profile Murph uses by default.</p>
         <form class="form" id="policy-config-form">
           <label>
             <span>Policy profile</span>
@@ -1782,13 +1783,9 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
               ${policyProfileOptions(policyConfig.profiles, policyConfig.selectedProfileName)}
             </select>
           </label>
-          <label>
-            <span>Execution mode</span>
-            <select name="mode">
-              <option value="manual_review" ${policyConfig.mode === 'manual_review' ? 'selected' : ''}>Show me drafts first</option>
-              <option value="auto_send_low_risk" ${policyConfig.mode === 'auto_send_low_risk' ? 'selected' : ''}>Auto-handle routine stuff</option>
-            </select>
-          </label>
+          <dl class="details compact-details">
+            <div><dt>Execution mode</dt><dd>${escapeHtml(policyExecutionModeLabel(policyConfig.mode))}</dd></div>
+          </dl>
         </form>
         <div class="wizard-actions">
           <button type="button" class="secondary back-btn" id="wizard-back">Back</button>
@@ -1813,7 +1810,7 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
           </div>
           <div class="setup-summary-row ${setup.murphConfig?.policyConfigured ? 'ok' : 'warning'}">
             <span>Policy</span>
-            <strong>${setup.murphConfig?.policyConfigured ? escapeHtml(`${setup.murphConfig.policyProfileName} · ${setup.murphConfig.policyMode}`) : 'Needs configuration'}</strong>
+            <strong>${setup.murphConfig?.policyConfigured ? escapeHtml(`${setup.murphConfig.policyProfileName} · ${policyExecutionModeLabel(policyConfig.mode)}`) : 'Needs configuration'}</strong>
           </div>
           ${setupWizardState.selectedCoverage
               .map((key) => {
@@ -2392,7 +2389,6 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                     const formData = form ? new FormData(form) : new FormData();
                     await putJson('/api/gateway/policy/config', {
                         profileName: String(formData.get('profileName') ?? ''),
-                        mode: String(formData.get('mode') ?? 'manual_review'),
                     });
                     const updatedSetup =
                         await getJson<SetupStatusPayload>('/api/setup/status');

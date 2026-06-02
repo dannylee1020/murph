@@ -115,7 +115,7 @@ describe('runtime refresh', () => {
 
   it('patches config-bound active sessions when policy config changes', async () => {
     const { store, workspace, updateMurphPolicyConfig, refreshRuntimeState } = await setup();
-    updateMurphPolicyConfig({ profileName: 'engineering', mode: 'manual_review' });
+    updateMurphPolicyConfig({ profileName: 'engineering' });
     const session = store.createSession({
       workspaceId: workspace.id,
       ownerUserId: 'UOWNER',
@@ -127,7 +127,7 @@ describe('runtime refresh', () => {
       endsAt: new Date(Date.now() + 60_000).toISOString()
     });
 
-    updateMurphPolicyConfig({ profileName: 'engineering-auto', mode: 'auto_send_low_risk' });
+    updateMurphPolicyConfig({ profileName: 'engineering-auto' });
     await refreshRuntimeState({ reason: 'policy_config_updated', workspaceIds: [workspace.id], force: true });
 
     const refreshed = store.getSessionById(session.id)!;
@@ -139,7 +139,7 @@ describe('runtime refresh', () => {
 
   it('patches config-bound sessions from subscriber policy bindings', async () => {
     const { store, workspace, updateMurphPolicyConfig, refreshRuntimeState } = await setup();
-    updateMurphPolicyConfig({ profileName: 'engineering-auto', mode: 'auto_send_low_risk' });
+    updateMurphPolicyConfig({ profileName: 'engineering-auto' });
     store.upsertWorkspaceSubscription({
       workspaceId: workspace.id,
       provider: 'slack',
@@ -161,7 +161,6 @@ describe('runtime refresh', () => {
       channelScopeBinding: 'explicit',
       endsAt: new Date(Date.now() + 60_000).toISOString()
     });
-
     await refreshRuntimeState({ reason: 'subscription_policy_updated', workspaceIds: [workspace.id], force: true });
     const firstRefresh = store.getSessionById(session.id)!;
     expect(firstRefresh.mode).toBe('manual_review');
@@ -189,7 +188,7 @@ describe('runtime refresh', () => {
 
   it('clamps subscriber scoped rules to the resolved execution floor', async () => {
     const { store, workspace, updateMurphPolicyConfig, refreshRuntimeState } = await setup();
-    updateMurphPolicyConfig({ profileName: 'engineering-auto', mode: 'auto_send_low_risk' });
+    updateMurphPolicyConfig({ profileName: 'engineering-auto' });
     store.upsertWorkspaceSubscription({
       workspaceId: workspace.id,
       provider: 'slack',
@@ -199,7 +198,7 @@ describe('runtime refresh', () => {
       channelScopeMode: 'all_accessible',
       channelScope: [],
       policyProfileName: 'scoped-auto',
-      policyMode: 'manual_review'
+      policyMode: 'auto_send_low_risk'
     });
     const session = store.createSession({
       workspaceId: workspace.id,
@@ -236,7 +235,7 @@ describe('runtime refresh', () => {
       endsAt: new Date(Date.now() + 60_000).toISOString()
     });
 
-    updateMurphPolicyConfig({ profileName: 'engineering-auto', mode: 'auto_send_low_risk' });
+    updateMurphPolicyConfig({ profileName: 'engineering-auto' });
     await refreshRuntimeState({ reason: 'policy_config_updated', workspaceIds: [workspace.id], force: true });
 
     const refreshed = store.getSessionById(session.id)!;

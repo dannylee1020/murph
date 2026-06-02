@@ -100,7 +100,7 @@ export async function resolveSubscriberPolicy(input: {
   const hostProfile =
     profileByName(profiles, config.policy?.profile || store.getAppSettings().policyProfileName) ??
     builtinPolicyProfile('manual_review');
-  const hostExecutionMode = config.policy?.mode ?? hostProfile.compiled.executionMode;
+  const hostExecutionMode = hostProfile.compiled.executionMode;
   const hostEffective = resolveEffectivePolicy({
     mode: sessionModeFromPolicyMode(hostExecutionMode),
     executionMode: hostExecutionMode,
@@ -111,7 +111,7 @@ export async function resolveSubscriberPolicy(input: {
   const subscriberProfile =
     profileByName(profiles, subscription?.policyProfileName) ??
     hostProfile;
-  const subscriberExecutionMode = subscription?.policyMode ?? hostExecutionMode;
+  const subscriberExecutionMode = subscriberProfile.compiled.executionMode;
   const executionMode = clampExecutionMode(subscriberExecutionMode, hostExecutionMode);
   const mode = resolveSessionMode(input.requestedMode, executionMode);
   const subscriberEffective = resolveEffectivePolicy({

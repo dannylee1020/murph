@@ -1,52 +1,36 @@
 ---
 title: Memory
-description: Understand Murph's local recall layer.
+description: Understand Murph's SQLite-backed runtime memory.
 ---
 
 # Memory
 
-Murph keeps one runtime memory layer on the runtime host.
+Murph uses SQLite as its runtime memory source.
 
-SQLite is the transactional source of truth. It stores sessions, runs, events, tool calls, policy decisions, action results, workspace memory, and thread memory.
+SQLite stores:
+
+- sessions and runs
+- run events and tool calls
+- policy decisions and action results
+- workspace memory
+- thread memory
+- user preferences for Personal routing
 
 ## Configure memory
 
-Memory lives on the same machine as the Murph runtime. If you run Murph on your laptop, that is your laptop. If you run Murph on a VPS or home server, that host owns SQLite and optional generated exports.
-
-Normal configuration belongs in `~/.murph/config.yaml`:
+Memory lives in the runtime database on the machine running Murph. Configure the SQLite path in `~/.murph/config.yaml`:
 
 ```yaml
 app:
   sqlitePath: data/murph.sqlite
-  memoryPath: ~/.murph/memory
 ```
 
-`sqlitePath` controls the transactional database on the runtime host. `memoryPath` controls optional generated operator exports on that same host.
+Use `MURPH_SQLITE_PATH` only when you need a process-level override, such as tests, development, or a hosted deployment.
 
-## Generated files
+## How Murph uses memory
 
-Murph may write generated operator exports under the configured `app.memoryPath`.
+When a request arrives, Murph builds context from the current thread, SQLite workspace memory, SQLite thread memory, and live retrieval from connected sources.
 
-The important files are:
+Stored memory is not a substitute for current evidence. For latest, current, today, now, status, changed, or source-of-truth questions, Murph should use live retrieval from connected sources before answering.
 
-- `index.md`: a compact generated index of available memory pages.
-- `threads/...`: generated pages for prior thread activity.
-- `sessions/...`: generated pages for prior session activity.
-
-These files are generated from SQLite run history for operator inspection and debugging. They are not agent-readable runtime memory. Edit `~/.murph/config.yaml` to change where they live; do not hand-edit generated memory pages as configuration.
-
-## What gets indexed
-
-Murph indexes completed runs in the background after the runtime finishes handling a request.
-
-A run is useful for export when it includes successful non-memory read evidence, such as connected source results, thread context, or read-only tool output. Export pages preserve run ids, event ids, sources, timestamps, freshness notes, and the request/result timeline.
-
-Failed or missing live reads are not treated as source evidence just because a memory page exists.
-
-## How Murph Uses Memory
-
-When a new request arrives, Murph builds a small runtime context from typed SQLite state: current thread messages, workspace memory, thread memory, and live retrieval from enabled tools.
-
-Markdown exports are cached history with provenance, not source-of-truth runtime context. If the request asks for latest, current, today, now, status, changed, or source-of-truth information, Murph should use live retrieval from connected sources instead of answering from stored memory alone.
-
-For Team deployments, runtime memory is team-scoped to the workspace, session, channel, and thread. For Personal deployments, owner identity is still used for the owner's direct-message memory.
+For Team deployments, runtime memory is scoped to the workspace, session, channel, and thread. For Personal deployments, owner identity is also used for direct-message memory.

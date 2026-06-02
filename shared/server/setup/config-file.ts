@@ -1,8 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import type { BotRole, PolicyExecutionMode, ProductMode, ProviderName, RuntimeDistribution, SetupDefaults } from '#shared/types';
-import { normalizePolicyExecutionMode } from '#shared/server/runtime/policy-compiler';
+import type { BotRole, ProductMode, ProviderName, RuntimeDistribution, SetupDefaults } from '#shared/types';
 import { murphHome } from '#shared/server/setup/paths';
 import { normalizeProviderBotRoleMap } from '#shared/server/setup/bot-roles';
 
@@ -14,7 +13,6 @@ export interface MurphConfig {
     productMode?: ProductMode;
     url?: string;
     sqlitePath?: string;
-    memoryPath?: string;
     heartbeatIntervalMs?: number;
     runEventRetentionDays?: number;
     contextSourceTimeoutMs?: number;
@@ -83,7 +81,6 @@ export interface MurphConfig {
   };
   policy?: {
     profile?: string;
-    mode?: PolicyExecutionMode;
   };
 }
 
@@ -92,7 +89,6 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   MURPH_PRODUCT_MODE: (config, value) => setPath(config, ['app', 'productMode'], productModeFromString(value)),
   MURPH_APP_URL: (config, value) => setPath(config, ['app', 'url'], value),
   MURPH_SQLITE_PATH: (config, value) => setPath(config, ['app', 'sqlitePath'], value),
-  MURPH_MEMORY_PATH: (config, value) => setPath(config, ['app', 'memoryPath'], value),
   MURPH_HEARTBEAT_INTERVAL_MS: (config, value) => setPath(config, ['app', 'heartbeatIntervalMs'], numberFromString(value)),
   MURPH_RUN_EVENT_RETENTION_DAYS: (config, value) => setPath(config, ['app', 'runEventRetentionDays'], numberFromString(value)),
   MURPH_CONTEXT_SOURCE_TIMEOUT_MS: (config, value) => setPath(config, ['app', 'contextSourceTimeoutMs'], numberFromString(value)),
@@ -412,7 +408,6 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
       productMode: appProductMode,
       url: stringValue(app.url),
       sqlitePath: stringValue(app.sqlitePath),
-      memoryPath: stringValue(app.memoryPath),
       heartbeatIntervalMs: numberValue(app.heartbeatIntervalMs),
       runEventRetentionDays: numberValue(app.runEventRetentionDays),
       contextSourceTimeoutMs: numberValue(app.contextSourceTimeoutMs),
@@ -492,8 +487,7 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
       }
     },
     policy: {
-      profile: stringValue(policy.profile),
-      mode: normalizePolicyExecutionMode(policy.mode)
+      profile: stringValue(policy.profile)
     }
   };
 }
@@ -549,14 +543,11 @@ export function updateMurphPolicyProfile(profileName: string | undefined, cwd = 
 
 export function updateMurphPolicyConfig(input: {
   profileName?: string;
-  mode?: PolicyExecutionMode;
 }, cwd = process.cwd()): void {
   const raw = readRawConfig(cwd);
   if (Object.prototype.hasOwnProperty.call(input, 'profileName')) {
     setPath(raw, ['policy', 'profile'], input.profileName);
   }
-  if (Object.prototype.hasOwnProperty.call(input, 'mode')) {
-    setPath(raw, ['policy', 'mode'], input.mode);
-  }
+  deletePath(raw, ['policy', 'mode']);
   writeRawConfig(raw, cwd);
 }

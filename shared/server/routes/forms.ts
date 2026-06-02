@@ -2,9 +2,33 @@ import { emitControlPlaneEvent } from '#shared/server/runtime/control-plane';
 import { getStore } from '#shared/server/persistence/store';
 import { requireMatchingSetupOwner } from '#shared/server/setup/owner-identity';
 import { readMurphConfig } from '#shared/server/setup/config-file';
-import type { SessionMode } from '#shared/types';
+import { loadPolicyProfiles, normalizePolicyProfileName } from '#shared/server/policies/loader';
+import { builtinPolicyProfile } from '#shared/server/runtime/policy-compiler';
+import type { PolicyExecutionMode, SessionMode } from '#shared/types';
 import { readForm, redirect } from '../http.js';
 import { route, type Route } from '../router.js';
+
+function sessionModeFromPolicyMode(mode: PolicyExecutionMode): SessionMode {
+  return mode;
+}
+
+function resolveSessionMode(inputMode: SessionMode | undefined, policyMode: PolicyExecutionMode): SessionMode {
+  if (!inputMode) return sessionModeFromPolicyMode(policyMode);
+  if (inputMode === 'dry_run') return 'dry_run';
+  if (inputMode === 'manual_review') return 'manual_review';
+  return policyMode === 'auto_send_low_risk' ? 'auto_send_low_risk' : 'manual_review';
+}
+
+async function selectedPolicyMode(): Promise<PolicyExecutionMode> {
+  const store = getStore();
+  const config = readMurphConfig();
+  const selectedName = normalizePolicyProfileName(config.policy?.profile || store.getAppSettings().policyProfileName);
+  const profiles = await loadPolicyProfiles();
+  const selectedProfile =
+    (selectedName ? profiles.find((profile) => profile.name === selectedName) : undefined) ??
+    builtinPolicyProfile('manual_review');
+  return selectedProfile.compiled.executionMode;
+}
 
 async function createSessionFromInput(input: {
   ownerUserId: string;
@@ -31,11 +55,13 @@ async function createSessionFromInput(input: {
     displayName: input.ownerUserId
   });
 
+  const policyMode = await selectedPolicyMode();
+  const mode = resolveSessionMode(input.mode, policyMode);
   const session = store.createSession({
     workspaceId: workspace.id,
     ownerUserId: input.ownerUserId,
     title: input.title,
-    mode: input.mode ?? readMurphConfig().policy?.mode ?? 'manual_review',
+    mode,
     channelScope: input.channelScopeRaw
       ? input.channelScopeRaw
           .split(',')

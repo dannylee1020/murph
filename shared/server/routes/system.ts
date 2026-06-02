@@ -750,7 +750,7 @@ export const systemRoutes: Route[] = [
       }));
     const config = readMurphConfig();
     const configSchedule = readConfigSchedule();
-    const policyConfigured = Boolean(config.policy?.profile && config.policy?.mode);
+    const policyConfigured = Boolean(config.policy?.profile);
     const agentInheritsRuntime = process.env.MURPH_AGENT_PROVIDER === undefined &&
       process.env.MURPH_AGENT_MODEL === undefined &&
       !config.ai?.agent?.provider &&
@@ -879,7 +879,7 @@ export const systemRoutes: Route[] = [
         workdayEndHour: configSchedule.workdayEndHour,
         policyConfigured,
         policyProfileName: config.policy?.profile,
-        policyMode: config.policy?.mode
+        policyMode: undefined
       },
       channelWorkspaces,
       notion: getNotionStatus(),

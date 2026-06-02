@@ -190,7 +190,7 @@ describe('POST /api/gateway/sessions', () => {
     const { post, store, workspace, updateMurphPolicyConfig } = await setup([
       { channelId: 'C1', name: 'support', status: 'already_member' }
     ]);
-    updateMurphPolicyConfig({ profileName: 'investor', mode: 'manual_review' });
+    updateMurphPolicyConfig({ profileName: 'investor' });
 
     const response = await post({
       workspaceId: workspace.id,

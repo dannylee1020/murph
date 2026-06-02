@@ -402,13 +402,9 @@ export async function renderSettings(): Promise<void> {
                   ${policyProfileOptions(policyConfig.profiles, policyConfig.policyProfileName)}
                 </select>
               </label>
-              <label>
-                Execution mode
-                <select name="mode">
-                  <option value="manual_review" ${policyConfig.mode === 'manual_review' ? 'selected' : ''}>Show me drafts first</option>
-                  <option value="auto_send_low_risk" ${policyConfig.mode === 'auto_send_low_risk' ? 'selected' : ''}>Auto-handle routine stuff</option>
-                </select>
-              </label>
+              <dl class="details compact-details">
+                <div><dt>Execution mode</dt><dd>${escapeHtml(policyExecutionModeLabel(policyConfig.mode))}</dd></div>
+              </dl>
               <p class="policy-help">Need a custom policy? <a href="https://murph-agent.com/docs/policy" target="_blank" rel="noreferrer">Use Murph Agent to generate one</a>.</p>
               <div class="actions">
                 <button type="button" class="secondary open-policy-profiles">Profiles</button>
@@ -461,7 +457,6 @@ export async function renderSettings(): Promise<void> {
             );
             await putJson('/api/gateway/policy/config', {
                 profileName: String(formData.get('profileName') ?? ''),
-                mode: String(formData.get('mode') ?? 'manual_review'),
             });
             setDashboardNotice('Policy saved.');
             await renderSettings();

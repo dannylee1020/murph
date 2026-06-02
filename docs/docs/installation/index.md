@@ -5,7 +5,7 @@ description: Install Murph locally and start the server.
 
 # Installation
 
-Murph is installed as a local app plus one product-local `murph` CLI. In a Team deployment, `murph` means Murph Team. In a Personal deployment, `murph` means Murph Personal.
+Murph is installed as a local app plus one product-local `murph` CLI.
 
 ## Requirements
 
@@ -49,6 +49,27 @@ If you already have the repository:
 ./install.sh
 ./install-personal.sh
 ```
+
+## Running Team and Personal on one machine
+
+Installing both products with defaults can clash because they share `~/.murph`, `~/.murph/app`, `~/.local/bin/murph`, helper deps, credentials, logs, data paths, and port `5173`. Prefer separate machines, especially when Team uses shared credentials and Personal connects private local sources.
+
+If one machine is required, use separate values:
+
+| Purpose | Team | Personal |
+| --- | --- | --- |
+| Install dir | `MURPH_INSTALL_DIR=$HOME/.murph-team/app` | `MURPH_INSTALL_DIR=$HOME/.murph-personal/app` |
+| CLI dir | `MURPH_BIN_DIR=$HOME/.local/bin/murph-team` | `MURPH_BIN_DIR=$HOME/.local/bin/murph-personal` |
+| Helper deps | `MURPH_DEPS_DIR=$HOME/.murph-team/deps` | `MURPH_DEPS_DIR=$HOME/.murph-personal/deps` |
+| App dir | `MURPH_APP_DIR=$HOME/.murph-team/app` | `MURPH_APP_DIR=$HOME/.murph-personal/app` |
+| Home dir | `MURPH_HOME=$HOME/.murph-team` | `MURPH_HOME=$HOME/.murph-personal` |
+| Config | `MURPH_CONFIG_PATH=$HOME/.murph-team/config.yaml` | `MURPH_CONFIG_PATH=$HOME/.murph-personal/config.yaml` |
+| Credentials | `MURPH_CREDENTIALS_PATH=$HOME/.murph-team/.credentials` | `MURPH_CREDENTIALS_PATH=$HOME/.murph-personal/.credentials` |
+| Port | `MURPH_PORT=5173` | `MURPH_PORT=5174` |
+
+Set the install values when running each installer. Then use aliases or wrapper scripts that set the runtime values before calling each product's CLI path. Do not rely on one global `murph` command to control both installs.
+
+If you change ports or public origins, update OAuth callback URLs before reconnecting Slack, Discord, Google, or other OAuth integrations.
 
 ## Start and stop
 

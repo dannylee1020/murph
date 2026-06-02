@@ -164,7 +164,7 @@ describe('policy configuration routes', () => {
     }));
   });
 
-  it('saves durable policy execution mode independently from profile', async () => {
+  it('ignores deprecated durable policy mode input', async () => {
     const { request } = await setup();
 
     const response = await request('PUT', '/api/gateway/policy/config', {
@@ -172,9 +172,9 @@ describe('policy configuration routes', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body.mode).toBe('auto_send_low_risk');
-    expect(response.body.compiled.executionMode).toBe('auto_send_low_risk');
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('mode: auto_send_low_risk');
+    expect(response.body.mode).toBe('manual_review');
+    expect(response.body.compiled.executionMode).toBe('manual_review');
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).not.toContain('mode: auto_send_low_risk');
   });
 
   it('rejects unknown local policy profile selection', async () => {
@@ -188,14 +188,14 @@ describe('policy configuration routes', () => {
     expect(response.body.error).toBe('unknown_policy_profile');
   });
 
-  it('rejects invalid policy execution mode', async () => {
+  it('does not validate deprecated policy mode input', async () => {
     const { request } = await setup();
 
     const response = await request('PUT', '/api/gateway/policy/config', {
       mode: 'dry_run'
     });
 
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('invalid_policy_mode');
+    expect(response.status).toBe(200);
+    expect(response.body.mode).toBe('manual_review');
   });
 });

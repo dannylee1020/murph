@@ -6,7 +6,6 @@ import { dispatchRoute, type Route } from './router.js';
 import { resolveListenPort, startServer } from './startup.js';
 import { getGateway } from '#shared/server/runtime/gateway';
 import { ensureRuntimeInitialized } from '#shared/server/runtime/bootstrap';
-import { getMemoryIndexWorker } from '#shared/server/memory/index-worker';
 import type { RuntimeDistribution } from '#shared/types';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -73,7 +72,6 @@ export function startMurphServer(options: MurphServerOptions): void {
     port,
     onListening: () => {
       gateway.ensureStarted();
-      getMemoryIndexWorker().ensureStarted();
       void ensureRuntimeInitialized().catch((error) => {
         console.warn('[server] runtime initialization failed:', error instanceof Error ? error.message : error);
       });

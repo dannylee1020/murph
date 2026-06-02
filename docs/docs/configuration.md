@@ -5,9 +5,9 @@ description: Configure providers, policy, storage, and runtime defaults.
 
 # Configuration
 
-Murph stores non-secret runtime-host settings in `~/.murph/config.yaml`, runtime-host secrets in `~/.murph/.credentials`, generated memory under `app.memoryPath`, and runtime state in SQLite. Setup does not read or write `.env` files. Environment variables are an advanced override path for process control, development, and hosted deployments.
+Murph stores non-secret process settings in `~/.murph/config.yaml`, runtime-host secrets in `~/.murph/.credentials`, and runtime state in SQLite. Setup does not read or write `.env` files. Environment variables are an advanced override path for process control, development, and hosted deployments.
 
-The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, generated memory, bot ingress, and agent execution are colocated on that host. Choose Murph Team for shared-channel coverage or Murph Personal for local owner-DM coverage.
+The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, bot ingress, and agent execution are colocated on that host. Choose Murph Team for shared-channel coverage or Murph Personal for local owner-DM coverage.
 
 ## Setup wizard
 
@@ -80,7 +80,7 @@ ai:
 
 ## Storage
 
-Murph uses local SQLite by default. SQLite is the transactional source of truth for sessions, runs, events, tool calls, policy decisions, action results, and runtime memory.
+Murph uses local SQLite by default. SQLite is the transactional source of truth for sessions, runs, events, tool calls, policy decisions, action results, channel defaults, and runtime memory.
 
 The SQLite path is stored in the runtime host's `~/.murph/config.yaml`:
 
@@ -89,14 +89,7 @@ app:
   sqlitePath: data/murph.sqlite
 ```
 
-Murph can also write generated markdown exports for operator inspection and debugging. Configure that path in the same file:
-
-```yaml
-app:
-  memoryPath: ~/.murph/memory
-```
-
-Generated exports are not configuration or agent-readable runtime memory. They are rebuilt from SQLite run history and live under the configured `memoryPath`, usually as `index.md`, `threads/...`, and `sessions/...`. See [Memory](/docs/memory) for the runtime behavior.
+SQLite is the only runtime memory source. Murph no longer writes or reads generated markdown memory as part of the core runtime.
 
 Secrets are stored in plaintext at `~/.murph/.credentials` on the runtime host with owner-only file permissions. Runtime credential reads come from that file, not SQLite.
 
@@ -113,19 +106,13 @@ app:
   distribution: team
   url: http://localhost:5173
   sqlitePath: data/murph.sqlite
-channels:
-  slack:
-    eventsMode: socket
-setup:
-  botRoles:
-    - channel
-  channelProvider: slack
-  channelScopeMode: selected
 ```
+
+Channel-related setup values are stored in SQLite, not `config.yaml`. This includes bot roles, channel provider, workspace and owner identity, watched-channel mode, selected channels, and per-workspace channel defaults.
 
 ## Runtime refresh
 
-After local config or capability changes, Murph refreshes runtime state for active sessions that inherit config. This includes policy, setup defaults, integration connections, workspace capabilities, scoped plugin reloads, channel setup, provider config, and skills.
+After local config or capability changes, Murph refreshes runtime state for active sessions that inherit config. This includes policy, SQLite setup defaults, integration connections, workspace capabilities, scoped plugin reloads, channel setup, provider config, and skills.
 
 Config-bound sessions receive the updated policy, channel scope, and runtime revision. Sessions with explicit policy or explicit channel-scope overrides keep those choices. If a request is already running, Murph marks refresh as pending and applies it at the next run boundary. See [Core Concepts](/docs/core-concepts) for the runtime model.
 
@@ -150,76 +137,6 @@ MURPH_PORT=5173
 
 Most runtime config keys also have environment-variable equivalents, but those should be treated as explicit overrides. If you override the local origin with `MURPH_URL`, `MURPH_PORT`, `MURPH_APP_URL`, or `DISCORD_REDIRECT_URI`, update Slack and Discord callback URLs to match before reconnecting the channel.
 
-## Channel setup
-
-Slack and Discord both use OAuth to lock the owner identity. Murph watches for the account that authorized the app; setup does not list workspace/server members or let you pick another owner manually.
-
-Murph Team and Murph Personal use separate bot identities. Keep the unprefixed channel variables for Team channel-bot compatibility, or use explicit role-prefixed variables:
-
-```bash
-MURPH_DISTRIBUTION=team
-MURPH_BOT_ROLES=channel
-
-SLACK_CHANNEL_CLIENT_ID=
-SLACK_CHANNEL_CLIENT_SECRET=
-SLACK_CHANNEL_SIGNING_SECRET=
-SLACK_CHANNEL_APP_TOKEN=
-
-DISCORD_CHANNEL_BOT_TOKEN=
-DISCORD_CHANNEL_CLIENT_ID=
-DISCORD_CHANNEL_CLIENT_SECRET=
-```
-
-```bash
-MURPH_DISTRIBUTION=personal
-MURPH_BOT_ROLES=personal
-
-SLACK_PERSONAL_CLIENT_ID=
-SLACK_PERSONAL_CLIENT_SECRET=
-SLACK_PERSONAL_SIGNING_SECRET=
-SLACK_PERSONAL_APP_TOKEN=
-
-DISCORD_PERSONAL_BOT_TOKEN=
-DISCORD_PERSONAL_CLIENT_ID=
-DISCORD_PERSONAL_CLIENT_SECRET=
-```
-
-The legacy `SLACK_*` and `DISCORD_*` keys still act as channel-bot defaults.
-
-Channel defaults live under `setup` in `~/.murph/config.yaml`. The important fields are:
-
-```yaml
-setup:
-  channelProvider: slack
-  workspaceId: workspace-id
-  workspaceOwners:
-    - workspaceId: workspace-id
-      ownerUserId: provider-user-id
-      ownerDisplayName: Your Name
-  channelScopeMode: selected
-  selectedChannels:
-    - id: C123
-      displayName: "#support"
-```
-
-Use `channelScopeMode: all_accessible` only after you have verified the app or bot can safely read every channel it can access.
-
-## Web search
-
-Murph ships with Brave Search as the default public web discovery provider:
-
-```yaml
-integrations:
-  webSearch:
-    backend: brave
-```
-
-Store the Brave key through setup or the browser UI. It is saved as a runtime-host credential in `~/.murph/.credentials`.
-
-For development or hosted deployments, `BRAVE_SEARCH_API_KEY` and `MURPH_WEB_SEARCH_BACKEND` still work as explicit runtime overrides.
-
-`web.search` discovers candidate pages. `web.fetch` reads an explicit URL with a simple HTTP fetch and text extraction; it is intentionally not a browser crawler by default.
-
 ## Policy
 
 Policy controls whether Murph sends, queues, or abstains from a drafted action. Runtime grounding is separate: it checks whether required read/context tools were attempted before Murph answers.
@@ -238,18 +155,18 @@ Role profiles are conservative by default and keep auto-send off. `yolo` is an e
 murph policy profiles
 murph policy get
 murph policy set --profile engineering
-murph policy set --mode manual_review
 ```
 
-The durable policy default is stored in `~/.murph/config.yaml`:
+The durable policy profile is stored in `~/.murph/config.yaml`:
 
 ```yaml
 policy:
   profile: engineering
-  mode: manual_review
 ```
 
-New sessions inherit `policy.mode` by default. Use a session-level mode only for a temporary override such as dry-run or review-everything testing.
+New sessions inherit the selected profile's mode by default. Use a session-level mode only for a temporary override such as dry-run or review-everything testing.
+
+There is no separate `policy.mode` config value. To change the default execution mode, select a different profile or edit the selected profile's `mode`.
 
 Use [Policy](/docs/policy) for custom profiles. Murph Agent is the preferred path for creating or changing custom policy; direct profile files live in `~/.murph/policies/*.md`.
 

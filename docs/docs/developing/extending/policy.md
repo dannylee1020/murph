@@ -5,7 +5,7 @@ description: Create policy profiles that control send, queue, and abstain behavi
 
 # Extending Policy
 
-Policy profiles control Murph's autonomy after a draft exists.
+Policy profiles control Murph's autonomy after a draft exists. The profile file owns the default execution mode; `config.yaml` only stores which profile is selected.
 
 Use policy when the question is "may Murph send this?" Use skills when the question is "how should Murph interpret or answer this?"
 
@@ -28,7 +28,6 @@ blockedTopics: compensation, performance reviews, legal advice
 alwaysQueueTopics: production incidents, security vulnerabilities, data loss
 blockedActions:
 mode: manual_review
-allowAutoSend: no
 requireGroundingForFacts: yes
 preferAskWhenUncertain: yes
 notes: cite technical evidence, avoid changing commitments
@@ -39,6 +38,8 @@ Queue incident ownership, security impact, data changes, release decisions, and 
 
 The header is simple `key: value` metadata. The body becomes additional notes for the agent and policy classifier.
 
+Use `mode` for new profiles. `allowAutoSend` is accepted only for old profile files that do not have `mode`.
+
 ## Metadata
 
 | Field | Purpose |
@@ -48,8 +49,8 @@ The header is simple `key: value` metadata. The body becomes additional notes fo
 | `blockedTopics` | Comma-separated topics that force abstain. |
 | `alwaysQueueTopics` | Comma-separated topics that force review. |
 | `blockedActions` | Comma-separated action types to block. |
-| `mode` or `executionMode` | `manual_review` or `auto_send_low_risk`. |
-| `allowAutoSend` | Legacy boolean fallback for mode. |
+| `mode` or `executionMode` | Default execution mode: `manual_review` or `auto_send_low_risk`. |
+| `allowAutoSend` | Legacy fallback only when `mode` is missing. Do not use for new profiles. |
 | `requireGroundingForFacts` | Whether factual replies should require grounding attempts. |
 | `preferAskWhenUncertain` | Whether uncertainty should bias toward asking or queueing. |
 | `notes` | Comma-separated classifier and agent notes. |
@@ -63,13 +64,15 @@ The runtime still has hard stops before drafting, such as no matching session, o
 
 After drafting, policy classification and the deterministic final gate decide whether the action sends, queues, or abstains.
 
-## Policy mode
+## Profile mode
 
 `manual_review` queues drafted actions for review.
 
 `auto_send_low_risk` can send low-risk actions automatically and queue the rest.
 
-Session mode can temporarily reduce autonomy, but it cannot increase autonomy beyond the durable policy mode.
+The selected profile's mode is the durable default. Session mode can temporarily reduce autonomy, but it cannot increase autonomy beyond the profile mode.
+
+There is no separate durable `policy.mode` setting. To change the default mode, select a profile with the desired `mode` or edit/create a profile.
 
 ## Commands
 
@@ -82,7 +85,8 @@ murph policy profiles
 Preview a profile:
 
 ```bash
-murph policy preview --profile engineering --mode manual_review
+murph policy preview --profile engineering
+murph policy preview --profile engineering --session-mode dry_run
 ```
 
 Select a profile:
@@ -91,11 +95,6 @@ Select a profile:
 murph policy set --profile engineering
 ```
 
-Set durable policy mode:
-
-```bash
-murph policy set --mode manual_review
-murph policy set --mode auto_send_low_risk
-```
+To make low-risk auto-send the default, select a profile that declares `mode: auto_send_low_risk`, such as `yolo`, or create a custom profile with that mode.
 
 Use `yolo` only when you intentionally want maximum local autonomy. It does not disable runtime grounding.

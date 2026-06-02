@@ -455,9 +455,9 @@ Usage: murph policy <command> [options]
 
 Commands:
   profiles                                      List available policy profiles.
-  preview [--profile NAME] [--mode MODE] [--session-mode MODE] [--override-file FILE] [--rules-file FILE]
+  preview [--profile NAME] [--session-mode MODE] [--override-file FILE] [--rules-file FILE]
   get                                           Show local policy config.
-  set [--profile NAME] [--mode MODE]            Set the local policy profile or execution mode.
+  set --profile NAME                            Set the local policy profile.
 EOF
 }
 
@@ -468,17 +468,12 @@ policy_profiles() {
 }
 
 policy_preview() {
-  local profile="" mode="" session_mode="" override_file="" rules_file=""
+  local profile="" session_mode="" override_file="" rules_file=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --profile)
         profile="${2:-}"
         [[ -n "$profile" ]] || fail "--profile requires a value."
-        shift 2
-        ;;
-      --mode)
-        mode="${2:-}"
-        [[ -n "$mode" ]] || fail "--mode requires a value."
         shift 2
         ;;
       --session-mode)
@@ -504,11 +499,10 @@ policy_preview() {
 
   require_http_api
   local body
-  body="$(PROFILE="$profile" MODE="$mode" SESSION_MODE="$session_mode" OVERRIDE_FILE="$override_file" RULES_FILE="$rules_file" node <<'NODE'
+  body="$(PROFILE="$profile" SESSION_MODE="$session_mode" OVERRIDE_FILE="$override_file" RULES_FILE="$rules_file" node <<'NODE'
 const fs = require('fs');
 const body = {};
 if (process.env.PROFILE) body.profileName = process.env.PROFILE;
-if (process.env.MODE) body.mode = process.env.MODE;
 if (process.env.SESSION_MODE) body.sessionMode = process.env.SESSION_MODE;
 if (process.env.OVERRIDE_FILE) body.overrideRaw = fs.readFileSync(process.env.OVERRIDE_FILE, 'utf8');
 if (process.env.RULES_FILE) body.scopedRules = JSON.parse(fs.readFileSync(process.env.RULES_FILE, 'utf8'));
@@ -525,7 +519,7 @@ policy_get() {
 }
 
 policy_set() {
-  local profile="" mode=""
+  local profile=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --profile)
@@ -533,24 +527,18 @@ policy_set() {
         [[ -n "$profile" ]] || fail "--profile requires a value."
         shift 2
         ;;
-      --mode)
-        mode="${2:-}"
-        [[ -n "$mode" ]] || fail "--mode requires a value."
-        shift 2
-        ;;
       *)
         fail "Unknown set option: $1"
         ;;
     esac
   done
-  [[ -n "$profile" || -n "$mode" ]] || fail "set requires --profile NAME or --mode MODE."
+  [[ -n "$profile" ]] || fail "set requires --profile NAME."
 
   require_http_api
   local body
-  body="$(PROFILE="$profile" MODE="$mode" node - <<'NODE'
+  body="$(PROFILE="$profile" node - <<'NODE'
 const body = {};
 if (process.env.PROFILE) body.profileName = process.env.PROFILE;
-if (process.env.MODE) body.mode = process.env.MODE;
 process.stdout.write(JSON.stringify(body));
 NODE
 )"

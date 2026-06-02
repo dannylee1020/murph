@@ -93,7 +93,7 @@ const SECTION_PURPOSES = {
   Identity: 'Confirm the user Murph should watch for.',
   Channels: 'Choose the default channel scope.',
   Schedule: 'Save the default workday schedule.',
-  Policy: 'Choose the local policy profile and default execution mode.',
+  Policy: 'Choose the local policy profile.',
   'Setup status': 'Review local files, credentials, and setup readiness.'
 };
 const DEFAULT_PROVIDER_MODEL = {
@@ -195,7 +195,7 @@ Sections:
   identity    Pick the user Murph watches for.
   channels    Pick watched channels or all accessible channels.
   schedule    Save the default workday schedule.
-  policy      Select the local policy profile and execution mode.
+  policy      Select the local policy profile.
   status      Show setup readiness.
 
 Options:
@@ -2087,19 +2087,11 @@ async function setupPolicy() {
     return;
   }
   const selected = profiles[await askIndex('Choose policy profile', profiles, defaultIndex)];
-  const currentMode = config.mode === 'auto_send_low_risk' ? 'auto_send_low_risk' : 'manual_review';
-  const modeChoice = await ask(
-    'Execution mode: [1] Show me drafts first  [2] Auto-handle routine stuff',
-    currentMode === 'auto_send_low_risk' ? '2' : '1'
-  );
-  const mode = modeChoice === '2' || modeChoice === 'auto_send_low_risk'
-    ? 'auto_send_low_risk'
-    : 'manual_review';
   await request('/api/gateway/policy/config', {
     method: 'PUT',
-    body: JSON.stringify({ profileName: selected.name, mode })
+    body: JSON.stringify({ profileName: selected.name })
   });
-  success(`Saved policy: ${selected.name} / ${mode}`);
+  success(`Saved policy: ${selected.name} / ${selected.compiled?.executionMode || 'manual_review'}`);
 }
 
 async function setupStatus() {

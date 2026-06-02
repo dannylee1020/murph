@@ -135,7 +135,7 @@ async function currentPolicyProfile(): Promise<{
   const selectedProfile =
     (selectedName ? profiles.find((profile) => profile.name === selectedName) : undefined) ??
     builtinPolicyProfile('manual_review');
-  const executionMode = config.policy?.mode ?? selectedProfile.compiled.executionMode;
+  const executionMode = selectedProfile.compiled.executionMode;
   const mode = sessionModeFromPolicyMode(executionMode);
   const effective = resolveEffectivePolicy({
     mode,
@@ -173,7 +173,6 @@ async function computeRevision(workspace: Workspace): Promise<{
         id: subscription.id,
         externalUserId: subscription.externalUserId,
         policyProfileName: subscription.policyProfileName,
-        policyMode: subscription.policyMode,
         policyCompiled: subscription.policyProfileName
           ? profilesByName.get(normalizePolicyProfileName(subscription.policyProfileName) ?? '')?.compiled
           : undefined

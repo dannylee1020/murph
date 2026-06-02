@@ -5,7 +5,7 @@ description: Get Murph installed, configured, and running.
 
 # Quickstart
 
-Murph is a self-hosted agent runtime for async work, built to keep teams moving across time zones without trading away control, context, or review. Run Murph Team for shared channels, or Murph Personal for private owner DMs and local data sources.
+Murph is a self-hosted agent runtime for async work, built to keep teams moving across time zones without sacrificing productivity. Run Murph Team for shared channels, or Murph Personal for DMs.
 
 ## 1. Install
 

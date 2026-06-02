@@ -428,7 +428,7 @@ describe('Gateway session-first policy', () => {
   it('creates personal direct sessions with the represented owner subscriber policy', async () => {
     const { gateway, store, workspace, runSpy } = await setup();
     const { updateMurphPolicyConfig } = await import('../shared/server/setup/config-file');
-    updateMurphPolicyConfig({ profileName: 'yolo', mode: 'auto_send_low_risk' });
+    updateMurphPolicyConfig({ profileName: 'yolo' });
     store.upsertWorkspaceSubscription({
       workspaceId: workspace.id,
       provider: 'slack',

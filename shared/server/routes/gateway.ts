@@ -16,7 +16,6 @@ import { ensureRuntimeInitialized } from '#shared/server/runtime/bootstrap';
 import {
   buildUserPolicyProfile,
   builtinPolicyProfile,
-  normalizePolicyExecutionMode,
   resolveEffectivePolicy
 } from '#shared/server/runtime/policy-compiler';
 import { loadSkills } from '#shared/server/skills/loader';
@@ -77,10 +76,6 @@ type PreparedSessionTarget = {
 
 function sessionModeFromPolicyMode(mode: PolicyExecutionMode): SessionMode {
   return mode;
-}
-
-function effectivePolicyMode(profileMode: PolicyExecutionMode): PolicyExecutionMode {
-  return readMurphConfig().policy?.mode ?? profileMode;
 }
 
 function resolveSessionMode(inputMode: SessionMode | undefined, policyMode: PolicyExecutionMode): SessionMode {
@@ -319,13 +314,13 @@ async function resolveProfileSelection(
   };
 }
 
-async function policyConfigPayload(mode?: PolicyExecutionMode) {
+async function policyConfigPayload() {
   const store = getStore();
   const settings = store.getAppSettings();
   const config = readMurphConfig();
   const configProfileName = config.policy?.profile;
   const { profiles, selectedProfile } = await resolveProfileSelection();
-  const policyMode = mode ?? config.policy?.mode ?? selectedProfile.compiled.executionMode;
+  const policyMode = selectedProfile.compiled.executionMode;
   const effective = resolveEffectivePolicy({
     mode: sessionModeFromPolicyMode(policyMode),
     executionMode: policyMode,
@@ -381,25 +376,19 @@ export const gatewayRoutes: Route[] = [
     sendJson(res, await policyConfigPayload());
   }),
   route('PUT', '/api/gateway/policy/config', async ({ req, res }) => {
-    const body = await readJson<{ profileName?: unknown; mode?: unknown }>(req);
+    const body = await readJson<{ profileName?: unknown }>(req);
     const profileName = typeof body.profileName === 'string'
       ? normalizePolicyProfileName(body.profileName)
       : undefined;
-    const mode = body.mode === undefined ? undefined : normalizePolicyExecutionMode(body.mode);
     const profiles = await loadPolicyProfiles();
 
     if (profileName && !profiles.some((profile) => profile.name === profileName)) {
       sendJson(res, { ok: false, error: 'unknown_policy_profile' }, 400);
       return;
     }
-    if (body.mode !== undefined && !mode) {
-      sendJson(res, { ok: false, error: 'invalid_policy_mode' }, 400);
-      return;
-    }
 
     updateMurphPolicyConfig({
-      ...(Object.prototype.hasOwnProperty.call(body, 'profileName') ? { profileName } : {}),
-      ...(Object.prototype.hasOwnProperty.call(body, 'mode') ? { mode } : {})
+      ...(Object.prototype.hasOwnProperty.call(body, 'profileName') ? { profileName } : {})
     });
     const refresh = await refreshRuntimeState({
       reason: 'policy_config_updated',
@@ -410,15 +399,12 @@ export const gatewayRoutes: Route[] = [
   route('POST', '/api/gateway/policy/preview', async ({ req, res }) => {
     const body = await readJson<{
       profileName?: string;
-      mode?: string;
       overrideRaw?: string;
       scopedRules?: unknown;
       sessionMode?: SessionMode;
     }>(req);
     const { profiles, selectedProfile } = await resolveProfileSelection(body.profileName);
-    const policyMode =
-      normalizePolicyExecutionMode(body.mode) ??
-      effectivePolicyMode(selectedProfile.compiled.executionMode);
+    const policyMode = selectedProfile.compiled.executionMode;
     const sessionMode = body.sessionMode
       ? resolveSessionMode(body.sessionMode, policyMode)
       : sessionModeFromPolicyMode(policyMode);

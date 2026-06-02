@@ -5,7 +5,7 @@ description: Understand Murph's runtime, sessions, evidence, policy, memory, and
 
 # Core Concepts
 
-Murph is a self-hosted agent runtime for async work. Its core job is to receive messages, decide whether the active Team or Personal runtime should handle them, gather relevant context, draft a bounded response, and apply policy before anything is sent.
+Murph is a self-hosted agent runtime for async work. Its core job is to receive messages, gather relevant context, draft a bounded response, and send or queue according to the policy.
 
 It is not an always-on chatbot. The product is built around an operator-controlled runtime host, explicit sessions, local configuration, source-grounded answers, and reviewable audit trails.
 
@@ -13,15 +13,14 @@ It is not an always-on chatbot. The product is built around an operator-controll
 
 Murph runs as one of two deployable runtime distributions:
 
-- **Murph Team** is the shared host runtime for Slack or Discord channel coverage. It owns team-level channel scope, shared tools, shared memory, queue, triage, logs, and the admin control plane.
-- **Murph Personal** is a single-user local runtime for direct messages to the owner's bot identity. It owns local credentials, local memory, private data sources, queue, triage, logs, and the owner control plane.
+- **Murph Team** handles public team channels. It uses the team's shared integrations, policy, skills, tools, credentials, and config.
+- **Murph Personal** handles direct messages. It uses that person's local config, credentials, private sources, policy, skills, and tools.
 
 The machine running either distribution is the Murph runtime host: it can be your laptop, a VPS, a home server, or another host you control. That host owns the runtime's config, credentials, SQLite database, generated memory, bot ingress, agent execution, integrations, policy, review, plugins, and UI.
 
 - SQLite stores sessions, runs, events, tool calls, policy decisions, action results, and indexing state.
 - `~/.murph/config.yaml` stores non-secret setup and runtime configuration on the runtime host.
 - `~/.murph/.credentials` stores runtime-host secrets with owner-only permissions.
-- `~/.murph/memory` stores generated markdown recall pages on the runtime host when configured through `app.memoryPath`.
 - The browser UI, CLI, and Murph Agent all control the selected runtime distribution.
 
 For a self-hosted install, credentials are not uploaded to Murph-run servers. They stay on the runtime host and only leave that host when Murph uses them to call the providers, channels, or integrations you connected. If you run Murph Team on a VPS or cloud VM, that machine must be trusted with team bot and integration credentials. If you need private local sources such as an Obsidian vault, run Murph Personal on the machine that owns those sources.
@@ -53,7 +52,7 @@ Sessions carry:
 
 - workspace and channel scope
 - start and stop time
-- policy mode and selected profile
+- selected policy profile and profile mode
 - a runtime snapshot used while handling matching tasks
 
 Sessions started from current configuration stay config-bound. Sessions created with explicit policy or explicit channel-scope overrides keep those explicit choices.
@@ -64,7 +63,7 @@ Murph refreshes active runtime state when local configuration or capabilities ch
 
 Refresh is triggered by changes to:
 
-- policy profile or policy mode
+- policy profile
 - setup defaults and watched-channel config
 - integration connections
 - workspace capabilities

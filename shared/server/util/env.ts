@@ -1,6 +1,4 @@
 import { DEFAULT_PROVIDER_MODEL, DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_SQLITE_PATH } from '#shared/config';
-import { homedir } from 'node:os';
-import path from 'node:path';
 import type { ProductMode, ProviderName, RuntimeDistribution } from '#shared/types';
 import { readMurphConfig } from '#shared/server/setup/config-file';
 import { readSecret } from '#shared/server/credentials/local-store';
@@ -10,7 +8,6 @@ export interface RuntimeEnv {
   productMode: ProductMode;
   appUrl: string;
   sqlitePath: string;
-  memoryPath: string;
   encryptionKey: string;
   slackClientId?: string;
   slackClientSecret?: string;
@@ -127,7 +124,6 @@ export function getRuntimeEnv(): RuntimeEnv {
     productMode: config.app?.productMode ?? (distribution === 'personal' ? 'personal' : 'channel'),
     appUrl: envOrConfigString('MURPH_APP_URL', config.app?.url, 'http://localhost:5173'),
     sqlitePath: envOrConfigString('MURPH_SQLITE_PATH', config.app?.sqlitePath, DEFAULT_SQLITE_PATH),
-    memoryPath: envOrConfigString('MURPH_MEMORY_PATH', config.app?.memoryPath, path.join(homedir(), '.murph', 'memory')),
     encryptionKey: process.env.MURPH_ENCRYPTION_KEY ?? '',
     slackClientId: process.env.SLACK_CLIENT_ID,
     slackClientSecret: envOrSecret('SLACK_CLIENT_SECRET', 'slack', 'client_secret'),
