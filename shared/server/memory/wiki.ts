@@ -481,7 +481,7 @@ async function writeSessionPage(input: {
     summary,
     keywords: extractTerms([
       input.session.title,
-      input.session.ownerUserId,
+      input.session.ownerUserId ?? '',
       ...input.session.channelScope,
       ...input.summaries.flatMap((run) => [
         run.request,

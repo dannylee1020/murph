@@ -17,7 +17,7 @@ function slackEvent(input: Record<string, unknown> = {}): Record<string, unknown
       type: 'app_mention',
       channel: 'C1',
       user: 'UASKER',
-      text: '<@UTZBOT> <@UOWNER> can you confirm the launch spec?',
+      text: '<@UTZBOT> can you confirm the launch spec?',
       ts: '111.222',
       ...input
     }
@@ -34,25 +34,9 @@ async function setup() {
     botUserId: 'UTZBOT'
   });
 
-  store.upsertUser({
-    workspaceId: workspace.id,
-    externalUserId: 'UOWNER',
-    displayName: 'Owner'
-  });
-  store.upsertWorkspaceSubscription({
-    workspaceId: workspace.id,
-    provider: 'slack',
-    externalUserId: 'UOWNER',
-    displayName: 'Owner',
-    status: 'active',
-    channelScopeMode: 'selected',
-    channelScope: ['C1']
-  });
-
   store.createSession({
     workspaceId: workspace.id,
-    ownerUserId: 'UOWNER',
-    title: 'Overnight coverage',
+    title: 'Team stakeholder coverage',
     mode: 'manual_review',
     channelScope: ['C1'],
     endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -87,9 +71,9 @@ describe('handleSlackEventEnvelope', () => {
     expect(handleTask.mock.calls[0][0]).toMatchObject({
       source: 'slack_event',
       workspaceId: 'T1',
-      targetUserId: 'UOWNER',
       thread: { provider: 'slack', channelId: 'C1', threadTs: '111.222' }
     });
+    expect(handleTask.mock.calls[0][0].targetUserId).toBeUndefined();
   });
 
   it('dedupes repeated Slack events before dispatching to the gateway', async () => {
@@ -105,8 +89,12 @@ describe('handleSlackEventEnvelope', () => {
 
   it('ignores Slack events when that bot role is turned off', async () => {
     await setup();
-    const { updateMurphSetupDefaults } = await import('../shared/server/setup/config-file');
-    updateMurphSetupDefaults({ providerBotRoles: { slack: [] } });
+    const { getStore } = await import('../shared/server/persistence/store');
+    const store = getStore();
+    store.upsertAppSettings({
+      ...store.getAppSettings(),
+      setupDefaults: { botRoles: ['channel'], providerBotRoles: { slack: [], discord: [] } }
+    });
     const { handleSlackEventEnvelope } = await import('../shared/server/channels/slack/events');
 
     const result = await handleSlackEventEnvelope(slackEvent(), { source: 'socket' });

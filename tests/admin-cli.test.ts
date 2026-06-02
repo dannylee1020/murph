@@ -10,7 +10,6 @@ const adminCli = join(repoRoot, 'shared/cli/admin-cli.mjs');
 type FetchCall = {
   url: string;
   method: string;
-  headers: Record<string, string>;
 };
 
 function createFixture() {
@@ -24,50 +23,7 @@ import { appendFileSync } from 'node:fs';
 const callsPath = process.env.MOCK_FETCH_CALLS;
 
 globalThis.fetch = async (url, options = {}) => {
-  const method = options.method || 'GET';
-  const headers = Object.fromEntries(new Headers(options.headers || {}).entries());
-  appendFileSync(callsPath, JSON.stringify({ url: String(url), method, headers }) + '\\n');
-
-  if (String(url).includes('/api/gateway/subscriptions/U1/dashboard-link') && method === 'POST') {
-    return Response.json({
-      ok: true,
-      url: 'https://host.test/me?token=user-token',
-      subscription: { externalUserId: 'U1', dashboardAccessEnabled: true }
-    });
-  }
-
-  if (String(url).includes('/api/gateway/subscriptions/U1/dashboard-link') && method === 'DELETE') {
-    return Response.json({
-      ok: true,
-      subscription: { externalUserId: 'U1', dashboardAccessEnabled: false }
-    });
-  }
-
-  if (String(url).includes('/api/gateway/subscriptions')) {
-    return Response.json({
-      subscriptions: [
-        {
-          externalUserId: 'U1',
-          displayName: 'User One',
-          status: 'active',
-          channelScopeMode: 'all_accessible',
-          channelScope: [],
-          policyProfileName: 'engineering',
-          policyMode: 'manual_review',
-          dashboardAccessEnabled: true
-        },
-        {
-          externalUserId: 'U2',
-          displayName: 'User Two',
-          status: 'paused',
-          channelScopeMode: 'selected',
-          channelScope: ['C1', 'C2'],
-          dashboardAccessEnabled: false
-        }
-      ]
-    });
-  }
-
+  appendFileSync(callsPath, JSON.stringify({ url: String(url), method: options.method || 'GET' }) + '\\n');
   return Response.json({ ok: false, error: 'not_found' }, { status: 404 });
 };
 `);
@@ -96,7 +52,7 @@ function readCalls(callsPath: string): FetchCall[] {
     .map((line) => JSON.parse(line) as FetchCall);
 }
 
-describe('admin CLI subscriber dashboard links', () => {
+describe('admin CLI', () => {
   it('prints the plain admin dashboard URL', () => {
     const fixture = createFixture();
 
@@ -107,76 +63,13 @@ describe('admin CLI subscriber dashboard links', () => {
     expect(readCalls(fixture.callsPath)).toEqual([]);
   });
 
-  it('does not expose operator token rotation', () => {
+  it('rejects removed subscriber dashboard commands without network calls', () => {
     const fixture = createFixture();
 
-    const result = runAdmin(['rotate-token'], fixture);
+    const result = runAdmin(['subscribers', 'link', 'U1'], fixture);
 
     expect(result.status).not.toBe(0);
     expect(result.stdout).toContain('Usage: murph admin <command>');
-  });
-
-  it('lists subscriber dashboard access without auth headers', () => {
-    const fixture = createFixture();
-
-    const result = runAdmin(['subscribers', '--workspace-id', 'W1', '--status', 'active'], fixture);
-    const calls = readCalls(fixture.callsPath);
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('U1');
-    expect(result.stdout).toContain('dashboard enabled');
-    expect(result.stdout).toContain('U2');
-    expect(calls).toEqual([expect.objectContaining({
-      method: 'GET',
-      url: 'https://host.test/api/gateway/subscriptions?workspaceId=W1&status=active',
-      headers: {}
-    })]);
-  });
-
-  it('creates or regenerates a subscriber dashboard link', () => {
-    const fixture = createFixture();
-
-    const result = runAdmin(['subscribers', 'link', 'U1', '--workspace-id', 'W1'], fixture);
-    const calls = readCalls(fixture.callsPath);
-
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('https://host.test/me?token=user-token');
-    expect(calls).toEqual([expect.objectContaining({
-      method: 'POST',
-      url: 'https://host.test/api/gateway/subscriptions/U1/dashboard-link?workspaceId=W1',
-      headers: {}
-    })]);
-  });
-
-  it('revokes a subscriber dashboard link', () => {
-    const fixture = createFixture();
-
-    const result = runAdmin(['subscribers', 'revoke', 'U1', '--workspace-id', 'W1'], fixture);
-    const calls = readCalls(fixture.callsPath);
-
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('Revoked subscriber dashboard access for U1.');
-    expect(calls).toEqual([expect.objectContaining({
-      method: 'DELETE',
-      url: 'https://host.test/api/gateway/subscriptions/U1/dashboard-link?workspaceId=W1',
-      headers: {}
-    })]);
-  });
-
-  it('prints machine-readable JSON when requested', () => {
-    const fixture = createFixture();
-
-    const result = runAdmin(['subscribers', 'link', 'U1', '--workspace-id', 'W1', '--json'], fixture);
-    const payload = JSON.parse(result.stdout);
-
-    expect(result.status).toBe(0);
-    expect(payload).toMatchObject({
-      ok: true,
-      url: 'https://host.test/me?token=user-token',
-      subscription: {
-        externalUserId: 'U1',
-        dashboardAccessEnabled: true
-      }
-    });
+    expect(readCalls(fixture.callsPath)).toEqual([]);
   });
 });

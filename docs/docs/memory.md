@@ -7,7 +7,7 @@ description: Understand Murph's local recall layer.
 
 Murph keeps one runtime memory layer on the runtime host.
 
-SQLite is the transactional source of truth. It stores sessions, runs, events, tool calls, policy decisions, action results, subscriber memory, workspace memory, and thread memory.
+SQLite is the transactional source of truth. It stores sessions, runs, events, tool calls, policy decisions, action results, workspace memory, and thread memory.
 
 ## Configure memory
 
@@ -45,8 +45,8 @@ Failed or missing live reads are not treated as source evidence just because a m
 
 ## How Murph Uses Memory
 
-When a new request arrives, Murph builds a small runtime context from typed SQLite state: current thread messages, subscriber memory, workspace memory, subscriber-scoped thread memory, and live retrieval from enabled tools.
+When a new request arrives, Murph builds a small runtime context from typed SQLite state: current thread messages, workspace memory, thread memory, and live retrieval from enabled tools.
 
 Markdown exports are cached history with provenance, not source-of-truth runtime context. If the request asks for latest, current, today, now, status, changed, or source-of-truth information, Murph should use live retrieval from connected sources instead of answering from stored memory alone.
 
-For shared-host deployments, subscriber memory is scoped by workspace and target user. Thread memory is also scoped by workspace, channel, thread, and target user so two subscribers can participate in the same channel thread without sharing private runtime memory.
+For Team deployments, runtime memory is team-scoped to the workspace, session, channel, and thread. For Personal deployments, owner identity is still used for the owner's direct-message memory.

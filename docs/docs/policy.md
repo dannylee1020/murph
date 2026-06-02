@@ -58,7 +58,7 @@ murph policy set --profile custom --mode manual_review
 
 ## How policy runs
 
-Murph keeps operational hard stops before the agent: no matching session, unknown target user, owner-authored events, expired sessions, and similar runtime conditions stop without drafting.
+Murph keeps operational hard stops before the agent: no matching session, out-of-scope channels, expired sessions, and similar runtime conditions stop without drafting. Personal DMs also require the represented owner identity.
 
 When those hard stops pass, the main agent drafts first. Then a policy execution classifier reviews the request, policy, grounding status, and proposed action.
 
@@ -82,13 +82,11 @@ Session mode is now a temporary override. Starting a session without a mode inhe
 
 Runtime hard stops still apply for empty context, out-of-scope threads, high-risk skill context, unsupported action types, and messages Murph cannot safely send.
 
-## Shared hosts
+## Team hosts
 
-In a shared Slack or Discord host, policy resolves for the represented subscriber, not the person who sent the message and not only the operator default.
+In a shared Slack or Discord Team host, policy resolves at the team runtime level. New config-bound Team sessions snapshot the global Team policy profile and mode.
 
-The operator can bind a subscriber to a policy profile and policy mode. New config-bound sessions snapshot that subscriber policy, and active config-bound sessions refresh at the runtime's normal safe refresh boundary when a binding changes.
-
-The host policy is still the safety floor. Host blocked topics, always-queue topics, blocked actions, grounding requirements, uncertainty preference, notes, and scoped rules are merged into the subscriber policy. A host `manual_review` mode also prevents subscriber profiles or scoped rules from raising execution to `auto_send_low_risk`.
+Session overrides cannot raise autonomy beyond the configured policy mode. A host `manual_review` mode still prevents a session request from raising execution to `auto_send_low_risk`.
 
 ## YOLO profile
 

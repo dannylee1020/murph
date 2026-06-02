@@ -143,6 +143,6 @@ describe('murph start port preflight', () => {
     });
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('Murph Personal does not include Team subscriber admin commands');
+    expect(result.stderr).toContain('Murph Personal does not include the Team admin dashboard.');
   });
 });

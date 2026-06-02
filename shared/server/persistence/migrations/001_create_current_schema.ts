@@ -79,7 +79,7 @@ export const createCurrentSchema: Migration = {
 	      CREATE TABLE IF NOT EXISTS autopilot_sessions (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL,
-        owner_user_id TEXT NOT NULL,
+        owner_user_id TEXT,
         title TEXT NOT NULL,
         mode TEXT NOT NULL,
         status TEXT NOT NULL,
@@ -99,7 +99,7 @@ export const createCurrentSchema: Migration = {
         session_id TEXT,
         channel_id TEXT NOT NULL,
         thread_ts TEXT NOT NULL,
-        target_user_id TEXT NOT NULL,
+        target_user_id TEXT,
         last_message_ts TEXT NOT NULL,
         continuity_case TEXT NOT NULL,
         summary TEXT,
@@ -114,7 +114,7 @@ export const createCurrentSchema: Migration = {
         session_id TEXT,
         channel_id TEXT NOT NULL,
         thread_ts TEXT NOT NULL,
-        target_user_id TEXT NOT NULL,
+        target_user_id TEXT,
         action_type TEXT NOT NULL,
         disposition TEXT NOT NULL,
         message TEXT NOT NULL,
@@ -147,7 +147,7 @@ export const createCurrentSchema: Migration = {
         task_id TEXT NOT NULL,
         channel_id TEXT NOT NULL,
         thread_ts TEXT NOT NULL,
-        target_user_id TEXT NOT NULL,
+        target_user_id TEXT,
         status TEXT NOT NULL,
         started_at TEXT NOT NULL,
         completed_at TEXT
@@ -169,7 +169,7 @@ export const createCurrentSchema: Migration = {
         session_id TEXT,
         channel_id TEXT NOT NULL,
         thread_ts TEXT NOT NULL,
-        target_user_id TEXT NOT NULL,
+        target_user_id TEXT,
         due_at TEXT NOT NULL,
         status TEXT NOT NULL
       );

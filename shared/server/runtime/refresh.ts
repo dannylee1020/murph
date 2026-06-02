@@ -359,7 +359,7 @@ async function patchSession(
   }
 ): Promise<AutopilotSession | undefined> {
   const store = getStore();
-  const policy = input.session.policyBinding === 'config'
+  const policy = input.session.policyBinding === 'config' && input.session.ownerUserId
     ? await resolveSubscriberPolicy({
         workspaceId: input.session.workspaceId,
         ownerUserId: input.session.ownerUserId

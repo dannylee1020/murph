@@ -47,8 +47,7 @@ import {
     formatSessionStatus,
     formatRelative,
     formatDateTime,
-    formatExactIso,
-    titleCase
+    formatExactIso
 } from '../shared/format';
 import { ApiError, deleteJson, getJson, postJson, putJson } from '../shared/api';
 import type {
@@ -82,8 +81,7 @@ import type {
     ChannelActionItem,
     SessionCreateResponse,
     PolicyProfilesPayload,
-    PolicyConfigPayload,
-    SubscriptionsPayload
+    PolicyConfigPayload
 } from '../shared/types';
 
 import {
@@ -299,12 +297,6 @@ export async function renderSettings(): Promise<void> {
     const runtimeLabel = distributionName(setup);
     const settingsLabel = isTeamDistribution ? 'Admin' : 'Settings';
     const setupMode: BotRole = isTeamDistribution ? 'channel' : 'personal';
-    const subscriptionsPayload: SubscriptionsPayload =
-        isTeamDistribution && selectedWorkspaceId
-        ? await getJson<SubscriptionsPayload>(
-              `/api/gateway/subscriptions?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`,
-          )
-        : { subscriptions: [] };
     const slackRoleStatus = providerRoleStatus(setup, 'slack', setupMode);
     const discordRoleStatus = providerRoleStatus(setup, 'discord', setupMode);
     const slackConnected = providerRoleInstalled(setup, 'slack', setupMode);
@@ -336,36 +328,6 @@ export async function renderSettings(): Promise<void> {
             : discordConfigured
               ? 'Ready to install'
               : 'Missing app settings';
-
-    const subscriberSection = isTeamDistribution
-        ? `
-    <section class="integration-section">
-      <div class="section-head">
-        <h2>Subscribers</h2>
-        <span class="section-meta">${subscriptionsPayload.subscriptions.length} users</span>
-      </div>
-      <p class="section-copy">Generate scoped dashboard links for people covered by this shared Murph host.</p>
-      ${
-          subscriptionsPayload.subscriptions.length === 0
-              ? '<article class="panel"><p class="empty">Subscriber rows appear after owner binding or channel setup.</p></article>'
-              : `<div class="grid two">${subscriptionsPayload.subscriptions.map((subscription) => `
-                  <article class="panel">
-                    <h3>${escapeHtml(subscription.displayName || subscription.externalUserId)}</h3>
-                    <dl class="details">
-                      <div><dt>Status</dt><dd>${escapeHtml(titleCase(subscription.status))}</dd></div>
-                      <div><dt>Scope</dt><dd>${escapeHtml(subscription.channelScopeMode === 'all_accessible' ? 'All accessible channels' : `${subscription.channelScope.length} selected channels`)}</dd></div>
-                      <div><dt>Policy</dt><dd>${escapeHtml(subscription.policyProfileName ?? 'Host default')} · ${escapeHtml(subscription.policyMode ?? 'Host mode')}</dd></div>
-                      <div><dt>Dashboard</dt><dd>${subscription.dashboardAccessEnabled ? 'Enabled' : 'No link issued'}</dd></div>
-                    </dl>
-                    <div class="actions">
-                      <button type="button" data-dashboard-link-user="${escapeHtml(subscription.externalUserId)}">${subscription.dashboardAccessEnabled ? 'Regenerate link' : 'Create link'}</button>
-                      <button type="button" class="secondary" data-dashboard-revoke-user="${escapeHtml(subscription.externalUserId)}" ${subscription.dashboardAccessEnabled ? '' : 'disabled'}>Revoke</button>
-                    </div>
-                  </article>
-                `).join('')}</div>`
-      }
-    </section>`
-        : '';
 
     shell(`
     ${settingsNotice}
@@ -462,8 +424,6 @@ export async function renderSettings(): Promise<void> {
       </article>
     </section>
 
-    ${subscriberSection}
-
     <section class="integration-section">
       <div class="section-head">
         <h2>Integrations</h2>
@@ -505,39 +465,6 @@ export async function renderSettings(): Promise<void> {
             });
             setDashboardNotice('Policy saved.');
             await renderSettings();
-        },
-    );
-
-    app.querySelectorAll<HTMLButtonElement>('[data-dashboard-link-user]').forEach(
-        (button) => {
-            button.addEventListener('click', async () => {
-                if (!selectedWorkspaceId) return;
-                button.disabled = true;
-                const payload = await postJson<{ ok: boolean; url: string }>(
-                    `/api/gateway/subscriptions/${encodeURIComponent(button.dataset.dashboardLinkUser ?? '')}/dashboard-link?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`,
-                );
-                try {
-                    await navigator.clipboard.writeText(payload.url);
-                    setDashboardNotice('Subscriber dashboard link copied.');
-                } catch {
-                    setDashboardNotice(`Subscriber dashboard link: ${payload.url}`);
-                }
-                await renderSettings();
-            });
-        },
-    );
-
-    app.querySelectorAll<HTMLButtonElement>('[data-dashboard-revoke-user]').forEach(
-        (button) => {
-            button.addEventListener('click', async () => {
-                if (!selectedWorkspaceId) return;
-                button.disabled = true;
-                await deleteJson(
-                    `/api/gateway/subscriptions/${encodeURIComponent(button.dataset.dashboardRevokeUser ?? '')}/dashboard-link?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`,
-                );
-                setDashboardNotice('Subscriber dashboard access revoked.');
-                await renderSettings();
-            });
         },
     );
 

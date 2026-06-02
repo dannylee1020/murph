@@ -19,7 +19,6 @@ import {
   normalizePolicyExecutionMode,
   resolveEffectivePolicy
 } from '#shared/server/runtime/policy-compiler';
-import { resolveSubscriberPolicy } from '#shared/server/runtime/subscriber-policy';
 import { loadSkills } from '#shared/server/skills/loader';
 import { getStore } from '#shared/server/persistence/store';
 import { getSlackService } from '#shared/server/channels/slack/service';
@@ -27,21 +26,12 @@ import { requireMatchingSetupOwner } from '#shared/server/setup/owner-identity';
 import { getToolRegistry } from '#shared/server/capabilities/tool-registry';
 import { readMurphConfig, updateMurphPolicyConfig } from '#shared/server/setup/config-file';
 import { refreshRuntimeState } from '#shared/server/runtime/refresh';
-import {
-  issueSubscriberDashboardToken,
-  revokeSubscriberDashboardToken,
-  resolvePublicAppUrl
-} from '#shared/server/auth/dashboard-access';
 import type {
-  AgentUser,
   ChannelDisplay,
   ChannelEnsureMemberResult,
-  ChannelSetupMember,
   PolicyExecutionMode,
   SessionMode,
-  Workspace,
-  WorkspaceSubscriptionChannelScopeMode,
-  WorkspaceSubscriptionStatus
+  Workspace
 } from '#shared/types';
 
 const gateway = getGateway();
@@ -81,8 +71,6 @@ type SessionCreateInput = {
 
 type PreparedSessionTarget = {
   workspace: Workspace;
-  ownerUserId: string;
-  ownerMember: ChannelSetupMember;
   channelScope: string[];
   autoJoined: Array<{ id: string; name?: string }>;
 };
@@ -167,20 +155,6 @@ function withChannelDisplay<T extends { workspaceId: string; channelId: string; 
   };
 }
 
-function normalizeSubscriptionStatus(value: unknown): WorkspaceSubscriptionStatus | undefined {
-  return value === 'active' || value === 'paused' ? value : undefined;
-}
-
-function normalizeChannelScopeMode(value: unknown): WorkspaceSubscriptionChannelScopeMode | undefined {
-  return value === 'selected' || value === 'all_accessible' ? value : undefined;
-}
-
-function channelScopeFromBody(value: unknown): string[] | undefined {
-  return Array.isArray(value)
-    ? [...new Set(value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean))]
-    : undefined;
-}
-
 function updateConfirmedChannels(
   workspace: Workspace,
   channelScope: string[],
@@ -205,21 +179,16 @@ function updateConfirmedChannels(
   store.upsertWorkspaceMemory(workspaceMemory);
 }
 
-function resolveSessionEndsAt(input: SessionCreateInput, user: AgentUser): string {
+function resolveSessionEndsAt(input: SessionCreateInput, user?: { schedule: { timezone: string; workdayStartHour: number } }): string {
   if (input.stopLocalTime || input.timezone) {
-    const timezone = input.timezone?.trim() || user.schedule.timezone;
+    const timezone = input.timezone?.trim() || user?.schedule.timezone || 'America/Los_Angeles';
     const stopLocalTime =
-      input.stopLocalTime?.trim() || `${String(user.schedule.workdayStartHour).padStart(2, '0')}:00`;
+      input.stopLocalTime?.trim() || `${String(user?.schedule.workdayStartHour ?? 9).padStart(2, '0')}:00`;
     parseLocalTime(stopLocalTime);
     return nextDailyRun(stopLocalTime, timezone).toISOString();
   }
 
-  if (input.durationHours !== undefined) {
-    return new Date(Date.now() + Math.max(1, input.durationHours) * 60 * 60 * 1000).toISOString();
-  }
-
-  const stopLocalTime = `${String(user.schedule.workdayStartHour).padStart(2, '0')}:00`;
-  return nextDailyRun(stopLocalTime, user.schedule.timezone).toISOString();
+  return new Date(Date.now() + Math.max(1, input.durationHours ?? 12) * 60 * 60 * 1000).toISOString();
 }
 
 async function prepareSessionTarget(input: SessionCreateInput): Promise<
@@ -240,47 +209,9 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
     };
   }
 
-  const ownerUserId = input.ownerUserId;
-  if (!ownerUserId) {
-    return { ok: false, status: 400, payload: { ok: false, error: 'owner_required', workspace: workspaceDescriptor(workspace) } };
-  }
-
   const store = getStore();
-  const existingSubscription = store.getWorkspaceSubscription(workspace.id, ownerUserId);
-  if (existingSubscription?.status !== 'active') {
-    return {
-      ok: false,
-      status: 403,
-      payload: {
-        ok: false,
-        error: 'subscription_required',
-        workspace: workspaceDescriptor(workspace),
-        ownerUserId
-      }
-    };
-  }
-
   const requestedChannelScope = input.channelScope ?? [];
-  if (!store.subscriptionAllowsChannelScope(existingSubscription, requestedChannelScope)) {
-    return {
-      ok: false,
-      status: 403,
-      payload: {
-        ok: false,
-        error: 'subscription_channel_scope_mismatch',
-        workspace: workspaceDescriptor(workspace),
-        ownerUserId,
-        channelScope: requestedChannelScope
-      }
-    };
-  }
-
-  const ownerMember: ChannelSetupMember = {
-    id: existingSubscription.externalUserId,
-    displayName: existingSubscription.displayName || existingSubscription.externalUserId
-  };
-
-  const channelScope = input.channelScope ?? [];
+  const channelScope = requestedChannelScope;
   const membershipResults: ChannelEnsureMemberResult[] = [];
 
   for (const channelId of channelScope) {
@@ -337,8 +268,6 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
     ok: true,
     target: {
       workspace,
-      ownerUserId,
-      ownerMember,
       channelScope,
       autoJoined
     }
@@ -347,29 +276,25 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
 
 async function createPreparedSession(target: PreparedSessionTarget, input: SessionCreateInput) {
   const store = getStore();
-  const user = store.upsertUser({
-    workspaceId: target.workspace.id,
-    externalUserId: target.ownerUserId,
-    displayName: target.ownerMember.displayName || target.ownerUserId
-  });
-  const policy = await resolveSubscriberPolicy({
-    workspaceId: target.workspace.id,
-    ownerUserId: target.ownerUserId,
-    requestedMode: input.mode
+  const policyPayload = await policyConfigPayload();
+  const mode = resolveSessionMode(input.mode, policyPayload.mode);
+  const policy = buildUserPolicyProfile({
+    mode,
+    profileName: policyPayload.selectedProfileName,
+    compiled: policyPayload.compiled,
+    source: 'profile'
   });
 
   const session = store.createSession({
     workspaceId: target.workspace.id,
-    ownerUserId: target.ownerUserId,
-    title: input.title?.trim() || 'Overnight autopilot',
-    mode: policy.mode,
+    title: input.title?.trim() || 'Team agent',
+    mode,
     channelScope: target.channelScope,
-    policyProfileName: policy.userPolicy.profileName,
-    policyOverrideRaw: policy.userPolicy.overrideRaw,
-    policy: policy.userPolicy,
+    policyProfileName: policyPayload.selectedProfileName,
+    policy,
     policyBinding: input.mode ? 'explicit' : 'config',
     channelScopeBinding: input.channelScope ? 'explicit' : 'setup_defaults',
-    endsAt: resolveSessionEndsAt(input, user)
+    endsAt: resolveSessionEndsAt(input)
   });
   emitControlPlaneEvent({ type: 'session.updated', session });
   gateway.reconcileSessionExpirations();
@@ -672,281 +597,6 @@ export const gatewayRoutes: Route[] = [
       ).map(withChannelDisplay)
     });
   }),
-  route('GET', '/api/gateway/subscriptions', ({ res, url }) => {
-    const workspaceId = url.searchParams.get('workspaceId') ?? undefined;
-    const status = normalizeSubscriptionStatus(url.searchParams.get('status'));
-    sendJson(res, {
-      subscriptions: getStore().listWorkspaceSubscriptions(workspaceId, status).map((subscription) => ({
-        ...subscription,
-        dashboardAccessEnabled: Boolean(subscription.dashboardTokenHash),
-        dashboardTokenHash: undefined
-      }))
-    });
-  }),
-  route('POST', '/api/gateway/subscriptions/:userId/dashboard-link', ({ req, res, url, params }) => {
-    const workspace = resolveRequestWorkspace(url.searchParams.get('workspaceId') ?? undefined);
-    if (!workspace) {
-      sendJson(res, {
-        ok: false,
-        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
-      }, 400);
-      return;
-    }
-    try {
-      const result = issueSubscriberDashboardToken(
-        workspace.id,
-        params.userId,
-        resolvePublicAppUrl(req, url)
-      );
-      sendJson(res, {
-        ok: true,
-        url: result.url,
-        subscription: {
-          ...result.subscription,
-          dashboardAccessEnabled: true,
-          dashboardTokenHash: undefined
-        }
-      });
-    } catch (error) {
-      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'dashboard_link_failed' }, 404);
-    }
-  }),
-  route('DELETE', '/api/gateway/subscriptions/:userId/dashboard-link', ({ res, url, params }) => {
-    const workspace = resolveRequestWorkspace(url.searchParams.get('workspaceId') ?? undefined);
-    if (!workspace) {
-      sendJson(res, {
-        ok: false,
-        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
-      }, 400);
-      return;
-    }
-    try {
-      const subscription = revokeSubscriberDashboardToken(workspace.id, params.userId);
-      sendJson(res, {
-        ok: true,
-        subscription: {
-          ...subscription,
-          dashboardAccessEnabled: false,
-          dashboardTokenHash: undefined
-        }
-      });
-    } catch (error) {
-      sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'dashboard_revoke_failed' }, 404);
-    }
-  }),
-  route('PUT', '/api/gateway/subscriptions/:userId', async ({ req, res, params }) => {
-    const body = await readJson<{
-      workspaceId?: string;
-      displayName?: string;
-      status?: unknown;
-      channelScopeMode?: unknown;
-      channelScope?: unknown;
-      timezone?: string;
-      workdayStartHour?: number;
-      workdayEndHour?: number;
-      policyProfileName?: unknown;
-      policyMode?: unknown;
-    }>(req);
-    const store = getStore();
-    const workspace = resolveRequestWorkspace(body.workspaceId);
-
-    if (!workspace) {
-      sendJson(res, {
-        ok: false,
-        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
-      }, 400);
-      return;
-    }
-
-    let member: ChannelSetupMember;
-    try {
-      member = await getChannelRegistry().getMember(workspace, params.userId);
-    } catch (error) {
-      sendJson(res, {
-        ok: false,
-        error: 'subscriber_not_found',
-        workspace: workspaceDescriptor(workspace),
-        ownerUserId: params.userId,
-        message: error instanceof Error ? error.message : 'Subscriber user was not found in this workspace'
-      }, 400);
-      return;
-    }
-
-    const existingSubscription = store.getWorkspaceSubscription(workspace.id, params.userId);
-    const hasPolicyProfileName = Object.prototype.hasOwnProperty.call(body, 'policyProfileName');
-    const hasPolicyMode = Object.prototype.hasOwnProperty.call(body, 'policyMode');
-    const profileName = typeof body.policyProfileName === 'string'
-      ? normalizePolicyProfileName(body.policyProfileName)
-      : undefined;
-    const shouldClearProfile = hasPolicyProfileName &&
-      (body.policyProfileName === null || body.policyProfileName === '');
-    const policyMode = body.policyMode === undefined || body.policyMode === null || body.policyMode === ''
-      ? undefined
-      : normalizePolicyExecutionMode(body.policyMode);
-    const shouldClearPolicyMode = hasPolicyMode && (body.policyMode === null || body.policyMode === '');
-    if (hasPolicyProfileName && !profileName && !shouldClearProfile) {
-      sendJson(res, { ok: false, error: 'invalid_policy_profile' }, 400);
-      return;
-    }
-    if (profileName) {
-      const profiles = await loadPolicyProfiles();
-      if (!profiles.some((profile) => profile.name === profileName)) {
-        sendJson(res, { ok: false, error: 'unknown_policy_profile' }, 400);
-        return;
-      }
-    }
-    if (hasPolicyMode && !policyMode && !shouldClearPolicyMode) {
-      sendJson(res, { ok: false, error: 'invalid_policy_mode' }, 400);
-      return;
-    }
-    const channelScopeMode =
-      normalizeChannelScopeMode(body.channelScopeMode) ?? existingSubscription?.channelScopeMode ?? 'all_accessible';
-    const channelScope = channelScopeMode === 'all_accessible'
-      ? []
-      : channelScopeFromBody(body.channelScope) ?? existingSubscription?.channelScope ?? [];
-    if (channelScopeMode === 'selected' && channelScope.length === 0) {
-      sendJson(res, {
-        ok: false,
-        error: 'subscription_channel_scope_required',
-        workspace: workspaceDescriptor(workspace),
-        ownerUserId: params.userId
-      }, 400);
-      return;
-    }
-    const membershipResults: ChannelEnsureMemberResult[] = [];
-
-    if (channelScopeMode === 'selected') {
-      for (const channelId of channelScope) {
-        membershipResults.push(await getChannelRegistry().ensureMember(workspace, workspace.provider, channelId));
-      }
-    }
-
-    const autoJoined = membershipResults
-      .filter((result) => result.status === 'joined')
-      .map((result) => ({ id: result.channelId, name: result.name }));
-    const requiresInvitation = membershipResults
-      .filter((result) => result.status === 'requires_invitation')
-      .map((result) => ({
-        id: result.channelId,
-        name: result.name,
-        action: inviteAction({ id: result.channelId, name: result.name })
-      }));
-    const reinstallRequired = membershipResults.some((result) => result.status === 'reinstall_required');
-    const reinstallRequiredChannels = membershipResults
-      .filter((result) => result.status === 'reinstall_required')
-      .map((result) => ({
-        id: result.channelId,
-        name: result.name,
-        reason: result.reason ?? 'Slack app scopes need to be updated'
-      }));
-    const errors = membershipResults
-      .filter((result) => result.status === 'error')
-      .map((result) => ({
-        id: result.channelId,
-        name: result.name,
-        reason: result.reason ?? 'Channel membership check failed'
-      }));
-
-    if (requiresInvitation.length > 0 || reinstallRequired || errors.length > 0) {
-      updateConfirmedChannels(workspace, channelScope, membershipResults);
-      sendJson(res, {
-        ok: false,
-        error: 'channels_require_action',
-        workspace: workspaceDescriptor(workspace),
-        autoJoined,
-        requiresInvitation,
-        reinstallRequired,
-        reinstallRequiredChannels,
-        errors
-      }, 409);
-      return;
-    }
-
-    updateConfirmedChannels(workspace, channelScope, membershipResults);
-    const user = store.upsertUser({
-      workspaceId: workspace.id,
-      externalUserId: params.userId,
-      displayName: body.displayName ?? member.displayName ?? params.userId,
-      timezone: body.timezone,
-      workdayStartHour: body.workdayStartHour,
-      workdayEndHour: body.workdayEndHour
-    });
-    const subscription = store.ensureWorkspaceSubscriptionForUser(user, {
-      provider: workspace.provider,
-      status: normalizeSubscriptionStatus(body.status) ?? existingSubscription?.status ?? 'active',
-      channelScopeMode,
-      channelScope,
-      policyProfileName: hasPolicyProfileName
-        ? profileName ?? null
-        : existingSubscription?.policyProfileName,
-      policyMode: hasPolicyMode
-        ? policyMode ?? null
-        : existingSubscription?.policyMode
-    });
-
-    const policyChanged =
-      subscription.policyProfileName !== existingSubscription?.policyProfileName ||
-      subscription.policyMode !== existingSubscription?.policyMode;
-    const refresh = policyChanged
-      ? await refreshRuntimeState({
-          reason: 'subscription_policy_updated',
-          workspaceIds: [workspace.id],
-          deferIfRunActive: true
-        })
-      : undefined;
-
-    sendJson(res, { ok: true, subscription, autoJoined, refresh }, 200);
-  }),
-  route('PUT', '/api/gateway/users/:userId/schedule', async ({ req, res, params }) => {
-    const body = await readJson<{
-      workspaceId?: string;
-      displayName?: string;
-      timezone?: string;
-      workdayStartHour?: number;
-      workdayEndHour?: number;
-    }>(req);
-    const store = getStore();
-    const workspace = resolveRequestWorkspace(body.workspaceId);
-
-    if (!workspace) {
-      sendJson(res, {
-        ok: false,
-        error: getSlackService().hasUnreadableInstall() ? 'slack_reconnect_required' : 'workspace_not_installed'
-      }, 400);
-      return;
-    }
-
-    const existingSubscription = store.getWorkspaceSubscription(workspace.id, params.userId);
-    if (existingSubscription?.status !== 'active') {
-      sendJson(res, {
-        ok: false,
-        error: 'subscription_required',
-        workspace: workspaceDescriptor(workspace),
-        ownerUserId: params.userId
-      }, 403);
-      return;
-    }
-
-    const user = store.upsertUser({
-      workspaceId: workspace.id,
-      externalUserId: params.userId,
-      displayName: body.displayName ?? params.userId,
-      timezone: body.timezone,
-      workdayStartHour: body.workdayStartHour,
-      workdayEndHour: body.workdayEndHour
-    });
-    if (existingSubscription) {
-      store.ensureWorkspaceSubscriptionForUser(user, {
-        provider: workspace.provider,
-        status: existingSubscription.status,
-        channelScopeMode: existingSubscription.channelScopeMode,
-        channelScope: existingSubscription.channelScope,
-        policyProfileName: existingSubscription.policyProfileName,
-        dashboardTokenHash: existingSubscription.dashboardTokenHash
-      });
-    }
-    sendJson(res, { ok: true, user });
-  }),
   route('GET', '/api/gateway/recurring-jobs', ({ res, url }) => {
     sendJson(res, {
       jobs: getStore().listRecurringJobs(url.searchParams.get('sessionId') ?? undefined)
@@ -977,21 +627,23 @@ export const gatewayRoutes: Route[] = [
     }
 
     const ownerUserId = body.ownerUserId;
-    if (!body.channelId || !ownerUserId) {
-      sendJson(res, { ok: false, error: 'channel_and_owner_required' }, 400);
+    if (!body.channelId) {
+      sendJson(res, { ok: false, error: 'channel_required' }, 400);
       return;
     }
 
-    const ownerCheck = requireMatchingSetupOwner(workspace, ownerUserId);
-    if (!ownerCheck.ok) {
-      sendJson(res, {
-        ok: false,
-        error: ownerCheck.error,
-        workspace: workspaceDescriptor(workspace),
-        ownerUserId,
-        owner: ownerCheck.owner
-      }, 400);
-      return;
+    if (ownerUserId) {
+      const ownerCheck = requireMatchingSetupOwner(workspace, ownerUserId);
+      if (!ownerCheck.ok) {
+        sendJson(res, {
+          ok: false,
+          error: ownerCheck.error,
+          workspace: workspaceDescriptor(workspace),
+          ownerUserId,
+          owner: ownerCheck.owner
+        }, 400);
+        return;
+      }
     }
 
     const localTime = body.localTime ?? '08:30';
@@ -1011,7 +663,7 @@ export const gatewayRoutes: Route[] = [
       timezone,
       payload: {
         channelId: body.channelId,
-        ownerUserId
+        ...(ownerUserId ? { ownerUserId } : {})
       },
       nextRunAt: nextDailyRun(localTime, timezone).toISOString()
     });

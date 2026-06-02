@@ -12,6 +12,8 @@ describe('personal bot handoff', () => {
     process.env.MURPH_CONFIG_PATH = join(root, 'config.yaml');
     process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
+    process.env.SLACK_PERSONAL_APP_ID = 'ASLACKPERSONAL';
+    process.env.DISCORD_PERSONAL_CLIENT_ID = 'DISCORDPERSONAL';
   });
 
   it('opens the selected Slack owner personal bot DM for the sender', async () => {
@@ -39,6 +41,7 @@ describe('personal bot handoff', () => {
       workspaceId: workspace.id,
       externalWorkspaceId: workspace.externalWorkspaceId,
       role: 'personal',
+      appId: 'ASLACKPERSONAL',
       botUserId: 'UPERSONAL',
       representedUserId: 'UOWNER'
     });
@@ -93,6 +96,7 @@ describe('personal bot handoff', () => {
       workspaceId: workspace.id,
       externalWorkspaceId: workspace.externalWorkspaceId,
       role: 'personal',
+      appId: 'DISCORDPERSONAL',
       botUserId: '999',
       representedUserId: 'owner'
     });

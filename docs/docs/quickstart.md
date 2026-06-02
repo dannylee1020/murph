@@ -31,7 +31,7 @@ Choose a product when installing, then run setup on that host:
 murph setup
 ```
 
-In a Team deployment, `murph setup` configures shared-channel coverage, subscribers, watched channels, schedule, and policy. In a Personal deployment, it configures owner-DM coverage for the local user and private local data sources.
+In a Team deployment, `murph setup` configures shared-channel coverage, team integrations, session scope, and policy. In a Personal deployment, it configures owner-DM coverage for the local user and private local data sources.
 
 ## 3. Start
 

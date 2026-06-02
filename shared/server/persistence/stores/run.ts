@@ -14,7 +14,7 @@ export interface CreateAgentRunInput {
   taskId: string;
   channelId: string;
   threadTs: string;
-  targetUserId: string;
+  targetUserId?: string;
 }
 
 export interface AppendAgentRunEventInput {
@@ -30,7 +30,7 @@ interface RunRow {
   task_id: string;
   channel_id: string;
   thread_ts: string;
-  target_user_id: string;
+  target_user_id?: string | null;
   status: AgentRunStatus;
   started_at: string;
   completed_at?: string;
@@ -44,7 +44,7 @@ function mapRun(row: RunRow): AgentRunRecord {
     taskId: row.task_id,
     channelId: row.channel_id,
     threadTs: row.thread_ts,
-    targetUserId: row.target_user_id,
+    targetUserId: row.target_user_id ?? undefined,
     status: row.status,
     startedAt: row.started_at,
     completedAt: row.completed_at
@@ -75,7 +75,7 @@ export function createAgentRun(db: Db, input: CreateAgentRunInput): AgentRunReco
     run.taskId,
     run.channelId,
     run.threadTs,
-    run.targetUserId,
+    run.targetUserId ?? null,
     run.status,
     run.startedAt,
     null

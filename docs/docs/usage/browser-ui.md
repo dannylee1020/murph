@@ -28,7 +28,7 @@ If `5173` is occupied, stop the other process or choose a port intentionally wit
 
 ## Setup wizard
 
-Use the setup wizard to configure the AI provider, Slack or Discord connection, OAuth owner identity, schedule, and policy profile. Murph Team also asks for watched channels. Murph Personal is fixed to owner-DM coverage and skips subscriber and shared-channel controls.
+Use the setup wizard to configure the AI provider, Slack or Discord connection, team channel defaults, and policy profile. Murph Personal is fixed to owner-DM coverage and private local sources.
 
 Changes made through setup refresh active config-bound sessions automatically. If a request is already running, Murph applies the refresh at the next run boundary.
 
@@ -52,16 +52,8 @@ Use triage after a session to review what Murph sent, queued, skipped, or failed
 
 Use review when policy queues a reply or a session needs human approval before sending.
 
-## Subscriber dashboards
+## Admin dashboard
 
-In Murph Team, the operator can create a scoped dashboard link for each subscriber from the admin settings page. The link opens:
+Murph Team has one admin dashboard for team members who operate the shared runtime. Use it to configure integrations, policy, sessions, review, triage, and runtime monitoring.
 
-```text
-http://<runtime-host>/me?token=...
-```
-
-Subscriber links identify the subscriber for `/api/me/*` APIs and are scoped to that subscriber's workspace/user binding. Subscribers can inspect their own sessions, queue, triage, runs, and policy settings, but they do not receive operator access.
-
-Regenerating a subscriber link replaces the previous token. Revoking a link disables subscriber dashboard access until the operator creates a new one.
-
-Murph Personal is single-user and does not expose `/api/me/*` subscriber dashboards.
+Murph Team does not expose per-user `/me` dashboards or member dashboard links. Keep the admin UI behind the host boundary you trust, such as localhost, LAN, VPN, firewall, or a reverse proxy.

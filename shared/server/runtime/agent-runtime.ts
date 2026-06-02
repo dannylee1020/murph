@@ -190,21 +190,23 @@ export class AgentRuntime {
       console.warn('[runtime] failed to fetch channel thread:', error instanceof Error ? error.message : error);
       return [];
     });
-    const userMemoryPromise = this.tools.execute<{ workspaceId: string; userId: string }, ContextAssembly['memory']['user']>(
-      'user.get_preferences',
-      {
-        workspaceId: workspace.id,
-        userId: task.targetUserId
-      },
-      { workspace, task }
-    );
+    const userMemoryPromise = task.targetUserId
+      ? this.tools.execute<{ workspaceId: string; userId: string }, ContextAssembly['memory']['user']>(
+          'user.get_preferences',
+          {
+            workspaceId: workspace.id,
+            userId: task.targetUserId
+          },
+          { workspace, task }
+        )
+      : Promise.resolve(undefined);
     const workspaceMemoryPromise = this.tools.execute<{ workspaceId: string }, ContextAssembly['memory']['workspace']>(
       'memory.workspace.read',
       { workspaceId: workspace.id },
       { workspace, task }
     );
     const threadMemoryPromise = this.tools.execute<
-      { workspaceId: string; channelId: string; threadTs: string; targetUserId: string },
+      { workspaceId: string; channelId: string; threadTs: string; targetUserId?: string },
       ContextAssembly['memory']['thread']
     >(
       'memory.thread.read',
@@ -268,7 +270,7 @@ export class AgentRuntime {
         participants: inferParticipants(resolvedMessages)
       },
       memory: {
-        user: userMemory ?? this.memory.getUserMemory(workspace.id, task.targetUserId),
+        user: userMemory ?? (task.targetUserId ? this.memory.getUserMemory(workspace.id, task.targetUserId) : undefined),
         workspace: workspaceMemory,
         thread: threadMemory
       },
@@ -655,7 +657,7 @@ export class AgentRuntime {
       return {
         ...current,
         workspaceId: context.workspaceId,
-        userId: context.targetUserId
+        ...(context.targetUserId ? { userId: context.targetUserId } : {})
       };
     }
 
@@ -672,7 +674,7 @@ export class AgentRuntime {
         workspaceId: context.workspaceId,
         channelId: context.thread.ref.channelId,
         threadTs: context.thread.ref.threadTs,
-        targetUserId: context.targetUserId
+        ...(context.targetUserId ? { targetUserId: context.targetUserId } : {})
       };
     }
 

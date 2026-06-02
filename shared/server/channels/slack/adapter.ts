@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getStore } from '#shared/server/persistence/store';
 import { getSlackService } from '#shared/server/channels/slack/service';
 import { resolvePersonalDirectTarget, type PersonalDirectIgnoredReason } from '#shared/server/channels/personal-routing';
-import type { AutopilotSession, ChannelAdapter, ChannelThreadRef, ContinuityTask, WorkspaceSubscription } from '#shared/types';
+import type { AutopilotSession, ChannelAdapter, ChannelThreadRef, ContinuityTask } from '#shared/types';
 
 export type SlackIgnoredReason =
   | 'unsupported_event_subtype'
@@ -12,6 +12,8 @@ export type SlackIgnoredReason =
   | 'missing_channel'
   | 'missing_thread_ts'
   | 'no_mentioned_session_owner'
+  | 'no_active_team_session'
+  | 'bot_not_mentioned'
   | 'ambiguous_session_target'
   | 'channel_bot_direct_message'
   | 'personal_bot_channel_message'
@@ -50,22 +52,8 @@ function isScopedToChannel(session: AutopilotSession, channelId: string): boolea
   return session.channelScope.length === 0 || session.channelScope.includes(channelId);
 }
 
-function activeSessionForUser(sessions: AutopilotSession[], userId: string | undefined): AutopilotSession | undefined {
-  return userId ? sessions.find((session) => session.ownerUserId === userId) : undefined;
-}
-
-function filterSubscribedSessions(
-  sessions: AutopilotSession[],
-  subscribedUserIds: Set<string>
-): AutopilotSession[] {
-  return sessions.filter((session) => subscribedUserIds.has(session.ownerUserId));
-}
-
-function subscriptionAllowsChannel(
-  subscription: WorkspaceSubscription,
-  channelId: string
-): boolean {
-  return subscription.channelScopeMode === 'all_accessible' || subscription.channelScope.includes(channelId);
+function activeSessionById(sessions: AutopilotSession[], sessionId: string | undefined): AutopilotSession | undefined {
+  return sessionId ? sessions.find((session) => session.id === sessionId) : undefined;
 }
 
 export function normalizeSlackEvent(
@@ -174,27 +162,20 @@ export function normalizeSlackEvent(
     return { ignoredReason: 'personal_bot_channel_message' };
   }
 
-  const scopedSessions = store.listActiveSessions(workspace.id).filter((session) => isScopedToChannel(session, channelId));
-  const subscriptions = store.listWorkspaceSubscriptions(workspace.id);
-  const subscribedUserIds = new Set(
-    subscriptions
-      .filter((subscription) => subscription.status === 'active' && subscriptionAllowsChannel(subscription, channelId))
-      .map((subscription) => subscription.externalUserId)
-  );
-  const eligibleSessions = filterSubscribedSessions(scopedSessions, subscribedUserIds);
-  const ignoredMentionIds = new Set([actorUserId, workspace.botUserId].filter((id): id is string => Boolean(id)));
-  const mentionedUsers = parseMentionedUsers(text).filter((userId) => !ignoredMentionIds.has(userId));
-  const mentionedSessionTarget = mentionedUsers.find((userId) => activeSessionForUser(eligibleSessions, userId));
-  const storedTarget = store.getThreadState(workspace.id, channelId, threadTs)?.targetUserId;
-  const storedSessionTarget = activeSessionForUser(eligibleSessions, storedTarget)?.ownerUserId;
   const botDirected = Boolean(workspace.botUserId && parseMentionedUsers(text).includes(workspace.botUserId));
-  const singleSessionTarget = eligibleSessions.length === 1 ? eligibleSessions[0].ownerUserId : undefined;
-  const fallbackTarget = botDirected ? singleSessionTarget : undefined;
-  const targetUserId = mentionedSessionTarget ?? storedSessionTarget ?? fallbackTarget;
+  const scopedSessions = store.listActiveSessions(workspace.id).filter((session) => (
+    !session.ownerUserId && isScopedToChannel(session, channelId)
+  ));
+  const storedState = store.getThreadState(workspace.id, channelId, threadTs);
+  const storedSession = activeSessionById(scopedSessions, storedState?.sessionId);
+  const session = storedSession ?? (botDirected && scopedSessions.length === 1 ? scopedSessions[0] : undefined);
 
-  if (!targetUserId) {
+  if (!session) {
+    if (!botDirected && !storedSession) {
+      return { ignoredReason: 'bot_not_mentioned' };
+    }
     return {
-      ignoredReason: botDirected && eligibleSessions.length > 1 ? 'ambiguous_session_target' : 'no_mentioned_session_owner'
+      ignoredReason: scopedSessions.length > 1 ? 'ambiguous_session_target' : 'no_active_team_session'
     };
   }
 
@@ -207,9 +188,9 @@ export function normalizeSlackEvent(
       botRole: 'channel',
       botInstallationId: envelope?.botInstallationId,
       thread: { ...buildThreadRef(channelId, threadTs), botRole: 'channel', botInstallationId: envelope?.botInstallationId },
+      sessionId: session.id,
       conversationKind: 'channel',
       triggerMessage: buildTriggerMessage(channelId, threadTs, actorUserId, text),
-      targetUserId,
       actorUserId,
       rawEventId: envelope?.eventId,
       eventType,

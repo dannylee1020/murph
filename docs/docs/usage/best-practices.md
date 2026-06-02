@@ -31,7 +31,7 @@ Check triage after each early session. Triage shows the message, context, tool c
 
 ## Treat Memory As Context
 
-Murph's runtime memory is typed SQLite state scoped to the workspace, subscriber, and thread. Use it for continuity, preferences, and thread context.
+Murph's runtime memory is typed SQLite state scoped to the workspace, session, channel, and thread. Use it for continuity and thread context.
 
 For latest, current, today, status, changed, or source-of-truth questions, rely on live connected sources. Murph should not answer fresh-state questions from stored memory alone.
 

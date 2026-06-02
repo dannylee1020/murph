@@ -21,7 +21,7 @@ export function scheduleReminder(
     reminder.sessionId ?? null,
     reminder.channelId,
     reminder.threadTs,
-    reminder.targetUserId,
+    reminder.targetUserId ?? null,
     reminder.dueAt,
     reminder.status
   );
@@ -43,7 +43,7 @@ export function listDueReminders(db: Db, nowIso: string): ReminderRecord[] {
     session_id?: string;
     channel_id: string;
     thread_ts: string;
-    target_user_id: string;
+    target_user_id?: string | null;
     due_at: string;
     status: ReminderRecord['status'];
   }>;
@@ -54,7 +54,7 @@ export function listDueReminders(db: Db, nowIso: string): ReminderRecord[] {
     sessionId: row.session_id,
     channelId: row.channel_id,
     threadTs: row.thread_ts,
-    targetUserId: row.target_user_id,
+    targetUserId: row.target_user_id ?? undefined,
     dueAt: row.due_at,
     status: row.status
   }));

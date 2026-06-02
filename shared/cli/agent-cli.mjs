@@ -479,9 +479,9 @@ function productContext(setupStatus) {
         murphHome,
         availableCapabilities: personal
             ? ['setup', 'local integrations', 'plugins', 'skills', 'policies', 'credentials']
-            : ['setup', 'team integrations', 'plugins', 'skills', 'policies', 'admin', 'subscribers', 'dashboard links'],
+            : ['setup', 'team integrations', 'plugins', 'skills', 'policies', 'admin dashboard'],
         unavailableCapabilities: personal
-            ? ['team subscriber admin', 'team dashboard links', 'team control-plane operations']
+            ? ['team admin dashboard', 'team control-plane operations']
             : ['personal-local privacy guarantees', 'private-machine data access unless configured as an integration'],
         setupStatus: setupStatus
             ? {
@@ -1308,7 +1308,7 @@ function murphSystemPrompt(sourceEdits) {
         'Your job is to help the local operator set up Murph, debug Murph, build scoped integrations, create skills/connectors, and adjust policy configuration.',
         runtimeContextPrompt(),
         'If a request is valid only for the other Murph product, say it is unsupported in the active runtime and suggest the matching Team or Personal deployment.',
-        'Do not perform Team subscriber/admin/dashboard-link work in Murph Personal. Do not claim Personal local privacy or private-machine data guarantees in Murph Team.',
+        'Do not perform Team admin work in Murph Personal. Do not claim Personal local privacy or private-machine data guarantees in Murph Team.',
         'Use murph_product_context when the active product or product capability boundary is relevant or unclear.',
         'Murph async messenger runtime is separate. Do not present yourself as the async runtime brain.',
         'Built-in Murph Agent skills are Pi skills for this local setup/coding agent. They are separate from Murph runtime skills used by the async messenger runtime.',

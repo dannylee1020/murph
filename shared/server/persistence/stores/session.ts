@@ -13,7 +13,7 @@ import { parseJsonArray, parseJsonObject } from './_shared.js';
 
 export interface SessionInput {
   workspaceId: string;
-  ownerUserId: string;
+  ownerUserId?: string;
   title: string;
   mode: SessionMode;
   channelScope: string[];
@@ -30,7 +30,7 @@ export interface SessionInput {
 interface SessionRow {
   id: string;
   workspace_id: string;
-  owner_user_id: string;
+  owner_user_id?: string | null;
   title: string;
   mode: SessionMode;
   status: SessionStatus;
@@ -80,7 +80,7 @@ function mapSession(row: SessionRow): AutopilotSession {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
-    ownerUserId: row.owner_user_id,
+    ownerUserId: row.owner_user_id ?? undefined,
     title: row.title,
     mode: row.mode,
     status: row.status,
@@ -99,14 +99,10 @@ function mapSession(row: SessionRow): AutopilotSession {
 }
 
 export function createSession(db: Db, input: SessionInput): AutopilotSession {
-  const ownerUserId = input.ownerUserId;
-  if (!ownerUserId) {
-    throw new Error('ownerUserId is required');
-  }
   const session: AutopilotSession = {
     id: randomUUID(),
     workspaceId: input.workspaceId,
-    ownerUserId,
+    ownerUserId: input.ownerUserId,
     title: input.title,
     mode: input.mode,
     status: 'active',
@@ -131,7 +127,7 @@ export function createSession(db: Db, input: SessionInput): AutopilotSession {
   ).run(
     session.id,
     session.workspaceId,
-    session.ownerUserId,
+    session.ownerUserId ?? null,
     session.title,
     session.mode,
     session.status,
@@ -271,12 +267,12 @@ export function expireDueSessions(db: Db, nowIso: string): AutopilotSession[] {
 export function findMatchingSession(
   db: Db,
   workspaceId: string,
-  ownerUserId: string,
+  ownerUserId: string | undefined,
   channelId: string
 ): AutopilotSession | undefined {
   const sessions = listActiveSessions(db, workspaceId).filter(
     (session) =>
-      session.ownerUserId === ownerUserId &&
+      (ownerUserId ? session.ownerUserId === ownerUserId : !session.ownerUserId) &&
       (session.channelScope.length === 0 || session.channelScope.includes(channelId))
   );
 

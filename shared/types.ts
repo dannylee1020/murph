@@ -318,7 +318,7 @@ export interface SkillManifest {
 export interface ContextAssembly {
     workspaceId: string;
     task: ContinuityTask;
-    targetUserId: string;
+    targetUserId?: string;
     thread: {
         ref: ThreadRef;
         latestMessage: string;
@@ -350,7 +350,7 @@ export interface ContinuityTask {
     thread: ThreadRef;
     conversationKind?: 'direct' | 'channel';
     triggerMessage?: ChannelMessage;
-    targetUserId: string;
+    targetUserId?: string;
     actorUserId?: string;
     rawEventId?: string;
     eventType?: string;
@@ -625,7 +625,7 @@ export interface ThreadStateRecord {
     sessionId?: string;
     channelId: string;
     threadTs: string;
-    targetUserId: string;
+    targetUserId?: string;
     lastMessageTs: string;
     continuityCase: ContinuityCase;
     summary?: string;
@@ -639,7 +639,7 @@ export interface ReminderRecord {
     sessionId?: string;
     channelId: string;
     threadTs: string;
-    targetUserId: string;
+    targetUserId?: string;
     dueAt: string;
     status: 'pending' | 'claimed' | 'done';
 }
@@ -653,7 +653,7 @@ export interface RecurringJobRecord {
     timezone: string;
     payload: {
         channelId: string;
-        ownerUserId: string;
+        ownerUserId?: string;
     };
     nextRunAt: string;
     status: 'active' | 'paused';
@@ -748,7 +748,7 @@ export interface AgentRunRecord {
     taskId: string;
     channelId: string;
     threadTs: string;
-    targetUserId: string;
+    targetUserId?: string;
     status: AgentRunStatus;
     startedAt: string;
     completedAt?: string;
@@ -778,7 +778,7 @@ export interface AgentRunSummary {
 export interface AutopilotSession {
     id: string;
     workspaceId: string;
-    ownerUserId: string;
+    ownerUserId?: string;
     title: string;
     mode: SessionMode;
     status: SessionStatus;

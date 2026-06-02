@@ -7,7 +7,7 @@ export interface ThreadStateInput {
   sessionId?: string;
   channelId: string;
   threadTs: string;
-  targetUserId: string;
+  targetUserId?: string;
   lastMessageTs: string;
   continuityCase: ContinuityCase;
   summary?: string;
@@ -34,7 +34,7 @@ export function getThreadState(
         session_id?: string;
         channel_id: string;
         thread_ts: string;
-        target_user_id: string;
+        target_user_id?: string | null;
         last_message_ts: string;
         continuity_case: ContinuityCase;
         summary?: string;
@@ -52,7 +52,7 @@ export function getThreadState(
     sessionId: row.session_id,
     channelId: row.channel_id,
     threadTs: row.thread_ts,
-    targetUserId: row.target_user_id,
+    targetUserId: row.target_user_id ?? undefined,
     lastMessageTs: row.last_message_ts,
     continuityCase: row.continuity_case,
     summary: row.summary,
@@ -90,7 +90,7 @@ export function upsertThreadState(db: Db, input: ThreadStateInput): void {
     input.sessionId ?? null,
     input.channelId,
     input.threadTs,
-    input.targetUserId,
+    input.targetUserId ?? null,
     input.lastMessageTs,
     input.continuityCase,
     input.summary ?? null,

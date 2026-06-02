@@ -398,10 +398,11 @@ describe('integration routes', () => {
   });
 
   it('validates, stores, and reports a Linear credential', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: { viewer: { name: 'Murph Linear', email: 'linear@example.com' } } })
-    }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
     const { request, store, workspace } = await setup();
 
     const response = await request('POST', '/api/integrations/linear/connect', {
@@ -417,6 +418,14 @@ describe('integration routes', () => {
       tools: ['linear.search_issues', 'linear.read_issue'],
       contextSources: ['linear.thread_search']
     }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.linear.app/graphql',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'lin_api_key'
+        })
+      })
+    );
     const { readSecret } = await import('#shared/server/credentials/local-store');
     expect(readSecret('linear', 'api_key')).toBe('lin_api_key');
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);

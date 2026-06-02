@@ -1,9 +1,5 @@
-import { apiAuthHeaders } from './access';
-
 export async function getJson<T>(path: string): Promise<T> {
-    const response = await fetch(path, {
-        headers: apiAuthHeaders(path),
-    });
+    const response = await fetch(path);
     const payload = (await response.json().catch(() => ({}))) as T & {
         error?: string;
     };
@@ -21,7 +17,6 @@ export async function postJson<T>(path: string, body?: unknown): Promise<T> {
     const response = await fetch(path, {
         method: 'POST',
         headers: {
-            ...apiAuthHeaders(path),
             ...(body ? { 'content-type': 'application/json' } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
@@ -53,7 +48,6 @@ export async function putJson<T>(path: string, body?: unknown): Promise<T> {
     const response = await fetch(path, {
         method: 'PUT',
         headers: {
-            ...apiAuthHeaders(path),
             ...(body ? { 'content-type': 'application/json' } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
@@ -74,7 +68,6 @@ export async function putJson<T>(path: string, body?: unknown): Promise<T> {
 export async function deleteJson<T>(path: string): Promise<T> {
     const response = await fetch(path, {
         method: 'DELETE',
-        headers: apiAuthHeaders(path),
     });
     const payload = (await response.json().catch(() => ({}))) as T & {
         error?: string;

@@ -17,8 +17,7 @@ async function loadStore() {
   return getStore();
 }
 
-async function setup(input: { subscribeOwner?: boolean } = {}): Promise<SlackAdapterTestContext> {
-  const subscribeOwner = input.subscribeOwner ?? true;
+async function setup(): Promise<SlackAdapterTestContext> {
   const store = await loadStore();
   const { normalizeSlackEvent } = await import('../shared/server/channels/slack/adapter');
   const workspace = store.saveInstall({
@@ -33,22 +32,10 @@ async function setup(input: { subscribeOwner?: boolean } = {}): Promise<SlackAda
     externalUserId: 'UOWNER',
     displayName: 'Owner'
   });
-  if (subscribeOwner) {
-    store.upsertWorkspaceSubscription({
-      workspaceId: workspace.id,
-      provider: 'slack',
-      externalUserId: 'UOWNER',
-      displayName: 'Owner',
-      status: 'active',
-      channelScopeMode: 'selected',
-      channelScope: ['C1']
-    });
-  }
 
   const session = store.createSession({
     workspaceId: workspace.id,
-    ownerUserId: 'UOWNER',
-    title: 'Overnight coverage',
+    title: 'Team stakeholder coverage',
     mode: 'manual_review',
     channelScope: ['C1'],
     endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -62,7 +49,7 @@ function slackEvent(input: Record<string, unknown>): Record<string, unknown> {
     type: 'message',
     channel: 'C1',
     user: 'UASKER',
-    text: '<@UOWNER> can you confirm the launch spec?',
+    text: '<@UTZBOT> can you confirm the launch spec?',
     ts: '111.222',
     ...input
   };
@@ -77,40 +64,43 @@ describe('normalizeSlackEvent', () => {
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
     delete process.env.MURPH_PRODUCT_MODE;
     delete process.env.MURPH_DISTRIBUTION;
+    process.env.SLACK_PERSONAL_APP_ID = 'ASLACKPERSONAL';
   });
 
-  it('routes ordinary channel messages that mention an active session owner', async () => {
+  it('routes bot-directed channel messages to the active team session', async () => {
     const { normalizeSlackEvent } = await setup();
 
     const result = normalizeSlackEvent(slackEvent({}), { eventId: 'Ev1', teamId: 'T1' });
 
-    expect(result.task?.targetUserId).toBe('UOWNER');
+    expect(result.task?.targetUserId).toBeUndefined();
+    expect(result.task?.sessionId).toBeDefined();
     expect(result.task?.thread).toMatchObject({ provider: 'slack', channelId: 'C1', threadTs: '111.222' });
     expect(result.task?.actorUserId).toBe('UASKER');
     expect(result.task?.triggerMessage).toMatchObject({
       provider: 'slack',
       userId: 'UASKER',
-      text: '<@UOWNER> can you confirm the launch spec?',
+      text: '<@UTZBOT> can you confirm the launch spec?',
       ts: '111.222'
     });
   });
 
-  it('does not route an active session owner without an active subscription', async () => {
-    const { normalizeSlackEvent } = await setup({ subscribeOwner: false });
+  it('ignores channel messages that do not mention the team bot', async () => {
+    const { normalizeSlackEvent } = await setup();
 
-    const result = normalizeSlackEvent(slackEvent({}), { eventId: 'Ev12', teamId: 'T1' });
+    const result = normalizeSlackEvent(slackEvent({ text: '<@UOWNER> can you confirm?' }), { eventId: 'Ev12', teamId: 'T1' });
 
-    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
+    expect(result).toMatchObject({ ignoredReason: 'bot_not_mentioned' });
   });
 
   it('routes teammate direct messages to the represented owner through a personal bot', async () => {
-    const { store, workspace, normalizeSlackEvent } = await setup({ subscribeOwner: false });
+    const { store, workspace, normalizeSlackEvent } = await setup();
     store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
     const personalInstall = store.upsertBotInstallation({
       workspaceId: workspace.id,
       provider: 'slack',
       externalWorkspaceId: workspace.externalWorkspaceId,
       role: 'personal',
+      appId: 'ASLACKPERSONAL',
       botUserId: 'UPERSONALBOT',
       representedUserId: 'UOWNER'
     });
@@ -153,13 +143,14 @@ describe('normalizeSlackEvent', () => {
 
   it('routes owner direct messages in the personal distribution', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
-    const { store, workspace, normalizeSlackEvent } = await setup({ subscribeOwner: false });
+    const { store, workspace, normalizeSlackEvent } = await setup();
     store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
     const personalInstall = store.upsertBotInstallation({
       workspaceId: workspace.id,
       provider: 'slack',
       externalWorkspaceId: workspace.externalWorkspaceId,
       role: 'personal',
+      appId: 'ASLACKPERSONAL',
       botUserId: 'UPERSONALBOT',
       representedUserId: 'UOWNER'
     });
@@ -182,12 +173,13 @@ describe('normalizeSlackEvent', () => {
 
   it('ignores non-owner direct messages in the personal distribution', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
-    const { store, workspace, normalizeSlackEvent } = await setup({ subscribeOwner: false });
+    const { store, workspace, normalizeSlackEvent } = await setup();
     const personalInstall = store.upsertBotInstallation({
       workspaceId: workspace.id,
       provider: 'slack',
       externalWorkspaceId: workspace.externalWorkspaceId,
       role: 'personal',
+      appId: 'ASLACKPERSONAL',
       botUserId: 'UPERSONALBOT',
       representedUserId: 'UOWNER'
     });
@@ -203,7 +195,7 @@ describe('normalizeSlackEvent', () => {
     expect(result).toMatchObject({ ignoredReason: 'personal_owner_mismatch' });
   });
 
-  it('uses the single scoped subscribed session fallback only for bot-directed messages', async () => {
+  it('uses the single scoped team session fallback only for bot-directed messages', async () => {
     const { normalizeSlackEvent } = await setup();
 
     const result = normalizeSlackEvent(slackEvent({ type: 'app_mention', text: '<@UTZBOT> help' }), {
@@ -211,45 +203,14 @@ describe('normalizeSlackEvent', () => {
       teamId: 'T1'
     });
 
-    expect(result.task?.targetUserId).toBe('UOWNER');
-  });
-
-  it('ignores a mentioned session owner when subscriptions exist and the owner is not subscribed to the channel', async () => {
-    const { store, workspace, normalizeSlackEvent } = await setup();
-    store.upsertWorkspaceSubscription({
-      workspaceId: workspace.id,
-      provider: 'slack',
-      externalUserId: 'UOWNER',
-      displayName: 'Owner',
-      status: 'active',
-      channelScopeMode: 'selected',
-      channelScope: ['C2']
-    });
-
-    const result = normalizeSlackEvent(slackEvent({}), { eventId: 'Ev11', teamId: 'T1' });
-
-    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
+    expect(result.task?.targetUserId).toBeUndefined();
+    expect(result.task?.sessionId).toBeDefined();
   });
 
   it('treats bot-directed fallback as ambiguous when multiple sessions are scoped to the channel', async () => {
     const { store, workspace, normalizeSlackEvent } = await setup();
-    store.upsertUser({
-      workspaceId: workspace.id,
-      externalUserId: 'UOTHER',
-      displayName: 'Other Owner'
-    });
-    store.upsertWorkspaceSubscription({
-      workspaceId: workspace.id,
-      provider: 'slack',
-      externalUserId: 'UOTHER',
-      displayName: 'Other Owner',
-      status: 'active',
-      channelScopeMode: 'selected',
-      channelScope: ['C1']
-    });
     store.createSession({
       workspaceId: workspace.id,
-      ownerUserId: 'UOTHER',
       title: 'Other coverage',
       mode: 'manual_review',
       channelScope: ['C1'],
@@ -271,7 +232,6 @@ describe('normalizeSlackEvent', () => {
       sessionId: session.id,
       channelId: 'C1',
       threadTs: '111.222',
-      targetUserId: 'UOWNER',
       lastMessageTs: '111.222',
       continuityCase: 'clarification',
       status: 'active'
@@ -282,7 +242,8 @@ describe('normalizeSlackEvent', () => {
       { eventId: 'Ev7', teamId: 'T1' }
     );
 
-    expect(result.task?.targetUserId).toBe('UOWNER');
+    expect(result.task?.targetUserId).toBeUndefined();
+    expect(result.task?.sessionId).toBe(session.id);
   });
 
   it('ignores Slack bot messages and unsupported subtypes', async () => {

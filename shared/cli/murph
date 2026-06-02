@@ -48,7 +48,7 @@ Commands:
   doctor               Check local setup.
   setup [section]      Run the Team setup workflow.
   credentials <cmd>    List and inspect local credentials.
-  admin <cmd>          Manage operator and subscriber dashboard URLs.
+  admin <cmd>          Open the Team admin dashboard.
   agent [prompt]       Chat with Murph's setup and plugin agent.
   policy <command>     List, preview, and save policy configuration.
   logs [-f]            Show runtime logs.
@@ -382,7 +382,7 @@ credentials_command() {
 }
 
 admin_command() {
-  [[ "$(default_distribution)" != "personal" ]] || fail "Murph Personal does not include Team subscriber admin commands."
+  [[ "$(default_distribution)" != "personal" ]] || fail "Murph Personal does not include the Team admin dashboard."
   require_app
   have_command node || fail "node is required for murph admin."
   cd "$MURPH_APP_DIR"

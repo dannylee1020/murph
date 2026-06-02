@@ -3,8 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-async function setup(input: { subscribeOwner?: boolean } = {}) {
-  const subscribeOwner = input.subscribeOwner ?? true;
+async function setup() {
   const { getStore } = await import('../shared/server/persistence/store');
   const { normalizeDiscordEventWithReason } = await import('../shared/server/channels/discord/adapter');
   const store = getStore();
@@ -19,26 +18,14 @@ async function setup(input: { subscribeOwner?: boolean } = {}) {
     externalUserId: '123',
     displayName: 'Owner'
   });
-  if (subscribeOwner) {
-    store.upsertWorkspaceSubscription({
-      workspaceId: workspace.id,
-      provider: 'discord',
-      externalUserId: '123',
-      displayName: 'Owner',
-      status: 'active',
-      channelScopeMode: 'selected',
-      channelScope: ['C1']
-    });
-  }
-  store.createSession({
+  const session = store.createSession({
     workspaceId: workspace.id,
-    ownerUserId: '123',
-    title: 'Overnight coverage',
+    title: 'Team stakeholder coverage',
     mode: 'manual_review',
     channelScope: ['C1'],
     endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
   });
-  return { store, workspace, normalizeDiscordEventWithReason };
+  return { store, workspace, session, normalizeDiscordEventWithReason };
 }
 
 function discordEvent(input: Record<string, unknown>): Record<string, unknown> {
@@ -47,7 +34,7 @@ function discordEvent(input: Record<string, unknown>): Record<string, unknown> {
     guild_id: 'G1',
     channel_id: 'C1',
     author: { id: '456' },
-    content: '<@123> can you review this?',
+    content: '<@999> can you review this?',
     ...input
   };
 }
@@ -61,17 +48,19 @@ describe('normalizeDiscordEventWithReason', () => {
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
     delete process.env.MURPH_PRODUCT_MODE;
     delete process.env.MURPH_DISTRIBUTION;
+    process.env.DISCORD_PERSONAL_CLIENT_ID = 'DISCORDPERSONAL';
   });
 
-  it('routes structured Discord mentions even when message content is empty', async () => {
+  it('routes structured Discord bot mentions to the active team session', async () => {
     const { normalizeDiscordEventWithReason } = await setup();
 
     const result = normalizeDiscordEventWithReason(discordEvent({
       content: '',
-      mentions: [{ id: '123' }]
+      mentions: [{ id: '999' }]
     }), { eventId: 'M1', teamId: 'G1' });
 
-    expect(result.task?.targetUserId).toBe('123');
+    expect(result.task?.targetUserId).toBeUndefined();
+    expect(result.task?.sessionId).toBeDefined();
     expect(result.task?.thread).toMatchObject({ provider: 'discord', channelId: 'C1', threadTs: 'M1' });
     expect(result.task?.actorUserId).toBe('456');
     expect(result.task?.triggerMessage).toMatchObject({
@@ -82,25 +71,26 @@ describe('normalizeDiscordEventWithReason', () => {
     });
   });
 
-  it('does not route an active session owner without an active subscription', async () => {
-    const { normalizeDiscordEventWithReason } = await setup({ subscribeOwner: false });
+  it('ignores channel messages that do not mention the team bot', async () => {
+    const { normalizeDiscordEventWithReason } = await setup();
 
     const result = normalizeDiscordEventWithReason(discordEvent({
       content: '',
       mentions: [{ id: '123' }]
     }), { eventId: 'M5', teamId: 'G1' });
 
-    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
+    expect(result).toMatchObject({ ignoredReason: 'bot_not_mentioned' });
   });
 
   it('routes teammate direct messages to the represented owner through a personal bot', async () => {
-    const { store, workspace, normalizeDiscordEventWithReason } = await setup({ subscribeOwner: false });
+    const { store, workspace, normalizeDiscordEventWithReason } = await setup();
     store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
     const personalInstall = store.upsertBotInstallation({
       workspaceId: workspace.id,
       provider: 'discord',
       externalWorkspaceId: workspace.externalWorkspaceId,
       role: 'personal',
+      appId: 'DISCORDPERSONAL',
       botUserId: '999',
       representedUserId: '123'
     });
@@ -142,13 +132,14 @@ describe('normalizeDiscordEventWithReason', () => {
 
   it('routes owner direct messages in the personal distribution', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
-    const { store, workspace, normalizeDiscordEventWithReason } = await setup({ subscribeOwner: false });
+    const { store, workspace, normalizeDiscordEventWithReason } = await setup();
     store.stopSession(store.listActiveSessions(workspace.id)[0].id, 'stopped');
     const personalInstall = store.upsertBotInstallation({
       workspaceId: workspace.id,
       provider: 'discord',
       externalWorkspaceId: workspace.externalWorkspaceId,
       role: 'personal',
+      appId: 'DISCORDPERSONAL',
       botUserId: '999',
       representedUserId: '123'
     });
@@ -170,12 +161,13 @@ describe('normalizeDiscordEventWithReason', () => {
 
   it('ignores non-owner direct messages in the personal distribution', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
-    const { store, workspace, normalizeDiscordEventWithReason } = await setup({ subscribeOwner: false });
+    const { store, workspace, normalizeDiscordEventWithReason } = await setup();
     const personalInstall = store.upsertBotInstallation({
       workspaceId: workspace.id,
       provider: 'discord',
       externalWorkspaceId: workspace.externalWorkspaceId,
       role: 'personal',
+      appId: 'DISCORDPERSONAL',
       botUserId: '999',
       representedUserId: '123'
     });
@@ -190,31 +182,15 @@ describe('normalizeDiscordEventWithReason', () => {
     expect(result).toMatchObject({ ignoredReason: 'personal_owner_mismatch' });
   });
 
-  it('uses the single scoped subscribed session fallback for bot-directed messages', async () => {
+  it('uses the single scoped team session fallback for bot-directed messages', async () => {
     const { normalizeDiscordEventWithReason } = await setup();
 
     const result = normalizeDiscordEventWithReason(discordEvent({
       content: '<@999> help'
     }), { eventId: 'M2', teamId: 'G1' });
 
-    expect(result.task?.targetUserId).toBe('123');
-  });
-
-  it('ignores a mentioned session owner when subscriptions exist and the owner is not subscribed to the channel', async () => {
-    const { store, workspace, normalizeDiscordEventWithReason } = await setup();
-    store.upsertWorkspaceSubscription({
-      workspaceId: workspace.id,
-      provider: 'discord',
-      externalUserId: '123',
-      displayName: 'Owner',
-      status: 'active',
-      channelScopeMode: 'selected',
-      channelScope: ['C2']
-    });
-
-    const result = normalizeDiscordEventWithReason(discordEvent({}), { eventId: 'M4', teamId: 'G1' });
-
-    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
+    expect(result.task?.targetUserId).toBeUndefined();
+    expect(result.task?.sessionId).toBeDefined();
   });
 
   it('returns ignored reasons for messages that do not target a session', async () => {
@@ -224,6 +200,30 @@ describe('normalizeDiscordEventWithReason', () => {
       content: 'anyone around?'
     }), { eventId: 'M3', teamId: 'G1' });
 
-    expect(result).toMatchObject({ ignoredReason: 'no_mentioned_session_owner' });
+    expect(result).toMatchObject({ ignoredReason: 'bot_not_mentioned' });
+  });
+
+  it('uses stored thread state for continuations without requiring repeated mentions', async () => {
+    const { store, workspace, session, normalizeDiscordEventWithReason } = await setup();
+    store.upsertThreadState({
+      workspaceId: workspace.id,
+      sessionId: session.id,
+      channelId: 'C1',
+      threadTs: 'THREAD1',
+      lastMessageTs: 'M1',
+      continuityCase: 'clarification',
+      status: 'active'
+    });
+
+    const result = normalizeDiscordEventWithReason(discordEvent({
+      id: 'M2',
+      channel_id: 'THREAD1',
+      parent_id: 'C1',
+      content: 'any update?',
+      mentions: []
+    }), { eventId: 'M2', teamId: 'G1' });
+
+    expect(result.task?.targetUserId).toBeUndefined();
+    expect(result.task?.sessionId).toBe(session.id);
   });
 });

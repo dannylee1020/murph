@@ -16,7 +16,7 @@ export interface ActionInput {
   sessionId?: string;
   channelId: string;
   threadTs: string;
-  targetUserId: string;
+  targetUserId?: string;
   actionType: ContinuityActionType;
   disposition: ActionDisposition;
   message: string;
@@ -32,7 +32,7 @@ interface ActionRow {
   session_id?: string;
   thread_ts: string;
   channel_id: string;
-  target_user_id: string;
+  target_user_id?: string | null;
   action_type: ContinuityActionType;
   disposition: ActionDisposition;
   message: string;
@@ -58,7 +58,7 @@ function mapAction(row: ActionRow): ReviewItem {
     sessionId: row.session_id,
     threadTs: row.thread_ts,
     channelId: row.channel_id,
-    targetUserId: row.target_user_id,
+    targetUserId: row.target_user_id ?? undefined,
     action: row.action_type,
     disposition: row.disposition,
     message: row.message,
@@ -159,7 +159,7 @@ export function insertAction(db: Db, input: ActionInput): ReviewItem {
     input.sessionId ?? null,
     input.channelId,
     input.threadTs,
-    input.targetUserId,
+    input.targetUserId ?? null,
     input.actionType,
     input.disposition,
     input.message,

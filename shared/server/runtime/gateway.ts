@@ -237,7 +237,7 @@ export class Gateway {
       return;
     }
 
-    if (!this.subscriptionAllowsChannel(workspace, job.payload.ownerUserId, job.payload.channelId)) {
+    if (job.payload.ownerUserId && !this.subscriptionAllowsChannel(workspace, job.payload.ownerUserId, job.payload.channelId)) {
       return;
     }
 
@@ -429,7 +429,7 @@ export class Gateway {
       }
     }
 
-    if (!this.isPersonalDirectTask(task) && !this.subscriptionAllowsTask(workspace, session, task)) {
+    if (!this.isPersonalDirectTask(task) && task.targetUserId && !this.subscriptionAllowsTask(workspace, session, task)) {
       return this.recordAudit({
         task,
         workspaceId: workspace.id,
@@ -443,10 +443,11 @@ export class Gateway {
       });
     }
 
-    const user =
-      this.store.getUser(workspace.id, task.targetUserId);
+    const user = task.targetUserId
+      ? this.store.getUser(workspace.id, task.targetUserId)
+      : undefined;
 
-    if (!user) {
+    if (task.targetUserId && !user) {
       return this.recordAudit({
         task,
         workspaceId: workspace.id,
@@ -460,7 +461,7 @@ export class Gateway {
       });
     }
 
-    if (!this.isPersonalDirectTask(task) && task.actorUserId && task.actorUserId === session.ownerUserId) {
+    if (!this.isPersonalDirectTask(task) && task.actorUserId && session.ownerUserId && task.actorUserId === session.ownerUserId) {
       return this.recordAudit({
         task,
         workspaceId: workspace.id,
@@ -537,11 +538,13 @@ export class Gateway {
     const finalAction = decision.downgradedTo ?? proposedAction.type;
     const toolsUsed = [
       'channel.fetch_thread',
-      'user.get_preferences',
       'memory.workspace.read',
       'memory.thread.read',
       ...runResult.toolsUsed
     ];
+    if (task.targetUserId) {
+      toolsUsed.splice(1, 0, 'user.get_preferences');
+    }
 
     this.store.upsertThreadState({
       workspaceId: workspace.id,
@@ -678,7 +681,7 @@ export class Gateway {
               sessionId?: string;
               channelId: string;
               threadTs: string;
-              targetUserId: string;
+              targetUserId?: string;
               actionType: ReviewItem['action'];
               disposition: 'queued';
               message: string;
@@ -759,7 +762,7 @@ export class Gateway {
     if (
       explicit?.status === 'active' &&
       explicit.workspaceId === workspaceId &&
-      explicit.ownerUserId === task.targetUserId &&
+      (!task.targetUserId || explicit.ownerUserId === task.targetUserId) &&
       explicit.endsAt > new Date().toISOString()
     ) {
       return explicit;
@@ -780,6 +783,10 @@ export class Gateway {
   }
 
   private async createPersonalDirectSession(workspace: Workspace, task: ContinuityTask): Promise<AutopilotSession> {
+    if (!task.targetUserId) {
+      throw new Error('Personal direct tasks require a target user');
+    }
+
     const existingUser = this.store.getUser(workspace.id, task.targetUserId);
     if (!existingUser) {
       this.store.upsertUser({
@@ -819,6 +826,7 @@ export class Gateway {
   }
 
   private subscriptionAllowsTask(workspace: Workspace, session: AutopilotSession, task: ContinuityTask): boolean {
+    if (!session.ownerUserId) return true;
     return this.subscriptionAllowsChannel(workspace, session.ownerUserId, task.thread.channelId);
   }
 

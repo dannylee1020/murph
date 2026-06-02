@@ -190,7 +190,7 @@ export class LinearService {
     const response = await fetch('https://api.linear.app/graphql', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${credential}`,
+        Authorization: credential,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ query, variables })

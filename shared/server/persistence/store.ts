@@ -224,7 +224,7 @@ export class Store {
   }
   findMatchingSession(
     workspaceId: string,
-    ownerUserId: string,
+    ownerUserId: string | undefined,
     channelId: string
   ): AutopilotSession | undefined {
     return session.findMatchingSession(this.db, workspaceId, ownerUserId, channelId);

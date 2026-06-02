@@ -58,14 +58,9 @@ Use these commands to run Murph locally and inspect the local process. The insta
 
 ```bash
 murph admin url
-murph admin subscribers
-murph admin subscribers link <user-id>
-murph admin subscribers revoke <user-id>
 ```
 
 Use `murph admin url` to print the admin dashboard URL for the current Team runtime host.
-
-Use `murph admin subscribers` to inspect subscriber dashboard access. Use `link` to create or regenerate a subscriber dashboard URL, and `revoke` to disable it. Personal installs are single-user and do not expose subscriber dashboard commands.
 
 ## Health commands
 
