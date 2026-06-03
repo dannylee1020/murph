@@ -1075,7 +1075,7 @@ export function homeChannelGroups(
                 ? states
                       .map((state) => homeChannelGroup(state, options))
                       .join('')
-                : `<p class="empty">${options.personal ? 'Connect Slack or Discord to receive owner DMs.' : 'Connect Slack or Discord to choose channels.'}</p>`
+                : `<p class="empty">${options.personal ? 'Connect Slack or Discord to receive DMs to your personal bot.' : 'Connect Slack or Discord to choose channels.'}</p>`
         }
       </div>
     </fieldset>

@@ -171,7 +171,7 @@ describe('normalizeSlackEvent', () => {
     });
   });
 
-  it('ignores non-owner direct messages in the personal distribution', async () => {
+  it('routes non-owner direct messages to the represented owner in the personal distribution', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
     const { store, workspace, normalizeSlackEvent } = await setup();
     const personalInstall = store.upsertBotInstallation({
@@ -192,7 +192,15 @@ describe('normalizeSlackEvent', () => {
       ts: '222.555'
     }), { eventId: 'EvNonOwnerDm', teamId: 'T1', botRole: 'personal', botInstallationId: personalInstall.id });
 
-    expect(result).toMatchObject({ ignoredReason: 'personal_owner_mismatch' });
+    expect(result.task).toMatchObject({
+      workspaceId: 'T1',
+      botRole: 'personal',
+      botInstallationId: personalInstall.id,
+      conversationKind: 'direct',
+      targetUserId: 'UOWNER',
+      actorUserId: 'UASKER',
+      thread: { provider: 'slack', channelId: 'D1', threadTs: '222.555' }
+    });
   });
 
   it('uses the single scoped team session fallback only for bot-directed messages', async () => {

@@ -290,7 +290,7 @@ export async function renderDashboard(): Promise<void> {
     <section class="launch-section">
       <article class="panel go-to-sleep-card">
         <h2>Go to sleep</h2>
-        <p>${isPersonal ? 'Murph will receive owner DMs through your personal bot using your policy default.' : 'Murph will watch your accessible channels using your policy default.'}</p>
+        <p>${isPersonal ? 'Murph will receive DMs to your personal bot using your policy default.' : 'Murph will watch your accessible channels using your policy default.'}</p>
         <form id="go-to-sleep-form">
           <dl class="go-to-sleep-summary">
             <div class="summary-cell">

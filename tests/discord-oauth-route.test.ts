@@ -67,6 +67,12 @@ async function setup(options: { configYaml?: string } = {}) {
         nick: 'Danny'
       });
     }
+    if (target.endsWith('/users/@me/channels')) {
+      return Response.json({ id: 'DM_OWNER' });
+    }
+    if (target.endsWith('/channels/DM_OWNER/messages')) {
+      return Response.json({ id: 'M_SEED' });
+    }
     return Response.json({ message: 'not found' }, { status: 404 });
   }));
   vi.doMock('#shared/server/runtime/bootstrap', () => ({
@@ -105,6 +111,9 @@ describe('Discord OAuth callback route', () => {
     delete process.env.DISCORD_CLIENT_ID;
     delete process.env.DISCORD_CLIENT_SECRET;
     delete process.env.DISCORD_BOT_TOKEN;
+    delete process.env.DISCORD_PERSONAL_CLIENT_ID;
+    delete process.env.DISCORD_PERSONAL_CLIENT_SECRET;
+    delete process.env.DISCORD_PERSONAL_BOT_TOKEN;
     delete process.env.OPENAI_API_KEY;
   });
 
@@ -186,7 +195,7 @@ describe('Discord OAuth callback route', () => {
     const installLocation = new URL(installResult.headers.location);
     const state = encodeURIComponent(installLocation.searchParams.get('state') ?? '');
 
-    const callbackResult = await get(`/api/discord/oauth/callback?code=abc&state=${state}`);
+    const callbackResult = await get(`/api/discord/oauth/callback?code=abc&guild_id=G1&state=${state}`);
 
     expect(callbackResult.status).toBe(302);
     expect(callbackResult.headers.location).toMatch(/^\/setup\?step=discord&role=personal&success=1&workspaceId=/);
@@ -197,13 +206,20 @@ describe('Discord OAuth callback route', () => {
       },
       channelProvider: 'discord',
       ownerUserId: 'U_DISCORD',
-      ownerDisplayName: 'Daniel Discord',
+      ownerDisplayName: 'Danny',
       workspaceOwners: [
         expect.objectContaining({
           ownerUserId: 'U_DISCORD',
-          ownerDisplayName: 'Daniel Discord'
+          ownerDisplayName: 'Danny'
         })
       ]
+    });
+    const workspace = store.getWorkspaceByExternalId('discord', 'G1');
+    expect(workspace?.name).toBe('Discord Guild');
+    expect(store.getBotInstallation('discord', 'G1', 'personal')).toMatchObject({
+      appId: 'discord-personal-client-id',
+      representedUserId: 'U_DISCORD',
+      status: 'active'
     });
   });
 

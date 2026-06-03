@@ -28,14 +28,6 @@ const INTENTS =
   DISCORD_GATEWAY_INTENTS.DIRECT_MESSAGES |
   DISCORD_GATEWAY_INTENTS.MESSAGE_CONTENT;
 
-function discordEventAuthorId(event: Record<string, unknown>): string | undefined {
-  return typeof event.author === 'object' &&
-    event.author &&
-    typeof (event.author as { id?: unknown }).id === 'string'
-    ? (event.author as { id: string }).id
-    : undefined;
-}
-
 function currentDiscordAppId(role: BotRole): string | undefined {
   const config = getStore().getBotAppConfig('discord', role);
   return role === 'personal'
@@ -52,7 +44,7 @@ function isCurrentDiscordInstallation(installation: ReturnType<ReturnType<typeof
 
 export function discordBotInstallationForEvent(
   role: BotRole,
-  event: Record<string, unknown>,
+  _event: Record<string, unknown>,
   guildId?: string
 ) {
   const store = getStore();
@@ -63,17 +55,13 @@ export function discordBotInstallationForEvent(
   if (role !== 'personal') {
     return undefined;
   }
-  const actorUserId = discordEventAuthorId(event);
-  if (!actorUserId) {
-    return undefined;
-  }
-  return store
+  const currentPersonalInstalls = store
     .listBotInstallations({ provider: 'discord', role: 'personal' })
-    .find((installation) =>
+    .filter((installation) =>
       installation.status === 'active' &&
-      isCurrentDiscordInstallation(installation, role) &&
-      installation.representedUserId === actorUserId
+      isCurrentDiscordInstallation(installation, role)
     );
+  return currentPersonalInstalls.length === 1 ? currentPersonalInstalls[0] : undefined;
 }
 
 export class DiscordGatewayClient {

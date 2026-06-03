@@ -336,7 +336,7 @@ export async function renderSettings(): Promise<void> {
       <div>
         <p class="eyebrow">Setup</p>
         <h1>${escapeHtml(settingsLabel)}</h1>
-        <p>Connect the services ${escapeHtml(runtimeLabel)} needs to ${isTeamDistribution ? 'watch messages' : 'receive owner DMs'} and draft useful replies.</p>
+        <p>Connect the services ${escapeHtml(runtimeLabel)} needs to ${isTeamDistribution ? 'watch messages' : 'receive DMs to your personal bot'} and draft useful replies.</p>
       </div>
       ${consoleStateHtml(setup.provider.configured && channelConnected ? 'Operational' : 'Needs setup', setup.provider.configured && channelConnected ? 'ok' : 'off')}
     </section>

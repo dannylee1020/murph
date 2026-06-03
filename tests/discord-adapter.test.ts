@@ -159,7 +159,7 @@ describe('normalizeDiscordEventWithReason', () => {
     });
   });
 
-  it('ignores non-owner direct messages in the personal distribution', async () => {
+  it('routes non-owner direct messages to the represented owner in the personal distribution', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
     const { store, workspace, normalizeDiscordEventWithReason } = await setup();
     const personalInstall = store.upsertBotInstallation({
@@ -179,7 +179,15 @@ describe('normalizeDiscordEventWithReason', () => {
       content: 'draft this'
     }), { eventId: 'NonOwnerDm1', botRole: 'personal', botInstallationId: personalInstall.id });
 
-    expect(result).toMatchObject({ ignoredReason: 'personal_owner_mismatch' });
+    expect(result.task).toMatchObject({
+      workspaceId: workspace.id,
+      botRole: 'personal',
+      botInstallationId: personalInstall.id,
+      conversationKind: 'direct',
+      targetUserId: '123',
+      actorUserId: '456',
+      thread: { provider: 'discord', channelId: 'DM1', threadTs: 'M1' }
+    });
   });
 
   it('uses the single scoped team session fallback for bot-directed messages', async () => {

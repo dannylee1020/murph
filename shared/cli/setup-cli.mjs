@@ -1402,7 +1402,7 @@ async function configureDiscordApplication(token, applicationFlags, role = 'chan
     if (role === 'channel') {
       warn(`Set bot install permissions to: ${discordPermissionLabels.join(', ')}.`);
     } else {
-      warn('Set personal bot install permissions to 0; Murph Personal only needs DMs and account identification.');
+      warn('Set personal bot install permissions to 0; Murph Personal needs server installation, DMs, and account identification.');
     }
     return false;
   }
@@ -1899,7 +1899,7 @@ async function setupDiscord(role = 'channel') {
       const reinstallUrl = discordInstallUrl(bot.applicationId, role);
       if (reinstallUrl) {
         info(role === 'personal'
-          ? 'If this bot was authorized before setup configured permissions, re-open the Discord authorization URL and approve the zero-permission personal bot install.'
+          ? 'If this bot was authorized before setup configured permissions, re-open the Discord authorization URL and approve the zero-permission personal bot install in the shared server.'
           : 'If this bot was installed before setup configured permissions, re-open the Discord install URL and approve the updated server permissions.');
         callout('Discord install URL', reinstallUrl);
       }
@@ -1918,7 +1918,7 @@ async function setupDiscord(role = 'channel') {
     : 'Install Murph in your Discord server and approve account identification with this URL:');
   callout('Discord install URL', installUrl);
   if (role === 'personal') {
-    info('Murph Personal requests zero Discord server permissions. It uses this bot for owner DMs.');
+    info('Murph Personal requests zero Discord server permissions. Server members DM this bot to reach the represented owner.');
   } else {
     info(`Murph requests these bot permissions: ${discordPermissionLabels.join(', ')}.`);
   }

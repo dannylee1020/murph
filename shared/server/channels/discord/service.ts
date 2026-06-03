@@ -343,9 +343,10 @@ export class DiscordService {
     if (!clientId || !clientSecret) {
       throw new Error('Discord OAuth is not configured');
     }
-    if (role === 'channel' && !guildId) {
+    if ((role === 'channel' || role === 'personal') && !guildId) {
       throw new Error('Discord OAuth callback is missing guild_id');
     }
+    const authorizedGuildId = guildId!;
 
     const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
       method: 'POST',
@@ -375,48 +376,17 @@ export class DiscordService {
     };
 
     if (role === 'personal') {
-      const applicationId = this.clientId(role);
-      const workspace = this.store.saveInstall({
-        provider: 'discord',
-        externalWorkspaceId: `personal:${oauthUser.id}`,
-        name: fallbackMember.displayName,
-        botUserId: await this.fetchBotUserId(role).catch(() => undefined),
-        role,
-        appId: applicationId,
-        representedUserId: oauthUser.id
-      });
+      const guild = await this.fetchGuild(authorizedGuildId, role);
+      const workspace = await this.saveGuildWorkspace(guild, role, oauthUser.id);
       const botInstallation = this.store.getBotInstallation('discord', workspace.externalWorkspaceId, role);
-      const token = this.botToken(role);
-      if (token) {
-        writeSecret('discord', 'bot_token', token, {
-          workspaceId: workspace.id,
-          externalWorkspaceId: workspace.externalWorkspaceId,
-          botInstallationId: botInstallation?.id,
-          metadata: {
-            botRole: role,
-            representedUserId: oauthUser.id,
-            validatedAt: new Date().toISOString()
-          }
-        });
-        await this.seedPersonalDirectMessage(oauthUser.id, botInstallation?.id).catch((error) => {
-          console.warn('[discord] personal bot DM seed failed:', error instanceof Error ? error.message : error);
-        });
-      }
-      reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
-      return { workspace, role, botInstallation, authedUser: fallbackMember };
+      const member = await this.getMember(workspace, oauthUser.id, role).catch(() => fallbackMember);
+      await this.seedPersonalDirectMessage(oauthUser.id, botInstallation?.id).catch((error) => {
+        console.warn('[discord] personal bot DM seed failed:', error instanceof Error ? error.message : error);
+      });
+      return { workspace, role, botInstallation, authedUser: member };
     }
 
-    const guildResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
-      headers: {
-        authorization: `Bot ${this.getBotToken('channel')}`
-      }
-    });
-
-    if (!guildResponse.ok) {
-      throw new Error('Failed to fetch Discord guild');
-    }
-
-    const guild = (await guildResponse.json()) as DiscordGuild;
+    const guild = await this.fetchGuild(authorizedGuildId, 'channel');
     const workspace = await this.saveGuildWorkspace(guild, 'channel');
     const member = await this.getMember(workspace, oauthUser.id).catch(() => fallbackMember);
     return {
@@ -465,14 +435,15 @@ export class DiscordService {
     return undefined;
   }
 
-  async saveGuildWorkspace(guild: DiscordGuild, role: BotRole = 'channel'): Promise<Workspace> {
+  async saveGuildWorkspace(guild: DiscordGuild, role: BotRole = 'channel', representedUserId?: string): Promise<Workspace> {
     const workspace = this.store.saveInstall({
       provider: 'discord',
       externalWorkspaceId: guild.id,
       name: guild.name ?? guild.id,
       botUserId: await this.fetchBotUserId(role),
       role,
-      appId: this.clientId(role)
+      appId: this.clientId(role),
+      representedUserId
     });
     const botInstallation = this.store.getBotInstallation('discord', workspace.externalWorkspaceId, role);
     const token = this.botToken(role);
@@ -485,6 +456,7 @@ export class DiscordService {
           guildName: workspace.name,
           botUserId: workspace.botUserId,
           botRole: role,
+          ...(representedUserId ? { representedUserId } : {}),
           validatedAt: new Date().toISOString()
         }
       });
@@ -493,9 +465,9 @@ export class DiscordService {
     return workspace;
   }
 
-  async fetchGuild(guildId: string): Promise<DiscordGuild> {
+  async fetchGuild(guildId: string, role: BotRole = 'channel'): Promise<DiscordGuild> {
     const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
-      headers: { authorization: `Bot ${this.getBotToken()}` }
+      headers: { authorization: `Bot ${this.getBotToken(role)}` }
     });
     if (!response.ok) {
       throw new Error('Failed to fetch Discord guild');
@@ -609,11 +581,11 @@ export class DiscordService {
       .filter((member): member is DiscordMemberChoice => Boolean(member));
   }
 
-  async getMember(workspace: Workspace, userId: string): Promise<DiscordMemberChoice> {
+  async getMember(workspace: Workspace, userId: string, role: BotRole = 'channel'): Promise<DiscordMemberChoice> {
     const response = await fetch(
       `https://discord.com/api/v10/guilds/${workspace.externalWorkspaceId}/members/${encodeURIComponent(userId)}`,
       {
-        headers: { authorization: `Bot ${this.getBotToken()}` }
+        headers: { authorization: `Bot ${this.getBotToken(role)}` }
       }
     );
     if (!response.ok) {

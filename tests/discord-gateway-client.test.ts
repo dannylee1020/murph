@@ -12,7 +12,7 @@ describe('Discord gateway bot installation selection', () => {
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   });
 
-  it('uses the personal installation represented by the direct message author', async () => {
+  it('uses the current personal installation for direct messages from any author', async () => {
     const { getStore } = await import('../shared/server/persistence/store');
     const { discordBotInstallationForEvent } = await import('../shared/server/channels/discord/gateway-client');
     const store = getStore();
@@ -35,8 +35,8 @@ describe('Discord gateway bot installation selection', () => {
     });
     const currentWorkspace = store.saveInstall({
       provider: 'discord',
-      externalWorkspaceId: 'personal:current-owner',
-      name: 'Current Owner',
+      externalWorkspaceId: 'G1',
+      name: 'Guild',
       role: 'personal',
       appId: 'current-app',
       representedUserId: 'current-owner'
@@ -51,14 +51,14 @@ describe('Discord gateway bot installation selection', () => {
     });
 
     const selected = discordBotInstallationForEvent('personal', {
-      author: { id: 'current-owner' },
+      author: { id: 'other-user' },
       channel_id: 'DM1'
     });
 
     expect(selected?.id).toBe(currentInstallation.id);
   });
 
-  it('does not fall back to a stale personal installation for a different direct message author', async () => {
+  it('does not fall back to a stale personal installation', async () => {
     const { getStore } = await import('../shared/server/persistence/store');
     const { discordBotInstallationForEvent } = await import('../shared/server/channels/discord/gateway-client');
     const store = getStore();
@@ -81,7 +81,39 @@ describe('Discord gateway bot installation selection', () => {
     });
 
     const selected = discordBotInstallationForEvent('personal', {
-      author: { id: 'current-owner' },
+      author: { id: 'other-user' },
+      channel_id: 'DM1'
+    });
+
+    expect(selected).toBeUndefined();
+  });
+
+  it('does not guess between multiple current personal installations for direct messages', async () => {
+    const { getStore } = await import('../shared/server/persistence/store');
+    const { discordBotInstallationForEvent } = await import('../shared/server/channels/discord/gateway-client');
+    const store = getStore();
+    store.upsertBotAppConfig({ provider: 'discord', role: 'personal', appId: 'current-app', clientId: 'current-app' });
+    for (const [externalWorkspaceId, owner] of [['G1', 'owner-1'], ['G2', 'owner-2']] as const) {
+      const workspace = store.saveInstall({
+        provider: 'discord',
+        externalWorkspaceId,
+        name: externalWorkspaceId,
+        role: 'personal',
+        appId: 'current-app',
+        representedUserId: owner
+      });
+      store.upsertBotInstallation({
+        workspaceId: workspace.id,
+        provider: 'discord',
+        role: 'personal',
+        externalWorkspaceId,
+        appId: 'current-app',
+        representedUserId: owner
+      });
+    }
+
+    const selected = discordBotInstallationForEvent('personal', {
+      author: { id: 'other-user' },
       channel_id: 'DM1'
     });
 
