@@ -3,6 +3,7 @@ import { getRuntimeEnv } from '#shared/server/util/env';
 import { getStore } from '#shared/server/persistence/store';
 import { listSecrets, readSecret, writeSecret } from '#shared/server/credentials/local-store';
 import { reconcileIntegrationCapabilitiesForWorkspace } from '#shared/server/integrations/capabilities';
+import { isSlackAppLevelToken } from '../../setup/slack-tokens.js';
 import type { BotInstallation, BotRole, ChannelMessage, ThreadRef, Workspace } from '#shared/types';
 
 interface OAuthExchangeResponse {
@@ -215,11 +216,11 @@ export class SlackService {
   }
 
   isRoleSocketConfigured(role: BotRole = 'channel'): boolean {
-    return Boolean(this.appToken(role));
+    return isSlackAppLevelToken(this.appToken(role));
   }
 
   isRoleConfigured(role: BotRole = 'channel'): boolean {
-    return Boolean(this.clientId(role) && this.clientSecret(role) && (this.eventsMode(role) === 'http' || this.appToken(role)));
+    return Boolean(this.clientId(role) && this.clientSecret(role) && (this.eventsMode(role) === 'http' || this.isRoleSocketConfigured(role)));
   }
 
   buildInstallUrl(appUrl = this.env.appUrl, teamId?: string, source?: string, role: BotRole = 'channel'): string | undefined {

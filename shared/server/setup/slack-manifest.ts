@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 import type { BotRole } from '#shared/types';
+export { isSlackAppLevelToken } from './slack-tokens.js';
 
 const slackApiBase = process.env.MURPH_SLACK_API_BASE || 'https://slack.com/api';
 
@@ -64,10 +65,6 @@ function manifestPathForRole(role: BotRole): string {
   const rolePath = path.join(root, 'docs', 'public', role === 'personal' ? 'slack-personal-manifest.yaml' : 'slack-channel-manifest.yaml');
   if (existsSync(rolePath)) return rolePath;
   return path.join(root, 'docs', 'public', 'slack-manifest.yaml');
-}
-
-export function isSlackAppLevelToken(value: string): boolean {
-  return value.trim().startsWith('xapp-');
 }
 
 export function renderSlackManifest(role: BotRole, appUrl: string): Record<string, unknown> {

@@ -2,6 +2,7 @@ import { SETUP_CONFIG_KEYS, pruneChannelRuntimeConfig, updateMurphConfigValues }
 import { writeSecret } from '#shared/server/credentials/local-store';
 import { getStore } from '#shared/server/persistence/store';
 import { normalizeSetupBotRoles } from '#shared/server/setup/bot-roles';
+import { validateSlackAppLevelToken } from './slack-tokens.js';
 import { resetRuntimeEnvCache } from '#shared/server/util/env';
 import type { BotRole } from '#shared/types';
 
@@ -31,6 +32,20 @@ const SETUP_SECRET_KEYS: Record<string, { provider: string; key: string }> = {
   TAVILY_API_KEY: { provider: 'tavily', key: 'api_key' },
   BRAVE_SEARCH_API_KEY: { provider: 'brave_search', key: 'api_key' }
 };
+
+const SLACK_APP_TOKEN_SETUP_KEYS = new Set([
+  'SLACK_APP_TOKEN',
+  'SLACK_CHANNEL_APP_TOKEN',
+  'SLACK_PERSONAL_APP_TOKEN'
+]);
+
+function validateSetupSecretValue(key: string, value: string): void {
+  if (!SLACK_APP_TOKEN_SETUP_KEYS.has(key)) return;
+  const error = validateSlackAppLevelToken(value, key);
+  if (error) {
+    throw new Error(error);
+  }
+}
 
 type BotAppConfigTarget = {
   provider: 'slack' | 'discord';
@@ -111,6 +126,13 @@ export function updateSetupConfigValues(values: Record<string, string | undefine
   }
 
   const updated: string[] = [];
+
+  for (const [key, rawValue] of Object.entries(secretValues)) {
+    const value = rawValue?.trim();
+    if (value) {
+      validateSetupSecretValue(key, value);
+    }
+  }
 
   for (const [key, rawValue] of Object.entries(secretValues)) {
     const value = rawValue?.trim();

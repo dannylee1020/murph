@@ -38,10 +38,13 @@ import {
   workspaceChannelsConfigured
 } from '#shared/server/setup/bot-roles';
 import {
-  isSlackAppLevelToken,
   prepareSlackManifestApp,
   type SlackManifestCredentials
 } from '#shared/server/setup/slack-manifest';
+import {
+  isSlackAppLevelToken,
+  validateSlackConfigurationToken
+} from '../setup/slack-tokens.js';
 import {
   providerLocksOwnerIdentity,
   requireMatchingSetupOwner,
@@ -152,12 +155,6 @@ function slackRoleSetupValues(role: BotRole, credentials: SlackManifestCredentia
   values.SLACK_TEAM_ID = credentials.teamId;
   values.SLACK_TEAM_NAME = credentials.teamName;
   return values;
-}
-
-function slackRoleAppTokenValues(role: BotRole, appToken: string): Record<string, string> {
-  return role === 'personal'
-    ? { SLACK_PERSONAL_APP_TOKEN: appToken }
-    : { SLACK_CHANNEL_APP_TOKEN: appToken, SLACK_APP_TOKEN: appToken };
 }
 
 function discordRoleClientId(role: 'channel' | 'personal'): string | undefined {
@@ -791,7 +788,7 @@ export const systemRoutes: Route[] = [
           getStore().getBotAppConfig('slack', 'channel')?.eventsMode ??
           getStore().getBotAppConfig('slack', 'personal')?.eventsMode ??
           'socket',
-        socketConfigured: Boolean(env.slackAppToken),
+        socketConfigured: isSlackAppLevelToken(env.slackAppToken),
         roles: {
           channel: {
             configured: getSlackService().isRoleConfigured('channel'),
@@ -1040,18 +1037,9 @@ export const systemRoutes: Route[] = [
       return;
     }
 
-    if (isSlackAppLevelToken(configurationToken)) {
-      const result = updateSetupConfigValues(slackRoleAppTokenValues(role, configurationToken));
-      const refresh = await refreshRuntimeState({
-        reason: 'setup_config_updated',
-        deferIfRunActive: true
-      });
-      sendJson(res, {
-        ok: false,
-        error: `That looks like a Slack app-level token. Saved it as ${role === 'personal' ? 'SLACK_PERSONAL_APP_TOKEN' : 'SLACK_CHANNEL_APP_TOKEN'}, but Slack OAuth app credentials are still missing.`,
-        updated: result.updated,
-        refresh
-      }, 400);
+    const configurationTokenError = validateSlackConfigurationToken(configurationToken);
+    if (configurationTokenError) {
+      sendJson(res, { ok: false, error: configurationTokenError }, 400);
       return;
     }
 
@@ -1084,7 +1072,7 @@ export const systemRoutes: Route[] = [
         updated: result.updated,
         appId: prepared.credentials.appId,
         clientId: prepared.credentials.clientId,
-        appTokenConfigured: Boolean(prepared.credentials.appToken || getSlackService().isRoleSocketConfigured(role)),
+        appTokenConfigured: Boolean(isSlackAppLevelToken(prepared.credentials.appToken) || getSlackService().isRoleSocketConfigured(role)),
         callbackUrl: `${appUrl}/api/slack/oauth/callback`,
         appConfigUrl: prepared.credentials.appId ? slackAppUrl(prepared.credentials.appId, 'general') : undefined,
         oauthConfigUrl: prepared.credentials.appId ? slackAppUrl(prepared.credentials.appId, 'oauth') : undefined,

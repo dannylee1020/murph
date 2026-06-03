@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -118,6 +118,15 @@ describe('setup config value writer', () => {
     const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
 
     expect(() => updateSetupConfigValues({ NOT_A_SETUP_KEY: 'nope' })).toThrow('Unsupported setup key');
+  });
+
+  it('rejects Slack app token setup keys that are not app-level tokens', async () => {
+    const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
+
+    expect(() => updateSetupConfigValues({
+      SLACK_APP_TOKEN: 'xoxe-config'
+    })).toThrow('SLACK_APP_TOKEN must start with xapp-');
+    expect(existsSync(path.join(workspace, '.credentials'))).toBe(false);
   });
 
   it('writes schedule setup keys to app config', async () => {

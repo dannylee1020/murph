@@ -333,7 +333,7 @@ describe('setup CLI Slack app setup', () => {
 
   it('prints Slack app settings URL instead of calling Slack CLI app settings', async () => {
     const appDir = createAppDir();
-    const { result } = runSetupSlack(appDir, 'xapp-manual\n', {
+    const { result } = runSetupSlack(appDir, 'xapp-manual\nmanual-client-id\nmanual-client-secret\n\n', {
       ok: true,
       app_id: 'A123',
       credentials: {
@@ -350,6 +350,35 @@ describe('setup CLI Slack app setup', () => {
     expect(result.stdout).toContain('Create or copy the app-level token');
     expect(result.stdout).not.toContain('Slack CLI could not open app settings');
     expect(existsSync(path.join(appDir, 'slack-app-settings-called'))).toBe(false);
+  });
+
+  it('rejects non-app-level tokens returned by Slack before saving app config', async () => {
+    const appDir = createAppDir();
+    const { result, calls } = runSetupSlack(appDir, '', {
+      ok: true,
+      app_id: 'A123',
+      credentials: {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        app_token: 'xoxe-config'
+      }
+    }, {
+      args: ['slack', '--non-interactive'],
+      env: {
+        MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config',
+        SLACK_TEAM_ID: 'T123'
+      }
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain('must start with xapp-');
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(true);
+    if (existsSync(path.join(appDir, '.credentials'))) {
+      const credentials = JSON.parse(readFileSync(path.join(appDir, '.credentials'), 'utf8'));
+      expect(credentials.credentials).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ provider: 'slack', key: 'app_token', value: 'xoxe-config' })
+      ]));
+    }
   });
 
   it('updates a saved Slack app instead of creating a duplicate', async () => {
@@ -606,11 +635,15 @@ describe('setup CLI Slack app setup', () => {
     });
 
     expect(result.status).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain('Socket Mode app-level token step');
     expect(calls.some((call) => call.url.includes('/apps.manifest'))).toBe(false);
-    const credentials = JSON.parse(readFileSync(path.join(appDir, '.credentials'), 'utf8'));
-    expect(credentials.credentials).toEqual(expect.arrayContaining([
-      expect.objectContaining({ provider: 'slack', key: 'app_token', value: 'xapp-mistaken' })
-    ]));
+    expect(calls.some((call) => call.url.includes('/api/setup/config'))).toBe(false);
+    if (existsSync(path.join(appDir, '.credentials'))) {
+      const credentials = JSON.parse(readFileSync(path.join(appDir, '.credentials'), 'utf8'));
+      expect(credentials.credentials).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ provider: 'slack', key: 'app_token', value: 'xapp-mistaken' })
+      ]));
+    }
   });
 
   it('keeps setup status JSON output machine-readable', async () => {

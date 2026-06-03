@@ -568,6 +568,26 @@ describe('setup defaults routes', () => {
     }));
   });
 
+  it('does not mark Slack Socket Mode configured when the app token is not app-level', async () => {
+    const { request } = await setup();
+    process.env.SLACK_APP_TOKEN = 'xoxe-config';
+    const { resetRuntimeEnvCache } = await import('#shared/server/util/env');
+    resetRuntimeEnvCache();
+
+    const status = await request('GET', '/api/setup/status');
+    const doctor = await request('GET', '/api/setup/doctor');
+
+    expect(status.status).toBe(200);
+    expect(status.body.slack.socketConfigured).toBe(false);
+    expect(status.body.slack.roles.channel.socketConfigured).toBe(false);
+    expect(status.body.slack.roles.channel.configured).toBe(false);
+    expect(doctor.body.checks).toContainEqual(expect.objectContaining({
+      id: 'slack_socket',
+      status: 'action_required',
+      message: 'Saved Slack app-level token is invalid.'
+    }));
+  });
+
   it('does not mark Slack channel bot installed when the role token is missing', async () => {
     const { request } = await setup({ skipSlackToken: true });
 
@@ -895,6 +915,27 @@ describe('setup defaults routes', () => {
     expect(readSecret('slack', 'client_secret')).toBe('existing-client-secret');
   });
 
+  it('rejects manual Slack app values when the app token is not an app-level token', async () => {
+    const { request } = await setup();
+
+    const response = await request('POST', '/api/setup/config', {
+      SLACK_CHANNEL_APP_ID: 'A-existing',
+      SLACK_CHANNEL_APP_TOKEN: 'xoxe-config',
+      SLACK_CHANNEL_CLIENT_ID: 'existing-client-id',
+      SLACK_CHANNEL_CLIENT_SECRET: 'existing-client-secret',
+      SLACK_APP_ID: 'A-existing',
+      SLACK_APP_TOKEN: 'xoxe-config',
+      SLACK_CLIENT_ID: 'existing-client-id',
+      SLACK_CLIENT_SECRET: 'existing-client-secret'
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('SLACK_CHANNEL_APP_TOKEN must start with xapp-');
+    const { readSecret } = await import('../../shared/server/credentials/local-store');
+    expect(readSecret('slack', 'channel_app_token')).toBeUndefined();
+    expect(readSecret('slack', 'app_token')).toBeUndefined();
+  });
+
   it('stores manual Slack personal app values for existing app reuse without legacy channel keys', async () => {
     const { request } = await setup();
 
@@ -932,11 +973,11 @@ describe('setup defaults routes', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toContain('app-level token');
+    expect(response.body.error).toContain('Socket Mode app-level token step');
     expect(calls).toEqual([]);
     const { readSecret } = await import('../../shared/server/credentials/local-store');
-    expect(readSecret('slack', 'channel_app_token')).toBe('xapp-mistaken');
-    expect(readSecret('slack', 'app_token')).toBe('xapp-mistaken');
+    expect(readSecret('slack', 'channel_app_token')).toBeUndefined();
+    expect(readSecret('slack', 'app_token')).toBeUndefined();
   });
 
   it('surfaces Slack manifest create failures without trying existing-app lookup', async () => {

@@ -161,6 +161,39 @@ function setupErrorMessage(error: unknown, fallback: string): string {
     return error instanceof Error ? error.message : fallback;
 }
 
+function isSlackAppLevelToken(value: string | undefined): boolean {
+    return Boolean(value?.trim().startsWith('xapp-'));
+}
+
+function slackAppTokenValidationMessage(fieldLabel = 'Slack app-level token'): string {
+    return `${fieldLabel} must start with xapp-. Paste the Socket Mode app-level token here, not the Slack app configuration token.`;
+}
+
+function slackConfigurationTokenValidationMessage(
+    value: string | undefined,
+): string | undefined {
+    const trimmed = value?.trim() ?? '';
+    if (!trimmed) return undefined;
+    if (isSlackAppLevelToken(trimmed)) {
+        return 'That looks like a Slack app-level token. Paste it in the Socket Mode app-level token step, not the Slack app configuration token step.';
+    }
+    if (trimmed.startsWith('xoxb-')) {
+        return 'That looks like a Slack bot token. Paste a Slack app configuration token for manifest setup.';
+    }
+    if (trimmed.startsWith('xoxp-')) {
+        return 'That looks like a Slack user token. Paste a Slack app configuration token for manifest setup.';
+    }
+    if (trimmed.startsWith('https://hooks.slack.com/')) {
+        return 'That looks like a Slack webhook URL. Paste a Slack app configuration token for manifest setup.';
+    }
+    return undefined;
+}
+
+function requireSlackAppLevelToken(value: string, fieldLabel = 'Slack app-level token'): void {
+    if (isSlackAppLevelToken(value)) return;
+    throw new Error(slackAppTokenValidationMessage(fieldLabel));
+}
+
 function parseSetupProvider(
     value: string | null | undefined,
 ): SetupChannelProvider | undefined {
@@ -1174,6 +1207,7 @@ function slackManualConfigPayload(
     const clientSecret = String(formData.get('clientSecret') ?? '').trim();
     const signingSecret = String(formData.get('signingSecret') ?? '').trim();
     if (!appId || !appToken || !clientId || !clientSecret) return undefined;
+    requireSlackAppLevelToken(appToken, `${role === 'personal' ? 'SLACK_PERSONAL_APP_TOKEN' : 'SLACK_CHANNEL_APP_TOKEN'}`);
 
     return {
         SLACK_EVENTS_MODE: 'socket',
@@ -2212,6 +2246,12 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                             formData.get('appToken') ?? '',
                         ).trim();
                         if (!appToken) return;
+                        requireSlackAppLevelToken(
+                            appToken,
+                            role === 'personal'
+                                ? 'SLACK_PERSONAL_APP_TOKEN'
+                                : 'SLACK_CHANNEL_APP_TOKEN',
+                        );
                         await postJson('/api/setup/config', {
                             ...(role === 'personal'
                                 ? { SLACK_PERSONAL_APP_TOKEN: appToken }
@@ -2241,6 +2281,16 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
                             '',
                     ).trim();
                     if (!configurationToken) return;
+                    const configurationTokenError =
+                        slackConfigurationTokenValidationMessage(
+                            configurationToken,
+                        );
+                    if (configurationTokenError) {
+                        setupWizardState.errorMessage =
+                            configurationTokenError;
+                        await renderSetup(onComplete);
+                        return;
+                    }
                     setupWizardState.slackConfigurationToken =
                         configurationToken;
                     setupWizardState.slackPreparation =

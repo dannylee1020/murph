@@ -7,6 +7,7 @@ import { getDiscordService } from '#shared/server/channels/discord/service';
 import { getIngressHealth } from '#shared/server/channels/ingress-health';
 import { MURPH_CONFIG_FILE, murphConfigExists, murphConfigPath, readMurphConfig } from '#shared/server/setup/config-file';
 import { credentialsPath, listSecrets } from '#shared/server/credentials/local-store';
+import { isSlackAppLevelToken } from './slack-tokens.js';
 
 export type SetupCheckStatus = 'ok' | 'warning' | 'action_required' | 'error';
 
@@ -60,6 +61,8 @@ export function getSetupDoctor(): SetupDoctorPayload {
   const hasDiscordWorkspace = store.listWorkspaces().some((workspace) => workspace.provider === 'discord');
   const discordConfigured = getDiscordService().isConfigured();
   const slackReconnectRequired = !slackWorkspace && slack.hasUnreadableInstall();
+  const hasSlackAppToken = isSlackAppLevelToken(env.slackAppToken);
+  const hasInvalidSlackAppToken = Boolean(env.slackAppToken && !hasSlackAppToken);
   const hasCredentialsFile = existsSync(credentialsPath());
   const checks: SetupDoctorCheck[] = [];
 
@@ -89,8 +92,10 @@ export function getSetupDoctor(): SetupDoctorPayload {
   );
 
   checks.push(
-    env.slackEventsMode === 'http' || env.slackAppToken
+    env.slackEventsMode === 'http' || hasSlackAppToken
       ? check('slack_socket', 'Slack Socket Mode', 'ok', env.slackEventsMode === 'http' ? 'Socket Mode is disabled for HTTP mode.' : 'Slack app-level token is configured.')
+      : hasInvalidSlackAppToken
+        ? check('slack_socket', 'Slack Socket Mode', 'action_required', 'Saved Slack app-level token is invalid.', 'Paste the Socket Mode app-level token that starts with xapp-.')
       : check('slack_socket', 'Slack Socket Mode', 'action_required', 'Add a Slack app-level token with connections:write.', 'Create an app-level token in Slack and paste it as SLACK_APP_TOKEN.')
   );
 
@@ -114,7 +119,7 @@ export function getSetupDoctor(): SetupDoctorPayload {
       : check('slack_user_search', 'Slack user search', 'warning', 'Slack cross-channel search is not connected yet.', 'Reconnect Slack with search:read user scope.')
   );
 
-  if (slackWorkspace && env.slackEventsMode === 'socket' && env.slackAppToken) {
+  if (slackWorkspace && env.slackEventsMode === 'socket' && hasSlackAppToken) {
     checks.push(
       slackIngress.connected
         ? check('slack_ingress', 'Slack event ingress', 'ok', 'Slack Socket Mode is connected.')

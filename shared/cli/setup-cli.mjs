@@ -159,6 +159,11 @@ const SECRET_KEY_MAP = {
   TAVILY_API_KEY: ['tavily', 'api_key'],
   BRAVE_SEARCH_API_KEY: ['brave_search', 'api_key']
 };
+const SLACK_APP_TOKEN_SETUP_KEYS = new Set([
+  'SLACK_APP_TOKEN',
+  'SLACK_CHANNEL_APP_TOKEN',
+  'SLACK_PERSONAL_APP_TOKEN'
+]);
 
 let selectedChannelProvider = null;
 let selectedWorkspaceId = null;
@@ -516,6 +521,11 @@ function writeSetupValues(values) {
 
   for (const [key, rawValue] of Object.entries(secretValues)) {
     const value = String(rawValue || '').trim();
+    if (value) validateSetupSecretValue(key, value);
+  }
+
+  for (const [key, rawValue] of Object.entries(secretValues)) {
+    const value = String(rawValue || '').trim();
     if (!value) continue;
     const [provider, secretKey] = SECRET_KEY_MAP[key];
     writeCredentialValue(provider, secretKey, value);
@@ -731,7 +741,7 @@ function slackReadRoleValue(role, suffix) {
 
 function slackAppConfigured(role = 'channel') {
   return Boolean(
-    slackReadRoleValue(role, 'APP_TOKEN') &&
+    isSlackAppLevelToken(slackReadRoleValue(role, 'APP_TOKEN')) &&
     slackReadRoleValue(role, 'CLIENT_ID') &&
     slackReadRoleValue(role, 'CLIENT_SECRET')
   );
@@ -743,6 +753,62 @@ function slackOAuthConfigured(role = 'channel') {
 
 function isSlackAppLevelToken(value) {
   return String(value || '').trim().startsWith('xapp-');
+}
+
+function slackAppTokenValidationError(fieldLabel = 'Slack app-level token') {
+  return `${fieldLabel} must start with xapp-. Paste the Socket Mode app-level token here, not the Slack app configuration token.`;
+}
+
+function validateSlackAppLevelToken(value, fieldLabel = 'Slack app-level token') {
+  const trimmed = String(value || '').trim();
+  if (!trimmed || isSlackAppLevelToken(trimmed)) return '';
+  return slackAppTokenValidationError(fieldLabel);
+}
+
+function validateSlackConfigurationToken(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  if (isSlackAppLevelToken(trimmed)) {
+    return 'That looks like a Slack app-level token. Paste it in the Socket Mode app-level token step, not the Slack app configuration token step.';
+  }
+  if (trimmed.startsWith('xoxb-')) {
+    return 'That looks like a Slack bot token. Paste a Slack app configuration token for manifest setup.';
+  }
+  if (trimmed.startsWith('xoxp-')) {
+    return 'That looks like a Slack user token. Paste a Slack app configuration token for manifest setup.';
+  }
+  if (trimmed.startsWith('https://hooks.slack.com/')) {
+    return 'That looks like a Slack webhook URL. Paste a Slack app configuration token for manifest setup.';
+  }
+  return '';
+}
+
+function validateSetupSecretValue(key, value) {
+  if (!SLACK_APP_TOKEN_SETUP_KEYS.has(key)) return;
+  const error = validateSlackAppLevelToken(value, key);
+  if (error) fail(error);
+}
+
+function requireSlackAppLevelToken(value, fieldLabel = 'Slack app-level token') {
+  const trimmed = String(value || '').trim();
+  const error = validateSlackAppLevelToken(trimmed, fieldLabel);
+  if (error) fail(error);
+  return trimmed;
+}
+
+async function askSlackAppLevelToken(question, defaultValue = '') {
+  while (true) {
+    const token = await ask(question, isSlackAppLevelToken(defaultValue) ? defaultValue : '');
+    if (!token.trim()) {
+      if (options.nonInteractive) fail(`Missing required value: ${question}`);
+      warn('A value is required.');
+      continue;
+    }
+    const error = validateSlackAppLevelToken(token, question);
+    if (!error) return token.trim();
+    if (options.nonInteractive) fail(error);
+    warn(error);
+  }
 }
 
 function parseSlackAuthList(output) {
@@ -955,13 +1021,13 @@ async function saveSlackAppConfig(credentials, workspace = null, role = 'channel
   };
   if (credentials.appId) values[slackRoleKey(role, 'APP_ID')] = credentials.appId;
   if (credentials.signingSecret) values[slackRoleKey(role, 'SIGNING_SECRET')] = credentials.signingSecret;
-  if (credentials.appToken) values[slackRoleKey(role, 'APP_TOKEN')] = credentials.appToken;
+  if (credentials.appToken) values[slackRoleKey(role, 'APP_TOKEN')] = requireSlackAppLevelToken(credentials.appToken, slackRoleKey(role, 'APP_TOKEN'));
   if (role === 'channel') {
     values.SLACK_CLIENT_ID = credentials.clientId;
     values.SLACK_CLIENT_SECRET = credentials.clientSecret;
     if (credentials.appId) values.SLACK_APP_ID = credentials.appId;
     if (credentials.signingSecret) values.SLACK_SIGNING_SECRET = credentials.signingSecret;
-    if (credentials.appToken) values.SLACK_APP_TOKEN = credentials.appToken;
+    if (credentials.appToken) values.SLACK_APP_TOKEN = requireSlackAppLevelToken(credentials.appToken, 'SLACK_APP_TOKEN');
   }
   if (credentials.teamId || workspace?.id) values.SLACK_TEAM_ID = credentials.teamId || workspace.id;
   if (credentials.teamName || workspace?.name) values.SLACK_TEAM_NAME = credentials.teamName || workspace.name;
@@ -985,13 +1051,9 @@ async function trySlackManifestAutomation(workspace = null, role = 'channel') {
   if (!token.trim()) {
     fail('Slack app configuration token was not provided.');
   }
-  if (isSlackAppLevelToken(token)) {
-    warn('That looks like a Slack app-level token, not an app configuration token.');
-    const values = { [slackRoleKey(role, 'APP_TOKEN')]: token.trim() };
-    if (role === 'channel') values.SLACK_APP_TOKEN = token.trim();
-    writeSetupValues(values);
-    await postSetupConfig(values);
-    fail(`Saved it as ${slackRoleKey(role, 'APP_TOKEN')}. Slack app OAuth credentials are still missing.`);
+  const configurationTokenError = validateSlackConfigurationToken(token);
+  if (configurationTokenError) {
+    fail(configurationTokenError);
   }
 
   const manifest = renderSlackManifest(role);
@@ -1016,7 +1078,13 @@ async function trySlackManifestAutomation(workspace = null, role = 'channel') {
 }
 
 async function promptSlackAppToken(role = 'channel', appId = slackReadRoleValue(role, 'APP_ID')) {
-  if (slackReadRoleValue(role, 'APP_TOKEN')) return;
+  const existingToken = slackReadRoleValue(role, 'APP_TOKEN');
+  if (isSlackAppLevelToken(existingToken)) return;
+  if (existingToken) {
+    const message = validateSlackAppLevelToken(existingToken, slackRoleKey(role, 'APP_TOKEN'));
+    if (options.nonInteractive) fail(message);
+    warn(message);
+  }
   if (options.nonInteractive) {
     fail(`Missing Slack app-level token. Set ${slackRoleKey(role, 'APP_TOKEN')}, or run murph setup slack interactively.`);
   }
@@ -1024,7 +1092,7 @@ async function promptSlackAppToken(role = 'channel', appId = slackReadRoleValue(
     printSlackAppSettingsUrl(appId);
     info('Create or copy the app-level token (xapp-...), then paste it here.');
   }
-  const token = await askRequired('Slack app-level token (xapp-...)', slackReadRoleValue(role, 'APP_TOKEN'));
+  const token = await askSlackAppLevelToken('Slack app-level token (xapp-...)', existingToken);
   const values = { [slackRoleKey(role, 'APP_TOKEN')]: token };
   if (role === 'channel') values.SLACK_APP_TOKEN = token;
   writeSetupValues(values);
@@ -1039,8 +1107,12 @@ async function promptManualSlackConfig(role = 'channel') {
   info(`Use ${path.relative(appDir, slackManifestPathForRole(role))} and this redirect URL:`);
   callout('Redirect URL', slackRedirectUrl());
   const values = { SLACK_EVENTS_MODE: 'socket' };
-  if (!slackReadRoleValue(role, 'APP_TOKEN')) {
-    values[slackRoleKey(role, 'APP_TOKEN')] = await askRequired('Slack app-level token (xapp-...)');
+  const existingAppToken = slackReadRoleValue(role, 'APP_TOKEN');
+  if (!isSlackAppLevelToken(existingAppToken)) {
+    if (existingAppToken) {
+      warn(validateSlackAppLevelToken(existingAppToken, slackRoleKey(role, 'APP_TOKEN')));
+    }
+    values[slackRoleKey(role, 'APP_TOKEN')] = await askSlackAppLevelToken('Slack app-level token (xapp-...)', existingAppToken);
   }
   if (!slackReadRoleValue(role, 'CLIENT_ID')) {
     values[slackRoleKey(role, 'CLIENT_ID')] = await askRequired('Slack client ID');

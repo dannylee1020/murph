@@ -21,7 +21,6 @@ tasks:
         DELETE FROM continuity_actions;
         DELETE FROM audit_entries;
         DELETE FROM reminders;
-        DELETE FROM recurring_jobs;
         DELETE FROM thread_states;
         DELETE FROM thread_memory;
         DELETE FROM slack_events;
