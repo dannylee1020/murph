@@ -80,9 +80,11 @@ If a task is already running, Murph does not mutate the in-flight run. It marks 
 
 Murph separates context from evidence.
 
-Context helps the agent understand the request. It can include the current thread, session metadata, workspace memory, thread memory, selected skills, and linked artifacts.
+Context helps the agent understand the request. It can include the current thread, session metadata, workspace memory, thread memory, source-index hints, selected skills, and linked artifacts.
 
 Evidence supports factual answers. It should come from current thread content, connected integration reads, or read-only tool results from the current run.
+
+Source-index hints help Murph route retrieval toward relevant connected resources. They are not evidence by themselves.
 
 For latest, current, today, now, status, changed, or source-of-truth requests, Murph should use live retrieval from connected sources. Stored memory alone is not enough for fresh state.
 
@@ -104,9 +106,9 @@ Skills are not a separate agent. They shape the runtime's behavior once relevant
 
 Murph has one runtime memory surface and one audit log.
 
-SQLite is the source of truth for runtime state and what happened. It preserves workspace memory, thread memory, sessions, runs, events, tools, policy, and actions.
+SQLite is the source of truth for runtime state and what happened. It preserves workspace memory, thread memory, sessions, runs, events, tools, policy, actions, and source-index refresh status.
 
-Generated markdown is optional operator export/debug output. It is built from SQLite run history and is not agent-readable runtime memory.
+Generated markdown exports are optional operator debug output. The source index is the exception: it is a generated routing catalog that can help Murph find relevant connected resources, but it is not factual grounding evidence.
 
 See [Memory](/docs/memory) for the storage layout and freshness rules.
 

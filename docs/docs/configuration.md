@@ -89,7 +89,7 @@ app:
   sqlitePath: data/murph.sqlite
 ```
 
-SQLite is the only runtime memory source. Murph no longer writes or reads generated markdown memory as part of the core runtime.
+SQLite is the transactional runtime memory source. Murph also writes a generated source-index catalog under `~/.murph/memory/source-index/` to route retrieval toward relevant connected resources. The source index is not factual grounding evidence.
 
 Secrets are stored in plaintext at `~/.murph/.credentials` on the runtime host with owner-only file permissions. Runtime credential reads come from that file, not SQLite.
 
@@ -106,9 +106,14 @@ app:
   distribution: team
   url: http://localhost:5173
   sqlitePath: data/murph.sqlite
+  sourceIndexEnabled: true
+  sourceIndexIntervalMs: 86400000
+  sourceIndexRetryIntervalMs: 3600000
 ```
 
 Channel-related setup values are stored in SQLite, not `config.yaml`. This includes bot roles, channel provider, workspace and owner identity, watched-channel mode, selected channels, and per-workspace channel defaults.
+
+Source indexing is enabled by default. The runtime checks for due source-index work at startup and during heartbeat. `sourceIndexIntervalMs` controls how often a successful provider refresh becomes due again. `sourceIndexRetryIntervalMs` controls when failed provider refreshes are retried.
 
 ## Runtime refresh
 
@@ -129,9 +134,13 @@ MURPH_CONFIG_PATH=/path/to/config.yaml
 MURPH_CREDENTIALS_PATH=/path/to/.credentials
 MURPH_URL=http://localhost:5173
 MURPH_PORT=5173
+MURPH_HEARTBEAT_INTERVAL_MS=900000
+MURPH_SOURCE_INDEX_ENABLED=true
+MURPH_SOURCE_INDEX_INTERVAL_MS=86400000
+MURPH_SOURCE_INDEX_RETRY_INTERVAL_MS=3600000
 ```
 
-`MURPH_URL` is the CLI control URL used by commands such as setup, status, and policy calls. `MURPH_PORT` controls the local server port when starting Murph from the CLI.
+`MURPH_URL` is the CLI control URL used by commands such as setup, status, and policy calls. `MURPH_PORT` controls the local server port when starting Murph from the CLI. `MURPH_HEARTBEAT_INTERVAL_MS` controls how often the runtime checks scheduled background work, including whether any source-index provider is due; it does not force every provider to rebuild on every heartbeat.
 
 `MURPH_DISTRIBUTION=team|personal` selects the runtime distribution. Team is the default. The legacy `MURPH_PRODUCT_MODE=channel|personal` still works as a compatibility alias; `channel` maps to Team and `personal` maps to Personal unless `MURPH_DISTRIBUTION` is set.
 

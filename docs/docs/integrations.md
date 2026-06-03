@@ -38,6 +38,8 @@ An integration can provide:
 
 Murph enables the relevant context and search capabilities when an integration is connected.
 
+Supported integrations may also be indexed for source-routing metadata after connection or scope changes. Team indexes GitHub, Linear, and Notion. Personal indexes those plus Granola and Obsidian. Google remains live-retrieval only for now and is not source-indexed.
+
 ## Advanced Configuration
 
 For direct YAML and environment-variable setup, see [Configuration](/docs/configuration).
