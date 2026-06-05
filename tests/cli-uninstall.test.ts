@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
-const repoCli = join(repoRoot, 'murph/cli/murph');
+const repoCli = join(repoRoot, 'app/cli/murph');
 const repoSharedCli = join(repoRoot, 'shared/cli/murph');
 
 function runMurph(args: string[], env: Record<string, string>) {
@@ -29,12 +29,12 @@ function runMurph(args: string[], env: Record<string, string>) {
 }
 
 function writeAppFixture(appDir: string): void {
-  mkdirSync(join(appDir, 'murph/cli'), { recursive: true });
+  mkdirSync(join(appDir, 'app/cli'), { recursive: true });
   mkdirSync(join(appDir, 'shared/cli'), { recursive: true });
   writeFileSync(join(appDir, 'package.json'), '{"name":"murph","version":"0.0.0"}\n');
-  copyFileSync(repoCli, join(appDir, 'murph/cli/murph'));
+  copyFileSync(repoCli, join(appDir, 'app/cli/murph'));
   copyFileSync(repoSharedCli, join(appDir, 'shared/cli/murph'));
-  chmodSync(join(appDir, 'murph/cli/murph'), 0o755);
+  chmodSync(join(appDir, 'app/cli/murph'), 0o755);
   chmodSync(join(appDir, 'shared/cli/murph'), 0o755);
 }
 
@@ -52,7 +52,7 @@ function createInstalledFixture() {
   writeFileSync(join(murphHome, 'murph.log'), 'log\n');
   writeFileSync(join(murphHome, 'murph.pid'), '999999\n');
   writeFileSync(join(appDir, 'data/murph.sqlite'), '');
-  symlinkSync(join(appDir, 'murph/cli/murph'), join(binDir, 'murph'));
+  symlinkSync(join(appDir, 'app/cli/murph'), join(binDir, 'murph'));
 
   return {
     home,
@@ -150,9 +150,9 @@ describe('murph uninstall', () => {
     writeFileSync(join(sourceDir, 'data/murph.sqlite'), '');
     writeFileSync(join(murphHome, '.credentials'), '{"version":1,"credentials":[]}\n');
     writeFileSync(join(murphHome, 'config.yaml'), 'app:\n  sqlitePath: data/murph.sqlite\n');
-    symlinkSync(join(sourceDir, 'murph/cli/murph'), join(binDir, 'murph'));
+    symlinkSync(join(sourceDir, 'app/cli/murph'), join(binDir, 'murph'));
 
-    const result = spawnSync('bash', [join(sourceDir, 'murph/cli/murph'), 'uninstall', '--yes'], {
+    const result = spawnSync('bash', [join(sourceDir, 'app/cli/murph'), 'uninstall', '--yes'], {
       cwd: sourceDir,
       env: {
         ...process.env,

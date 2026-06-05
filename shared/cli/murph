@@ -131,7 +131,7 @@ require_runtime() {
 runtime_entrypoint() {
   case "$1" in
     team|"")
-      printf 'dist/murph/runtime/server.js\n'
+      printf 'dist/app/runtime/server.js\n'
       ;;
     *)
       fail "Unknown Murph distribution: $1"

@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="${1:-$(pwd)}"
 
-if [[ ! -f "$APP_DIR/package.json" || ! -f "$APP_DIR/murph/cli/murph" ]]; then
+if [[ ! -f "$APP_DIR/package.json" || ! -f "$APP_DIR/app/cli/murph" ]]; then
   printf 'Refusing to prune %s: not a Murph app directory.\n' "$APP_DIR" >&2
   exit 1
 fi

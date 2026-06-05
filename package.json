@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/murph/runtime/server.js",
+  "main": "dist/app/runtime/server.js",
   "bin": {
-    "murph": "murph/cli/murph"
+    "murph": "app/cli/murph"
   },
   "engines": {
     "node": ">=20"
@@ -23,10 +23,8 @@
     "watch:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput",
     "build": "npm run build:server && npm run build:ui",
     "build:server": "tsc -p tsconfig.server.json",
-    "build:ui": "npm run build:ui:murph",
-    "build:ui:murph": "MURPH_UI_PRODUCT=murph vite build --config shared/ui/vite.config.ts",
-    "start": "npm run start:murph",
-    "start:murph": "node dist/murph/runtime/server.js",
+    "build:ui": "vite build --config shared/ui/vite.config.ts",
+    "start": "node dist/app/runtime/server.js",
     "preview": "npm run start",
     "architecture:map": "node scripts/generate-architecture-map.mjs",
     "docs:sync-installer": "mkdir -p docs/public && cp install.sh docs/public/install.sh",

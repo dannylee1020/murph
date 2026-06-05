@@ -12,7 +12,7 @@
     "shared/*.d.ts",
     "shared/*.ts",
     "shared/server/**/*.ts",
-    "murph/runtime/**/*.ts"
+    "app/runtime/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

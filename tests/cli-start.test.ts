@@ -12,11 +12,11 @@ function createAppFixture() {
   const appDir = join(root, 'app');
   const murphHome = join(root, '.murph');
   const toolsDir = join(root, 'tools');
-  mkdirSync(join(appDir, 'dist/murph/runtime'), { recursive: true });
+  mkdirSync(join(appDir, 'dist/app/runtime'), { recursive: true });
   mkdirSync(murphHome, { recursive: true });
   mkdirSync(toolsDir, { recursive: true });
   writeFileSync(join(appDir, 'package.json'), '{"name":"murph","version":"0.0.0"}\n');
-  writeFileSync(join(appDir, 'dist/murph/runtime/server.js'), 'require("node:fs").writeFileSync(process.env.MURPH_STARTED_FILE, process.env.MURPH_DISTRIBUTION || "");\n');
+  writeFileSync(join(appDir, 'dist/app/runtime/server.js'), 'require("node:fs").writeFileSync(process.env.MURPH_STARTED_FILE, process.env.MURPH_DISTRIBUTION || "");\n');
   writeFileSync(join(toolsDir, 'curl'), '#!/usr/bin/env bash\nprintf "%s" "$FAKE_HEALTH_PAYLOAD"\n');
   writeFileSync(join(toolsDir, 'lsof'), '#!/usr/bin/env bash\nprintf "12345\\n"\n');
   chmodSync(join(toolsDir, 'curl'), 0o755);

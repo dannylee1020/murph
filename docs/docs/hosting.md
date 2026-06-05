@@ -47,7 +47,7 @@ docker exec -it murph murph setup
 Build the image locally from a checkout:
 
 ```bash
-docker build -f murph/Dockerfile -t murph:local .
+docker build -f app/Dockerfile -t murph:local .
 ```
 
 Then replace the image name in `docker run` with:

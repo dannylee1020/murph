@@ -540,7 +540,7 @@ prune_install_payload() {
 install_cli() {
   section "Installing CLI"
 
-  local product_cli="murph/cli/murph"
+  local product_cli="app/cli/murph"
 
   if [[ ! -f "$product_cli" ]]; then
     printf '%s is missing. Skipping CLI install.\n' "$product_cli"
@@ -638,8 +638,8 @@ maybe_start() {
     y|Y|yes|YES)
       if [[ -x "$bin_dir/murph" ]]; then
         "$bin_dir/murph" setup --quick
-      elif [[ -x murph/cli/murph ]]; then
-        murph/cli/murph setup --quick
+      elif [[ -x app/cli/murph ]]; then
+        app/cli/murph setup --quick
       elif command -v murph >/dev/null 2>&1; then
         murph setup --quick
       else
