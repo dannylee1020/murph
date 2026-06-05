@@ -282,13 +282,10 @@ export class DiscordService {
           ...(flags === undefined ? {} : { flags })
         })
       });
-      const commandsConfigured = response.ok
-        ? await this.configurePersonalHandoffCommands(botToken).catch(() => false)
-        : false;
       return {
         permissionsConfigured: response.ok,
         intentsConfigured: response.ok && flags !== undefined,
-        commandsConfigured,
+        commandsConfigured: response.ok,
         ...(response.ok ? {} : { error: await discordErrorMessage(response, 'Discord app configuration automation failed') })
       };
     } catch (error) {
@@ -299,42 +296,6 @@ export class DiscordService {
         error: error instanceof Error ? error.message : 'Discord app configuration automation failed'
       };
     }
-  }
-
-  async configurePersonalHandoffCommands(botToken?: string): Promise<boolean> {
-    const application = await this.fetchCurrentApplication(botToken);
-    const commands = [
-      {
-        name: 'murph',
-        description: "Open an owner's Murph Personal bot",
-        type: 1,
-        integration_types: [0, 1],
-        contexts: [0, 1, 2],
-        options: [
-          {
-            name: 'owner',
-            description: 'The offline owner you want to reach',
-            type: 6,
-            required: false
-          }
-        ]
-      },
-      {
-        name: 'Ask Murph Personal',
-        type: 2,
-        integration_types: [0, 1],
-        contexts: [0, 1, 2]
-      }
-    ];
-    const response = await fetch(`https://discord.com/api/v10/applications/${application.id}/commands`, {
-      method: 'PUT',
-      headers: {
-        authorization: `Bot ${botToken ?? this.getBotToken()}`,
-        'content-type': 'application/json; charset=utf-8'
-      },
-      body: JSON.stringify(commands)
-    });
-    return response.ok;
   }
 
   async exchangeCode(code: string, guildId: string | undefined, redirectUri = this.resolveRedirectUri(), role: BotRole = 'channel'): Promise<DiscordInstallResult> {
@@ -666,7 +627,7 @@ export class DiscordService {
     const channelId = await this.openDirectMessage(ownerUserId, 'personal', botInstallationId);
     await this.postDirectMessage(
       channelId,
-      'Murph Personal is connected. Teammates can use the Murph command to open this personal bot when you are offline.',
+      'Murph direct messages are connected.',
       'personal',
       botInstallationId
     );

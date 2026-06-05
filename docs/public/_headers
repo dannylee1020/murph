@@ -2,10 +2,6 @@
   Cache-Control: no-cache
   Content-Type: text/x-shellscript; charset=utf-8
 
-/install-personal.sh
-  Cache-Control: no-cache
-  Content-Type: text/x-shellscript; charset=utf-8
-
 /release.env
   Cache-Control: no-cache
   Content-Type: text/plain; charset=utf-8

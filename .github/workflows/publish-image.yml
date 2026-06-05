@@ -1,4 +1,4 @@
-name: Publish Team Docker image
+name: Publish Murph Docker image
 
 on:
   release:
@@ -9,11 +9,11 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/dannylee1020/murph-team
+  IMAGE_NAME: ghcr.io/dannylee1020/murph
 
 jobs:
   publish:
-    name: Build and publish Team image
+    name: Build and publish Murph image
     runs-on: ubuntu-latest
     steps:
       - name: Validate release tag
@@ -49,7 +49,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: app/team/Dockerfile
+          file: murph/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

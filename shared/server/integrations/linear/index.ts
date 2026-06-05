@@ -8,8 +8,8 @@ export function createLinearAdapter(): IntegrationAdapter {
   return {
     id: 'linear',
     name: 'Linear',
-    description: 'Team issues, projects, and product work.',
-    distributions: ['team', 'personal'],
+    description: 'Shared issues, projects, and product work.',
+    distributions: ['team'],
     credential: {
       authType: 'api_key',
       credentialKind: 'api_key',

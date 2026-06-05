@@ -63,7 +63,7 @@ Message arrives
   |
   v
 Runtime hard stops
-(no session, out of scope, expired, missing Personal owner)
+(no session, out of scope, expired, missing owner)
   |
   v
 Agent drafts action
@@ -107,9 +107,9 @@ Session mode is a temporary override. Starting a session without a mode inherits
 
 Runtime hard stops still apply for empty context, out-of-scope threads, high-risk skill context, unsupported action types, and messages Murph cannot safely send.
 
-## Team hosts
+## Runtime Hosts
 
-In a shared messenger channel Team host, policy resolves at the team runtime level. New config-bound Team sessions snapshot the selected Team policy profile.
+In a shared messenger channel runtime host, policy resolves at the runtime level. New config-bound sessions snapshot the selected policy profile.
 
 Session overrides cannot raise autonomy beyond the selected profile mode. A `manual_review` profile still prevents a session request from raising execution to `auto_send_low_risk`.
 

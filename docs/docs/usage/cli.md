@@ -5,10 +5,7 @@ description: Use the murph command-line interface.
 
 # CLI
 
-Murph installs one product-local CLI for normal use:
-
-- In a Team deployment, `murph` controls the shared messenger channel Team runtime.
-- In a Personal deployment, `murph` controls the direct message Personal runtime.
+Murph installs one product-local CLI for normal use. `murph` controls the shared messenger channel runtime.
 
 ## Setup commands
 
@@ -22,7 +19,7 @@ murph setup policy
 murph setup status
 ```
 
-Use `murph setup` on the host where the product is installed. The wizard creates core local config, chooses the runtime AI provider, chooses a messenger provider, captures OAuth owner identity, saves product-specific defaults, sets the schedule, selects policy, and prints setup status.
+Use `murph setup` on the runtime host. The wizard creates core local config, chooses the runtime AI provider, chooses a messenger provider, captures OAuth owner identity, saves channel defaults, sets the schedule, selects policy, and prints setup status.
 
 Setup changes refresh active config-bound sessions automatically. If Murph is already handling a request, the refresh is marked pending and applied at the next run boundary.
 
@@ -36,7 +33,7 @@ murph setup discord
 murph setup channels
 ```
 
-`murph setup channels` is Team-only. Personal setup skips watched-channel selection.
+`murph setup channels` saves watched-channel defaults for remote-team coverage.
 
 `murph setup identity` remains as a compatibility check for OAuth owner identity. If identity is missing, reconnect the messenger provider; Murph does not accept a manual owner ID.
 
@@ -52,7 +49,7 @@ murph restart
 murph open
 ```
 
-Use these commands to run Murph locally and inspect the local process. The installed product fixes the matching runtime distribution.
+Use these commands to run Murph locally and inspect the local process.
 
 ## Admin commands
 
@@ -60,7 +57,7 @@ Use these commands to run Murph locally and inspect the local process. The insta
 murph admin url
 ```
 
-Use `murph admin url` to print the admin dashboard URL for the current Team runtime host.
+Use `murph admin url` to print the admin dashboard URL for the current runtime host.
 
 ## Health commands
 
@@ -68,7 +65,7 @@ Use `murph admin url` to print the admin dashboard URL for the current Team runt
 murph doctor
 ```
 
-Use the matching product doctor after setup changes or when a channel, provider, or runtime check fails.
+Use `murph doctor` after setup changes or when a channel, provider, or runtime check fails.
 
 ## Credential commands
 

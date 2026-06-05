@@ -10,7 +10,7 @@ COPY . .
 RUN npm run build
 ENV NODE_ENV=production
 ENV MURPH_APP_DIR=/app
-RUN install -m 0755 app/team/cli/murph /usr/local/bin/murph
+RUN install -m 0755 murph/cli/murph /usr/local/bin/murph
 
 EXPOSE 5173
-CMD ["node", "dist/app/team/runtime/server.js"]
+CMD ["node", "dist/murph/runtime/server.js"]

@@ -5,12 +5,7 @@ description: Connect messenger channels that Murph can cover during sessions.
 
 # Channels
 
-Channels are messenger surfaces that Murph can cover during bounded async coverage sessions. The active distribution decides the role:
-
-- Murph Team covers selected shared messenger channels during active sessions.
-- Murph Personal covers direct messages for the local user. Murph does not read arbitrary private conversations between two people.
-
-Use separate provider app identities when you run both distributions. Runtime storage, SQLite, memory, config, credentials, policy, review, and plugin code stay on the machine hosting each Murph runtime.
+Channels are messenger surfaces that Murph can cover during bounded async coverage sessions. Murph covers selected team channels from one runtime host. Runtime storage, SQLite, memory, config, credentials, policy, review, and plugin code stay on the machine hosting that runtime.
 
 ## Built-in channels
 

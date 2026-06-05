@@ -7,15 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const channelManifest = [
   'display_information:',
   '  name: Murph',
-  'features:',
-  '  slash_commands:',
-  '    - command: /murph',
-  '      description: Open Murph Personal',
-  '      should_escape: true',
-  '  shortcuts:',
-  '    - name: Send to Murph Personal',
-  '      type: message',
-  '      callback_id: murph_personal_handoff',
   'oauth_config:',
   '  redirect_urls:',
   '    - http://localhost:5173/api/slack/oauth/callback',
@@ -24,37 +15,13 @@ const channelManifest = [
   '      - app_mentions:read',
   '      - channels:history',
   '      - chat:write',
-  '      - commands',
   '      - groups:history',
-  '    user:',
-  '      - search:read',
   'settings:',
   '  event_subscriptions:',
   '    bot_events:',
   '      - app_mention',
   '      - message.channels',
   '      - message.groups',
-  '  interactivity:',
-  '    is_enabled: true',
-  '  socket_mode_enabled: true',
-  ''
-].join('\n');
-
-const personalManifest = [
-  'display_information:',
-  '  name: Murph Personal',
-  'oauth_config:',
-  '  redirect_urls:',
-  '    - http://localhost:5173/api/slack/oauth/callback',
-  '  scopes:',
-  '    bot:',
-  '      - chat:write',
-  '      - im:history',
-  '      - im:write',
-  'settings:',
-  '  event_subscriptions:',
-  '    bot_events:',
-  '      - message.im',
   '  socket_mode_enabled: true',
   ''
 ].join('\n');
@@ -100,13 +67,12 @@ function textResponse(): any & { result: () => { status: number; body: string; h
   };
 }
 
-async function setup(input: { productMode?: 'personal' | 'channel'; botRolesEnv?: string; skipSlackToken?: boolean } = {}) {
+async function setup(input: { productMode?: 'channel'; botRolesEnv?: string; skipSlackToken?: boolean } = {}) {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
   mkdirSync(join(workspaceDir, 'docs/public'), { recursive: true });
   writeFileSync(join(workspaceDir, 'docs/public/slack-manifest.yaml'), channelManifest);
   writeFileSync(join(workspaceDir, 'docs/public/slack-channel-manifest.yaml'), channelManifest);
-  writeFileSync(join(workspaceDir, 'docs/public/slack-personal-manifest.yaml'), personalManifest);
   process.env.MURPH_APP_DIR = workspaceDir;
   process.env.MURPH_CONFIG_PATH = join(workspaceDir, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');
@@ -329,9 +295,12 @@ describe('setup defaults routes', () => {
       channelScopeMode: 'selected',
       channelScope: ['C1']
     }));
-    expect(store.getAppSettings().setupDefaults).toBeUndefined();
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('ownerUserId: U1');
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('displayName: "#product"');
+    expect(store.getAppSettings().setupDefaults).toEqual(expect.objectContaining({
+      ownerUserId: 'U1',
+      ownerDisplayName: 'Daniel',
+      selectedChannels: [{ id: 'C1', displayName: '#product' }]
+    }));
+    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toBe('{}\n');
   });
 
   it('does not create a selected-empty subscription before channels are configured', async () => {
@@ -405,20 +374,6 @@ describe('setup defaults routes', () => {
     expect(after.body.nextStep).toBe('ready');
   });
 
-  it('does not require watched-channel defaults in the personal distribution', async () => {
-    const { request, workspace } = await setup({ productMode: 'personal', botRolesEnv: 'personal' });
-    await seedWorkspaceOwner(workspace);
-
-    const response = await request('GET', '/api/setup/doctor');
-
-    expect(response.body.nextStep).toBe('ready');
-    expect(response.body.ready).toBe(true);
-    expect(response.body.checks.some((entry: { id: string }) => entry.id === 'channels')).toBe(false);
-    expect(response.body.checks).toContainEqual(expect.objectContaining({
-      id: 'personal_bots'
-    }));
-  });
-
   it('round-trips workspace-specific owner defaults', async () => {
     const { request, store, workspace } = await setup();
     const discordWorkspace = store.saveInstall({
@@ -427,16 +382,17 @@ describe('setup defaults routes', () => {
       name: 'Test Server',
       botUserId: 'DBOT'
     });
-    const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
-    updateMurphSetupDefaults({
-      ownerUserId: 'USLACK',
-      ownerDisplayName: 'Slack Daniel',
-      workspaceId: workspace.id,
-      channelProvider: 'slack',
-      workspaceOwners: [
-        { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
-        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
-      ]
+    store.upsertAppSettings({
+      setupDefaults: {
+        ownerUserId: 'USLACK',
+        ownerDisplayName: 'Slack Daniel',
+        workspaceId: workspace.id,
+        channelProvider: 'slack',
+        workspaceOwners: [
+          { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
+          { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
+        ]
+      }
     });
 
     const response = await request('PUT', '/api/setup/defaults', {
@@ -477,8 +433,9 @@ describe('setup defaults routes', () => {
       channelScopeMode: 'selected',
       channelScope: ['D1']
     }));
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('workspaceOwners:');
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('ownerUserId: "1234567890"');
+    expect(store.getAppSettings().setupDefaults?.workspaceOwners).toEqual(expect.arrayContaining([
+      expect.objectContaining({ workspaceId: discordWorkspace.id, ownerUserId: '1234567890' })
+    ]));
   });
 
   it('round-trips workspace-specific channel defaults', async () => {
@@ -530,7 +487,9 @@ describe('setup defaults routes', () => {
     expect(slackDefaults.body.defaults.selectedChannels).toEqual([{ id: 'C1', displayName: '#product' }]);
     expect(discordDefaults.body.defaults.channelScopeMode).toBe('all_accessible');
     expect(discordDefaults.body.defaults.selectedChannels).toEqual([]);
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('workspaceChannels:');
+    expect(store.getAppSettings().setupDefaults?.workspaceChannels).toEqual(expect.arrayContaining([
+      expect.objectContaining({ workspaceId: discordWorkspace.id, channelScopeMode: 'all_accessible' })
+    ]));
   });
 
   it('marks setup not ready when event ingress has a blocking error', async () => {
@@ -598,27 +557,6 @@ describe('setup defaults routes', () => {
     expect(response.body.slack.roles.channel.installed).toBe(false);
   });
 
-  it('does not mark Slack personal bot installed from a channel bot token fallback', async () => {
-    const { request, store } = await setup();
-    const workspace = store.getWorkspaceByExternalId('slack', 'T1');
-    expect(workspace).toBeDefined();
-    store.upsertBotInstallation({
-      workspaceId: workspace!.id,
-      provider: 'slack',
-      externalWorkspaceId: workspace!.externalWorkspaceId,
-      role: 'personal',
-      botUserId: 'UPERSONALBOT',
-      representedUserId: 'UOWNER'
-    });
-
-    const response = await request('GET', '/api/setup/status');
-
-    expect(response.status).toBe(200);
-    expect(response.body.slack.roles.channel.installed).toBe(true);
-    expect(response.body.slack.roles.personal.installed).toBe(false);
-    expect(response.body.slack.roles.personal.representedOwnerConfigured).toBe(true);
-  });
-
   it('prefers the readable Slack channel install over an older stale install', async () => {
     const { request, store } = await setup({ skipSlackToken: true });
     const { writeSecret } = await import('../../shared/server/credentials/local-store');
@@ -626,7 +564,8 @@ describe('setup defaults routes', () => {
       provider: 'slack',
       externalWorkspaceId: 'T-readable',
       name: 'Readable Workspace',
-      botUserId: 'UREADABLEBOT'
+      botUserId: 'UREADABLEBOT',
+      appId: 'A-channel-test'
     });
     const readableInstallation = store.getBotInstallation('slack', 'T-readable', 'channel');
     writeSecret('slack', 'bot_token', 'xoxb-readable', {
@@ -648,12 +587,11 @@ describe('setup defaults routes', () => {
 
   it('returns role-specific setup helper links in setup status', async () => {
     const { request } = await setup();
-    await request('POST', '/api/setup/config', {
+    const update = await request('POST', '/api/setup/config', {
       SLACK_CHANNEL_APP_ID: 'A-channel',
-      SLACK_PERSONAL_APP_ID: 'A-personal',
-      DISCORD_CHANNEL_CLIENT_ID: 'discord-channel-client',
-      DISCORD_PERSONAL_CLIENT_ID: 'discord-personal-client'
+      DISCORD_CHANNEL_CLIENT_ID: 'discord-channel-client'
     });
+    expect(update.status, JSON.stringify(update.body)).toBe(200);
 
     const response = await request('GET', '/api/setup/status');
 
@@ -666,29 +604,22 @@ describe('setup defaults routes', () => {
       oauthConfigUrl: 'https://api.slack.com/apps/A-channel/oauth',
       eventsConfigUrl: 'https://api.slack.com/apps/A-channel/event-subscriptions'
     }));
-    expect(response.body.slack.roles.personal.links).toEqual(expect.objectContaining({
-      appId: 'A-personal',
-      manifestUrl: '/slack-personal-manifest.yaml',
-      appConfigUrl: 'https://api.slack.com/apps/A-personal/general'
-    }));
     expect(response.body.discord.roles.channel.links).toEqual(expect.objectContaining({
       redirectUri: 'http://localhost/api/discord/oauth/callback',
       developerPortalUrl: 'https://discord.com/developers/applications/discord-channel-client/oauth2',
       botConfigUrl: 'https://discord.com/developers/applications/discord-channel-client/bot'
     }));
-    expect(response.body.discord.roles.personal.links).toEqual(expect.objectContaining({
-      developerPortalUrl: 'https://discord.com/developers/applications/discord-personal-client/oauth2',
-      botConfigUrl: 'https://discord.com/developers/applications/discord-personal-client/bot'
-    }));
+    expect(response.body.slack.roles.personal).toBeUndefined();
+    expect(response.body.discord.roles.personal).toBeUndefined();
   });
 
-  it('reports bot installations in setup status independently of product mode', async () => {
-    const { request } = await setup({ productMode: 'personal' });
+  it('reports bot installations in setup status with the team product mode', async () => {
+    const { request } = await setup();
 
     const response = await request('GET', '/api/setup/status');
 
     expect(response.status).toBe(200);
-    expect(response.body.productMode).toBe('personal');
+    expect(response.body.productMode).toBe('channel');
     expect(response.body.botInstallations).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'slack', role: 'channel', externalWorkspaceId: 'T1' })
     ]));
@@ -707,7 +638,7 @@ describe('setup defaults routes', () => {
     expect(update.status).toBe(200);
     expect(update.body.providerBotRoles).toEqual({
       slack: [],
-      discord: ['personal']
+      discord: []
     });
 
     const status = await request('GET', '/api/setup/status');
@@ -760,70 +691,35 @@ describe('setup defaults routes', () => {
     const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
     expect(manifestBody.oauth_config.redirect_urls).toEqual(['http://localhost/api/slack/oauth/callback']);
     expect(manifestBody.oauth_config.scopes.bot).toEqual(expect.arrayContaining(['app_mentions:read', 'channels:history']));
-    expect(manifestBody.oauth_config.scopes.bot).toContain('commands');
-    expect(manifestBody.features.slash_commands[0]).toEqual(expect.objectContaining({
-      command: '/murph'
-    }));
-    expect(manifestBody.features.slash_commands[0]).not.toHaveProperty('url');
-    expect(manifestBody.features.shortcuts[0]).toEqual(expect.objectContaining({
-      callback_id: 'murph_personal_handoff'
-    }));
-    expect(manifestBody.settings.interactivity).toEqual(expect.objectContaining({
-      is_enabled: true
-    }));
-    expect(manifestBody.settings.interactivity).not.toHaveProperty('request_url');
+    expect(manifestBody.oauth_config.scopes.bot).not.toContain('commands');
+    expect(manifestBody.features).toBeUndefined();
+    expect(manifestBody.settings.interactivity).toBeUndefined();
     expect(manifestBody.settings.socket_mode_enabled).toBe(true);
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('appId: A-channel');
+    const { getStore } = await import('#shared/server/persistence/store');
+    expect(getStore().getBotAppConfig('slack', 'channel')).toEqual(expect.objectContaining({
+      appId: 'A-channel',
+      clientId: 'channel-client-id'
+    }));
     const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('slack', 'channel_client_secret')).toBe('channel-client-secret');
     expect(readSecret('slack', 'client_secret')).toBe('channel-client-secret');
     expect(readSecret('slack', 'channel_app_token')).toBe('xapp-channel');
   });
 
-  it('prepares a Slack personal app from the personal manifest without writing legacy channel keys', async () => {
+  it('rejects Slack personal app preparation', async () => {
     process.env.MURPH_SLACK_API_BASE = 'https://slack.test/api';
     const { request } = await setup();
-    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
-    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
-      const body = options.body ? JSON.parse(String(options.body)) : undefined;
-      calls.push({ url: String(url), body });
-      return Response.json({
-        ok: true,
-        app_id: 'A-personal',
-        credentials: {
-          client_id: 'personal-client-id',
-          client_secret: 'personal-client-secret',
-          signing_secret: 'personal-signing-secret'
-        }
-      });
-    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
 
     const response = await request('POST', '/api/setup/slack/prepare', {
       role: 'personal',
       configurationToken: 'xoxe-config'
     });
 
-    expect(response.status, JSON.stringify(response.body)).toBe(200);
-    expect(response.body).toEqual(expect.objectContaining({
-      ok: true,
-      role: 'personal',
-      appId: 'A-personal',
-      clientId: 'personal-client-id',
-      appTokenConfigured: false,
-      installUrl: '/api/slack/personal/install?source=setup'
-    }));
-    const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
-    const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
-    expect(manifestBody.display_information.name).toBe('Murph Personal');
-    expect(manifestBody.oauth_config.scopes.bot).toEqual(['chat:write', 'im:history', 'im:write']);
-    expect(manifestBody.oauth_config.scopes.user).toBeUndefined();
-    const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
-    expect(config).toContain('personal:');
-    expect(config).toContain('appId: A-personal');
-    expect(config).not.toContain('appId: A-channel');
-    const { readSecret } = await import('../../shared/server/credentials/local-store');
-    expect(readSecret('slack', 'personal_client_secret')).toBe('personal-client-secret');
-    expect(readSecret('slack', 'client_secret')).toBeUndefined();
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Murph Personal is no longer a supported runtime');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('creates a new Slack app from prepare even when a saved Slack app ID exists', async () => {
@@ -907,7 +803,11 @@ describe('setup defaults routes', () => {
     });
 
     expect(response.status, JSON.stringify(response.body)).toBe(200);
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('appId: A-existing');
+    const { getStore } = await import('#shared/server/persistence/store');
+    expect(getStore().getBotAppConfig('slack', 'channel')).toEqual(expect.objectContaining({
+      appId: 'A-existing',
+      clientId: 'existing-client-id'
+    }));
     const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('slack', 'channel_app_token')).toBe('xapp-existing');
     expect(readSecret('slack', 'app_token')).toBe('xapp-existing');
@@ -936,7 +836,7 @@ describe('setup defaults routes', () => {
     expect(readSecret('slack', 'app_token')).toBeUndefined();
   });
 
-  it('stores manual Slack personal app values for existing app reuse without legacy channel keys', async () => {
+  it('rejects manual Slack personal app values', async () => {
     const { request } = await setup();
 
     const response = await request('POST', '/api/setup/config', {
@@ -947,15 +847,11 @@ describe('setup defaults routes', () => {
       SLACK_PERSONAL_SIGNING_SECRET: 'personal-existing-signing-secret'
     });
 
-    expect(response.status, JSON.stringify(response.body)).toBe(200);
-    const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
-    expect(config).toContain('personal:');
-    expect(config).toContain('appId: A-personal-existing');
-    expect(config).not.toContain('appId: A-channel-existing');
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Unsupported setup key: SLACK_PERSONAL_APP_ID');
     const { readSecret } = await import('../../shared/server/credentials/local-store');
-    expect(readSecret('slack', 'personal_app_token')).toBe('xapp-personal-existing');
+    expect(readSecret('slack', 'personal_app_token')).toBeUndefined();
     expect(readSecret('slack', 'app_token')).toBeUndefined();
-    expect(readSecret('slack', 'personal_client_secret')).toBe('personal-existing-client-secret');
     expect(readSecret('slack', 'client_secret')).toBeUndefined();
   });
 
@@ -1015,38 +911,6 @@ describe('setup defaults routes', () => {
     expect(response.body.roleStatus.personal.selected).toBe(false);
   });
 
-  it('uses personal bot roles in the personal distribution', async () => {
-    const { request } = await setup({ productMode: 'personal', botRolesEnv: 'personal' });
-
-    const response = await request('GET', '/api/setup/status');
-
-    expect(response.status).toBe(200);
-    expect(response.body.productMode).toBe('personal');
-    expect(response.body.botRoles).toEqual(['personal']);
-    expect(response.body.roleStatus.channel.selected).toBe(false);
-    expect(response.body.roleStatus.personal.selected).toBe(true);
-  });
-
-  it('does not call channel discovery from the personal distribution', async () => {
-    const { request, workspace } = await setup({
-      productMode: 'personal',
-      botRolesEnv: 'personal',
-      skipSlackToken: true
-    });
-    const fetchMock = vi.fn().mockRejectedValue(new Error('channel discovery should not run'));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const response = await request('GET', `/api/setup/channels?provider=slack&workspaceId=${workspace.id}`);
-
-    expect(response.status).toBe(400);
-    expect(response.body).toMatchObject({
-      ok: false,
-      error: 'channel_role_not_enabled',
-      channels: []
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
   it('constrains config-backed bot roles to the active team distribution', async () => {
     const { request } = await setup();
     const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
@@ -1066,11 +930,12 @@ describe('setup defaults routes', () => {
       provider: 'discord',
       externalWorkspaceId: 'G1',
       name: 'Test Server',
-      botUserId: 'bot-user-1'
+      botUserId: 'bot-user-1',
+      appId: 'discord-client-id'
     });
     await request('POST', '/api/setup/config', {
-      DISCORD_CLIENT_ID: 'discord-client-id',
-      DISCORD_BOT_TOKEN: 'discord-token'
+      DISCORD_CHANNEL_CLIENT_ID: 'discord-client-id',
+      DISCORD_CHANNEL_BOT_TOKEN: 'discord-token'
     });
 
     const response = await request('GET', '/api/setup/status');
@@ -1135,32 +1000,20 @@ describe('setup defaults routes', () => {
       install_params: expect.objectContaining({ scopes: ['bot'] }),
       flags: 524292
     }));
-    const config = readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8');
-    expect(config).toContain('clientId: app-123');
+    const { getStore } = await import('#shared/server/persistence/store');
+    expect(getStore().getBotAppConfig('discord', 'channel')).toEqual(expect.objectContaining({
+      clientId: 'app-123',
+      appId: 'app-123'
+    }));
     const { readSecret } = await import('../../shared/server/credentials/local-store');
     expect(readSecret('discord', 'bot_token')).toBe('discord-bot-token');
     expect(readSecret('discord', 'client_secret')).toBe('discord-client-secret');
   });
 
-  it('prepares Discord personal setup with zero server permissions', async () => {
-    const { request } = await setup({ productMode: 'personal', botRolesEnv: 'personal' });
-    const calls: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
-    vi.stubGlobal('fetch', async (url: string, options: RequestInit = {}) => {
-      const body = options.body ? JSON.parse(String(options.body)) : undefined;
-      calls.push({ url: String(url), method: options.method ?? 'GET', body });
-      if (String(url).includes('/users/@me')) {
-        return Response.json({ id: 'bot-123', username: 'murphbot', global_name: 'Murph Bot' });
-      }
-      if (String(url).includes('/oauth2/applications/@me')) {
-        return Response.json({
-          id: 'app-123',
-          name: 'Murph',
-          flags: 4,
-          redirect_uris: ['http://localhost/api/discord/oauth/callback']
-        });
-      }
-      return Response.json({});
-    });
+  it('rejects Discord personal setup preparation', async () => {
+    const { request } = await setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
 
     const response = await request('POST', '/api/setup/discord/prepare', {
       role: 'personal',
@@ -1168,19 +1021,9 @@ describe('setup defaults routes', () => {
       clientSecret: 'discord-personal-client-secret'
     });
 
-    expect(response.status, JSON.stringify(response.body)).toBe(200);
-    expect(response.body).toEqual(expect.objectContaining({
-      ok: true,
-      installUrl: '/api/discord/personal/install?source=setup',
-      permissionsConfigured: true
-    }));
-    const patch = calls.find((call) => call.url.includes('/applications/@me') && call.method === 'PATCH');
-    expect(patch?.body).toEqual(expect.objectContaining({
-      install_params: expect.objectContaining({ permissions: '0' })
-    }));
-    const { readSecret } = await import('../../shared/server/credentials/local-store');
-    expect(readSecret('discord', 'personal_bot_token')).toBe('discord-personal-bot-token');
-    expect(readSecret('discord', 'personal_client_secret')).toBe('discord-personal-client-secret');
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Murph Personal is no longer a supported runtime');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('rejects manual owner changes for OAuth-owned channel workspaces', async () => {
@@ -1198,108 +1041,6 @@ describe('setup defaults routes', () => {
       error: 'owner_identity_mismatch',
       owner: expect.objectContaining({ ownerUserId: 'U1' })
     }));
-  });
-
-  it('merges workspace owner updates instead of requiring every locked provider owner in each save', async () => {
-    const { request, store, workspace } = await setup();
-    const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
-    const discordWorkspace = store.saveInstall({
-      provider: 'discord',
-      externalWorkspaceId: 'personal:1234567890',
-      name: 'Discord Daniel',
-      botUserId: 'discord-personal-bot',
-      role: 'personal',
-      representedUserId: '1234567890'
-    });
-    updateMurphSetupDefaults({
-      channelProvider: 'discord',
-      workspaceId: discordWorkspace.id,
-      ownerUserId: '1234567890',
-      ownerDisplayName: 'Discord Daniel',
-      workspaceOwners: [
-        { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
-        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
-      ]
-    });
-
-    const response = await request('PUT', '/api/setup/defaults', {
-      botRoles: ['personal'],
-      channelProvider: 'discord',
-      workspaceId: discordWorkspace.id,
-      workspaceOwners: [
-        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
-      ]
-    });
-
-    expect(response.status, JSON.stringify(response.body)).toBe(200);
-    expect(response.body.defaults.workspaceOwners).toEqual(expect.arrayContaining([
-      expect.objectContaining({ workspaceId: workspace.id, ownerUserId: 'USLACK' }),
-      expect.objectContaining({ workspaceId: discordWorkspace.id, ownerUserId: '1234567890' })
-    ]));
-  });
-
-  it('rejects explicit workspace owner mismatches while merging omitted owners', async () => {
-    const { request, store, workspace } = await setup();
-    const { updateMurphSetupDefaults } = await import('../../shared/server/setup/config-file');
-    const discordWorkspace = store.saveInstall({
-      provider: 'discord',
-      externalWorkspaceId: 'personal:1234567890',
-      name: 'Discord Daniel',
-      botUserId: 'discord-personal-bot',
-      role: 'personal',
-      representedUserId: '1234567890'
-    });
-    updateMurphSetupDefaults({
-      channelProvider: 'discord',
-      workspaceId: discordWorkspace.id,
-      ownerUserId: '1234567890',
-      ownerDisplayName: 'Discord Daniel',
-      workspaceOwners: [
-        { workspaceId: workspace.id, ownerUserId: 'USLACK', ownerDisplayName: 'Slack Daniel' },
-        { workspaceId: discordWorkspace.id, ownerUserId: '1234567890', ownerDisplayName: 'Discord Daniel' }
-      ]
-    });
-
-    const response = await request('PUT', '/api/setup/defaults', {
-      botRoles: ['personal'],
-      channelProvider: 'discord',
-      workspaceId: discordWorkspace.id,
-      workspaceOwners: [
-        { workspaceId: discordWorkspace.id, ownerUserId: 'WRONG_OWNER', ownerDisplayName: 'Wrong Owner' }
-      ]
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual(expect.objectContaining({
-      ok: false,
-      error: 'owner_identity_mismatch',
-      owner: expect.objectContaining({ ownerUserId: '1234567890' })
-    }));
-  });
-
-  it('ignores empty owner fields from personal setup saves', async () => {
-    const { request, store } = await setup({ productMode: 'personal' });
-    const personalWorkspace = store.saveInstall({
-      provider: 'discord',
-      externalWorkspaceId: 'personal:U1',
-      name: 'Daniel',
-      botUserId: 'personal-bot-user',
-      role: 'personal',
-      representedUserId: 'U1'
-    });
-
-    const response = await request('PUT', '/api/setup/defaults', {
-      botRoles: ['personal'],
-      channelProvider: 'discord',
-      workspaceId: personalWorkspace.id,
-      ownerUserId: '',
-      ownerDisplayName: ''
-    });
-
-    expect(response.status, JSON.stringify(response.body)).toBe(200);
-    expect(response.body.defaults.workspaceId).toBe(personalWorkspace.id);
-    expect(response.body.defaults.ownerUserId).toBeUndefined();
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).not.toContain('ownerUserId: ""');
   });
 
   it('does not expose member enumeration for OAuth-owned channel workspaces', async () => {
@@ -1351,11 +1092,19 @@ describe('setup defaults routes', () => {
       provider: 'discord',
       externalWorkspaceId: 'G1',
       name: 'Test Server',
-      botUserId: 'bot-user-1'
+      botUserId: 'bot-user-1',
+      appId: 'discord-client-id'
     });
     writeSecret('discord', 'bot_token', 'discord-token', {
       workspaceId: discordWorkspace.id,
-      externalWorkspaceId: discordWorkspace.externalWorkspaceId
+      externalWorkspaceId: discordWorkspace.externalWorkspaceId,
+      botInstallationId: store.getBotInstallation('discord', discordWorkspace.externalWorkspaceId, 'channel')?.id
+    });
+    store.upsertBotAppConfig({
+      provider: 'discord',
+      role: 'channel',
+      clientId: 'discord-client-id',
+      appId: 'discord-client-id'
     });
 
     const response = await request('GET', '/api/setup/status');
@@ -1369,19 +1118,18 @@ describe('setup defaults routes', () => {
 
   it('does not mark Discord connected from install rows without credentials', async () => {
     const { request, store } = await setup();
-    const discordWorkspace = store.saveInstall({
+    store.saveInstall({
       provider: 'discord',
       externalWorkspaceId: 'G1',
       name: 'Test Server',
-      botUserId: 'bot-user-1'
+      botUserId: 'bot-user-1',
+      appId: 'discord-client-id'
     });
-    store.upsertBotInstallation({
-      workspaceId: discordWorkspace.id,
+    store.upsertBotAppConfig({
       provider: 'discord',
-      role: 'personal',
-      externalWorkspaceId: 'personal:U1',
-      botUserId: 'personal-bot-user',
-      representedUserId: 'U1'
+      role: 'channel',
+      clientId: 'discord-client-id',
+      appId: 'discord-client-id'
     });
 
     const response = await request('GET', '/api/setup/status');
@@ -1390,61 +1138,6 @@ describe('setup defaults routes', () => {
     expect(response.body.discord.installed).toBe(false);
     expect(response.body.discord.botTokenConfigured).toBe(false);
     expect(response.body.discord.roles.channel.installed).toBe(false);
-    expect(response.body.discord.roles.personal.installed).toBe(false);
-    expect(response.body.discord.roles.personal.representedOwnerConfigured).toBe(true);
-  });
-
-  it('does not use Discord channel credentials to mark the personal bot connected', async () => {
-    const { request, store } = await setup();
-    const { writeSecret } = await import('../../shared/server/credentials/local-store');
-    const discordWorkspace = store.saveInstall({
-      provider: 'discord',
-      externalWorkspaceId: 'G1',
-      name: 'Test Server',
-      botUserId: 'channel-bot-user'
-    });
-    store.upsertBotInstallation({
-      workspaceId: discordWorkspace.id,
-      provider: 'discord',
-      role: 'personal',
-      externalWorkspaceId: 'personal:U1',
-      botUserId: 'personal-bot-user',
-      representedUserId: 'U1'
-    });
-    writeSecret('discord', 'channel_bot_token', 'discord-channel-token');
-
-    const response = await request('GET', '/api/setup/status');
-
-    expect(response.status).toBe(200);
-    expect(response.body.discord.installed).toBe(true);
-    expect(response.body.discord.roles.channel.installed).toBe(true);
-    expect(response.body.discord.roles.personal.installed).toBe(false);
-  });
-
-  it('marks only the Discord personal bot connected when only personal credentials are present', async () => {
-    const { request, store } = await setup();
-    const { writeSecret } = await import('../../shared/server/credentials/local-store');
-    const personalWorkspace = store.saveInstall({
-      provider: 'discord',
-      externalWorkspaceId: 'personal:U1',
-      name: 'Personal User',
-      botUserId: 'personal-bot-user',
-      role: 'personal',
-      representedUserId: 'U1'
-    });
-    const personalInstallation = store.getBotInstallation('discord', personalWorkspace.externalWorkspaceId, 'personal');
-    writeSecret('discord', 'bot_token', 'discord-personal-token', {
-      workspaceId: personalWorkspace.id,
-      externalWorkspaceId: personalWorkspace.externalWorkspaceId,
-      botInstallationId: personalInstallation?.id
-    });
-
-    const response = await request('GET', '/api/setup/status');
-
-    expect(response.status).toBe(200);
-    expect(response.body.discord.installed).toBe(true);
-    expect(response.body.discord.roles.channel.installed).toBe(false);
-    expect(response.body.discord.roles.personal.installed).toBe(true);
   });
 
   it('stores Google OAuth client settings through setup config', async () => {

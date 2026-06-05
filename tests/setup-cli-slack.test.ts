@@ -9,15 +9,6 @@ const setupCli = path.join(repoRoot, 'shared/cli/setup-cli.mjs');
 const channelManifest = [
   'display_information:',
   '  name: Murph',
-  'features:',
-  '  slash_commands:',
-  '    - command: /murph',
-  '      description: Open Murph Personal',
-  '      should_escape: true',
-  '  shortcuts:',
-  '    - name: Send to Murph Personal',
-  '      type: message',
-  '      callback_id: murph_personal_handoff',
   'oauth_config:',
   '  redirect_urls:',
   '    - http://localhost:5173/api/slack/oauth/callback',
@@ -26,36 +17,13 @@ const channelManifest = [
   '      - app_mentions:read',
   '      - channels:history',
   '      - chat:write',
-  '      - commands',
   '      - groups:history',
-  '    user:',
-  '      - search:read',
   'settings:',
   '  event_subscriptions:',
   '    bot_events:',
   '      - app_mention',
   '      - message.channels',
   '      - message.groups',
-  '  interactivity:',
-  '    is_enabled: true',
-  '  socket_mode_enabled: true',
-  ''
-].join('\n');
-const personalManifest = [
-  'display_information:',
-  '  name: Murph Personal',
-  'oauth_config:',
-  '  redirect_urls:',
-  '    - http://localhost:5173/api/slack/oauth/callback',
-  '  scopes:',
-  '    bot:',
-  '      - chat:write',
-  '      - im:history',
-  '      - im:write',
-  'settings:',
-  '  event_subscriptions:',
-  '    bot_events:',
-  '      - message.im',
   '  socket_mode_enabled: true',
   ''
 ].join('\n');
@@ -65,7 +33,6 @@ function createAppDir(): string {
   mkdirSync(path.join(appDir, 'docs/public'), { recursive: true });
   writeFileSync(path.join(appDir, 'docs/public/slack-manifest.yaml'), channelManifest);
   writeFileSync(path.join(appDir, 'docs/public/slack-channel-manifest.yaml'), channelManifest);
-  writeFileSync(path.join(appDir, 'docs/public/slack-personal-manifest.yaml'), personalManifest);
   return appDir;
 }
 
@@ -271,16 +238,13 @@ describe('setup CLI Slack app setup', () => {
       'app_mentions:read',
       'channels:history',
       'groups:history',
-      'commands',
       'chat:write'
     ]));
-    expect(manifestBody.features.slash_commands[0]).toEqual(expect.objectContaining({
-      command: '/murph'
-    }));
-    expect(manifestBody.features.shortcuts[0]).toEqual(expect.objectContaining({
-      callback_id: 'murph_personal_handoff'
-    }));
-    expect(manifestBody.oauth_config.scopes.user).toEqual(['search:read']);
+    expect(manifestBody.oauth_config.scopes.bot).not.toContain('commands');
+    expect(manifestBody.features).toBeUndefined();
+    expect(manifestBody.oauth_config.scopes.user).toBeUndefined();
+    expect(manifestBody.oauth_config.scopes.bot).not.toContain('commands');
+    expect(manifestBody.features).toBeUndefined();
     expect(manifestBody.oauth_config.scopes.bot).not.toContain('im:history');
     expect(manifestBody.settings.event_subscriptions.bot_events).toEqual(expect.arrayContaining([
       'app_mention',
@@ -290,7 +254,7 @@ describe('setup CLI Slack app setup', () => {
     expect(manifestBody.settings.event_subscriptions.bot_events).not.toContain('message.im');
   });
 
-  it('uses the personal Slack manifest and saves personal credentials for personal app automation', async () => {
+  it('rejects personal Slack app automation', async () => {
     const appDir = createAppDir();
     const { result, calls } = runSetupSlack(appDir, '\n', {
       ok: true,
@@ -310,25 +274,9 @@ describe('setup CLI Slack app setup', () => {
       ]
     });
 
-    expect(result.status, result.stderr + result.stdout).toBe(0);
-    expect(result.stdout).toContain('Personal bot: separate Slack app');
-    const manifestCall = calls.find((call) => call.url.includes('/apps.manifest.create'));
-    const manifestBody = JSON.parse(String(manifestCall?.body?.manifest));
-    expect(manifestBody.display_information.name).toBe('Murph Personal');
-    expect(manifestBody.oauth_config.scopes.bot).toEqual(['chat:write', 'im:history', 'im:write']);
-    expect(manifestBody.oauth_config.scopes.user).toBeUndefined();
-    expect(manifestBody.settings.event_subscriptions.bot_events).toEqual(['message.im']);
-    expect(manifestBody.settings.event_subscriptions.bot_events).not.toContain('message.channels');
-    const config = readFileSync(path.join(appDir, 'config.yaml'), 'utf8');
-    expect(config).toContain('personal:');
-    expect(config).toContain('appId: APERSONAL');
-    expect(config).toContain('clientId: personal-client-id');
-    const credentials = JSON.parse(readFileSync(path.join(appDir, '.credentials'), 'utf8'));
-    expect(credentials.credentials).toEqual(expect.arrayContaining([
-      expect.objectContaining({ provider: 'slack', key: 'personal_app_token', value: 'xapp-personal' }),
-      expect.objectContaining({ provider: 'slack', key: 'personal_client_secret', value: 'personal-client-secret' }),
-      expect.objectContaining({ provider: 'slack', key: 'personal_signing_secret', value: 'personal-signing-secret' })
-    ]));
+    expect(result.status).toBe(1);
+    expect(result.stderr + result.stdout).toContain('Murph Personal bot roles are no longer supported');
+    expect(calls.some((call) => call.url.includes('/apps.manifest.create'))).toBe(false);
   });
 
   it('prints Slack app settings URL instead of calling Slack CLI app settings', async () => {

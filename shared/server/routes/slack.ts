@@ -189,6 +189,10 @@ export const slackRoutes: Route[] = [
   }),
   route('GET', '/api/slack/install', ({ req, res, url: requestUrl }) => {
     const role = parseBotRole(requestUrl.searchParams.get('role'));
+    if (role === 'personal') {
+      redirect(res, '/settings?error=personal_runtime_unsupported');
+      return;
+    }
     const url = getSlackService().buildInstallUrl(
       publicAppUrl(req, requestUrl),
       requestUrl.searchParams.get('team') ?? undefined,
@@ -199,6 +203,10 @@ export const slackRoutes: Route[] = [
   }),
   route('GET', '/api/slack/:botRole/install', ({ req, res, url: requestUrl, params }) => {
     const role = parseBotRole(params.botRole);
+    if (role === 'personal') {
+      redirect(res, '/settings?error=personal_runtime_unsupported');
+      return;
+    }
     const url = getSlackService().buildInstallUrl(
       publicAppUrl(req, requestUrl),
       requestUrl.searchParams.get('team') ?? undefined,
@@ -211,6 +219,11 @@ export const slackRoutes: Route[] = [
     const code = url.searchParams.get('code');
     const state = parseSlackState(url.searchParams.get('state'));
     const source = state.source;
+
+    if (state.role === 'personal') {
+      redirect(res, slackReturnPath(source, state.role, 'error', 'personal_runtime_unsupported'));
+      return;
+    }
 
     if (!code) {
       redirect(res, slackReturnPath(source, state.role, 'error', 'missing_code'));

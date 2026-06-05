@@ -51,8 +51,8 @@ vi.mock('#shared/server/skills/loader', () => ({
   loadSkills: async (): Promise<SkillManifest[]> => testSkills
 }));
 
-vi.mock('@mariozechner/pi-agent-core', async () => {
-  const actual = await vi.importActual<typeof import('@mariozechner/pi-agent-core')>('@mariozechner/pi-agent-core');
+vi.mock('@earendil-works/pi-agent-core', async () => {
+  const actual = await vi.importActual<typeof import('@earendil-works/pi-agent-core')>('@earendil-works/pi-agent-core');
 
   return {
     ...actual,

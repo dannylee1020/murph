@@ -151,12 +151,11 @@ describe('Google OAuth callback route', () => {
     });
 
     expect(result.status).toBe(302);
-    const location = new URL(String(result.headers.location));
-    expect(location.searchParams.get('redirect_uri')).toBe('https://murph.example.com/api/google/oauth/callback');
+    expect(result.headers.location).toBe('/settings?error=google_not_available');
   });
 
-  it('stores the OAuth bundle and reports Google connected without an encryption key', async () => {
-    const { callback, integrationStatus, tokenRequests, workspace } = await setup();
+  it('redirects Google OAuth callbacks as unavailable without storing credentials', async () => {
+    const { callback, tokenRequests, workspace } = await setup();
 
     const result = await callback(`/api/google/oauth/callback?code=abc&state=${encodeURIComponent(workspace.id)}`, {
       'x-forwarded-host': 'murph.example.com',
@@ -164,32 +163,12 @@ describe('Google OAuth callback route', () => {
     });
 
     expect(result.status).toBe(302);
-    expect(result.headers.location).toBe(`/settings?google=connected&workspaceId=${encodeURIComponent(workspace.id)}`);
+    expect(result.headers.location).toBe('/settings?error=google_not_available');
     expect(process.env.MURPH_ENCRYPTION_KEY).toBeUndefined();
-    expect(tokenRequests[0].get('redirect_uri')).toBe('https://murph.example.com/api/google/oauth/callback');
+    expect(tokenRequests).toEqual([]);
 
     const { readSecretRecord } = await import('#shared/server/credentials/local-store');
-    const stored = readSecretRecord('google', 'oauth_bundle');
-    expect(stored).toEqual(expect.objectContaining({
-      provider: 'google',
-      key: 'oauth_bundle',
-      metadata: expect.objectContaining({
-        account: 'person@example.com'
-      })
-    }));
-
-    const status = await integrationStatus(`/api/integrations/status?workspaceId=${encodeURIComponent(workspace.id)}`);
-    const google = status.body.integrations.find((integration: any) => integration.provider === 'google');
-    expect(status.status).toBe(200);
-    expect(google).toEqual(expect.objectContaining({
-      provider: 'google',
-      status: 'connected',
-      source: 'credentials',
-      metadata: expect.objectContaining({
-        account: 'person@example.com',
-        oauthConfigured: true
-      })
-    }));
+    expect(readSecretRecord('google', 'oauth_bundle')).toBeUndefined();
   });
 
   it('redirects Google OAuth denial details without storing credentials', async () => {
@@ -212,7 +191,7 @@ describe('Google OAuth callback route', () => {
     const result = await callback(`/api/google/oauth/callback?code=bad&state=${encodeURIComponent(workspace.id)}`);
 
     expect(result.status).toBe(302);
-    expect(result.headers.location).toBe('/settings?error=Bad%20code');
+    expect(result.headers.location).toBe('/settings?error=google_not_available');
     const { readSecretRecord } = await import('#shared/server/credentials/local-store');
     expect(readSecretRecord('google', 'oauth_bundle')).toBeUndefined();
   });

@@ -67,11 +67,7 @@ resolve_source_archive_url() {
 }
 
 install_entrypoint() {
-  if [[ "$product" == "personal" ]]; then
-    printf './install-personal.sh\n'
-  else
-    printf './install.sh\n'
-  fi
+  printf './install.sh\n'
 }
 
 usage() {
@@ -121,8 +117,8 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ "$product" != "team" && "$product" != "personal" ]]; then
-  echo "Invalid product: $product"
+if [[ "$product" != "team" ]]; then
+  echo "Murph Personal is no longer a supported runtime. Invalid product: $product"
   usage
   exit 1
 fi
@@ -444,9 +440,6 @@ NODE
 write_config_file() {
   local provider="openai"
   local product_mode="channel"
-  if [[ "$product" == "personal" ]]; then
-    product_mode="personal"
-  fi
 
   if [[ "${LLM_PROVIDER:-}" == "openai" ]]; then
     provider="openai"
@@ -547,10 +540,7 @@ prune_install_payload() {
 install_cli() {
   section "Installing CLI"
 
-  local product_cli="app/team/cli/murph"
-  if [[ "$product" == "personal" ]]; then
-    product_cli="app/personal/cli/murph"
-  fi
+  local product_cli="murph/cli/murph"
 
   if [[ ! -f "$product_cli" ]]; then
     printf '%s is missing. Skipping CLI install.\n' "$product_cli"
@@ -569,7 +559,7 @@ export MURPH_HOME="\${MURPH_HOME:-$HOME/.murph}"
 exec "\$MURPH_APP_DIR/$product_cli" "\$@"
 EOF
   chmod +x "$bin_dir/murph"
-  printf 'Installed Murph %s CLI at %s/murph.\n' "$([[ "$product" == "personal" ]] && printf 'Personal' || printf 'Team')" "$bin_dir"
+  printf 'Installed Murph CLI at %s/murph.\n' "$bin_dir"
 
   case ":$PATH:" in
     *":$bin_dir:"*)
@@ -587,10 +577,7 @@ print_next_steps() {
   section "Next steps"
 
   local build_status="Production build ready"
-  local product_label="Murph Team"
-  if [[ "$product" == "personal" ]]; then
-    product_label="Murph Personal"
-  fi
+  local product_label="Murph"
   if [[ "$skip_build" == true ]]; then
     build_status="Build skipped; run murph build before murph start"
   fi
@@ -627,7 +614,7 @@ Discord app setup:
   App dashboard: https://discord.com/developers/applications
   DISCORD_REDIRECT_URI: <public-origin>/api/discord/oauth/callback
 
-Optional context sources such as Notion, GitHub, Google, Granola, Obsidian, and web search can be added later.
+Optional team context sources such as Notion, GitHub, Linear, and web search can be added later.
 Full configuration reference: ~/.murph/config.yaml and ~/.murph/.credentials
 Local health check: murph doctor
 Install log: $LOG_FILE
@@ -651,10 +638,8 @@ maybe_start() {
     y|Y|yes|YES)
       if [[ -x "$bin_dir/murph" ]]; then
         "$bin_dir/murph" setup --quick
-      elif [[ "$product" == "personal" && -x app/personal/cli/murph ]]; then
-        app/personal/cli/murph setup --quick
-      elif [[ -x app/team/cli/murph ]]; then
-        app/team/cli/murph setup --quick
+      elif [[ -x murph/cli/murph ]]; then
+        murph/cli/murph setup --quick
       elif command -v murph >/dev/null 2>&1; then
         murph setup --quick
       else

@@ -6,17 +6,15 @@ import { dispatchRoute, type Route } from './router.js';
 import { resolveListenPort, startServer } from './startup.js';
 import { getGateway } from '#shared/server/runtime/gateway';
 import { ensureRuntimeInitialized } from '#shared/server/runtime/bootstrap';
-import type { RuntimeDistribution } from '#shared/types';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = process.env.MURPH_APP_DIR || path.resolve(here, '../../..');
 
-function staticRootFor(distribution: RuntimeDistribution): string {
-  return path.resolve(repoRoot, 'dist', distribution === 'personal' ? 'app/personal' : 'app/team', 'ui');
+function staticRootFor(): string {
+  return path.resolve(repoRoot, 'dist', 'murph', 'ui');
 }
 
 export interface MurphServerOptions {
-  distribution: RuntimeDistribution;
   routes: Route[];
   label?: string;
 }
@@ -39,7 +37,7 @@ export function createMurphHttpServer(options: MurphServerOptions & { port: numb
       return;
     }
 
-    await serveStatic(req, res, url, staticRootFor(options.distribution));
+    await serveStatic(req, res, url, staticRootFor());
   }
 
   return createServer((req, res) => {
@@ -55,7 +53,7 @@ export function createMurphHttpServer(options: MurphServerOptions & { port: numb
 }
 
 export function startMurphServer(options: MurphServerOptions): void {
-  process.env.MURPH_DISTRIBUTION = options.distribution;
+  process.env.MURPH_DISTRIBUTION = 'team';
 
   let port: number;
   try {

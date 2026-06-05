@@ -7,9 +7,9 @@ description: Connect Slack as a Murph channel.
 
 Slack setup can create the Murph Slack app from a manifest, or you can configure the app manually in Slack's dashboard. The browser setup flow, `murph setup slack`, and `murph setup slack` support manifest automation; manual dashboard setup is the fallback when automation is not available.
 
-Murph Team uses a Slack app for shared channel coverage. Murph Personal uses a Slack app for direct messages. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for Team. Use `/api/slack/personal/install`, `/api/slack/personal/events`, and `SLACK_PERSONAL_*` variables for Personal. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
+Murph uses a Slack app for shared channel coverage. Use `/api/slack/channel/install`, `/api/slack/channel/events`, and `SLACK_CHANNEL_*` variables for setup. The unqualified `/api/slack/*` endpoints and legacy `SLACK_*` variables remain compatibility aliases for the channel bot.
 
-If you run both distributions, install and authorize separate Slack apps for each distribution. If the Slack CLI selects one workspace but OAuth authorizes another, Murph treats the OAuth-connected workspace as the source of truth and asks whether to adopt it.
+If the Slack CLI selects one workspace but OAuth authorizes another, Murph treats the OAuth-connected workspace as the source of truth and asks whether to adopt it.
 
 ## What You Need
 
@@ -33,11 +33,10 @@ The fastest path is to create the app from Murph's manifest. Slack's manifest fl
 
 ## Step 2: Create From The Murph Manifest
 
-Use Murph's role-specific Slack manifests when Slack lets you create or update the app from a manifest:
+Use Murph's Slack manifest when Slack lets you create or update the app from a manifest:
 
 ```text
 docs/public/slack-channel-manifest.yaml
-docs/public/slack-personal-manifest.yaml
 ```
 
 The legacy public manifest is a channel-bot compatibility alias:
@@ -46,7 +45,7 @@ The legacy public manifest is a channel-bot compatibility alias:
 /slack-manifest.yaml
 ```
 
-The manifests set the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode. Use the channel manifest for shared channel coverage and the personal manifest for direct messages.
+The manifest sets the Murph app name, bot user, OAuth redirect URL, scopes, event subscriptions, and Socket Mode.
 
 The browser setup flow, `murph setup slack`, and `murph setup slack` can create or update the matching app from the matching manifest when you provide a Slack app configuration token. Murph uses that app configuration token once, then discards it.
 
@@ -89,27 +88,9 @@ In **Event Subscriptions** -> **Subscribe to bot events**, verify these channel 
 - `message.channels`
 - `message.groups`
 
-## Step 5: Check Personal Bot DMs, Scopes, And Events
-
-For the personal bot, verify these bot token scopes:
-
-- `chat:write`
-- `im:history`
-- `im:write`
-
-The personal bot does not need channel, group, MPIM, or user token scopes for v1.
-
-In **App Home**, verify the **Messages** tab is enabled and not read-only. This is the Slack DM surface people use to message the Murph Personal bot. Murph's personal Slack manifest enables it automatically, but manual app setup must turn it on.
-
-In **Event Subscriptions** -> **Subscribe to bot events**, verify this personal bot event:
-
-- `message.im`
-
 Socket Mode means local Murph installs do not need a public Slack Events or Interactivity Request URL.
 
-The channel app also includes the `/murph` command and the **Send to Murph Personal** message shortcut. These are explicit sender actions: Murph does not read private DMs between two people, but a teammate can invoke the shortcut from a DM to open the right Murph Personal conversation.
-
-## Step 6: Enable Socket Mode And Create The App-Level Token
+## Step 5: Enable Socket Mode And Create The App-Level Token
 
 1. Go to **Socket Mode**.
 2. Enable Socket Mode.
@@ -119,7 +100,7 @@ The channel app also includes the `/murph` command and the **Send to Murph Perso
 
 Murph uses this token to connect to Slack Socket Mode.
 
-## Step 7: Copy The App Credentials
+## Step 6: Copy The App Credentials
 
 Go to **Basic Information** -> **App Credentials** and keep these values ready for setup:
 
@@ -129,7 +110,7 @@ Go to **Basic Information** -> **App Credentials** and keep these values ready f
 
 Murph stores the Client Secret and Signing Secret locally in `~/.murph/.credentials`. Non-secret app and workspace defaults are stored in `~/.murph/config.yaml`.
 
-## Step 8: Run Slack Setup
+## Step 7: Run Slack Setup
 
 Run this on the product host:
 
@@ -161,19 +142,17 @@ Then Murph will:
 - save the authorizing Slack user as Murph's owner identity;
 - start Socket Mode when the workspace is connected.
 
-## Step 9: Approve OAuth
+## Step 8: Approve OAuth
 
 When the browser opens:
 
 1. Choose the Slack workspace Murph should use.
-2. Approve the requested scopes for the selected bot role.
+2. Approve the requested scopes.
 3. Return to the terminal and continue setup.
 
 Murph uses the OAuth callback to save the Slack workspace and identify the Slack user who authorized the app. That user becomes the Slack owner Murph watches for by default.
 
-Watched channels are Team-only. Murph Personal does not ask for channels to monitor and does not join Slack channels.
-
-In Murph Team, the full `murph setup` wizard continues into channel selection. If you ran only `murph setup slack`, choose channels afterward:
+The full `murph setup` wizard continues into channel selection. If you ran only `murph setup slack`, choose channels afterward:
 
 ```bash
 murph setup channels
@@ -203,7 +182,7 @@ Run:
 murph doctor
 ```
 
-Then start a short test session and mention Murph in a watched Slack channel. In a Personal install, DM the personal Slack app.
+Then start a short test session and mention Murph in a watched Slack channel.
 
 ## Reconnect Search
 
@@ -253,20 +232,9 @@ Then restart Murph or rerun:
 murph setup slack
 ```
 
-### Direct Messages Are Disabled
-
-If Slack says users cannot send direct messages to the Murph Personal app, open the personal Slack app dashboard and check **App Home**:
-
-1. The **Messages** tab is enabled.
-2. The **Messages** tab is not read-only.
-3. The personal bot has `chat:write`, `im:history`, and `im:write`.
-4. The personal bot subscribes to `message.im` events.
-
-Reinstall or reconnect the personal Slack app after changing scopes or App Home settings.
-
 ### Channels Do Not Load
 
-This applies to Murph Team only. Reconnect Slack and verify the app is installed in the expected workspace.
+Reconnect Slack and verify the app is installed in the expected workspace.
 
 For public channels, check that the app has `channels:read`, `channels:join`, and the required message history scopes. For private channels, invite the Slack app directly into the channel.
 

@@ -132,7 +132,7 @@ export async function renderDashboard(): Promise<void> {
         getJson<PolicyConfigPayload>('/api/gateway/policy/config'),
     ]);
     setSidebarWatchingCount(data.summary.activeSessionCount);
-    const isPersonal = setupStatus.distribution === 'personal';
+    const isPersonal = false;
 
     const currentUserId =
         setupDefaults.defaults.ownerUserId ?? getCurrentUserId();

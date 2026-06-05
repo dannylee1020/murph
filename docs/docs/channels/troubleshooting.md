@@ -5,7 +5,7 @@ description: Fix channel setup and access issues.
 
 # Channel Troubleshooting
 
-Start with the matching product doctor when messenger channel setup or runtime behavior fails.
+Start with `murph doctor` when messenger channel setup or runtime behavior fails.
 
 ## Health check
 
@@ -31,19 +31,11 @@ Slack search requires the `search:read` user scope. Refresh it with:
 murph setup slack --reconnect-search
 ```
 
-## Slack personal DMs disabled
-
-If Slack says users cannot send messages to the Murph Personal app, open the personal Slack app dashboard and check **App Home**. The **Messages** tab must be enabled and writable. The personal bot also needs `chat:write`, `im:history`, `im:write`, and the `message.im` bot event.
-
-Reconnect or reinstall the personal Slack app after changing those settings.
-
 ## Missing channels
 
-Watched-channel setup is Team-only. Murph Personal uses direct messages and does not ask for channels to monitor.
+If no Slack channels load in Murph, reconnect Slack and verify the app is installed in the expected workspace.
 
-If no Slack channels load in Murph Team, reconnect Slack and verify the app is installed in the expected workspace.
-
-If no Discord channels load in Murph Team, verify the bot is installed in the expected server and has channel-level access to View Channels, Send Messages, Read Message History, and Send Messages in Threads. If listing still fails, run:
+If no Discord channels load in Murph, verify the bot is installed in the expected server and has channel-level access to View Channels, Send Messages, Read Message History, and Send Messages in Threads. If listing still fails, run:
 
 ```bash
 murph setup channels
@@ -57,7 +49,7 @@ Invite the app to private channels before selecting them. Murph cannot self-join
 
 ## Channel defaults
 
-In Murph Team, run channel setup again when Murph has no saved default channel scope:
+Run channel setup again when Murph has no saved default channel scope:
 
 ```bash
 murph setup channels

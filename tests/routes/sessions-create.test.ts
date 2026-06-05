@@ -147,7 +147,7 @@ describe('POST /api/gateway/sessions', () => {
     const session = store.listActiveSessions(workspace.id)[0];
     expect(session).toMatchObject({
       ownerUserId: undefined,
-      title: 'Team agent',
+      title: 'Murph agent',
       mode: 'manual_review',
       channelScope: ['C1']
     });

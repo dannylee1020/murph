@@ -1,6 +1,6 @@
 ---
 title: Hosting
-description: Host Murph Team on a remote server or managed container service.
+description: Host Murph on a remote server or managed container service.
 ---
 
 # Hosting
@@ -35,7 +35,7 @@ docker run -d \
   -e MURPH_HOME=/data \
   -e MURPH_SQLITE_PATH=/data/murph.sqlite \
   -v murph-data:/data \
-  ghcr.io/dannylee1020/murph-team:latest
+  ghcr.io/dannylee1020/murph:latest
 ```
 
 Run setup inside the container:
@@ -47,13 +47,13 @@ docker exec -it murph murph setup
 Build the image locally from a checkout:
 
 ```bash
-docker build -f app/team/Dockerfile -t murph-team:local .
+docker build -f murph/Dockerfile -t murph:local .
 ```
 
 Then replace the image name in `docker run` with:
 
 ```text
-murph-team:local
+murph:local
 ```
 
 
@@ -75,7 +75,7 @@ docker compose -f deploy/docker-compose.yml exec murph murph setup
 The deployment Compose file uses:
 
 ```text
-ghcr.io/dannylee1020/murph-team:latest
+ghcr.io/dannylee1020/murph:latest
 ```
 
 Published releases also push a matching version tag, such as `v0.1.0`. Use the versioned image tag when you need Docker deploys to match a pinned curl install exactly.
@@ -124,7 +124,7 @@ Set `MURPH_APP_URL` to the stable tunnel origin:
 MURPH_APP_URL=https://agent.example.com
 ```
 
-Avoid ephemeral tunnel URLs for a long-running Team install. If the tunnel URL changes, Slack OAuth redirect URLs must be updated before reconnecting.
+Avoid ephemeral tunnel URLs for a long-running install. If the tunnel URL changes, Slack OAuth redirect URLs must be updated before reconnecting.
 
 ## Managed Container Services
 
@@ -148,7 +148,7 @@ Check `MURPH_APP_URL`. For remote hosting, it should be the stable public HTTPS 
 MURPH_APP_URL=https://agent.example.com
 ```
 
-Do not use `localhost` for a remote Team deployment. Make sure the Slack app redirect URL matches the hosted callback exactly:
+Do not use `localhost` for a remote deployment. Make sure the Slack app redirect URL matches the hosted callback exactly:
 
 ```text
 https://agent.example.com/api/slack/oauth/callback
@@ -177,11 +177,11 @@ If `/data` is not mounted to a Docker volume, service disk, or equivalent persis
 Confirm the image and tag exist:
 
 ```text
-ghcr.io/dannylee1020/murph-team:latest
+ghcr.io/dannylee1020/murph:latest
 ```
 
 For pinned deployments, use a published release tag such as `v0.1.0`. If the package is private, make the GHCR package public or configure the host with credentials that can pull from GitHub Container Registry.
 
 ### A tunnel URL changed
 
-Ephemeral tunnel URLs are not reliable for long-running Team installs. Use a stable tunnel hostname or custom domain. If the tunnel URL changes, Slack OAuth redirect URLs must be updated before reconnecting.
+Ephemeral tunnel URLs are not reliable for long-running installs. Use a stable tunnel hostname or custom domain. If the tunnel URL changes, Slack OAuth redirect URLs must be updated before reconnecting.

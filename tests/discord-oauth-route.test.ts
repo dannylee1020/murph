@@ -183,7 +183,7 @@ describe('Discord OAuth callback route', () => {
     expect(ensureStarted).toHaveBeenCalledOnce();
   });
 
-  it('saves a personal OAuth owner as the primary setup owner when none exists', async () => {
+  it('rejects personal OAuth installs', async () => {
     process.env.DISCORD_PERSONAL_CLIENT_ID = 'discord-personal-client-id';
     process.env.DISCORD_PERSONAL_CLIENT_SECRET = 'discord-personal-client-secret';
     process.env.DISCORD_PERSONAL_BOT_TOKEN = 'discord-personal-bot-token';
@@ -192,35 +192,11 @@ describe('Discord OAuth callback route', () => {
     process.env.DISCORD_PERSONAL_CLIENT_SECRET = 'discord-personal-client-secret';
     process.env.DISCORD_PERSONAL_BOT_TOKEN = 'discord-personal-bot-token';
     const installResult = await get('/api/discord/personal/install?source=setup');
-    const installLocation = new URL(installResult.headers.location);
-    const state = encodeURIComponent(installLocation.searchParams.get('state') ?? '');
 
-    const callbackResult = await get(`/api/discord/oauth/callback?code=abc&guild_id=G1&state=${state}`);
-
-    expect(callbackResult.status).toBe(302);
-    expect(callbackResult.headers.location).toMatch(/^\/setup\?step=discord&role=personal&success=1&workspaceId=/);
-    expect(store.getAppSettings().setupDefaults).toMatchObject({
-      botRoles: ['personal'],
-      providerBotRoles: {
-        discord: ['personal']
-      },
-      channelProvider: 'discord',
-      ownerUserId: 'U_DISCORD',
-      ownerDisplayName: 'Danny',
-      workspaceOwners: [
-        expect.objectContaining({
-          ownerUserId: 'U_DISCORD',
-          ownerDisplayName: 'Danny'
-        })
-      ]
-    });
-    const workspace = store.getWorkspaceByExternalId('discord', 'G1');
-    expect(workspace?.name).toBe('Discord Guild');
-    expect(store.getBotInstallation('discord', 'G1', 'personal')).toMatchObject({
-      appId: 'discord-personal-client-id',
-      representedUserId: 'U_DISCORD',
-      status: 'active'
-    });
+    expect(installResult.status).toBe(302);
+    expect(installResult.headers.location).toBe('/setup?error=personal_runtime_unsupported');
+    expect(store.getAppSettings().setupDefaults).toBeUndefined();
+    expect(store.getBotInstallation('discord', 'G1', 'personal')).toBeUndefined();
   });
 
   it('returns CLI-sourced Discord installs to the terminal completion page', async () => {

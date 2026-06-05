@@ -5,35 +5,32 @@ description: Understand Murph's coverage sessions, runtime, evidence, policy, me
 
 # Core Concepts
 
-Murph is a self-hosted agent runtime for remote teams working across time zones. Its core job is to receive messages during a coverage session, gather relevant context, draft a bounded response, and send, queue, or skip according to policy.
+Murph is a self-hosted agent runtime for remote teams working across time zones. Its core job is to cover selected team channels during a session, gather relevant context, draft a bounded response, and send, queue, or skip according to policy.
 
 It is not an always-on chatbot, live work assistant, or enterprise search layer. Murph is built around an operator-controlled runtime host, explicit coverage sessions, host-owned configuration, source-grounded answers, and reviewable audit trails.
 
 ## Runtime host model
 
-Murph runs as one of two deployable runtime distributions:
+Murph runs as one runtime. It handles selected team channels and uses shared integrations, policy, skills, tools, credentials, and config.
 
-- **Murph Team** is the primary shared-channel runtime. It handles selected messenger channels for the team and uses shared integrations, policy, skills, tools, credentials, and config.
-- **Murph Personal** is a smaller companion runtime for direct messages and private local context. It uses that person's local config, credentials, private sources, policy, skills, and tools.
-
-The machine running either distribution is the Murph runtime host. For Team, that is usually a VPS, managed container service, home server, or another always-available host you control. For evaluation, development, or Personal, it can also be your laptop. The runtime host owns config, credentials, SQLite database, generated memory, bot ingress, agent execution, integrations, policy, review, plugins, and UI.
+The machine running Murph is the runtime host. That is usually a VPS, managed container service, home server, or another always-available host you control. For evaluation or development, it can also be your laptop. The runtime host owns config, credentials, SQLite database, generated memory, bot ingress, agent execution, integrations, policy, review, plugins, and UI.
 
 - SQLite stores sessions, runs, events, tool calls, policy decisions, action results, and indexing state.
 - `~/.murph/config.yaml` stores non-secret setup and runtime configuration on the runtime host.
 - `~/.murph/.credentials` stores runtime-host secrets with owner-only permissions.
-- The browser UI, CLI, and Murph Agent all control the selected runtime distribution.
+- The browser UI, CLI, and Murph Agent all control the Murph runtime.
 
-For a self-hosted install, credentials are not uploaded to Murph-run servers. They stay on the runtime host and only leave that host when Murph uses them to call the providers, channels, or integrations you connected. If you deploy Murph Team on a VPS, cloud VM, or managed container service, that host must be trusted with team bot and integration credentials. If you need private local sources such as an Obsidian vault, run Murph Personal on the machine that owns those sources.
+For a self-hosted install, credentials are not uploaded to Murph-run servers. They stay on the runtime host and only leave that host when Murph uses them to call the providers, channels, or integrations you connected. If you deploy Murph on a VPS, cloud VM, or managed container service, that host must be trusted with team bot and integration credentials.
 
 ## How async coverage flows through Murph
 
-The runtime is the center of Murph. Team turns shared-channel activity into policy-gated team-level actions; Personal turns direct messages into policy-gated actions for the local user.
+The runtime is the center of Murph. It turns shared-channel activity into policy-gated team-level actions.
 
 At a high level, the runtime loop is:
 
 1. A channel adapter receives a Slack, Discord, or plugin channel event.
 2. The adapter normalizes the event into a task with workspace, thread, actor, session, and trigger message details.
-3. Team channel events start on bot mention, then continue in already-handled threads while the active session is in scope. Personal direct messages route only to the local user represented by that installation.
+3. Channel events start on bot mention, then continue in already-handled threads while the active session is in scope.
 4. The gateway checks for an active session that matches the workspace, channel scope, and coverage window.
 5. The runtime assembles context from the current thread, workspace memory, selected skills, and enabled integrations.
 6. The tool planner decides which read-only retrieval tools are available and whether grounding is required before drafting.
@@ -46,7 +43,7 @@ This is why source access, policy, and session scope matter. Murph is useful whe
 
 ## Sessions
 
-A session is a bounded async coverage window. You start a Team session when Murph should cover selected messenger channels for the team, or a Personal session when Murph should cover direct messages.
+A session is a bounded async coverage window. You start a session when Murph should cover selected team channels while someone is away.
 
 Sessions carry:
 
@@ -95,7 +92,7 @@ Murph uses a few capability types consistently.
 | Term | Meaning |
 | --- | --- |
 | Channels | Messaging places Murph watches and replies in. |
-| Integrations | Connected work sources Murph can read for context. Team defaults are Notion, GitHub, and Linear. Personal also includes Google, Granola, and Obsidian. |
+| Integrations | Connected work sources Murph can read for context. Defaults are Notion, GitHub, and Linear. |
 | Tools | Callable runtime actions, usually read-only retrieval or source access. |
 | Skills | Instructions that teach Murph when and how to use a source, workflow, or evidence type. |
 | Plugins | Local extension packages that add channels, integrations, tools, or skills. |
@@ -140,7 +137,7 @@ Murph has three control surfaces:
 - [CLI](/docs/usage/cli) for setup, process control, health checks, credentials, and policy.
 - [Murph Agent](/docs/usage/murph-agent) for guided local help with setup, debugging, policy, and scoped extension work.
 
-All three surfaces operate on the same local configuration and runtime state for the selected distribution. Team exposes one admin dashboard for team configuration and monitoring; Personal does not expose Team admin APIs.
+All three surfaces operate on the same local configuration and runtime state. Murph exposes one admin dashboard for team configuration and monitoring.
 
 ## Extensibility
 

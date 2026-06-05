@@ -266,6 +266,12 @@ export const discordRoutes: Route[] = [
   route('GET', '/api/discord/install', ({ req, res, url: requestUrl }) => {
     const role = parseBotRole(requestUrl.searchParams.get('role'));
     const source = parseOAuthSource(requestUrl.searchParams.get('source'));
+    if (role === 'personal') {
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'error', 'personal_runtime_unsupported')
+        : discordReturnPath(source, '?error=personal_runtime_unsupported'));
+      return;
+    }
     if (!getDiscordService().isRoleConfigured(role)) {
       redirect(res, source === 'cli'
         ? discordCliReturnPath(role, 'error', 'discord_client_secret_required')
@@ -284,6 +290,12 @@ export const discordRoutes: Route[] = [
   route('GET', '/api/discord/:botRole/install', ({ req, res, url: requestUrl, params }) => {
     const role = parseBotRole(params.botRole);
     const source = parseOAuthSource(requestUrl.searchParams.get('source'));
+    if (role === 'personal') {
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'error', 'personal_runtime_unsupported')
+        : discordReturnPath(source, '?error=personal_runtime_unsupported'));
+      return;
+    }
     if (!getDiscordService().isRoleConfigured(role)) {
       redirect(res, source === 'cli'
         ? discordCliReturnPath(role, 'error', 'discord_client_secret_required')
@@ -312,6 +324,13 @@ export const discordRoutes: Route[] = [
     const state = url.searchParams.get('state');
     const source = discordStateSource(state);
     const role = discordStateRole(state);
+
+    if (role === 'personal') {
+      redirect(res, source === 'cli'
+        ? discordCliReturnPath(role, 'error', 'personal_runtime_unsupported')
+        : discordReturnPath(source, '?error=personal_runtime_unsupported'));
+      return;
+    }
 
     if (!code) {
       redirect(res, source === 'cli'

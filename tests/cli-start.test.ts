@@ -12,13 +12,11 @@ function createAppFixture() {
   const appDir = join(root, 'app');
   const murphHome = join(root, '.murph');
   const toolsDir = join(root, 'tools');
-  mkdirSync(join(appDir, 'dist/app/team/runtime'), { recursive: true });
-  mkdirSync(join(appDir, 'dist/app/personal/runtime'), { recursive: true });
+  mkdirSync(join(appDir, 'dist/murph/runtime'), { recursive: true });
   mkdirSync(murphHome, { recursive: true });
   mkdirSync(toolsDir, { recursive: true });
   writeFileSync(join(appDir, 'package.json'), '{"name":"murph","version":"0.0.0"}\n');
-  writeFileSync(join(appDir, 'dist/app/team/runtime/server.js'), 'require("node:fs").writeFileSync(process.env.MURPH_STARTED_FILE, process.env.MURPH_DISTRIBUTION || "");\n');
-  writeFileSync(join(appDir, 'dist/app/personal/runtime/server.js'), 'require("node:fs").writeFileSync(process.env.MURPH_STARTED_FILE, process.env.MURPH_DISTRIBUTION || "");\n');
+  writeFileSync(join(appDir, 'dist/murph/runtime/server.js'), 'require("node:fs").writeFileSync(process.env.MURPH_STARTED_FILE, process.env.MURPH_DISTRIBUTION || "");\n');
   writeFileSync(join(toolsDir, 'curl'), '#!/usr/bin/env bash\nprintf "%s" "$FAKE_HEALTH_PAYLOAD"\n');
   writeFileSync(join(toolsDir, 'lsof'), '#!/usr/bin/env bash\nprintf "12345\\n"\n');
   chmodSync(join(toolsDir, 'curl'), 0o755);
@@ -78,7 +76,7 @@ describe('murph start port preflight', () => {
     expect(result.stderr).toContain('OAuth callback URLs');
   });
 
-  it('starts the personal runtime for a personal product install', () => {
+  it('rejects personal runtime selection', () => {
     const fixture = createAppFixture();
     const startedFile = join(fixture.root, 'started.txt');
     writeFileSync(join(fixture.toolsDir, 'curl'), '#!/usr/bin/env bash\nexit 1\n');
@@ -98,9 +96,8 @@ describe('murph start port preflight', () => {
       PATH: fixture.toolsDir
     });
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('Starting Murph personal');
-    expect(readFileSync(startedFile, 'utf8')).toBe('personal');
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Murph Personal is no longer a supported runtime');
   });
 
   it('starts the team runtime by default', () => {
@@ -123,11 +120,11 @@ describe('murph start port preflight', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('Starting Murph team');
+    expect(result.stdout).toContain('Starting Murph');
     expect(readFileSync(startedFile, 'utf8')).toBe('team');
   });
 
-  it('does not expose team admin commands from a personal product install', () => {
+  it('rejects personal runtime selection before admin commands', () => {
     const fixture = createAppFixture();
 
     const result = runMurph(['admin', 'subscribers'], {
@@ -143,6 +140,6 @@ describe('murph start port preflight', () => {
     });
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('Murph Personal does not include the Team admin dashboard.');
+    expect(result.stderr).toContain('Murph Personal is no longer a supported runtime');
   });
 });

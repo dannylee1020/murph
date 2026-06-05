@@ -25,8 +25,8 @@ MURPH_BIN_DIR="${MURPH_BIN_DIR:-$HOME/.local/bin}"
 MURPH_DEPS_BIN="${MURPH_DEPS_DIR:-$MURPH_HOME/deps}/bin"
 export PATH="$MURPH_DEPS_BIN:$MURPH_BIN_DIR:$PATH"
 MURPH_DISTRIBUTION="${MURPH_DISTRIBUTION:-team}"
-if [[ "$MURPH_DISTRIBUTION" != "team" && "$MURPH_DISTRIBUTION" != "personal" ]]; then
-  printf '%s\n' "MURPH_DISTRIBUTION must be team or personal." >&2
+if [[ "$MURPH_DISTRIBUTION" != "team" ]]; then
+  printf '%s\n' "Murph Personal is no longer a supported runtime. MURPH_DISTRIBUTION must be team for compatibility." >&2
   exit 1
 fi
 export MURPH_DISTRIBUTION
@@ -36,45 +36,22 @@ default_distribution() {
 }
 
 usage() {
-  if [[ "$(default_distribution)" == "team" ]]; then
-    cat <<'EOF'
-Usage: murph <command> [options]
-
-Commands:
-  start [--background]  Start Murph Team.
-  stop [--force]        Stop the background Murph Team process.
-  restart              Restart Murph Team in the background.
-  status               Show process and health status.
-  doctor               Check local setup.
-  setup [section]      Run the Team setup workflow.
-  credentials <cmd>    List and inspect local credentials.
-  admin <cmd>          Open the Team admin dashboard.
-  agent [prompt]       Chat with Murph's setup and plugin agent.
-  policy <command>     List, preview, and save policy configuration.
-  logs [-f]            Show runtime logs.
-  open                 Open Murph Team setup in a browser.
-  build                Build Murph.
-  update               Download latest source, install dependencies, and build.
-  uninstall            Remove Murph-owned local files and CLI link.
-  help                 Show this help.
-EOF
-    return
-  fi
   cat <<'EOF'
 Usage: murph <command> [options]
 
 Commands:
-  start [--background]  Start Murph Personal.
-  stop [--force]        Stop the background Murph Personal process.
-  restart              Restart Murph Personal in the background.
+  start [--background]  Start Murph.
+  stop [--force]        Stop the background Murph process.
+  restart              Restart Murph in the background.
   status               Show process and health status.
   doctor               Check local setup.
-  setup [section]      Run the Personal setup workflow.
+  setup [section]      Run the Murph setup workflow.
   credentials <cmd>    List and inspect local credentials.
+  admin <cmd>          Open the Murph admin dashboard.
   agent [prompt]       Chat with Murph's setup and plugin agent.
   policy <command>     List, preview, and save policy configuration.
   logs [-f]            Show runtime logs.
-  open                 Open Murph Personal setup in a browser.
+  open                 Open Murph setup in a browser.
   build                Build Murph.
   update               Download latest source, install dependencies, and build.
   uninstall            Remove Murph-owned local files and CLI link.
@@ -153,11 +130,8 @@ require_runtime() {
 
 runtime_entrypoint() {
   case "$1" in
-    personal)
-      printf 'dist/app/personal/runtime/server.js\n'
-      ;;
     team|"")
-      printf 'dist/app/team/runtime/server.js\n'
+      printf 'dist/murph/runtime/server.js\n'
       ;;
     *)
       fail "Unknown Murph distribution: $1"
@@ -283,7 +257,7 @@ start_foreground() {
   fi
   ensure_port_available_for_start
 
-  printf 'Starting Murph %s on %s\n' "$distribution" "$MURPH_URL"
+  printf 'Starting Murph on %s\n' "$MURPH_URL"
   printf 'Press Ctrl-C to stop.\n'
   cd "$MURPH_APP_DIR"
   PORT="$MURPH_PORT" MURPH_DISTRIBUTION="$distribution" node "$entrypoint"
@@ -313,7 +287,7 @@ start_background() {
   printf '%s\n' "$pid" >"$MURPH_PID_FILE"
 
   if wait_for_health; then
-    printf 'Murph %s started in the background.\n' "$distribution"
+    printf 'Murph started in the background.\n'
     printf 'URL: %s/setup\n' "$MURPH_URL"
     printf 'PID: %s\n' "$pid"
     printf 'Logs: %s\n' "$MURPH_LOG_FILE"
@@ -423,7 +397,6 @@ credentials_command() {
 }
 
 admin_command() {
-  [[ "$(default_distribution)" != "personal" ]] || fail "Murph Personal does not include the Team admin dashboard."
   require_app
   have_command node || fail "node is required for murph admin."
   cd "$MURPH_APP_DIR"
@@ -917,11 +890,7 @@ uninstall_command() {
     printf '\nDry run complete. Nothing was removed.\n'
   else
     printf '\nMurph uninstall complete.\n'
-    if [[ "$(default_distribution)" == "personal" ]]; then
-      printf 'Reinstall with: curl -fsSL https://murph-agent.com/install-personal.sh | bash\n'
-    else
-      printf 'Reinstall with: curl -fsSL https://murph-agent.com/install.sh | bash\n'
-    fi
+    printf 'Reinstall with: curl -fsSL https://murph-agent.com/install.sh | bash\n'
   fi
 }
 

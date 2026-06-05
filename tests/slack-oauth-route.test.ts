@@ -231,7 +231,7 @@ describe('Slack OAuth callback route', () => {
     expect(result.headers.location).toBe('/setup?step=slack&role=channel&success=1');
   });
 
-  it('returns personal CLI installs to the terminal completion page with role context', async () => {
+  it('rejects personal CLI installs with role context', async () => {
     process.env.SLACK_PERSONAL_CLIENT_ID = 'personal-client-id';
     process.env.SLACK_PERSONAL_CLIENT_SECRET = 'personal-client-secret';
     const { get, store } = await setup({
@@ -245,9 +245,9 @@ describe('Slack OAuth callback route', () => {
     const result = await get('/api/slack/oauth/callback?code=abc&state=personal:cli');
 
     expect(result.status).toBe(302);
-    expect(result.headers.location).toBe('/oauth/cli-complete?provider=slack&role=personal&status=success');
-    const install = store.getBotInstallation('slack', 'T1', 'personal');
+    expect(result.headers.location).toBe('/oauth/cli-complete?provider=slack&role=personal&status=error&reason=personal_runtime_unsupported');
     const { readSecret } = await import('../shared/server/credentials/local-store');
-    expect(readSecret('slack', 'bot_token', { botInstallationId: install?.id })).toBe('xoxb-test');
+    expect(store.getBotInstallation('slack', 'T1', 'personal')).toBeUndefined();
+    expect(readSecret('slack', 'bot_token')).toBeUndefined();
   });
 });

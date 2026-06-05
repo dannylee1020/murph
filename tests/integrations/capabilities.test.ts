@@ -168,7 +168,7 @@ describe('integration capability wiring', () => {
     expect(memory.enabledContextSources).toContain('notion.thread_search');
   });
 
-  it('reconcileIntegrationCapabilitiesForWorkspace enables Linear from env fallback in Team runtime', async () => {
+  it('reconcileIntegrationCapabilitiesForWorkspace enables Linear from env fallback in Murph runtime', async () => {
     const { store, workspace } = await setup({ linearApiKey: 'linear-token' });
     const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');
     registerBuiltInIntegrationAdapters();
@@ -211,7 +211,7 @@ describe('integration capability wiring', () => {
   });
 
 
-  it('reconcileIntegrationCapabilitiesForWorkspace does not enable personal-only integrations in Team runtime', async () => {
+  it('reconcileIntegrationCapabilitiesForWorkspace does not enable personal-only integrations in Murph runtime', async () => {
     const { store, workspace } = await setup();
     process.env.GOOGLE_ACCESS_TOKEN = 'google-token';
     process.env.GRANOLA_API_KEY = 'granola-token';
@@ -231,84 +231,6 @@ describe('integration capability wiring', () => {
     expect(memory.enabledContextSources).not.toContain('gmail.thread_search');
     expect(memory.enabledContextSources).not.toContain('granola.thread_search');
     expect(memory.enabledContextSources).not.toContain('obsidian.thread_search');
-  });
-
-  it('reconcileIntegrationCapabilitiesForWorkspace disables stale Google capabilities without credentials', async () => {
-    const { store, workspace } = await setup({ distribution: 'personal' });
-    const {
-      enableIntegrationCapabilities,
-      reconcileIntegrationCapabilitiesForWorkspace,
-      MISSING_INTEGRATION_CREDENTIAL_MESSAGE
-    } = await import('#shared/server/integrations/capabilities');
-    const { INTEGRATIONS } = await import('#shared/server/integrations/registry');
-    const google = INTEGRATIONS.find((i) => i.provider === 'google')!;
-    enableIntegrationCapabilities(workspace.id, google);
-    store.saveIntegrationConnection({
-      workspaceId: workspace.id,
-      provider: 'google',
-      credentialKind: 'oauth_bundle',
-      metadata: { account: 'daniel@example.com' }
-    });
-
-    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
-
-    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    expect(memory.enabledOptionalTools).not.toContain('gmail.search');
-    expect(memory.enabledOptionalTools).not.toContain('calendar.search_events');
-    expect(memory.enabledContextSources).not.toContain('gmail.thread_search');
-    const connection = store.getIntegrationConnection(workspace.id, 'google');
-    expect(connection?.status).toBe('error');
-    expect(connection?.errorMessage).toBe(MISSING_INTEGRATION_CREDENTIAL_MESSAGE);
-  });
-
-  it('reconcileIntegrationCapabilitiesForWorkspace restores Google capabilities when OAuth credentials exist', async () => {
-    const { store, workspace } = await setup({ distribution: 'personal' });
-    const { writeSecret } = await import('#shared/server/credentials/local-store');
-    writeSecret('google', 'oauth_bundle', JSON.stringify({
-      access_token: 'google-access-token',
-      refresh_token: 'google-refresh-token',
-      expires_at: Date.now() + 60 * 60 * 1000,
-      scope: 'gmail calendar'
-    }), {
-      metadata: { account: 'daniel@example.com' }
-    });
-    store.saveIntegrationConnection({
-      workspaceId: workspace.id,
-      provider: 'google',
-      credentialKind: 'oauth_bundle',
-      metadata: { account: 'daniel@example.com' },
-      status: 'error',
-      errorMessage: 'Local credential is missing. Reconnect this integration.'
-    });
-    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#shared/server/integrations/capabilities'
-    );
-
-    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
-
-    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['gmail.search', 'calendar.search_events']));
-    expect(memory.enabledContextSources).toEqual(expect.arrayContaining(['gmail.thread_search', 'calendar.upcoming_events']));
-    const connection = store.getIntegrationConnection(workspace.id, 'google');
-    expect(connection?.status).toBe('connected');
-    expect(connection?.errorMessage).toBeUndefined();
-  });
-
-  it('reconcileIntegrationCapabilitiesForWorkspace enables Obsidian from a configured vault path', async () => {
-    const { store, workspace } = await setup({ distribution: 'personal' });
-    const root = mkdtempSync(join(tmpdir(), 'murph-obsidian-capabilities-'));
-    process.env.OBSIDIAN_VAULT_PATH = root;
-    const { registerBuiltInIntegrationAdapters } = await import('#shared/server/integrations/register-builtins');
-    registerBuiltInIntegrationAdapters();
-    const { reconcileIntegrationCapabilitiesForWorkspace } = await import(
-      '#shared/server/integrations/capabilities'
-    );
-
-    reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
-
-    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['obsidian.search', 'obsidian.read_note']));
-    expect(memory.enabledContextSources).toContain('obsidian.thread_search');
   });
 
   it('reconcileIntegrationCapabilitiesForWorkspace enables Slack channel tools without integration credentials', async () => {

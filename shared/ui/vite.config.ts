@@ -3,8 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const product = process.env.MURPH_UI_PRODUCT === 'personal' ? 'personal' : 'team';
-const productDir = product === 'personal' ? 'app/personal' : 'app/team';
+const productDir = 'murph';
 
 export default defineConfig({
   root: path.resolve(here, '..', '..', productDir, 'ui'),

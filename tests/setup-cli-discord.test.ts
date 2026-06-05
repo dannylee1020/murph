@@ -681,7 +681,7 @@ describe('setup CLI Discord setup', () => {
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr + result.stdout).toContain('Watched channel setup is Team-only');
+    expect(result.stderr + result.stdout).toContain('Murph Personal is no longer a supported runtime');
 
     const calls = readCalls(callsPath);
     expect(calls.some((call) => call.url.includes('/api/setup/channels'))).toBe(false);

@@ -22,7 +22,7 @@ describe('app settings store', () => {
     }
   });
 
-  it('preserves selected bot roles in setup defaults', async () => {
+  it('constrains selected bot roles in setup defaults to channel', async () => {
     const { getStore } = await import('../shared/server/persistence/store');
     const store = getStore();
 
@@ -37,9 +37,9 @@ describe('app settings store', () => {
     });
 
     expect(store.getAppSettings().setupDefaults).toMatchObject({
-      botRoles: ['personal'],
+      botRoles: ['channel'],
       providerBotRoles: {
-        discord: ['personal']
+        discord: []
       },
       channelProvider: 'discord'
     });

@@ -7,7 +7,7 @@ description: Configure providers, policy, storage, and coverage defaults.
 
 Murph stores non-secret process settings in `~/.murph/config.yaml`, runtime-host secrets in `~/.murph/.credentials`, and runtime state in SQLite. Setup does not read or write `.env` files. Environment variables are an advanced override path for process control, development, and hosted deployments.
 
-The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, bot ingress, and agent execution are colocated on that host. Choose Murph Team for shared messenger channel coverage or Murph Personal for direct message coverage.
+The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, bot ingress, and agent execution are colocated on that host. Murph supports shared messenger channel coverage.
 
 ## Setup wizard
 
@@ -40,7 +40,7 @@ murph setup policy
 murph setup status
 ```
 
-Use `murph setup slack` or `murph setup discord` inside either product install. The browser setup wizard uses the same product boundary and skips channel selection in Personal.
+Use `murph setup slack` or `murph setup discord` to connect the shared channel bot. The browser setup wizard always includes channel selection for remote-team coverage.
 
 The schedule timezone is used when starting a session from Home. Murph computes the session stop time on the server and expires the session at the configured workday start in that timezone.
 
@@ -142,7 +142,7 @@ MURPH_SOURCE_INDEX_RETRY_INTERVAL_MS=3600000
 
 `MURPH_URL` is the CLI control URL used by commands such as setup, status, and policy calls. `MURPH_PORT` controls the local server port when starting Murph from the CLI. `MURPH_HEARTBEAT_INTERVAL_MS` controls how often the runtime checks scheduled background work, including whether any source-index provider is due; it does not force every provider to rebuild on every heartbeat.
 
-`MURPH_DISTRIBUTION=team|personal` selects the runtime distribution. Team is the default. The legacy `MURPH_PRODUCT_MODE=channel|personal` still works as a compatibility alias; `channel` maps to Team and `personal` maps to Personal unless `MURPH_DISTRIBUTION` is set.
+`MURPH_DISTRIBUTION=team` is the supported compatibility value for the runtime distribution. `MURPH_PRODUCT_MODE=channel` is kept only as a compatibility alias. Unsupported distribution values are rejected.
 
 Most runtime config keys also have environment-variable equivalents, but those should be treated as explicit overrides. If you override the local origin with `MURPH_URL`, `MURPH_PORT`, `MURPH_APP_URL`, or `DISCORD_REDIRECT_URI`, update provider callback URLs to match before reconnecting the channel.
 

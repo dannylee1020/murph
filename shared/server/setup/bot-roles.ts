@@ -1,6 +1,6 @@
 import type { BotInstallation, BotRole, SetupDefaults } from '#shared/types';
 
-export const SETUP_BOT_ROLES: BotRole[] = ['channel', 'personal'];
+export const SETUP_BOT_ROLES: BotRole[] = ['channel'];
 
 export interface SetupRoleStatus {
   selected: boolean;
@@ -16,7 +16,7 @@ export interface SetupRoleStatus {
 export function normalizeSetupBotRoles(value: unknown): BotRole[] {
   if (!Array.isArray(value)) return ['channel'];
   const roles = value
-    .filter((entry): entry is BotRole => entry === 'channel' || entry === 'personal');
+    .filter((entry): entry is BotRole => entry === 'channel');
   const unique = Array.from(new Set(roles));
   return unique.length > 0 ? unique : ['channel'];
 }
@@ -27,7 +27,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function normalizeExplicitBotRoles(value: unknown): BotRole[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  return Array.from(new Set(value.filter((entry): entry is BotRole => entry === 'channel' || entry === 'personal')));
+  return Array.from(new Set(value.filter((entry): entry is BotRole => entry === 'channel')));
 }
 
 export function normalizeProviderBotRoleMap(value: unknown): Record<string, BotRole[]> | undefined {

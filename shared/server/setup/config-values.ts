@@ -15,15 +15,10 @@ const SETUP_SECRET_KEYS: Record<string, { provider: string; key: string }> = {
   SLACK_CHANNEL_APP_TOKEN: { provider: 'slack', key: 'channel_app_token' },
   SLACK_CHANNEL_CLIENT_SECRET: { provider: 'slack', key: 'channel_client_secret' },
   SLACK_CHANNEL_SIGNING_SECRET: { provider: 'slack', key: 'channel_signing_secret' },
-  SLACK_PERSONAL_APP_TOKEN: { provider: 'slack', key: 'personal_app_token' },
-  SLACK_PERSONAL_CLIENT_SECRET: { provider: 'slack', key: 'personal_client_secret' },
-  SLACK_PERSONAL_SIGNING_SECRET: { provider: 'slack', key: 'personal_signing_secret' },
   DISCORD_BOT_TOKEN: { provider: 'discord', key: 'bot_token' },
   DISCORD_CLIENT_SECRET: { provider: 'discord', key: 'client_secret' },
   DISCORD_CHANNEL_BOT_TOKEN: { provider: 'discord', key: 'channel_bot_token' },
   DISCORD_CHANNEL_CLIENT_SECRET: { provider: 'discord', key: 'channel_client_secret' },
-  DISCORD_PERSONAL_BOT_TOKEN: { provider: 'discord', key: 'personal_bot_token' },
-  DISCORD_PERSONAL_CLIENT_SECRET: { provider: 'discord', key: 'personal_client_secret' },
   GOOGLE_ACCESS_TOKEN: { provider: 'google', key: 'access_token' },
   GOOGLE_CLIENT_SECRET: { provider: 'google', key: 'client_secret' },
   GITHUB_PAT: { provider: 'github', key: 'api_key' },
@@ -59,23 +54,19 @@ const BOT_APP_CONFIG_KEYS: Record<string, BotAppConfigTarget> = {
   SLACK_APP_ID: { provider: 'slack', role: 'channel', field: 'appId' },
   SLACK_CHANNEL_CLIENT_ID: { provider: 'slack', role: 'channel', field: 'clientId' },
   SLACK_CHANNEL_APP_ID: { provider: 'slack', role: 'channel', field: 'appId' },
-  SLACK_PERSONAL_CLIENT_ID: { provider: 'slack', role: 'personal', field: 'clientId' },
-  SLACK_PERSONAL_APP_ID: { provider: 'slack', role: 'personal', field: 'appId' },
   SLACK_TEAM_ID: { provider: 'slack', role: 'both', field: 'teamId' },
   SLACK_TEAM_NAME: { provider: 'slack', role: 'both', field: 'teamName' },
   DISCORD_CLIENT_ID: { provider: 'discord', role: 'channel', field: 'clientId' },
   DISCORD_PUBLIC_KEY: { provider: 'discord', role: 'channel', field: 'publicKey' },
   DISCORD_CHANNEL_CLIENT_ID: { provider: 'discord', role: 'channel', field: 'clientId' },
   DISCORD_CHANNEL_PUBLIC_KEY: { provider: 'discord', role: 'channel', field: 'publicKey' },
-  DISCORD_PERSONAL_CLIENT_ID: { provider: 'discord', role: 'personal', field: 'clientId' },
-  DISCORD_PERSONAL_PUBLIC_KEY: { provider: 'discord', role: 'personal', field: 'publicKey' },
   DISCORD_REDIRECT_URI: { provider: 'discord', role: 'both', field: 'redirectUri' }
 };
 
 function updateBotAppConfigValue(key: string, value: string): void {
   const target = BOT_APP_CONFIG_KEYS[key];
   if (!target) return;
-  const roles: BotRole[] = target.role === 'both' ? ['channel', 'personal'] : [target.role];
+  const roles: BotRole[] = target.role === 'both' ? ['channel'] : [target.role];
   for (const role of roles) {
     const existing = getStore().getBotAppConfig(target.provider, role);
     const input = {

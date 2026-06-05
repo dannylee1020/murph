@@ -1,24 +1,22 @@
-import { renderSettings } from '../../../shared/ui/features/admin';
-import { renderDashboard } from '../../../shared/ui/features/dashboard';
+import { renderSettings } from '../../shared/ui/features/admin';
+import { renderDashboard } from '../../shared/ui/features/dashboard';
 import {
     renderActivity,
     renderReview,
     renderTriage,
-} from '../../../shared/ui/features/operations';
-import { renderSetup } from '../../../shared/ui/features/setup';
-import { getJson } from '../../../shared/ui/shared/api';
-import { errorView, setProductSurface } from '../../../shared/ui/shared/shell';
-import { adminChannelWorkspaces } from '../../../shared/ui/shared/workspaces';
-import type { SetupStatusPayload } from '../../../shared/ui/shared/types';
+} from '../../shared/ui/features/operations';
+import { renderSetup } from '../../shared/ui/features/setup';
+import { getJson } from '../../shared/ui/shared/api';
+import { errorView } from '../../shared/ui/shared/shell';
+import { adminChannelWorkspaces } from '../../shared/ui/shared/workspaces';
+import type { SetupStatusPayload } from '../../shared/ui/shared/types';
 
-setProductSurface('team');
-
-export async function renderTeam(): Promise<void> {
+export async function renderMurph(): Promise<void> {
     try {
         const pathname = window.location.pathname;
 
         if (pathname === '/setup') {
-            await renderSetup(renderTeam);
+            await renderSetup(renderMurph);
             return;
         }
 
@@ -35,7 +33,7 @@ export async function renderTeam(): Promise<void> {
             !setupStatus.rolesReady
         ) {
             history.replaceState(null, '', '/setup');
-            await renderSetup(renderTeam);
+            await renderSetup(renderMurph);
             return;
         }
 

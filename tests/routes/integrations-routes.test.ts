@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,7 +32,7 @@ function jsonResponse(): any & { result: () => JsonResponse } {
   };
 }
 
-async function setup(options: { githubPat?: string; linearApiKey?: string; distribution?: 'team' | 'personal' } = {}) {
+async function setup(options: { githubPat?: string; linearApiKey?: string; distribution?: 'team' } = {}) {
   vi.resetModules();
   const root = mkdtempSync(join(tmpdir(), 'murph-integrations-route-'));
   const murphHome = join(root, '.murph');
@@ -138,7 +138,7 @@ describe('integration routes', () => {
     delete process.env.ZENDESK_API_KEY;
   });
 
-  it('lists only team-safe default integrations in Team runtime', async () => {
+  it('lists only shared-channel-safe default integrations in Murph runtime', async () => {
     const { request, workspace } = await setup({ distribution: 'team' });
 
     const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
@@ -146,16 +146,6 @@ describe('integration routes', () => {
 
     expect(response.status).toBe(200);
     expect(providers).toEqual(['github', 'notion', 'linear']);
-  });
-
-  it('lists team and private-source default integrations in Personal runtime', async () => {
-    const { request, workspace } = await setup({ distribution: 'personal' });
-
-    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
-    const providers = response.body.integrations.map((integration: any) => integration.provider);
-
-    expect(response.status).toBe(200);
-    expect(providers).toEqual(['github', 'notion', 'linear', 'obsidian', 'granola', 'google']);
   });
 
   it('does not report GitHub or Linear connected from blank credentials', async () => {
@@ -216,7 +206,7 @@ describe('integration routes', () => {
     }));
   });
 
-  it('rejects personal-only integration connects in Team runtime', async () => {
+  it('rejects personal-only integration connects in Murph runtime', async () => {
     const { request, workspace } = await setup({ distribution: 'team' });
 
     const response = await request('POST', '/api/integrations/obsidian/connect', {
@@ -346,25 +336,6 @@ describe('integration routes', () => {
     expect(memory.enabledContextSources).toContain('notion.thread_search');
   });
 
-  it('lists Obsidian as a path-based connector for the integration card UI in Personal runtime', async () => {
-    const { request, workspace } = await setup({ distribution: 'personal' });
-
-    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
-    const obsidian = response.body.integrations.find((integration: any) => integration.provider === 'obsidian');
-
-    expect(response.status).toBe(200);
-    expect(obsidian).toEqual(expect.objectContaining({
-      provider: 'obsidian',
-      name: 'Obsidian',
-      status: 'disconnected',
-      authType: 'path',
-      credentialLabel: 'Vault path',
-      envKey: 'OBSIDIAN_VAULT_PATH',
-      tools: ['obsidian.search', 'obsidian.read_note'],
-      contextSources: ['obsidian.thread_search']
-    }));
-  });
-
   it('surfaces plugin-provided integrations in status after plugin reload', async () => {
     const { request, workspace, murphHome } = await setup();
     writeZendeskPlugin(murphHome);
@@ -431,75 +402,6 @@ describe('integration routes', () => {
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['linear.search_issues', 'linear.read_issue']));
     expect(memory.enabledContextSources).toContain('linear.thread_search');
-  });
-
-  it('connects Obsidian with a local vault path without storing a secret', async () => {
-    const { request, store, workspace } = await setup({ distribution: 'personal' });
-    const vault = mkdtempSync(join(tmpdir(), 'murph-obsidian-vault-'));
-    const realVault = realpathSync(vault);
-    writeFileSync(join(vault, 'Plan.md'), 'Launch readiness notes');
-
-    const response = await request('POST', '/api/integrations/obsidian/connect', {
-      workspaceId: workspace.id,
-      vaultPath: vault
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.body.integration).toEqual(expect.objectContaining({
-      provider: 'obsidian',
-      status: 'connected',
-      source: 'config',
-      authType: 'path',
-      credentialLabel: 'Vault path',
-      canDisconnect: true,
-      metadata: expect.objectContaining({
-        vaultPath: realVault
-      })
-    }));
-    const { readSecretRecord } = await import('#shared/server/credentials/local-store');
-    expect(readSecretRecord('obsidian', 'config_path')).toBeUndefined();
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain(`vaultPath: ${realVault}`);
-    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['obsidian.search', 'obsidian.read_note']));
-    expect(memory.enabledContextSources).toContain('obsidian.thread_search');
-  });
-
-  it('rejects invalid Obsidian vault paths', async () => {
-    const { request, workspace } = await setup({ distribution: 'personal' });
-    const file = join(mkdtempSync(join(tmpdir(), 'murph-obsidian-file-')), 'note.md');
-    writeFileSync(file, 'not a vault directory');
-
-    const response = await request('POST', '/api/integrations/obsidian/connect', {
-      workspaceId: workspace.id,
-      vaultPath: file
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toContain('must be a directory');
-  });
-
-  it('disconnects Obsidian config and disables its retrieval capabilities', async () => {
-    const { request, store, workspace } = await setup({ distribution: 'personal' });
-    const vault = mkdtempSync(join(tmpdir(), 'murph-obsidian-vault-'));
-    mkdirSync(join(vault, 'Notes'));
-    writeFileSync(join(vault, 'Notes', 'Plan.md'), 'Launch readiness notes');
-    await request('POST', '/api/integrations/obsidian/connect', {
-      workspaceId: workspace.id,
-      vaultPath: vault
-    });
-
-    const response = await request('DELETE', `/api/integrations/obsidian/disconnect?workspaceId=${workspace.id}`);
-
-    expect(response.status).toBe(200);
-    expect(response.body.integration).toEqual(expect.objectContaining({
-      provider: 'obsidian',
-      status: 'disconnected'
-    }));
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).not.toContain('vaultPath');
-    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    expect(memory.enabledOptionalTools).not.toContain('obsidian.search');
-    expect(memory.enabledOptionalTools).not.toContain('obsidian.read_note');
-    expect(memory.enabledContextSources).not.toContain('obsidian.thread_search');
   });
 
   it('reports global credentials before env fallback when both are present', async () => {
@@ -599,105 +501,4 @@ describe('integration routes', () => {
     expect(store.getOrCreateWorkspaceMemory(discordWorkspace.id).enabledOptionalTools).not.toContain('github.search');
   });
 
-  it('reports Google as connected when an OAuth bundle is stored for the workspace', async () => {
-    const { request, store, workspace } = await setup({ distribution: 'personal' });
-    const { writeSecret } = await import('#shared/server/credentials/local-store');
-    const metadata = {
-      account: 'person@example.com',
-      validatedAt: new Date().toISOString()
-    };
-    writeSecret('google', 'oauth_bundle', JSON.stringify({
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
-      expires_at: Date.now() + 3600_000,
-      scope: 'gmail calendar'
-    }), {
-      metadata
-    });
-    store.saveIntegrationConnection({
-      workspaceId: workspace.id,
-      provider: 'google',
-      credentialKind: 'oauth_bundle',
-      metadata
-    });
-
-    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
-    const google = response.body.integrations.find((integration: any) => integration.provider === 'google');
-
-    expect(response.status).toBe(200);
-    expect(google).toEqual(expect.objectContaining({
-      provider: 'google',
-      status: 'connected',
-      source: 'credentials'
-    }));
-    expect(google.metadata).toEqual(expect.objectContaining({
-      account: 'person@example.com'
-    }));
-  });
-
-  it('reports Google as connected from a global OAuth bundle across channel workspaces', async () => {
-    const { request, store, workspace } = await setup({ distribution: 'personal' });
-    const { writeSecret } = await import('#shared/server/credentials/local-store');
-    const discordWorkspace = store.saveInstall({
-      provider: 'discord',
-      externalWorkspaceId: 'G1',
-      name: 'Test Guild',
-      botUserId: 'DBOT'
-    });
-    const metadata = {
-      account: 'person@example.com',
-      validatedAt: new Date().toISOString()
-    };
-    writeSecret('google', 'oauth_bundle', JSON.stringify({
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
-      expires_at: Date.now() + 3600_000,
-      scope: 'gmail calendar'
-    }), {
-      metadata
-    });
-    store.saveIntegrationConnection({
-      workspaceId: workspace.id,
-      provider: 'google',
-      credentialKind: 'oauth_bundle',
-      metadata
-    });
-
-    const response = await request('GET', `/api/integrations/status?workspaceId=${discordWorkspace.id}`);
-    const google = response.body.integrations.find((integration: any) => integration.provider === 'google');
-
-    expect(response.status).toBe(200);
-    expect(google).toEqual(expect.objectContaining({
-      provider: 'google',
-      status: 'connected',
-      source: 'credentials'
-    }));
-    expect(google.metadata).toEqual(expect.objectContaining({
-      account: 'person@example.com'
-    }));
-  });
-
-  it('ignores legacy scoped Google OAuth bundles in status', async () => {
-    const { request, workspace } = await setup({ distribution: 'personal' });
-    const { writeSecret } = await import('#shared/server/credentials/local-store');
-    writeSecret('google', 'oauth_bundle', JSON.stringify({
-      access_token: 'access-token',
-      refresh_token: 'refresh-token',
-      expires_at: Date.now() + 3600_000,
-      scope: 'gmail calendar'
-    }), {
-      workspaceId: workspace.id,
-      metadata: { account: 'person@example.com' }
-    });
-
-    const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
-    const google = response.body.integrations.find((integration: any) => integration.provider === 'google');
-
-    expect(response.status).toBe(200);
-    expect(google).toEqual(expect.objectContaining({
-      provider: 'google',
-      status: 'disconnected'
-    }));
-    expect(google.source).toBeUndefined();
-  });
 });

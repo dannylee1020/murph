@@ -13,7 +13,7 @@ while [[ -L "$SCRIPT_SOURCE" ]]; do
 done
 
 SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"
-APP_DIR="${MURPH_APP_DIR:-$(cd "$SCRIPT_DIR/../../.." >/dev/null 2>&1 && pwd)}"
+APP_DIR="${MURPH_APP_DIR:-$(cd "$SCRIPT_DIR/../.." >/dev/null 2>&1 && pwd)}"
 
 export MURPH_DISTRIBUTION=team
 

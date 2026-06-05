@@ -83,22 +83,20 @@ type SetupStepKey =
     | `channels:${SetupChannelProvider}`;
 
 const SETUP_CHANNEL_PROVIDERS: SetupChannelProvider[] = ['slack', 'discord'];
-const SETUP_BOT_ROLES: BotRole[] = ['channel', 'personal'];
+const SETUP_BOT_ROLES: BotRole[] = ['channel'];
 const SETUP_QUEUE_STORAGE_KEY = 'murph_setup_queue';
 const SETUP_PROVIDER_ONLY_STORAGE_KEY = 'murph_setup_provider_only';
 
 function setupDistributionRoles(setup?: SetupStatusPayload): BotRole[] {
-    return setup?.distribution === 'personal' ? ['personal'] : ['channel'];
+    return ['channel'];
 }
 
 function setupDistributionName(setup?: SetupStatusPayload): string {
-    return setup?.distribution === 'personal' ? 'Murph Personal' : 'Murph Team';
+    return 'Murph';
 }
 
 function setupDistributionDescription(setup?: SetupStatusPayload): string {
-    return setup?.distribution === 'personal'
-        ? 'Owner-DM coverage for a local personal runtime.'
-        : 'Shared-channel coverage for a team runtime host.';
+    return 'Shared-channel coverage for remote teams.';
 }
 
 let setupWizardState: SetupWizardState = {
@@ -1476,8 +1474,8 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
 
     const progressSegments = setupStepProgress(stepKeys, step);
     const currentStepLabel = setupStepLabel(stepKey);
-    const topbarHref = setup.distribution === 'personal' ? '/' : '/admin';
-    const topbarLabel = setup.distribution === 'personal' ? 'Console' : 'Admin';
+    const topbarHref = '/admin';
+    const topbarLabel = 'Admin';
 
     let stepContent = '';
 
@@ -1828,11 +1826,10 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
       </div>
     `;
     } else if (stepKey === 'finish') {
-        const isPersonalSetup = setup.distribution === 'personal';
         stepContent = `
       <div class="wizard-step">
         <h1>Finish setup</h1>
-        <p>${isPersonalSetup ? 'Murph has the selected personal bot and Murph configuration. Finish setup to open the dashboard.' : 'Murph has the selected channel and mode configuration. Finish setup to save these defaults and open the dashboard.'}</p>
+        <p>Murph has the selected channel and mode configuration. Finish setup to save these defaults and open the dashboard.</p>
         <div class="setup-summary-list">
           <div class="setup-summary-row ok">
             <span>AI model</span>

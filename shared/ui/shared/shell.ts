@@ -16,8 +16,6 @@ const navItems = [
     { href: '/activity', label: 'Activity' },
     { href: '/admin', label: 'Admin' },
 ];
-type ProductSurface = 'team' | 'personal';
-let productSurface: ProductSurface = 'team';
 
 type ThemePreference = 'auto' | 'light' | 'dark';
 
@@ -85,9 +83,6 @@ darkSchemeQuery.addEventListener('change', () => {
 });
 
 export function activeNavHref(pathname: string): string {
-    if (productSurface === 'personal' && (pathname === '/admin' || pathname === '/settings')) {
-        return '/settings';
-    }
     if (pathname === '/settings') return '/admin';
     if (pathname === '/runs' || pathname === '/audit') return '/activity';
     return pathname;
@@ -102,11 +97,6 @@ export function setSidebarWatchingCount(count: number): void {
     sidebarActiveSessionCount = count;
 }
 
-export function setProductSurface(surface: ProductSurface): void {
-    productSurface = surface;
-}
-
-
 export function consoleStateHtml(
     label: string,
     status: 'ok' | 'off' | 'warn',
@@ -117,27 +107,22 @@ export function consoleStateHtml(
 export function sidebarWatchingStatusHtml(): string {
     const count = sidebarActiveSessionCount;
     const active = (count ?? 0) > 0;
-    const personal = productSurface === 'personal';
     const label =
         count === undefined
             ? 'Checking'
             : active
-              ? personal
-                  ? 'Receiving'
-                  : 'Watching'
+              ? 'Watching'
               : 'Idle';
     const detail =
         count === undefined
-            ? personal
-                ? 'DM status'
-                : 'Session status'
+            ? 'Session status'
             : count === 1
               ? '1 active session'
               : `${count} active sessions`;
     const status = active ? 'ok' : count === undefined ? 'warn' : 'off';
 
     return `
-    <div class="sidebar-watch-status status-${status}" aria-label="${escapeHtml(`${personal ? 'DM' : 'Watching'} status: ${label}`)}">
+    <div class="sidebar-watch-status status-${status}" aria-label="${escapeHtml(`Watching status: ${label}`)}">
       <span class="status-dot ${status}" aria-hidden="true"></span>
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(detail)}</strong>
@@ -150,14 +135,6 @@ export function shell(content: string): void {
     const activeHref = activeNavHref(pathname);
     const slug = routeSlug(activeHref);
     const themePreference = getThemePreference();
-    const visibleNavItems =
-        productSurface === 'personal'
-            ? navItems.map((item) =>
-                  item.href === '/admin'
-                      ? { href: '/settings', label: 'Settings' }
-                      : item,
-              )
-            : navItems;
     app.innerHTML = `
     <div class="app-shell route-${slug}">
       <aside class="sidebar">
@@ -166,7 +143,7 @@ export function shell(content: string): void {
           <span class="brand-wordmark">Murph</span>
         </a>
         <nav>
-          ${visibleNavItems
+          ${navItems
               .map(
                   (item) => `
                 <a href="${item.href}" data-link class="${activeHref === item.href ? 'active' : ''}">

@@ -14,7 +14,6 @@ SQLite stores:
 - policy decisions and action results
 - workspace memory
 - thread memory
-- user preferences for Personal routing
 - source index refresh status
 
 ## Configure memory
@@ -34,7 +33,7 @@ When a request arrives, Murph builds context from the current thread, SQLite wor
 
 Stored memory is not a substitute for current evidence. For latest, current, today, now, status, changed, or source-of-truth questions, Murph should use live retrieval from connected sources before answering.
 
-For Team deployments, runtime memory is scoped to the workspace, session, channel, and thread. For Personal deployments, owner identity is also used for direct-message memory.
+Runtime memory is scoped to the workspace, session, channel, and thread.
 
 ## Source index
 
@@ -50,11 +49,4 @@ The source index is not factual grounding evidence. It should point Murph toward
 
 Source indexing is enabled by default. The runtime checks it at startup and during heartbeat. The heartbeat runs every 15 minutes by default, source-index refreshes are due every 24 hours by default, and failed providers retry after 1 hour by default.
 
-Supported source-index providers depend on the runtime distribution:
-
-| Runtime | Indexed providers |
-| --- | --- |
-| Team | GitHub, Linear, Notion |
-| Personal | GitHub, Linear, Notion, Granola, Obsidian |
-
-Google is intentionally live-retrieval only for now and is not source-indexed.
+Supported source-index providers are GitHub, Linear, and Notion.

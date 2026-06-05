@@ -55,7 +55,7 @@ describe('murph config file', () => {
     writeFileSync('config.yaml', [
       'app:',
       '  url: https://murph.example',
-      '  distribution: personal',
+      '  distribution: team',
       '  timezone: Asia/Seoul',
       '  workdayStartHour: 10',
       '  workdayEndHour: 18',
@@ -77,8 +77,8 @@ describe('murph config file', () => {
     const env = getRuntimeEnv();
 
     expect(env.appUrl).toBe('https://murph.example');
-    expect(env.distribution).toBe('personal');
-    expect(env.productMode).toBe('personal');
+    expect(env.distribution).toBe('team');
+    expect(env.productMode).toBe('channel');
     expect(env.timezone).toBe('Asia/Seoul');
     expect(env.workdayStartHour).toBe(10);
     expect(env.workdayEndHour).toBe(18);
@@ -134,7 +134,7 @@ describe('murph config file', () => {
       ''
     ].join('\n'));
     process.env.MURPH_APP_URL = 'https://override.example';
-    process.env.MURPH_DISTRIBUTION = 'personal';
+    process.env.MURPH_DISTRIBUTION = 'team';
     process.env.MURPH_AGENT_PROVIDER = 'openai';
     process.env.MURPH_AGENT_MODEL = 'gpt-5.5';
 
@@ -142,8 +142,8 @@ describe('murph config file', () => {
     const env = getRuntimeEnv();
 
     expect(env.appUrl).toBe('https://override.example');
-    expect(env.distribution).toBe('personal');
-    expect(env.productMode).toBe('personal');
+    expect(env.distribution).toBe('team');
+    expect(env.productMode).toBe('channel');
     expect(env.agentProvider).toBe('openai');
     expect(env.agentModel).toBe('gpt-5.5');
   });
@@ -165,8 +165,8 @@ describe('murph config file', () => {
 
     const result = updateMurphConfigValues({
       MURPH_APP_URL: 'https://murph.example',
-      MURPH_DISTRIBUTION: 'personal',
-      MURPH_PRODUCT_MODE: 'personal',
+      MURPH_DISTRIBUTION: 'team',
+      MURPH_PRODUCT_MODE: 'channel',
       MURPH_DEFAULT_MODEL: 'gpt-5.5',
       MURPH_AGENT_MODEL: 'claude-opus-4-7',
       GITHUB_REPOSITORIES: 'acme/app,acme/api',
@@ -177,8 +177,8 @@ describe('murph config file', () => {
     expect(result.updated).toEqual(['MURPH_APP_URL', 'MURPH_DISTRIBUTION', 'MURPH_PRODUCT_MODE', 'MURPH_DEFAULT_MODEL', 'MURPH_AGENT_MODEL', 'GITHUB_REPOSITORIES', 'OBSIDIAN_VAULT_PATH']);
     expect(raw).toContain('keep: true');
     expect(raw).toContain('url: https://murph.example');
-    expect(raw).toContain('distribution: personal');
-    expect(raw).toContain('productMode: personal');
+    expect(raw).toContain('distribution: team');
+    expect(raw).toContain('productMode: channel');
     expect(raw).toContain('defaultModel: gpt-5.5');
     expect(raw).toContain('model: claude-opus-4-7');
     expect(raw).toContain('- acme/app');
@@ -198,7 +198,7 @@ describe('murph config file', () => {
     expect(getEnvWithLegacyMode().productMode).toBe('channel');
   });
 
-  it('lets MURPH_DISTRIBUTION override legacy product mode', async () => {
+  it('ignores legacy personal product mode when the runtime distribution is team', async () => {
     process.env.MURPH_DISTRIBUTION = 'team';
     process.env.MURPH_PRODUCT_MODE = 'personal';
 
@@ -207,6 +207,14 @@ describe('murph config file', () => {
 
     expect(env.distribution).toBe('team');
     expect(env.productMode).toBe('channel');
+  });
+
+  it('rejects explicit personal runtime config updates', async () => {
+    const { updateMurphConfigValues } = await import('../shared/server/setup/config-file');
+
+    expect(() => updateMurphConfigValues({
+      MURPH_DISTRIBUTION: 'personal'
+    })).toThrow(/Murph Personal is no longer a supported runtime/);
   });
 
   it('clears explicit Murph Agent overrides so the agent can inherit runtime', async () => {

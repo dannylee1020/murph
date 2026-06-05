@@ -13,7 +13,7 @@ Use [Murph Agent](/docs/usage/murph-agent) when you want guided local help for s
 
 ## Browser UI
 
-Use the [Browser UI](/docs/usage/browser-ui) when you want a visual setup flow, runtime status, session control, triage, review, or Team admin settings.
+Use the [Browser UI](/docs/usage/browser-ui) when you want a visual setup flow, runtime status, session control, triage, review, or admin settings.
 
 ## CLI
 

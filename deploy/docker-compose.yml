@@ -1,6 +1,6 @@
 services:
   murph:
-    image: ghcr.io/dannylee1020/murph-team:latest
+    image: ghcr.io/dannylee1020/murph:latest
     restart: unless-stopped
     init: true
     environment:

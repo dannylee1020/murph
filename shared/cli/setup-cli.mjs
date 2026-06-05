@@ -14,8 +14,7 @@ const credentialsPath = process.env.MURPH_CREDENTIALS_PATH || path.join(murphHom
 const configPath = process.env.MURPH_CONFIG_PATH || path.join(murphHome, 'config.yaml');
 const slackManifestPath = path.join(appDir, 'docs', 'public', 'slack-manifest.yaml');
 const slackRoleManifestPaths = {
-  channel: path.join(appDir, 'docs', 'public', 'slack-channel-manifest.yaml'),
-  personal: path.join(appDir, 'docs', 'public', 'slack-personal-manifest.yaml')
+  channel: path.join(appDir, 'docs', 'public', 'slack-channel-manifest.yaml')
 };
 const slackApiBase = process.env.MURPH_SLACK_API_BASE || 'https://slack.com/api';
 const discordApiBase = process.env.MURPH_DISCORD_API_BASE || 'https://discord.com/api/v10';
@@ -31,15 +30,13 @@ const discordPermissionLabels = [
   'Read Message History',
   'Send Messages in Threads'
 ];
-const SETUP_BOT_ROLES = ['channel', 'personal'];
+const SETUP_BOT_ROLES = ['channel'];
 const SETUP_CHANNEL_PROVIDERS = ['slack', 'discord'];
 const rl = readline.createInterface({ input, output });
 
 const args = process.argv.slice(2);
 const productEnv = process.env.MURPH_DISTRIBUTION;
-const cliProduct = productEnv === 'personal'
-  ? 'personal'
-  : productEnv === 'team'
+const cliProduct = productEnv === 'team'
     ? 'team'
     : null;
 function optionValue(name) {
@@ -82,7 +79,7 @@ const color = {
 };
 const SECTION_PURPOSES = {
   Core: 'Create local config defaults and the data directory.',
-  Distribution: 'Choose Murph Team or Murph Personal runtime setup.',
+  Distribution: 'Use the Murph runtime setup.',
   Mode: 'Legacy compatibility; maps to the active distribution.',
   'AI provider': 'Choose the runtime model and API key.',
   'Murph Agent model': 'Choose whether the local setup agent inherits runtime defaults.',
@@ -565,18 +562,20 @@ function normalizeProvider(value, fallback = 'openai') {
 }
 
 function normalizeProductMode(value) {
-  return value === 'personal' ? 'personal' : 'channel';
+  if (value === 'personal') fail('Murph Personal is no longer a supported runtime. Use Murph.');
+  return 'channel';
 }
 
 function normalizeRuntimeDistribution(value) {
-  return value === 'personal' ? 'personal' : 'team';
+  if (value === 'personal') fail('Murph Personal is no longer a supported runtime. Use Murph.');
+  return 'team';
 }
 
 function currentDistribution() {
   if (cliProduct) return cliProduct;
   const configured = readSetupValue('MURPH_DISTRIBUTION') || process.env.MURPH_DISTRIBUTION;
   if (configured) return normalizeRuntimeDistribution(configured);
-  return currentProductMode() === 'personal' ? 'personal' : 'team';
+  return 'team';
 }
 
 function currentProductMode() {
@@ -584,7 +583,10 @@ function currentProductMode() {
 }
 
 function normalizeBotRole(value) {
-  return value === 'personal' ? 'personal' : value === 'both' ? 'both' : 'channel';
+  if (value === 'personal' || value === 'both') {
+    fail('Murph Personal bot roles are no longer supported. Use the channel role.');
+  }
+  return 'channel';
 }
 
 function normalizeBotRoles(value) {
@@ -601,7 +603,7 @@ function normalizeBotRoles(value) {
 }
 
 function distributionRoles(distribution = currentDistribution()) {
-  return distribution === 'personal' ? ['personal'] : ['channel'];
+  return ['channel'];
 }
 
 function constrainRolesToDistribution(roles, distribution = currentDistribution()) {
@@ -618,10 +620,9 @@ function currentBotRoles() {
 function roleOptionRoles() {
   if (options.role) {
     const requested = normalizeBotRole(options.role.toLowerCase());
-    if (requested === 'both') return distributionRoles();
     const allowed = distributionRoles();
     if (!allowed.includes(requested)) {
-      fail(`This Murph ${currentDistribution() === 'personal' ? 'Personal' : 'Team'} install only supports ${allowed.join(', ')} bot setup.`);
+      fail(`This Murph install only supports ${allowed.join(', ')} bot setup.`);
     }
     return [requested];
   }
@@ -1615,9 +1616,7 @@ function runMurphCommand(args) {
 async function ensureServer() {
   if (await health()) return;
   const runtimeEntry =
-    currentDistribution() === 'personal'
-      ? path.join(appDir, 'dist', 'app', 'personal', 'runtime', 'server.js')
-      : path.join(appDir, 'dist', 'app', 'team', 'runtime', 'server.js');
+    path.join(appDir, 'dist', 'app', 'murph', 'runtime', 'server.js');
   if (!existsSync(runtimeEntry)) {
     fail('Murph is not built yet. Run: murph build');
   }
@@ -1674,18 +1673,21 @@ async function setupDistribution(distribution) {
   const roles = distributionRoles(normalized);
   const values = {
     MURPH_DISTRIBUTION: normalized,
-    MURPH_PRODUCT_MODE: normalized === 'personal' ? 'personal' : 'channel',
+    MURPH_PRODUCT_MODE: 'channel',
     MURPH_BOT_ROLES: roles.join(',')
   };
   writeSetupValues(values);
   await postSetupConfig(values);
-  success(`Selected Murph ${normalized === 'personal' ? 'Personal' : 'Team'} distribution.`);
+  success('Selected Murph runtime.');
   return roles;
 }
 
 function assertProductSection(distribution) {
   if (cliProduct && cliProduct !== distribution) {
-    fail(`This is a Murph ${cliProduct === 'personal' ? 'Personal' : 'Team'} install. Use the ${distribution === 'personal' ? 'Personal' : 'Team'} deployment for ${distribution} setup.`);
+    fail('This is a Murph install.');
+  }
+  if (distribution !== 'team') {
+    fail('Murph Personal is no longer a supported runtime. Use Murph.');
   }
 }
 
@@ -1693,46 +1695,11 @@ async function setupBotRoles() {
   sectionTitle('Bot roles');
   const distribution = currentDistribution();
   const fixedRoles = distributionRoles(distribution);
-  if (distribution === 'team' || distribution === 'personal') {
-    const values = { MURPH_BOT_ROLES: fixedRoles.join(',') };
-    writeSetupValues(values);
-    await postSetupConfig(values);
-    success(`Bot roles are fixed for Murph ${distribution === 'personal' ? 'Personal' : 'Team'}: ${fixedRoles.join(', ')}.`);
-    return fixedRoles;
-  }
-  const current = currentBotRoles();
-  if (options.quick && current.length > 0) {
-    success(`Bot roles are configured: ${current.join(', ')}.`);
-    return current;
-  }
-  if (options.nonInteractive) {
-    const roles = normalizeBotRoles(options.role || current);
-    writeSetupValues({ MURPH_BOT_ROLES: setupRolesCsv(roles) });
-    await postSetupConfig({ MURPH_BOT_ROLES: setupRolesCsv(roles) });
-    success(`Bot roles: ${roles.join(', ')}.`);
-    return roles;
-  }
-
-  const defaultChoice = current.includes('channel') && current.includes('personal')
-    ? '3'
-    : current.includes('personal')
-      ? '2'
-      : '1';
-  const choice = await askChoice(
-    'Bot roles: [1] Channel  [2] Personal  [3] Both',
-    ['1', '2', '3', 'channel', 'personal', 'both'],
-    defaultChoice
-  );
-  const roles = choice === '2' || choice.toLowerCase() === 'personal'
-    ? ['personal']
-    : choice === '3' || choice.toLowerCase() === 'both'
-      ? ['channel', 'personal']
-      : ['channel'];
-  const values = { MURPH_BOT_ROLES: setupRolesCsv(roles) };
+  const values = { MURPH_BOT_ROLES: fixedRoles.join(',') };
   writeSetupValues(values);
   await postSetupConfig(values);
-  success(`Selected bot roles: ${roles.join(', ')}.`);
-  return roles;
+  success(`Bot roles are fixed for Murph: ${fixedRoles.join(', ')}.`);
+  return fixedRoles;
 }
 
 async function setupAi() {
@@ -2010,7 +1977,7 @@ async function setupIdentity() {
 async function setupChannels(providerOverride = currentChannelProvider()) {
   sectionTitle('Channels');
   if (!distributionRoles(currentDistribution()).includes('channel')) {
-    fail('Watched channel setup is Team-only. Murph Personal uses personal Slack or Discord bots for DMs and does not monitor channels.');
+    fail('Murph only supports watched channel setup.');
   }
   const provider = providerOverride;
   selectedChannelProvider = provider;
@@ -2218,7 +2185,7 @@ async function setupStatus() {
     ? `inherits runtime (${localStatus.agentProvider}/${localStatus.agentModel})`
     : `${localStatus.agentProvider}/${localStatus.agentModel}`);
   statusGroup('Distribution');
-  statusLine('Runtime', 'ok', localStatus.distribution === 'personal' ? 'Murph Personal' : 'Murph Team');
+  statusLine('Runtime', 'ok', 'Murph');
   statusLine('Selected roles', localStatus.botRoles.length > 0 ? 'ok' : 'missing', localStatus.botRoles.join(', '));
   statusGroup('Slack');
   if (activeRoles.includes('channel')) {
@@ -2285,9 +2252,7 @@ try {
       await runAll();
       break;
     case 'personal':
-      assertProductSection('personal');
-      if (!cliProduct) await setupDistribution('personal');
-      await runAll();
+      fail('Murph Personal is no longer a supported runtime. Use: murph setup');
       break;
     case 'core':
       await setupCore();

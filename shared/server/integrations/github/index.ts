@@ -9,7 +9,7 @@ export function createGitHubAdapter(): IntegrationAdapter {
     id: 'github',
     name: 'GitHub',
     description: 'Issues, pull requests, and repository context.',
-    distributions: ['team', 'personal'],
+    distributions: ['team'],
     credential: {
       authType: 'api_key',
       credentialKind: 'api_key',

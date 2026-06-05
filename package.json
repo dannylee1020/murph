@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/app/team/runtime/server.js",
+  "main": "dist/murph/runtime/server.js",
   "bin": {
-    "murph": "app/team/cli/murph"
+    "murph": "murph/cli/murph"
   },
   "engines": {
     "node": ">=20"
@@ -23,15 +23,13 @@
     "watch:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput",
     "build": "npm run build:server && npm run build:ui",
     "build:server": "tsc -p tsconfig.server.json",
-    "build:ui": "npm run build:ui:team && npm run build:ui:personal",
-    "build:ui:team": "MURPH_UI_PRODUCT=team vite build --config shared/ui/vite.config.ts",
-    "build:ui:personal": "MURPH_UI_PRODUCT=personal vite build --config shared/ui/vite.config.ts",
-    "start": "npm run start:team",
-    "start:team": "node dist/app/team/runtime/server.js",
-    "start:personal": "node dist/app/personal/runtime/server.js",
+    "build:ui": "npm run build:ui:murph",
+    "build:ui:murph": "MURPH_UI_PRODUCT=murph vite build --config shared/ui/vite.config.ts",
+    "start": "npm run start:murph",
+    "start:murph": "node dist/murph/runtime/server.js",
     "preview": "npm run start",
     "architecture:map": "node scripts/generate-architecture-map.mjs",
-    "docs:sync-installer": "mkdir -p docs/public && cp install.sh docs/public/install.sh && cp install-personal.sh docs/public/install-personal.sh",
+    "docs:sync-installer": "mkdir -p docs/public && cp install.sh docs/public/install.sh",
     "docs:dev": "npm run docs:sync-installer && vitepress dev docs",
     "docs:build": "npm run docs:sync-installer && vitepress build docs",
     "docs:start": "vitepress preview docs",

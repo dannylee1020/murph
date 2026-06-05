@@ -282,7 +282,7 @@ async function createPreparedSession(target: PreparedSessionTarget, input: Sessi
 
   const session = store.createSession({
     workspaceId: target.workspace.id,
-    title: input.title?.trim() || 'Team agent',
+    title: input.title?.trim() || 'Murph agent',
     mode,
     channelScope: target.channelScope,
     policyProfileName: policyPayload.selectedProfileName,

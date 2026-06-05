@@ -12,7 +12,7 @@ This guide has moved to [Channels: Slack](/docs/channels/slack).
 Use Murph for Slack when you want async coverage that stays under your control.
 
 - cover important Slack channels during active sessions
-- route direct messages to Murph Personal
+- cover selected Slack channels during async handoff sessions
 - answer routine questions from your real workspace context
 - queue risky replies for review instead of sending automatically
 - review what was sent, queued, skipped, and why

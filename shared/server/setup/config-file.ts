@@ -201,31 +201,31 @@ function providerValue(value: unknown): ProviderName | undefined {
 }
 
 export function normalizeProductMode(value: unknown): ProductMode | undefined {
-  return value === 'personal' ? 'personal' : value === 'channel' ? 'channel' : undefined;
+  return value === 'channel' ? 'channel' : undefined;
 }
 
 export function normalizeRuntimeDistribution(value: unknown): RuntimeDistribution | undefined {
-  return value === 'personal' ? 'personal' : value === 'team' ? 'team' : undefined;
+  return value === 'team' ? 'team' : undefined;
 }
 
 function runtimeDistributionFromString(value: string): RuntimeDistribution {
   const normalized = normalizeRuntimeDistribution(value);
   if (normalized) return normalized;
-  throw new Error(`Expected runtime distribution to be team or personal, received: ${value}`);
+  throw new Error(`Murph Personal is no longer a supported runtime. Expected runtime distribution to be team, received: ${value}`);
 }
 
 export function distributionFromProductMode(value: ProductMode | undefined): RuntimeDistribution | undefined {
-  return value === 'personal' ? 'personal' : value === 'channel' ? 'team' : undefined;
+  return value === 'channel' ? 'team' : undefined;
 }
 
 export function productModeFromDistribution(value: RuntimeDistribution): ProductMode {
-  return value === 'personal' ? 'personal' : 'channel';
+  return 'channel';
 }
 
 function productModeFromString(value: string): ProductMode {
   const normalized = normalizeProductMode(value);
   if (normalized) return normalized;
-  throw new Error(`Expected product mode to be personal or channel, received: ${value}`);
+  throw new Error(`Murph Personal is no longer a supported runtime. Expected product mode to be channel, received: ${value}`);
 }
 
 function booleanFromString(value: string): boolean {
@@ -241,7 +241,7 @@ function stringArray(value: unknown): string[] | undefined {
 }
 
 function normalizeBotRole(value: unknown): BotRole | undefined {
-  return value === 'personal' ? 'personal' : value === 'channel' ? 'channel' : undefined;
+  return value === 'channel' ? 'channel' : undefined;
 }
 
 function botRolesFromString(value: string): BotRole[] {
@@ -325,7 +325,7 @@ function setupDefaultsValue(value: unknown): SetupDefaults | undefined {
 }
 
 function rolesForDistribution(distribution: RuntimeDistribution | undefined): BotRole[] {
-  return distribution === 'personal' ? ['personal'] : ['channel'];
+  return ['channel'];
 }
 
 function constrainRolesToDistribution(roles: BotRole[] | undefined, distribution: RuntimeDistribution | undefined): BotRole[] {

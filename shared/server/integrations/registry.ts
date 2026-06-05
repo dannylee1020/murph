@@ -6,7 +6,7 @@ export type IntegrationProvider = string;
 export type IntegrationAuthType = 'api_key' | 'oauth' | 'path';
 export type IntegrationDistribution = RuntimeDistribution;
 
-const DEFAULT_DISTRIBUTIONS: IntegrationDistribution[] = ['team', 'personal'];
+const DEFAULT_DISTRIBUTIONS: IntegrationDistribution[] = ['team'];
 
 export interface IntegrationDefinition {
   provider: IntegrationProvider;
@@ -27,7 +27,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     provider: 'github',
     name: 'GitHub',
     description: 'Issues, pull requests, and repository context.',
-    distributions: ['team', 'personal'],
+    distributions: ['team'],
     authType: 'api_key',
     credentialKind: 'api_key',
     envKey: 'GITHUB_PAT',
@@ -38,8 +38,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   {
     provider: 'notion',
     name: 'Notion',
-    description: 'Team docs and knowledge pages.',
-    distributions: ['team', 'personal'],
+    description: 'Shared docs and knowledge pages.',
+    distributions: ['team'],
     authType: 'api_key',
     credentialKind: 'api_key',
     envKey: 'NOTION_API_KEY',
@@ -50,8 +50,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   {
     provider: 'linear',
     name: 'Linear',
-    description: 'Team issues, projects, and product work.',
-    distributions: ['team', 'personal'],
+    description: 'Shared issues, projects, and product work.',
+    distributions: ['team'],
     authType: 'api_key',
     credentialKind: 'api_key',
     envKey: 'LINEAR_API_KEY',
@@ -59,43 +59,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     tools: ['linear.search_issues', 'linear.read_issue'],
     contextSources: ['linear.thread_search']
   },
-  {
-    provider: 'granola',
-    name: 'Granola',
-    description: 'Meeting notes and transcripts.',
-    distributions: ['personal'],
-    authType: 'api_key',
-    credentialKind: 'api_key',
-    envKey: 'GRANOLA_API_KEY',
-    credentialLabel: 'API key',
-    tools: ['granola.search', 'granola.read_meeting'],
-    contextSources: ['granola.thread_search']
-  },
-  {
-    provider: 'obsidian',
-    name: 'Obsidian',
-    description: 'Local Markdown vault notes and knowledge base context.',
-    distributions: ['personal'],
-    authType: 'path',
-    credentialKind: 'config_path',
-    envKey: 'OBSIDIAN_VAULT_PATH',
-    credentialLabel: 'Vault path',
-    tools: ['obsidian.search', 'obsidian.read_note'],
-    contextSources: ['obsidian.thread_search']
-  },
-  {
-    provider: 'google',
-    name: 'Google',
-    description: 'Gmail threads and Google Calendar events.',
-    distributions: ['personal'],
-    authType: 'oauth',
-    credentialKind: 'oauth_bundle',
-    envKey: 'GOOGLE_ACCESS_TOKEN',
-    credentialLabel: 'Google account',
-    installPath: '/api/google/install',
-    tools: ['gmail.search', 'gmail.read_thread', 'calendar.search_events', 'calendar.check_availability'],
-    contextSources: ['gmail.thread_search', 'calendar.upcoming_events']
-  }
 ];
 
 export interface IntegrationListOptions {

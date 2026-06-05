@@ -20,13 +20,7 @@ If Node.js 20+ or npm is missing, the installer downloads a Murph-managed Node/n
 curl -fsSL https://murph-agent.com/install.sh | bash
 ```
 
-For Personal:
-
-```bash
-curl -fsSL https://murph-agent.com/install-personal.sh | bash
-```
-
-By default, Murph installs Team into `~/.murph/app`, places the product-local CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`. Install Personal with `install-personal.sh`.
+By default, Murph installs into `~/.murph/app`, places the product-local CLI at `~/.local/bin/murph`, and keeps installer-managed helper binaries under `~/.murph/deps/bin`.
 
 The internet installer downloads the current stable release archive by default, not the `main` branch. The stable installer URL stays the same, while `https://murph-agent.com/release.env` points it at the current versioned GitHub tag archive.
 
@@ -49,11 +43,8 @@ If you want to inspect the installer first:
 
 ```bash
 curl -fsSL https://murph-agent.com/install.sh -o install.sh
-curl -fsSL https://murph-agent.com/install-personal.sh -o install-personal.sh
 bash -n install.sh
-bash -n install-personal.sh
 bash install.sh
-bash install-personal.sh
 ```
 
 ## Install from a checkout
@@ -62,33 +53,11 @@ If you already have the repository:
 
 ```bash
 ./install.sh
-./install-personal.sh
 ```
 
 ## Remote hosting
 
 For VPS, managed container services, Docker Compose, reverse proxies, and stable tunnel options, see [Hosting](/docs/hosting).
-
-## Running Team and Personal on one machine
-
-Installing both products with defaults can clash because they share `~/.murph`, `~/.murph/app`, `~/.local/bin/murph`, helper deps, credentials, logs, data paths, and port `5173`. Prefer separate machines, especially when Team uses shared credentials and Personal connects private local sources.
-
-If one machine is required, use separate values:
-
-| Purpose | Team | Personal |
-| --- | --- | --- |
-| Install dir | `MURPH_INSTALL_DIR=$HOME/.murph-team/app` | `MURPH_INSTALL_DIR=$HOME/.murph-personal/app` |
-| CLI dir | `MURPH_BIN_DIR=$HOME/.local/bin/murph-team` | `MURPH_BIN_DIR=$HOME/.local/bin/murph-personal` |
-| Helper deps | `MURPH_DEPS_DIR=$HOME/.murph-team/deps` | `MURPH_DEPS_DIR=$HOME/.murph-personal/deps` |
-| App dir | `MURPH_APP_DIR=$HOME/.murph-team/app` | `MURPH_APP_DIR=$HOME/.murph-personal/app` |
-| Home dir | `MURPH_HOME=$HOME/.murph-team` | `MURPH_HOME=$HOME/.murph-personal` |
-| Config | `MURPH_CONFIG_PATH=$HOME/.murph-team/config.yaml` | `MURPH_CONFIG_PATH=$HOME/.murph-personal/config.yaml` |
-| Credentials | `MURPH_CREDENTIALS_PATH=$HOME/.murph-team/.credentials` | `MURPH_CREDENTIALS_PATH=$HOME/.murph-personal/.credentials` |
-| Port | `MURPH_PORT=5173` | `MURPH_PORT=5174` |
-
-Set the install values when running each installer. Then use aliases or wrapper scripts that set the runtime values before calling each product's CLI path. Do not rely on one global `murph` command to control both installs.
-
-If you change ports or public origins, update OAuth callback URLs before reconnecting Slack, Discord, Google, or other OAuth integrations.
 
 ## Start and stop
 

@@ -21,7 +21,6 @@ async function setup() {
   process.env.MURPH_MEMORY_PATH = join(root, 'memory');
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
-  process.env.MURPH_DISTRIBUTION = 'personal';
   process.env.OBSIDIAN_VAULT_PATH = vault;
   delete process.env.GITHUB_PAT;
   delete process.env.NOTION_API_KEY;
@@ -61,15 +60,13 @@ describe('SourceIndexWorker', () => {
     const result = await new SourceIndexWorker().refresh(workspace.id);
 
     expect(result.runs).toEqual(expect.arrayContaining([
-      expect.objectContaining({ provider: 'obsidian', status: 'indexed', resourceCount: 1 }),
       expect.objectContaining({ provider: 'github', status: 'skipped', resourceCount: 0 }),
       expect.objectContaining({ provider: 'notion', status: 'skipped', resourceCount: 0 }),
-      expect.objectContaining({ provider: 'linear', status: 'skipped', resourceCount: 0 }),
-      expect.objectContaining({ provider: 'granola', status: 'skipped', resourceCount: 0 })
+      expect.objectContaining({ provider: 'linear', status: 'skipped', resourceCount: 0 })
     ]));
     const runs = store.listSourceIndexRuns({ workspaceId: workspace.id });
-    expect(runs.map((run) => run.provider)).toEqual(expect.arrayContaining(['obsidian', 'github', 'notion', 'linear', 'granola']));
-    expect(runs.find((run) => run.provider === 'obsidian')?.changedPaths[0]).toMatch(/^workspaces\//);
+    expect(runs.map((run) => run.provider)).toEqual(expect.arrayContaining(['github', 'notion', 'linear']));
+    expect(runs.map((run) => run.provider)).not.toEqual(expect.arrayContaining(['obsidian', 'granola']));
 
     const columns = (getDb().prepare(`PRAGMA table_info(source_index_runs)`).all() as Array<{ name: string }>)
       .map((column) => column.name);

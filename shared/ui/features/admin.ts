@@ -123,14 +123,14 @@ import {
 
 const MANAGED_PROVIDERS = ['slack', 'discord'] as const;
 type ManagedProvider = (typeof MANAGED_PROVIDERS)[number];
-const PROVIDER_MODE_ROLES: BotRole[] = ['channel', 'personal'];
+const PROVIDER_MODE_ROLES: BotRole[] = ['channel'];
 
 function distributionRoles(setup: SetupStatusPayload): BotRole[] {
-    return setup.distribution === 'personal' ? ['personal'] : ['channel'];
+    return ['channel'];
 }
 
 function distributionName(setup: SetupStatusPayload): string {
-    return setup.distribution === 'personal' ? 'Murph Personal' : 'Murph Team';
+    return 'Murph';
 }
 
 function isManagedProvider(value: string): value is ManagedProvider {
@@ -292,11 +292,10 @@ export async function renderSettings(): Promise<void> {
               `/api/integrations/status?workspaceId=${encodeURIComponent(selectedWorkspaceId)}`,
           )
         : { ok: false, workspaceId: '', integrations: [] };
-    const isTeamDistribution = setup.distribution !== 'personal';
-    setTitle(isTeamDistribution ? 'Murph Admin' : 'Murph Settings');
+    setTitle('Murph Admin');
     const runtimeLabel = distributionName(setup);
-    const settingsLabel = isTeamDistribution ? 'Admin' : 'Settings';
-    const setupMode: BotRole = isTeamDistribution ? 'channel' : 'personal';
+    const settingsLabel = 'Admin';
+    const setupMode: BotRole = 'channel';
     const slackRoleStatus = providerRoleStatus(setup, 'slack', setupMode);
     const discordRoleStatus = providerRoleStatus(setup, 'discord', setupMode);
     const slackConnected = providerRoleInstalled(setup, 'slack', setupMode);
@@ -336,13 +335,13 @@ export async function renderSettings(): Promise<void> {
       <div>
         <p class="eyebrow">Setup</p>
         <h1>${escapeHtml(settingsLabel)}</h1>
-        <p>Connect the services ${escapeHtml(runtimeLabel)} needs to ${isTeamDistribution ? 'watch messages' : 'receive DMs to your personal bot'} and draft useful replies.</p>
+        <p>Connect the services ${escapeHtml(runtimeLabel)} needs to watch messages and draft useful replies.</p>
       </div>
       ${consoleStateHtml(setup.provider.configured && channelConnected ? 'Operational' : 'Needs setup', setup.provider.configured && channelConnected ? 'ok' : 'off')}
     </section>
 
     <dl class="kpis">
-      ${workspaceMetric(workspaces, { personal: !isTeamDistribution })}
+      ${workspaceMetric(workspaces)}
       ${metric('AI provider', setup.provider.configured ? `${setup.provider.defaultProvider}` : 'Not configured')}
       ${metric('Slack', slackConnected ? 'Connected' : 'Not connected')}
       ${metric('Discord', discordConnected ? 'Connected' : 'Not connected')}
@@ -351,7 +350,7 @@ export async function renderSettings(): Promise<void> {
     <section class="grid three service-grid setup-entry-grid">
       <article class="panel panel-status setup-entry-card">
         <h2><span class="status-dot ${slackConnected ? 'ok' : 'off'}" aria-hidden="true"></span>Slack</h2>
-        <p>Launch the guided setup for Slack ${isTeamDistribution ? 'channel' : 'owner-DM'} coverage.</p>
+        <p>Launch the guided setup for Slack channel coverage.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${slackConnected ? 'Connected' : 'Not connected'}</dd></div>
           <div><dt>Coverage</dt><dd>${escapeHtml(providerModeSummary(setup, 'slack'))}</dd></div>
@@ -366,7 +365,7 @@ export async function renderSettings(): Promise<void> {
       </article>
       <article class="panel panel-status setup-entry-card">
         <h2><span class="status-dot ${discordConnected ? 'ok' : 'off'}" aria-hidden="true"></span>Discord</h2>
-        <p>Launch the guided setup for Discord ${isTeamDistribution ? 'channel' : 'owner-DM'} coverage.</p>
+        <p>Launch the guided setup for Discord channel coverage.</p>
         <dl class="details">
           <div><dt>Status</dt><dd>${discordConnected ? 'Connected' : 'Not connected'}</dd></div>
           <div><dt>Coverage</dt><dd>${escapeHtml(providerModeSummary(setup, 'discord'))}</dd></div>

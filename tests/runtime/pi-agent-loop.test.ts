@@ -9,8 +9,8 @@ const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
 const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const originalCredentialsPath = process.env.MURPH_CREDENTIALS_PATH;
 
-vi.mock('@mariozechner/pi-agent-core', async () => {
-  const actual = await vi.importActual<typeof import('@mariozechner/pi-agent-core')>('@mariozechner/pi-agent-core');
+vi.mock('@earendil-works/pi-agent-core', async () => {
+  const actual = await vi.importActual<typeof import('@earendil-works/pi-agent-core')>('@earendil-works/pi-agent-core');
 
   return {
     ...actual,

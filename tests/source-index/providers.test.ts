@@ -13,14 +13,14 @@ describe('source index provider resolution', () => {
     expect(sourceIndexProviderIdsForCurrentRuntime()).toEqual(['github', 'notion', 'linear']);
   });
 
-  it('uses personal-available non-Google providers in personal runtime', async () => {
+  it('keeps team providers when personal runtime is requested', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
     const { sourceIndexProviderIdsForCurrentRuntime } = await import('../../shared/server/source-index/providers');
 
-    expect(sourceIndexProviderIdsForCurrentRuntime()).toEqual(['github', 'notion', 'linear', 'granola', 'obsidian']);
+    expect(sourceIndexProviderIdsForCurrentRuntime()).toEqual(['github', 'notion', 'linear']);
   });
 
-  it('rejects Google even when it is available in personal runtime', async () => {
+  it('rejects Google in the team-only runtime', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
     const { validateSourceIndexProvidersForCurrentRuntime } = await import('../../shared/server/source-index/providers');
 

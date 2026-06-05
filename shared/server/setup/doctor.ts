@@ -147,26 +147,15 @@ export function getSetupDoctor(): SetupDoctorPayload {
       : check('identity', 'User identity', 'action_required', 'Pick yourself so Murph knows who to watch for.')
   );
 
-  if (env.distribution === 'personal') {
-    const personalBotCount = store.listBotInstallations({ role: 'personal' })
-      .filter((installation) => installation.status === 'active')
-      .length;
-    checks.push(
-      personalBotCount > 0
-        ? check('personal_bots', 'Personal bot DMs', 'ok', `${personalBotCount} personal bot connection${personalBotCount === 1 ? '' : 's'} configured.`)
-        : check('personal_bots', 'Personal bot DMs', 'warning', 'Connect Slack or Discord personal bot DMs before using Murph Personal.', 'Run murph setup slack or murph setup discord.')
-    );
-  } else {
-    const channelTargetCount = configuredChannelTargetCount(setupDefaults);
-    const connectedChannelCount = Number(Boolean(slackWorkspace)) + Number(Boolean(hasDiscordWorkspace && discordConfigured));
-    checks.push(
-      channelTargetCount > 0
-        ? check('channels', 'Watched channels', 'ok', `${channelTargetCount} workspace channel default${channelTargetCount === 1 ? '' : 's'} configured.`)
-        : connectedChannelCount > 0
-          ? check('channels', 'Bot connections', 'warning', 'A bot is connected, but watched-channel defaults are not configured yet.', 'Choose channels if this runtime should run channel handoffs.')
-          : check('channels', 'Bot connections', 'action_required', 'Connect Slack or Discord, then choose channels or explicitly allow all accessible channels.')
-    );
-  }
+  const channelTargetCount = configuredChannelTargetCount(setupDefaults);
+  const connectedChannelCount = Number(Boolean(slackWorkspace)) + Number(Boolean(hasDiscordWorkspace && discordConfigured));
+  checks.push(
+    channelTargetCount > 0
+      ? check('channels', 'Watched channels', 'ok', `${channelTargetCount} workspace channel default${channelTargetCount === 1 ? '' : 's'} configured.`)
+      : connectedChannelCount > 0
+        ? check('channels', 'Bot connections', 'warning', 'A bot is connected, but watched-channel defaults are not configured yet.', 'Choose channels if this runtime should run channel handoffs.')
+        : check('channels', 'Bot connections', 'action_required', 'Connect Slack or Discord, then choose channels or explicitly allow all accessible channels.')
+  );
 
   const notion = getNotionStatus();
   checks.push(
@@ -175,8 +164,7 @@ export function getSetupDoctor(): SetupDoctorPayload {
       : check('notion', 'Notion', 'warning', 'Notion is not connected yet.', 'Add optional sources later from Admin.')
   );
 
-  const channelsReady = env.distribution === 'personal' ||
-    checks.find((entry) => entry.id === 'channels')?.status === 'ok';
+  const channelsReady = checks.find((entry) => entry.id === 'channels')?.status === 'ok';
   const nextStep =
     checks.find((entry) => entry.id === 'config_file')?.status !== 'ok' ||
     checks.find((entry) => entry.id === 'credentials_file')?.status === 'action_required'

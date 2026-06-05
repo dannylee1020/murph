@@ -457,32 +457,25 @@ function textResult(details, terminate = false) {
 }
 
 function activeDistribution() {
-    return process.env.MURPH_DISTRIBUTION === 'personal' ? 'personal' : 'team';
+    return 'team';
 }
 
 function productContext(setupStatus) {
     const setupDistribution =
-        setupStatus?.distribution === 'personal' || setupStatus?.distribution === 'team'
+        setupStatus?.distribution === 'team'
             ? setupStatus.distribution
             : undefined;
     const distribution = setupDistribution || activeDistribution();
-    const personal = distribution === 'personal';
     return {
         distribution,
-        product: personal ? 'Murph Personal' : 'Murph Team',
-        productMode: setupStatus?.productMode || (personal ? 'personal' : 'channel'),
-        runtimePurpose: personal
-            ? 'Local/private runtime for one user.'
-            : 'Shared host/channel runtime for team use.',
+        product: 'Murph',
+        productMode: setupStatus?.productMode || 'channel',
+        runtimePurpose: 'Shared host/channel runtime for remote team use.',
         runtimeUrl: murphUrl,
         appDir,
         murphHome,
-        availableCapabilities: personal
-            ? ['setup', 'local integrations', 'plugins', 'skills', 'policies', 'credentials']
-            : ['setup', 'team integrations', 'plugins', 'skills', 'policies', 'admin dashboard'],
-        unavailableCapabilities: personal
-            ? ['team admin dashboard', 'team control-plane operations']
-            : ['personal-local privacy guarantees', 'private-machine data access unless configured as an integration'],
+        availableCapabilities: ['setup', 'shared integrations', 'plugins', 'skills', 'policies', 'admin dashboard'],
+        unavailableCapabilities: ['personal runtime', 'private-machine data access unless configured as an approved integration'],
         setupStatus: setupStatus
             ? {
                   reachable: true,
@@ -721,8 +714,7 @@ function searchMurphArchitecture(query, limit) {
             bundledAgentSkillsDir,
             path.join(appDir, 'shared', 'cli'),
             path.join(appDir, 'shared', 'server'),
-            path.join(appDir, 'app/team'),
-            path.join(appDir, 'app/personal'),
+            path.join(appDir, 'murph'),
             path.join(appDir, 'scripts'),
             path.join(appDir, 'policies'),
             path.join(murphHome, 'policies'),
@@ -1040,9 +1032,9 @@ function createMurphTools() {
             name: 'murph_product_context',
             label: 'Murph product context',
             description:
-                'Read the active Murph product context and Team/Personal capability boundary.',
+                'Read the active Murph product context and capability boundary.',
             promptSnippet:
-                'murph_product_context: inspect whether this agent is configuring Murph Team or Murph Personal before product-sensitive work.',
+                'murph_product_context: inspect the Murph capability boundary before product-sensitive work.',
             parameters: Type.Object({}),
             execute: async () => textResult(await readProductContext()),
         }),
@@ -1305,8 +1297,8 @@ function murphSystemPrompt(sourceEdits) {
         'You are Murph Agent, a user-facing coding agent embedded in the Murph CLI.',
         'Your job is to help the local operator set up Murph, debug Murph, build scoped integrations, create skills/connectors, and adjust policy configuration.',
         runtimeContextPrompt(),
-        'If a request is valid only for the other Murph product, say it is unsupported in the active runtime and suggest the matching Team or Personal deployment.',
-        'Do not perform Team admin work in Murph Personal. Do not claim Personal local privacy or private-machine data guarantees in Murph Team.',
+        'Murph Personal is no longer a supported runtime. Do not suggest installing or configuring it.',
+        'Do not claim personal-local privacy or private-machine data guarantees in Murph.',
         'Use murph_product_context when the active product or product capability boundary is relevant or unclear.',
         'Murph async messenger runtime is separate. Do not present yourself as the async runtime brain.',
         'Built-in Murph Agent skills are Pi skills for this local setup/coding agent. They are separate from Murph runtime skills used by the async messenger runtime.',

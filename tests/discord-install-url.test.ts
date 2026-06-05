@@ -83,11 +83,7 @@ describe('Discord install URL', () => {
       },
       flags: 524292
     }));
-    const commands = calls.find((call) => call.url.includes('/applications/app-123/commands') && call.method === 'PUT');
-    expect(commands?.body).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: 'murph', integration_types: [0, 1], contexts: [0, 1, 2] }),
-      expect.objectContaining({ name: 'Ask Murph Personal', type: 2, integration_types: [0, 1], contexts: [0, 1, 2] })
-    ]));
+    expect(calls.some((call) => call.url.includes('/applications/app-123/commands'))).toBe(false);
   });
 
   it('configures personal installs with zero server permissions', async () => {

@@ -85,7 +85,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf 'Installing Murph Team into %s\n' "$install_dir"
+printf 'Installing Murph into %s\n' "$install_dir"
 printf 'Downloading %s\n' "$SOURCE_ARCHIVE_URL"
 curl -fsSL "$SOURCE_ARCHIVE_URL" -o "$archive_file"
 tar -xzf "$archive_file" -C "$tmp_dir"

@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Channels</h2>
-          <p>Cover selected shared channels for the team. Use Personal when one person needs direct-message coverage.</p>
+          <p>Cover selected team channels from one controlled runtime host.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
@@ -160,7 +160,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Context</h2>
-          <p>Use your docs, repos, notes, runbooks, and tools so replies are grounded in your work.</p>
+          <p>Use team docs, repos, runbooks, and tools so replies are grounded in shared work.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
