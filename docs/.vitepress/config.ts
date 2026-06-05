@@ -49,11 +49,14 @@ export default defineConfig({
                     collapsed: false,
                     items: [
                         { text: 'Quickstart', link: '/docs/quickstart' },
+                    ],
+                },
+                {
+                    text: 'Installation',
+                    collapsed: false,
+                    items: [
                         { text: 'Install Murph', link: '/docs/installation/' },
-                        {
-                            text: 'Troubleshooting',
-                            link: '/docs/installation/troubleshooting',
-                        },
+                        { text: 'Hosting', link: '/docs/hosting' },
                     ],
                 },
                 {

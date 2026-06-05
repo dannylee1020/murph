@@ -83,7 +83,7 @@ onBeforeUnmount(() => {
         <div class="murph-hero-inner">
           <h1 id="hero-heading">Async coverage for teams across time zones.</h1>
           <p class="murph-lede">
-            Start a session before you log off. Murph watches selected messenger channels, answers from connected context, and leaves every send, queue, and skip reviewable.
+            Self-host Murph Team on a server you control. Start a session before you log off; Murph watches selected messenger channels, answers from connected context, and leaves every send, queue, and skip reviewable.
           </p>
 
           <div class="murph-install" aria-label="Install Murph">
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Channels</h2>
-          <p>Cover shared messenger channels, direct messages, or both. Built-in channels work out of the box.</p>
+          <p>Cover selected shared channels for the team. Use Personal when one person needs direct-message coverage.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
@@ -176,11 +176,19 @@ onBeforeUnmount(() => {
         <article>
           <span class="murph-card-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24">
-              <path class="murph-icon-fill" d="M19.8 22.6L17.15 20H6.5q-2.3 0-3.9-1.6T1 14.5q0-1.92 1.19-3.42q1.19-1.51 3.06-1.93q.08-.2.15-.39q.1-.19.15-.41L1.4 4.2l1.4-1.4l18.4 18.4M6.5 18h8.65L7.1 9.95q-.05.28-.07.55q-.03.23-.03.5h-.5q-1.45 0-2.47 1.03Q3 13.05 3 14.5T4.03 17q1.02 1 2.47 1m15.1.75l-1.45-1.4q.43-.35.64-.81T21 15.5q0-1.05-.73-1.77q-.72-.73-1.77-.73H17v-2q0-2.07-1.46-3.54Q14.08 6 12 6q-.67 0-1.3.16q-.63.17-1.2.52L8.05 5.23q.88-.6 1.86-.92Q10.9 4 12 4q2.93 0 4.96 2.04Q19 8.07 19 11q1.73.2 2.86 1.5q1.14 1.28 1.14 3q0 1-.37 1.81q-.38.84-1.03 1.44m-6.77-6.72" />
+              <rect x="5" y="4" width="14" height="5" rx="1.5" />
+              <rect x="5" y="10" width="14" height="5" rx="1.5" />
+              <rect x="5" y="16" width="14" height="4" rx="1.5" />
+              <path d="M8 6.5h.01" />
+              <path d="M8 12.5h.01" />
+              <path d="M8 18h.01" />
+              <path d="M11 6.5h5" />
+              <path d="M11 12.5h5" />
+              <path d="M11 18h5" />
             </svg>
           </span>
-          <h2>Runtime host</h2>
-          <p>Host it anywhere you choose. State, memory, config, and credentials stay on that host.</p>
+          <h2>Self-hosted</h2>
+          <p>Run Team on a VPS, managed container service, or server you control. State, memory, config, and credentials stay there.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">

@@ -1,0 +1,20 @@
+services:
+  murph:
+    image: ghcr.io/dannylee1020/murph-team:latest
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      MURPH_HOME: /data
+      MURPH_SQLITE_PATH: /data/murph.sqlite
+      PORT: "5173"
+      MURPH_PORT: "5173"
+      MURPH_URL: http://127.0.0.1:5173
+      MURPH_APP_URL: ${MURPH_APP_URL:-http://127.0.0.1:5173}
+    volumes:
+      - murph-data:/data
+    ports:
+      - "127.0.0.1:5173:5173"
+
+volumes:
+  murph-data:
