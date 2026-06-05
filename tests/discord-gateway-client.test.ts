@@ -13,8 +13,8 @@ describe('Discord gateway bot installation selection', () => {
   });
 
   it('uses the current personal installation for direct messages from any author', async () => {
-    const { getStore } = await import('../shared/server/persistence/store');
-    const { discordBotInstallationForEvent } = await import('../shared/server/channels/discord/gateway-client');
+    const { getStore } = await import('../app/server/persistence/store');
+    const { discordBotInstallationForEvent } = await import('../app/server/channels/discord/gateway-client');
     const store = getStore();
     store.upsertBotAppConfig({ provider: 'discord', role: 'personal', appId: 'current-app', clientId: 'current-app' });
     const oldWorkspace = store.saveInstall({
@@ -59,8 +59,8 @@ describe('Discord gateway bot installation selection', () => {
   });
 
   it('does not fall back to a stale personal installation', async () => {
-    const { getStore } = await import('../shared/server/persistence/store');
-    const { discordBotInstallationForEvent } = await import('../shared/server/channels/discord/gateway-client');
+    const { getStore } = await import('../app/server/persistence/store');
+    const { discordBotInstallationForEvent } = await import('../app/server/channels/discord/gateway-client');
     const store = getStore();
     store.upsertBotAppConfig({ provider: 'discord', role: 'personal', appId: 'current-app', clientId: 'current-app' });
     const workspace = store.saveInstall({
@@ -89,8 +89,8 @@ describe('Discord gateway bot installation selection', () => {
   });
 
   it('does not guess between multiple current personal installations for direct messages', async () => {
-    const { getStore } = await import('../shared/server/persistence/store');
-    const { discordBotInstallationForEvent } = await import('../shared/server/channels/discord/gateway-client');
+    const { getStore } = await import('../app/server/persistence/store');
+    const { discordBotInstallationForEvent } = await import('../app/server/channels/discord/gateway-client');
     const store = getStore();
     store.upsertBotAppConfig({ provider: 'discord', role: 'personal', appId: 'current-app', clientId: 'current-app' });
     for (const [externalWorkspaceId, owner] of [['G1', 'owner-1'], ['G2', 'owner-2']] as const) {
@@ -121,8 +121,8 @@ describe('Discord gateway bot installation selection', () => {
   });
 
   it('uses the guild installation for guild messages', async () => {
-    const { getStore } = await import('../shared/server/persistence/store');
-    const { discordBotInstallationForEvent } = await import('../shared/server/channels/discord/gateway-client');
+    const { getStore } = await import('../app/server/persistence/store');
+    const { discordBotInstallationForEvent } = await import('../app/server/channels/discord/gateway-client');
     const store = getStore();
     store.upsertBotAppConfig({ provider: 'discord', role: 'channel', appId: 'guild-app', clientId: 'guild-app' });
     const workspace = store.saveInstall({

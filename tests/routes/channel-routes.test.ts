@@ -35,12 +35,12 @@ async function setup() {
   process.env.MURPH_CREDENTIALS_PATH = join(root, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   process.env.OPENAI_API_KEY = 'sk-test';
-  vi.doMock('#shared/server/runtime/bootstrap', () => ({
+  vi.doMock('#app/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
   }));
 
-  const { getStore } = await import('#shared/server/persistence/store');
-  const { getChannelRegistry } = await import('#shared/server/capabilities/channel-registry');
+  const { getStore } = await import('#app/server/persistence/store');
+  const { getChannelRegistry } = await import('#app/server/capabilities/channel-registry');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'fixture',
@@ -82,8 +82,8 @@ async function setup() {
     }
   }, { source: 'plugin' });
 
-  const { channelRoutes } = await import('../../shared/server/routes/channels');
-  const { dispatchRoute } = await import('../../shared/server/router');
+  const { channelRoutes } = await import('../../app/server/routes/channels');
+  const { dispatchRoute } = await import('../../app/server/router');
 
   async function call(method: string, path: string, body?: unknown) {
     const res = response();

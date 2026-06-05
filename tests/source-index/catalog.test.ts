@@ -7,7 +7,7 @@ import {
   SourceIndexCatalog,
   sourceIndexSafeSegment,
   writeSourceIndexResource
-} from '../../shared/server/source-index/catalog';
+} from '../../app/server/source-index/catalog';
 
 function tempMemoryPath(): string {
   return join(mkdtempSync(join(tmpdir(), 'murph-source-index-')), 'memory');

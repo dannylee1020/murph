@@ -3,23 +3,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AutopilotSession, Workspace } from '../shared/types';
+import type { AutopilotSession, Workspace } from '../app/types';
 
 interface SlackAdapterTestContext {
   store: Awaited<ReturnType<typeof loadStore>>;
-  normalizeSlackEvent: typeof import('../shared/server/channels/slack/adapter').normalizeSlackEvent;
+  normalizeSlackEvent: typeof import('../app/server/channels/slack/adapter').normalizeSlackEvent;
   workspace: Workspace;
   session: AutopilotSession;
 }
 
 async function loadStore() {
-  const { getStore } = await import('../shared/server/persistence/store');
+  const { getStore } = await import('../app/server/persistence/store');
   return getStore();
 }
 
 async function setup(): Promise<SlackAdapterTestContext> {
   const store = await loadStore();
-  const { normalizeSlackEvent } = await import('../shared/server/channels/slack/adapter');
+  const { normalizeSlackEvent } = await import('../app/server/channels/slack/adapter');
   const workspace = store.saveInstall({
     provider: 'slack',
     externalWorkspaceId: 'T1',
@@ -84,6 +84,53 @@ describe('normalizeSlackEvent', () => {
     });
   });
 
+  it('uses Slack message identity for channel dedupe across app_mention and message deliveries', async () => {
+    const { normalizeSlackEvent } = await setup();
+
+    const appMention = normalizeSlackEvent(slackEvent({ type: 'app_mention' }), {
+      eventId: 'EvMention',
+      teamId: 'T1'
+    });
+    const message = normalizeSlackEvent(slackEvent({ type: 'message' }), {
+      eventId: 'EvMessage',
+      teamId: 'T1'
+    });
+
+    expect(appMention.task?.dedupeKey).toBe('T1:channel:message:C1:111.222');
+    expect(message.task?.dedupeKey).toBe(appMention.task?.dedupeKey);
+    expect(appMention.task?.rawEventId).toBe('EvMention');
+    expect(message.task?.rawEventId).toBe('EvMessage');
+  });
+
+  it('keeps separate dedupe keys for distinct messages in the same Slack thread', async () => {
+    const { store, workspace, session, normalizeSlackEvent } = await setup();
+    store.upsertThreadState({
+      workspaceId: workspace.id,
+      sessionId: session.id,
+      channelId: 'C1',
+      threadTs: '111.222',
+      lastMessageTs: '111.222',
+      continuityCase: 'clarification',
+      status: 'active'
+    });
+
+    const first = normalizeSlackEvent(
+      slackEvent({ thread_ts: '111.222', ts: '111.333', text: 'first follow-up' }),
+      { eventId: 'EvReply1', teamId: 'T1' }
+    );
+    const second = normalizeSlackEvent(
+      slackEvent({ thread_ts: '111.222', ts: '111.444', text: 'second follow-up' }),
+      { eventId: 'EvReply2', teamId: 'T1' }
+    );
+
+    expect(first.task?.thread.threadTs).toBe('111.222');
+    expect(second.task?.thread.threadTs).toBe('111.222');
+    expect(first.task?.triggerMessage?.ts).toBe('111.333');
+    expect(second.task?.triggerMessage?.ts).toBe('111.444');
+    expect(first.task?.dedupeKey).toBe('T1:channel:message:C1:111.333');
+    expect(second.task?.dedupeKey).toBe('T1:channel:message:C1:111.444');
+  });
+
   it('ignores channel messages that do not mention the team bot', async () => {
     const { normalizeSlackEvent } = await setup();
 
@@ -104,7 +151,7 @@ describe('normalizeSlackEvent', () => {
       botUserId: 'UPERSONALBOT',
       representedUserId: 'UOWNER'
     });
-    const { updateMurphSetupDefaults } = await import('../shared/server/setup/config-file');
+    const { updateMurphSetupDefaults } = await import('../app/server/setup/config-file');
     updateMurphSetupDefaults({
       channelProvider: 'slack',
       workspaceId: workspace.id,

@@ -45,7 +45,7 @@ describe('NotionService search', () => {
     });
 
     vi.stubGlobal('fetch', fetchMock);
-    const { getNotionService } = await import('#shared/server/context-sources/notion');
+    const { getNotionService } = await import('#app/server/context-sources/notion');
     const notion = getNotionService();
     const result = await notion.search('checkout go live readiness', 3);
 
@@ -151,7 +151,7 @@ describe('NotionService search', () => {
     });
 
     vi.stubGlobal('fetch', fetchMock);
-    const { getNotionService } = await import('#shared/server/context-sources/notion');
+    const { getNotionService } = await import('#app/server/context-sources/notion');
     const notion = getNotionService();
     const page = await notion.readPage('page-1');
 

@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
-const setupCli = path.join(repoRoot, 'shared/cli/setup-cli.mjs');
+const setupCli = path.join(repoRoot, 'app/cli/setup-cli.mjs');
 const channelManifest = [
   'display_information:',
   '  name: Murph',

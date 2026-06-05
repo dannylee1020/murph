@@ -27,7 +27,7 @@ describe('Slack install URL', () => {
   });
 
   it('passes selected Slack team into OAuth', async () => {
-    const { SlackService } = await import('../shared/server/channels/slack/service');
+    const { SlackService } = await import('../app/server/channels/slack/service');
 
     const url = new SlackService().buildInstallUrl('http://murph.test', 'T123');
 
@@ -43,7 +43,7 @@ describe('Slack install URL', () => {
   });
 
   it('marks CLI-originated installs in OAuth state', async () => {
-    const { SlackService } = await import('../shared/server/channels/slack/service');
+    const { SlackService } = await import('../app/server/channels/slack/service');
 
     const url = new SlackService().buildInstallUrl('http://murph.test', 'T123', 'cli');
 
@@ -54,7 +54,7 @@ describe('Slack install URL', () => {
   });
 
   it('marks setup-originated installs in OAuth state', async () => {
-    const { SlackService } = await import('../shared/server/channels/slack/service');
+    const { SlackService } = await import('../app/server/channels/slack/service');
 
     const url = new SlackService().buildInstallUrl('http://murph.test', 'T123', 'setup');
 
@@ -66,7 +66,7 @@ describe('Slack install URL', () => {
 
   it('uses only DM scopes for personal installs', async () => {
     process.env.SLACK_PERSONAL_CLIENT_ID = 'personal-client-id';
-    const { SlackService } = await import('../shared/server/channels/slack/service');
+    const { SlackService } = await import('../app/server/channels/slack/service');
 
     const url = new SlackService().buildInstallUrl('http://murph.test', 'T123', 'cli', 'personal');
 

@@ -1,15 +1,15 @@
-import { renderSettings } from '../../shared/ui/features/admin';
-import { renderDashboard } from '../../shared/ui/features/dashboard';
+import { renderSettings } from './features/admin';
+import { renderDashboard } from './features/dashboard';
 import {
     renderActivity,
     renderReview,
     renderTriage,
-} from '../../shared/ui/features/operations';
-import { renderSetup } from '../../shared/ui/features/setup';
-import { getJson } from '../../shared/ui/shared/api';
-import { errorView } from '../../shared/ui/shared/shell';
-import { adminChannelWorkspaces } from '../../shared/ui/shared/workspaces';
-import type { SetupStatusPayload } from '../../shared/ui/shared/types';
+} from './features/operations';
+import { renderSetup } from './features/setup';
+import { getJson } from './lib/api';
+import { errorView } from './lib/shell';
+import { adminChannelWorkspaces } from './lib/workspaces';
+import type { SetupStatusPayload } from './lib/types';
 
 export async function renderMurph(): Promise<void> {
     try {

@@ -1,5 +1,5 @@
-import '../../shared/ui/styles.css';
-import { installRouter } from '../../shared/ui/app/router';
+import './styles.css';
+import { installRouter } from './app/router';
 import { renderMurph } from './render';
 
 installRouter(renderMurph);

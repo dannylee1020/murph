@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextDailyRun, parseLocalTime } from '../shared/server/util/cron';
+import { nextDailyRun, parseLocalTime } from '../app/server/util/cron';
 
 describe('daily recurring scheduler', () => {
   it('parses strict 24-hour local times', () => {

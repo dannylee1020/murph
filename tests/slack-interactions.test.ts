@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const openSlackPersonalHandoff = vi.fn();
 
-vi.mock('#shared/server/channels/personal-handoff', () => ({
+vi.mock('#app/server/channels/personal-handoff', () => ({
   openSlackPersonalHandoff
 }));
 
@@ -18,7 +18,7 @@ describe('Slack interactions', () => {
   });
 
   it('parses Slack slash command form payloads', async () => {
-    const { handleSlackInteractionPayload, parseSlackInteractionPayload } = await import('../shared/server/channels/slack/interactions');
+    const { handleSlackInteractionPayload, parseSlackInteractionPayload } = await import('../app/server/channels/slack/interactions');
 
     const payload = parseSlackInteractionPayload(new URLSearchParams({
       command: '/murph',
@@ -44,7 +44,7 @@ describe('Slack interactions', () => {
   });
 
   it('uses the selected message author and text from Slack message shortcuts', async () => {
-    const { handleSlackInteractionPayload } = await import('../shared/server/channels/slack/interactions');
+    const { handleSlackInteractionPayload } = await import('../app/server/channels/slack/interactions');
 
     await handleSlackInteractionPayload({
       type: 'message_action',
@@ -65,7 +65,7 @@ describe('Slack interactions', () => {
 
   it('acks Socket Mode slash commands and posts final feedback to Slack response_url', async () => {
     const ack = vi.fn().mockResolvedValue(undefined);
-    const { handleSlackSocketSlashCommand } = await import('../shared/server/channels/slack/interactions');
+    const { handleSlackSocketSlashCommand } = await import('../app/server/channels/slack/interactions');
 
     await handleSlackSocketSlashCommand({
       ack,
@@ -93,7 +93,7 @@ describe('Slack interactions', () => {
 
   it('acks unrelated Socket Mode interactive payloads without opening a DM', async () => {
     const ack = vi.fn().mockResolvedValue(undefined);
-    const { handleSlackSocketInteractive } = await import('../shared/server/channels/slack/interactions');
+    const { handleSlackSocketInteractive } = await import('../app/server/channels/slack/interactions');
 
     await handleSlackSocketInteractive({
       ack,

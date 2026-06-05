@@ -13,11 +13,11 @@ describe('getGatewaySnapshot', () => {
     process.env.MURPH_SQLITE_PATH = join(mkdtempSync(join(tmpdir(), 'murph-snapshot-')), 'murph.sqlite');
     process.env.MURPH_ENCRYPTION_KEY = 'test-key';
 
-    vi.doMock('#shared/server/runtime/bootstrap', () => ({
+    vi.doMock('#app/server/runtime/bootstrap', () => ({
       ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
     }));
 
-    const { getStore } = await import('#shared/server/persistence/store');
+    const { getStore } = await import('#app/server/persistence/store');
     const store = getStore();
     const activeWorkspace = store.saveInstall({
       provider: 'slack',
@@ -42,7 +42,7 @@ describe('getGatewaySnapshot', () => {
       botUserId: 'UBOT'
     });
 
-    const { getGatewaySnapshot } = await import('#shared/server/runtime/snapshot');
+    const { getGatewaySnapshot } = await import('#app/server/runtime/snapshot');
     const snapshot = await getGatewaySnapshot();
 
     expect(snapshot.summary.activeSessionCount).toBe(1);

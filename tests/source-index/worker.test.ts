@@ -27,7 +27,7 @@ async function setup() {
   delete process.env.LINEAR_API_KEY;
   delete process.env.GRANOLA_API_KEY;
 
-  const { getStore } = await import('../../shared/server/persistence/store');
+  const { getStore } = await import('../../app/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -54,8 +54,8 @@ describe('SourceIndexWorker', () => {
 
   it('refreshes markdown resources and stores only run observability in SQLite', async () => {
     const { root, store, workspace } = await setup();
-    const { getDb } = await import('../../shared/server/persistence/db');
-    const { SourceIndexWorker } = await import('../../shared/server/source-index/worker');
+    const { getDb } = await import('../../app/server/persistence/db');
+    const { SourceIndexWorker } = await import('../../app/server/source-index/worker');
 
     const result = await new SourceIndexWorker().refresh(workspace.id);
 

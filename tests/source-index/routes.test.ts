@@ -39,9 +39,9 @@ async function setup() {
   delete process.env.NOTION_API_KEY;
   delete process.env.LINEAR_API_KEY;
 
-  const { dispatchRoute } = await import('../../shared/server/router');
-  const { sourceIndexRoutes } = await import('../../shared/server/routes/source-index');
-  const { getStore } = await import('../../shared/server/persistence/store');
+  const { dispatchRoute } = await import('../../app/server/router');
+  const { sourceIndexRoutes } = await import('../../app/server/routes/source-index');
+  const { getStore } = await import('../../app/server/persistence/store');
   const workspace = getStore().saveInstall({
     provider: 'slack',
     externalWorkspaceId: 'T1',

@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 async function setup() {
-  const { getStore } = await import('../shared/server/persistence/store');
-  const { normalizeDiscordEventWithReason } = await import('../shared/server/channels/discord/adapter');
+  const { getStore } = await import('../app/server/persistence/store');
+  const { normalizeDiscordEventWithReason } = await import('../app/server/channels/discord/adapter');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'discord',
@@ -94,7 +94,7 @@ describe('normalizeDiscordEventWithReason', () => {
       botUserId: '999',
       representedUserId: '123'
     });
-    const { updateMurphSetupDefaults } = await import('../shared/server/setup/config-file');
+    const { updateMurphSetupDefaults } = await import('../app/server/setup/config-file');
     updateMurphSetupDefaults({
       channelProvider: 'discord',
       workspaceId: workspace.id,

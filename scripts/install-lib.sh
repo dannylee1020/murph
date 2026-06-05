@@ -548,7 +548,7 @@ install_cli() {
 
   local bin_dir="${MURPH_BIN_DIR:-$BIN_DIR_DEFAULT}"
   mkdir -p "$bin_dir"
-  chmod +x "$product_cli" shared/cli/murph
+  chmod +x "$product_cli"
   cat > "$bin_dir/murph" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail

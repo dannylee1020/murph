@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ContextAssembly } from '../../shared/types';
+import type { ContextAssembly } from '../../app/types';
 import {
   buildNormalizedRetrievalRequest,
   deterministicRetrievalInputForTool
-} from '../../shared/server/runtime/retrieval-request';
+} from '../../app/server/runtime/retrieval-request';
 
 function releaseContext(): ContextAssembly {
   return {

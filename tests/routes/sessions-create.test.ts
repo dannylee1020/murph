@@ -45,19 +45,19 @@ async function setup(results: ChannelResult[] = []) {
     ensureMember.mockResolvedValueOnce(result);
   }
 
-  vi.doMock('#shared/server/runtime/bootstrap', () => ({
+  vi.doMock('#app/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
   }));
-  vi.doMock('#shared/server/capabilities/channel-registry', () => ({
+  vi.doMock('#app/server/capabilities/channel-registry', () => ({
     getChannelRegistry: () => ({
       ensureMember,
       getMember: vi.fn()
     })
   }));
 
-  const { getStore } = await import('#shared/server/persistence/store');
-  const { writeSecret } = await import('#shared/server/credentials/local-store');
-  const { updateMurphSetupDefaults, updateMurphPolicyConfig } = await import('../../shared/server/setup/config-file');
+  const { getStore } = await import('#app/server/persistence/store');
+  const { writeSecret } = await import('#app/server/credentials/local-store');
+  const { updateMurphSetupDefaults, updateMurphPolicyConfig } = await import('../../app/server/setup/config-file');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -74,8 +74,8 @@ async function setup(results: ChannelResult[] = []) {
     workspaceId: workspace.id
   });
 
-  const { gatewayRoutes } = await import('../../shared/server/routes/gateway');
-  const { dispatchRoute } = await import('../../shared/server/router');
+  const { gatewayRoutes } = await import('../../app/server/routes/gateway');
+  const { dispatchRoute } = await import('../../app/server/router');
 
   async function post(body: unknown, path = '/api/gateway/sessions') {
     const req = jsonRequest(body);
@@ -116,16 +116,16 @@ describe('POST /api/gateway/sessions', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.doUnmock('#shared/server/runtime/bootstrap');
-    vi.doUnmock('#shared/server/capabilities/channel-registry');
+    vi.doUnmock('#app/server/runtime/bootstrap');
+    vi.doUnmock('#app/server/capabilities/channel-registry');
     vi.resetModules();
     vi.useRealTimers();
     restoreEnv();
   });
 
   afterEach(() => {
-    vi.doUnmock('#shared/server/runtime/bootstrap');
-    vi.doUnmock('#shared/server/capabilities/channel-registry');
+    vi.doUnmock('#app/server/runtime/bootstrap');
+    vi.doUnmock('#app/server/capabilities/channel-registry');
     vi.resetModules();
     vi.useRealTimers();
     restoreEnv();

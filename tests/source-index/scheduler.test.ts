@@ -16,7 +16,7 @@ async function setup() {
   delete process.env.NOTION_API_KEY;
   delete process.env.LINEAR_API_KEY;
 
-  const { getStore } = await import('../../shared/server/persistence/store');
+  const { getStore } = await import('../../app/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -44,7 +44,7 @@ describe('SourceIndexScheduler', () => {
 
   it('runs missing team providers on startup tick', async () => {
     const { store, workspace } = await setup();
-    const { SourceIndexScheduler } = await import('../../shared/server/source-index/scheduler');
+    const { SourceIndexScheduler } = await import('../../app/server/source-index/scheduler');
 
     const result = await new SourceIndexScheduler().tick('startup', new Date('2026-06-02T20:00:00Z'));
 
@@ -56,7 +56,7 @@ describe('SourceIndexScheduler', () => {
 
   it('skips fresh providers until the source index interval passes', async () => {
     const { workspace } = await setup();
-    const { SourceIndexScheduler } = await import('../../shared/server/source-index/scheduler');
+    const { SourceIndexScheduler } = await import('../../app/server/source-index/scheduler');
     const scheduler = new SourceIndexScheduler();
 
     await scheduler.tick('startup', new Date('2026-06-02T20:00:00Z'));
@@ -72,9 +72,9 @@ describe('SourceIndexScheduler', () => {
   it('does not run when source indexing is disabled', async () => {
     const { store, workspace } = await setup();
     process.env.MURPH_SOURCE_INDEX_ENABLED = 'false';
-    const { resetRuntimeEnvCache } = await import('../../shared/server/util/env');
+    const { resetRuntimeEnvCache } = await import('../../app/server/util/env');
     resetRuntimeEnvCache();
-    const { SourceIndexScheduler } = await import('../../shared/server/source-index/scheduler');
+    const { SourceIndexScheduler } = await import('../../app/server/source-index/scheduler');
 
     const result = await new SourceIndexScheduler().tick('heartbeat', new Date('2026-06-02T20:00:00Z'));
 

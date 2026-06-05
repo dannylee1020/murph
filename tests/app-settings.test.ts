@@ -23,7 +23,7 @@ describe('app settings store', () => {
   });
 
   it('constrains selected bot roles in setup defaults to channel', async () => {
-    const { getStore } = await import('../shared/server/persistence/store');
+    const { getStore } = await import('../app/server/persistence/store');
     const store = getStore();
 
     store.upsertAppSettings({

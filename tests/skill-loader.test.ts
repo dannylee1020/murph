@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadSkills } from '../shared/server/skills/loader';
+import { loadSkills } from '../app/server/skills/loader';
 
 function writeSkill(root: string, name: string, extraHeader = '', priority = 10): void {
   writeFileSync(

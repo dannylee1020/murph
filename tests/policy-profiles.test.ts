@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadPolicyProfiles, normalizePolicyProfileName } from '../shared/server/policies/loader';
+import { loadPolicyProfiles, normalizePolicyProfileName } from '../app/server/policies/loader';
 
 function writePolicy(root: string, name: string, description = 'Test policy'): void {
   writeFileSync(

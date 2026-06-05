@@ -14,7 +14,7 @@ async function loadAgentCli(home: string, appDir?: string) {
   } else {
     delete process.env.MURPH_APP_DIR;
   }
-  const url = pathToFileURL(join(process.cwd(), 'shared/cli/agent-cli.mjs'));
+  const url = pathToFileURL(join(process.cwd(), 'app/cli/agent-cli.mjs'));
   url.searchParams.set('v', `${Date.now()}-${Math.random()}`);
   return await import(url.href) as {
     DEFAULT_TOOL_NAMES: string[];
@@ -79,7 +79,7 @@ describe('murph agent CLI plugin scaffold', () => {
   });
 
   it('does not advertise no-server mode', () => {
-    const output = execFileSync('node', ['shared/cli/agent-cli.mjs', '--help'], {
+    const output = execFileSync('node', ['app/cli/agent-cli.mjs', '--help'], {
       cwd: process.cwd(),
       encoding: 'utf8'
     });
@@ -91,7 +91,7 @@ describe('murph agent CLI plugin scaffold', () => {
   it('rejects no-server mode with a clear message', () => {
     let output = '';
     try {
-      execFileSync('node', ['shared/cli/agent-cli.mjs', '--no-server'], {
+      execFileSync('node', ['app/cli/agent-cli.mjs', '--no-server'], {
         cwd: process.cwd(),
         encoding: 'utf8',
         stdio: 'pipe'
@@ -158,16 +158,16 @@ describe('murph agent CLI plugin scaffold', () => {
 
     const result = searchMurphArchitecture('createMurphTools defineTool', 5);
 
-    expect(result.results.some((entry) => entry.path === 'shared/cli/agent-cli.mjs')).toBe(true);
+    expect(result.results.some((entry) => entry.path === 'app/cli/agent-cli.mjs')).toBe(true);
   });
 
   it('handles pruned docs when searching live source', async () => {
     const home = mkdtempSync(join(tmpdir(), 'murph-agent-cli-pruned-home-'));
     const app = mkdtempSync(join(tmpdir(), 'murph-agent-cli-pruned-app-'));
-    mkdirSync(join(app, 'shared', 'cli'), { recursive: true });
+    mkdirSync(join(app, 'app', 'cli'), { recursive: true });
     writeFileSync(join(app, 'README.md'), '# Murph\n\nLocal first agent.\n');
     writeFileSync(
-      join(app, 'shared', 'cli', 'agent-cli.mjs'),
+      join(app, 'app', 'cli', 'agent-cli.mjs'),
       'function createMurphTools() { return []; }\n'
     );
     const { searchMurphArchitecture } = await loadAgentCli(home, app);
@@ -175,6 +175,6 @@ describe('murph agent CLI plugin scaffold', () => {
     const result = searchMurphArchitecture('createMurphTools', 5);
 
     expect(result.results).toHaveLength(1);
-    expect(result.results[0].path).toBe('shared/cli/agent-cli.mjs');
+    expect(result.results[0].path).toBe('app/cli/agent-cli.mjs');
   });
 });

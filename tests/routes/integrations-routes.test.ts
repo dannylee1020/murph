@@ -55,7 +55,7 @@ async function setup(options: { githubPat?: string; linearApiKey?: string; distr
   process.env.LINEAR_API_KEY = options.linearApiKey ?? '';
   mkdirSync(join(murphHome, 'plugins'), { recursive: true });
 
-  const { getStore } = await import('#shared/server/persistence/store');
+  const { getStore } = await import('#app/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -63,8 +63,8 @@ async function setup(options: { githubPat?: string; linearApiKey?: string; distr
     name: 'Test Workspace',
     botUserId: 'UTZBOT'
   });
-  const { integrationRoutes } = await import('../../shared/server/routes/integrations');
-  const { dispatchRoute } = await import('../../shared/server/router');
+  const { integrationRoutes } = await import('../../app/server/routes/integrations');
+  const { dispatchRoute } = await import('../../app/server/router');
 
   async function request(method: string, path: string, body?: unknown) {
     const req = jsonRequest(method, body);
@@ -255,7 +255,7 @@ describe('integration routes', () => {
       credentialKind: 'api_key',
       status: 'connected'
     }));
-    const { readSecret } = await import('#shared/server/credentials/local-store');
+    const { readSecret } = await import('#app/server/credentials/local-store');
     expect(readSecret('github', 'api_key')).toBe('ghp_test_token');
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).not.toContain('github.search');
@@ -298,7 +298,7 @@ describe('integration routes', () => {
     );
     const stored = store.getIntegrationConnection(workspace.id, 'github');
     expect(stored?.metadata.repositories).toEqual(['octo/app']);
-    const { readSecretRecord } = await import('#shared/server/credentials/local-store');
+    const { readSecretRecord } = await import('#app/server/credentials/local-store');
     expect(readSecretRecord('github', 'api_key')?.metadata?.repositories).toEqual(['octo/app']);
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toContain('github.search');
@@ -340,7 +340,7 @@ describe('integration routes', () => {
     const { request, workspace, murphHome } = await setup();
     writeZendeskPlugin(murphHome);
 
-    const { reloadScopedPlugins } = await import('#shared/server/plugins/loader');
+    const { reloadScopedPlugins } = await import('#app/server/plugins/loader');
     const pluginStatuses = await reloadScopedPlugins();
     const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);
     const zendesk = response.body.integrations.find((integration: any) => integration.provider === 'zendesk');
@@ -397,7 +397,7 @@ describe('integration routes', () => {
         })
       })
     );
-    const { readSecret } = await import('#shared/server/credentials/local-store');
+    const { readSecret } = await import('#app/server/credentials/local-store');
     expect(readSecret('linear', 'api_key')).toBe('lin_api_key');
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['linear.search_issues', 'linear.read_issue']));
@@ -406,7 +406,7 @@ describe('integration routes', () => {
 
   it('reports global credentials before env fallback when both are present', async () => {
     const { request, store, workspace } = await setup({ githubPat: 'env-token' });
-    const { writeSecret } = await import('#shared/server/credentials/local-store');
+    const { writeSecret } = await import('#app/server/credentials/local-store');
     writeSecret('github', 'api_key', 'stored-token', {
       metadata: { masked: '****oken', repositories: ['octo/app'] }
     });
@@ -434,7 +434,7 @@ describe('integration routes', () => {
 
   it('ignores legacy scoped credentials in status', async () => {
     const { request, workspace } = await setup();
-    const { writeSecret } = await import('#shared/server/credentials/local-store');
+    const { writeSecret } = await import('#app/server/credentials/local-store');
     writeSecret('github', 'api_key', 'scoped-token', { workspaceId: workspace.id });
 
     const response = await request('GET', `/api/integrations/status?workspaceId=${workspace.id}`);

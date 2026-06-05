@@ -21,7 +21,7 @@ describe('GoogleCalendarService', () => {
       })
     }));
 
-    const { getGoogleCalendarService } = await import('#shared/server/context-sources/google-calendar');
+    const { getGoogleCalendarService } = await import('#app/server/context-sources/google-calendar');
     const calendar = getGoogleCalendarService();
     const result = await calendar.checkAvailability('google-token', {
       timezone: 'America/Los_Angeles',

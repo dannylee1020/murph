@@ -11,19 +11,19 @@
     "node": ">=22"
   },
   "imports": {
-    "#shared/*": {
-      "types": "./shared/*.ts",
-      "default": "./dist/shared/*.js"
+    "#app/*": {
+      "types": "./app/*.ts",
+      "default": "./dist/app/*.js"
     }
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:server": "npm run build:server && npm run start",
-    "dev:ui": "vite --config shared/ui/vite.config.ts",
+    "dev:ui": "vite --config app/ui/vite.config.ts",
     "watch:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput",
     "build": "npm run build:server && npm run build:ui",
     "build:server": "tsc -p tsconfig.server.json",
-    "build:ui": "vite build --config shared/ui/vite.config.ts",
+    "build:ui": "vite build --config app/ui/vite.config.ts",
     "start": "node dist/app/runtime/server.js",
     "preview": "npm run start",
     "architecture:map": "node scripts/generate-architecture-map.mjs",

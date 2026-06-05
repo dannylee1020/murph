@@ -12,7 +12,7 @@ async function setup() {
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
   process.env.LINEAR_API_KEY = '';
 
-  const { getStore } = await import('#shared/server/persistence/store');
+  const { getStore } = await import('#app/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -20,7 +20,7 @@ async function setup() {
     name: 'Test Workspace',
     botUserId: 'UTZBOT'
   });
-  const { writeSecret } = await import('#shared/server/credentials/local-store');
+  const { writeSecret } = await import('#app/server/credentials/local-store');
   writeSecret('linear', 'api_key', 'lin_api_key');
 
   return { workspace };
@@ -54,7 +54,7 @@ describe('LinearService', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     const { workspace } = await setup();
-    const { getLinearService } = await import('#shared/server/context-sources/linear');
+    const { getLinearService } = await import('#app/server/context-sources/linear');
 
     const result = await getLinearService().searchIssues('auth', 5, workspace.id);
 

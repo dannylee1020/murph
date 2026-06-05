@@ -10,9 +10,9 @@ async function setup() {
   process.env.MURPH_CREDENTIALS_PATH = join(dir, '.credentials');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
 
-  const { getStore } = await import('../shared/server/persistence/store');
-  const { writeSecret } = await import('../shared/server/credentials/local-store');
-  const { SlackService } = await import('../shared/server/channels/slack/service');
+  const { getStore } = await import('../app/server/persistence/store');
+  const { writeSecret } = await import('../app/server/credentials/local-store');
+  const { SlackService } = await import('../app/server/channels/slack/service');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',

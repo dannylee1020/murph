@@ -11,7 +11,7 @@ It is not an always-on chatbot, live work assistant, or enterprise search layer.
 
 ## Runtime host model
 
-Murph runs as one runtime. It handles selected team channels and uses shared integrations, policy, skills, tools, credentials, and config.
+Murph runs as one runtime. It handles selected team channels and uses team integrations, policy, skills, tools, credentials, and config.
 
 The machine running Murph is the runtime host. That is usually a VPS, managed container service, home server, or another always-available host you control. For evaluation or development, it can also be your laptop. The runtime host owns config, credentials, SQLite database, generated memory, bot ingress, agent execution, integrations, policy, review, plugins, and UI.
 

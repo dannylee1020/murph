@@ -83,7 +83,7 @@ async function setup(options: { tokenStatus?: number; tokenPayload?: Record<stri
     return Response.json({});
   }));
 
-  const { getStore } = await import('#shared/server/persistence/store');
+  const { getStore } = await import('#app/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -91,8 +91,8 @@ async function setup(options: { tokenStatus?: number; tokenPayload?: Record<stri
     name: 'Test Workspace',
     botUserId: 'UTZBOT'
   });
-  const { googleRoutes } = await import('../../shared/server/routes/google');
-  const { dispatchRoute } = await import('../../shared/server/router');
+  const { googleRoutes } = await import('../../app/server/routes/google');
+  const { dispatchRoute } = await import('../../app/server/router');
 
   async function install(pathname: string, headers: Record<string, string> = {}) {
     const res = redirectResponse();
@@ -115,7 +115,7 @@ async function setup(options: { tokenStatus?: number; tokenPayload?: Record<stri
   }
 
   async function integrationStatus(pathname: string) {
-    const { integrationRoutes } = await import('../../shared/server/routes/integrations');
+    const { integrationRoutes } = await import('../../app/server/routes/integrations');
     const res = jsonResponse();
     await dispatchRoute(integrationRoutes, {
       req: request(),
@@ -167,7 +167,7 @@ describe('Google OAuth callback route', () => {
     expect(process.env.MURPH_ENCRYPTION_KEY).toBeUndefined();
     expect(tokenRequests).toEqual([]);
 
-    const { readSecretRecord } = await import('#shared/server/credentials/local-store');
+    const { readSecretRecord } = await import('#app/server/credentials/local-store');
     expect(readSecretRecord('google', 'oauth_bundle')).toBeUndefined();
   });
 
@@ -178,7 +178,7 @@ describe('Google OAuth callback route', () => {
 
     expect(result.status).toBe(302);
     expect(result.headers.location).toBe('/settings?error=Denied');
-    const { readSecretRecord } = await import('#shared/server/credentials/local-store');
+    const { readSecretRecord } = await import('#app/server/credentials/local-store');
     expect(readSecretRecord('google', 'oauth_bundle')).toBeUndefined();
   });
 
@@ -192,7 +192,7 @@ describe('Google OAuth callback route', () => {
 
     expect(result.status).toBe(302);
     expect(result.headers.location).toBe('/settings?error=google_not_available');
-    const { readSecretRecord } = await import('#shared/server/credentials/local-store');
+    const { readSecretRecord } = await import('#app/server/credentials/local-store');
     expect(readSecretRecord('google', 'oauth_bundle')).toBeUndefined();
   });
 });

@@ -75,18 +75,18 @@ async function setup(options: { configYaml?: string } = {}) {
     }
     return Response.json({ message: 'not found' }, { status: 404 });
   }));
-  vi.doMock('#shared/server/runtime/bootstrap', () => ({
+  vi.doMock('#app/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
   }));
-  vi.doMock('#shared/server/capabilities/channel-registry', () => ({
+  vi.doMock('#app/server/capabilities/channel-registry', () => ({
     getChannelRegistry: () => ({
       getIngress: () => ({ start: ensureStarted })
     })
   }));
 
-  const { discordRoutes } = await import('../shared/server/routes/discord');
-  const { dispatchRoute } = await import('../shared/server/router');
-  const { getStore } = await import('#shared/server/persistence/store');
+  const { discordRoutes } = await import('../app/server/routes/discord');
+  const { dispatchRoute } = await import('../app/server/router');
+  const { getStore } = await import('#app/server/persistence/store');
 
   async function get(pathname: string, headers: Record<string, string> = {}) {
     const res = response();

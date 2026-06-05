@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
-const adminCli = join(repoRoot, 'shared/cli/admin-cli.mjs');
+const adminCli = join(repoRoot, 'app/cli/admin-cli.mjs');
 
 type FetchCall = {
   url: string;

@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
 const repoCli = join(repoRoot, 'app/cli/murph');
-const repoSharedCli = join(repoRoot, 'shared/cli/murph');
+const repoSharedCli = join(repoRoot, 'app/cli/murph');
 
 function runMurph(args: string[], env: Record<string, string>) {
   return spawnSync('bash', [repoCli, ...args], {
@@ -30,12 +30,12 @@ function runMurph(args: string[], env: Record<string, string>) {
 
 function writeAppFixture(appDir: string): void {
   mkdirSync(join(appDir, 'app/cli'), { recursive: true });
-  mkdirSync(join(appDir, 'shared/cli'), { recursive: true });
+  mkdirSync(join(appDir, 'app/cli'), { recursive: true });
   writeFileSync(join(appDir, 'package.json'), '{"name":"murph","version":"0.0.0"}\n');
   copyFileSync(repoCli, join(appDir, 'app/cli/murph'));
-  copyFileSync(repoSharedCli, join(appDir, 'shared/cli/murph'));
+  copyFileSync(repoSharedCli, join(appDir, 'app/cli/murph'));
   chmodSync(join(appDir, 'app/cli/murph'), 0o755);
-  chmodSync(join(appDir, 'shared/cli/murph'), 0o755);
+  chmodSync(join(appDir, 'app/cli/murph'), 0o755);
 }
 
 function createInstalledFixture() {

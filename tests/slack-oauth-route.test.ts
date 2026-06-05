@@ -56,24 +56,24 @@ async function setup(
     }
     return Response.json(slackPayload);
   }));
-  vi.doMock('#shared/server/channels/slack/socket-client', () => ({
+  vi.doMock('#app/server/channels/slack/socket-client', () => ({
     getSlackSocketModeClient: (role: 'channel' | 'personal' = 'channel') => ({
       isConfigured: () => role === 'channel',
       ensureStarted
     })
   }));
-  vi.doMock('#shared/server/runtime/bootstrap', () => ({
+  vi.doMock('#app/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
   }));
-  vi.doMock('#shared/server/capabilities/channel-registry', () => ({
+  vi.doMock('#app/server/capabilities/channel-registry', () => ({
     getChannelRegistry: () => ({
       getIngress: () => ({ start: ensureStarted })
     })
   }));
 
-  const { slackRoutes } = await import('../shared/server/routes/slack');
-  const { dispatchRoute } = await import('../shared/server/router');
-  const { getStore } = await import('#shared/server/persistence/store');
+  const { slackRoutes } = await import('../app/server/routes/slack');
+  const { dispatchRoute } = await import('../app/server/router');
+  const { getStore } = await import('#app/server/persistence/store');
 
   async function get(pathname: string, headers: Record<string, string> = {}) {
     const res = response();
@@ -246,7 +246,7 @@ describe('Slack OAuth callback route', () => {
 
     expect(result.status).toBe(302);
     expect(result.headers.location).toBe('/oauth/cli-complete?provider=slack&role=personal&status=error&reason=personal_runtime_unsupported');
-    const { readSecret } = await import('../shared/server/credentials/local-store');
+    const { readSecret } = await import('../app/server/credentials/local-store');
     expect(store.getBotInstallation('slack', 'T1', 'personal')).toBeUndefined();
     expect(readSecret('slack', 'bot_token')).toBeUndefined();
   });

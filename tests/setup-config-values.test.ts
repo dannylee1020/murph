@@ -58,7 +58,7 @@ describe('setup config value writer', () => {
 
   it('writes known setup keys to config and credentials', async () => {
     writeFileSync('config.yaml', 'custom:\n  keep: true\n');
-    const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
+    const { updateSetupConfigValues } = await import('../app/server/setup/config-values');
 
     const result = updateSetupConfigValues({
       MURPH_DEFAULT_PROVIDER: 'openai',
@@ -102,7 +102,7 @@ describe('setup config value writer', () => {
     expect(readFileSync('config.yaml', 'utf8')).toContain('provider: anthropic');
     expect(readFileSync('config.yaml', 'utf8')).toContain('model: claude-opus-4-7');
     expect(readFileSync('config.yaml', 'utf8')).not.toContain('channels:');
-    const { getStore } = await import('../shared/server/persistence/store');
+    const { getStore } = await import('../app/server/persistence/store');
     expect(getStore().getBotAppConfig('slack', 'channel')).toMatchObject({
       appId: 'A123',
       eventsMode: 'socket',
@@ -115,13 +115,13 @@ describe('setup config value writer', () => {
   });
 
   it('rejects unsupported keys', async () => {
-    const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
+    const { updateSetupConfigValues } = await import('../app/server/setup/config-values');
 
     expect(() => updateSetupConfigValues({ NOT_A_SETUP_KEY: 'nope' })).toThrow('Unsupported setup key');
   });
 
   it('rejects Slack app token setup keys that are not app-level tokens', async () => {
-    const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
+    const { updateSetupConfigValues } = await import('../app/server/setup/config-values');
 
     expect(() => updateSetupConfigValues({
       SLACK_APP_TOKEN: 'xoxe-config'
@@ -131,7 +131,7 @@ describe('setup config value writer', () => {
 
   it('writes schedule setup keys to app config', async () => {
     writeFileSync('config.yaml', 'app:\n  url: http://localhost:5173\n');
-    const { updateSetupConfigValues } = await import('../shared/server/setup/config-values');
+    const { updateSetupConfigValues } = await import('../app/server/setup/config-values');
 
     const result = updateSetupConfigValues({
       MURPH_TIMEZONE: 'Asia/Seoul',

@@ -40,7 +40,7 @@ describe('source index provider indexers', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const { indexGitHubSource } = await import('../../shared/server/source-index/indexers/github');
+    const { indexGitHubSource } = await import('../../app/server/source-index/indexers/github');
     const result = await indexGitHubSource('workspace-1');
 
     expect(result.resourceCount).toBe(1);
@@ -65,7 +65,7 @@ describe('source index provider indexers', () => {
     process.env.MURPH_MEMORY_PATH = join(root, 'memory');
     process.env.OBSIDIAN_VAULT_PATH = vault;
 
-    const { indexObsidianSource } = await import('../../shared/server/source-index/indexers/obsidian');
+    const { indexObsidianSource } = await import('../../app/server/source-index/indexers/obsidian');
     const result = await indexObsidianSource('workspace-1');
 
     expect(result.resourceCount).toBe(1);

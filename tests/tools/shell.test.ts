@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 async function loadTool() {
   vi.resetModules();
-  const module = await import('../../shared/server/tools/shell');
+  const module = await import('../../app/server/tools/shell');
   return module.createShellExecTool();
 }
 

@@ -40,7 +40,7 @@ describe('page helpers', () => {
   });
 
   it('renders env-backed integrations as server env connections', async () => {
-    const { integrationCard } = await import('../../shared/ui/features/page-helpers');
+    const { integrationCard } = await import('../../app/ui/features/page-helpers');
 
     const html = integrationCard({
       provider: 'github',

@@ -6,7 +6,7 @@ import {
   formatListenError,
   resolveListenPort,
   startServer
-} from '../shared/server/startup';
+} from '../app/server/startup';
 
 function serverThatFails(error: unknown): Server {
   const emitter = new EventEmitter() as Server;

@@ -2,8 +2,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentToolResult, ContextAssembly, ContinuityTask, SkillManifest } from '../shared/types';
-import type { AgentRunResult } from '../shared/server/runtime/agent-runtime';
+import type { AgentToolResult, ContextAssembly, ContinuityTask, SkillManifest } from '../app/types';
+import type { AgentRunResult } from '../app/server/runtime/agent-runtime';
 
 function skill(): SkillManifest {
   return {
@@ -140,7 +140,7 @@ async function setup(
   const postReply = vi.fn();
   const postMessage = vi.fn();
 
-  vi.doMock('#shared/server/capabilities/channel-registry', () => ({
+  vi.doMock('#app/server/capabilities/channel-registry', () => ({
     getChannelRegistry: () => ({
       register: vi.fn(),
       registerPlugin: vi.fn(),
@@ -158,13 +158,13 @@ async function setup(
     confidence: overrides.policyExecution?.confidence ?? 0.95
   });
 
-  vi.doMock('#shared/server/runtime/policy-classifier', () => ({
+  vi.doMock('#app/server/runtime/policy-classifier', () => ({
     classifyPolicyExecution
   }));
 
-  const { getStore } = await import('#shared/server/persistence/store');
-  const { getGateway } = await import('#shared/server/runtime/gateway');
-  const { AgentRuntime } = await import('#shared/server/runtime/agent-runtime');
+  const { getStore } = await import('#app/server/persistence/store');
+  const { getGateway } = await import('#app/server/runtime/gateway');
+  const { AgentRuntime } = await import('#app/server/runtime/agent-runtime');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -377,7 +377,7 @@ describe('Gateway session-first policy', () => {
 
   it('creates personal direct sessions with the represented owner subscriber policy', async () => {
     const { gateway, store, workspace, runSpy } = await setup();
-    const { updateMurphPolicyConfig } = await import('../shared/server/setup/config-file');
+    const { updateMurphPolicyConfig } = await import('../app/server/setup/config-file');
     updateMurphPolicyConfig({ profileName: 'yolo' });
     store.upsertWorkspaceSubscription({
       workspaceId: workspace.id,

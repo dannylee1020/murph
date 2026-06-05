@@ -1,4 +1,4 @@
-import { startMurphServer } from '../../shared/server/app.js';
+import { startMurphServer } from '../server/app.js';
 import { murphRoutes } from './routes.js';
 
 startMurphServer({

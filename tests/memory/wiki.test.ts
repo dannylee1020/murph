@@ -14,7 +14,7 @@ async function setup() {
   process.env.MURPH_SQLITE_PATH = join(root, 'murph.sqlite');
   process.env.MURPH_ENCRYPTION_KEY = 'test-key';
 
-  const { getStore } = await import('../../shared/server/persistence/store');
+  const { getStore } = await import('../../app/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -126,7 +126,7 @@ describe('markdown OLAP memory', () => {
     appendRunEvents(store, run.id, 'What is blocking launch?');
     store.finishAgentRun(run.id, 'completed');
 
-    const { rebuildMemoryPagesForRun, readMemoryIndex, readMemoryPage } = await import('../../shared/server/memory/wiki');
+    const { rebuildMemoryPagesForRun, readMemoryIndex, readMemoryPage } = await import('../../app/server/memory/wiki');
     const result = await rebuildMemoryPagesForRun(store.getAgentRun(run.id)!);
 
     expect(result.pagePaths).toEqual([
@@ -152,7 +152,7 @@ describe('markdown OLAP memory', () => {
 
   it('updates one thread page across repeated runs and rejects deprecated paths', async () => {
     const { store, workspace, session } = await setup();
-    const { rebuildMemoryPagesForRun, readMemoryPage } = await import('../../shared/server/memory/wiki');
+    const { rebuildMemoryPagesForRun, readMemoryPage } = await import('../../app/server/memory/wiki');
 
     const first = store.createAgentRun({
       workspaceId: workspace.id,
@@ -196,7 +196,7 @@ describe('markdown OLAP memory', () => {
     writeFileSync(join(root, 'memory', 'wiki', 'old', 'page.md'), 'old');
     writeFileSync(join(root, 'memory', 'log.md'), 'old');
 
-    const { MemoryIndexWorker } = await import('../../shared/server/memory/index-worker');
+    const { MemoryIndexWorker } = await import('../../app/server/memory/index-worker');
     const run = store.createAgentRun({
       workspaceId: workspace.id,
       taskId: 'task-1',

@@ -9,9 +9,9 @@
     "noEmit": false
   },
   "include": [
-    "shared/*.d.ts",
-    "shared/*.ts",
-    "shared/server/**/*.ts",
+    "app/*.d.ts",
+    "app/*.ts",
+    "app/server/**/*.ts",
     "app/runtime/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]

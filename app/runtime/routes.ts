@@ -1,13 +1,13 @@
-import { channelRoutes } from '../../shared/server/routes/channels.js';
-import { discordRoutes } from '../../shared/server/routes/discord.js';
-import { formRoutes } from '../../shared/server/routes/forms.js';
-import { gatewayRoutes } from '../../shared/server/routes/gateway.js';
-import { integrationRoutes } from '../../shared/server/routes/integrations.js';
-import { pluginRoutes } from '../../shared/server/routes/plugins.js';
-import { slackRoutes } from '../../shared/server/routes/slack.js';
-import { sourceIndexRoutes } from '../../shared/server/routes/source-index.js';
-import { systemRoutes } from '../../shared/server/routes/system.js';
-import type { Route } from '../../shared/server/router.js';
+import { channelRoutes } from '../server/routes/channels.js';
+import { discordRoutes } from '../server/routes/discord.js';
+import { formRoutes } from '../server/routes/forms.js';
+import { gatewayRoutes } from '../server/routes/gateway.js';
+import { integrationRoutes } from '../server/routes/integrations.js';
+import { pluginRoutes } from '../server/routes/plugins.js';
+import { slackRoutes } from '../server/routes/slack.js';
+import { sourceIndexRoutes } from '../server/routes/source-index.js';
+import { systemRoutes } from '../server/routes/system.js';
+import type { Route } from '../server/router.js';
 
 export function murphRoutes(): Route[] {
   return [

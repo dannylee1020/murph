@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const handleTask = vi.fn();
 
-vi.mock('#shared/server/runtime/gateway', () => ({
+vi.mock('#app/server/runtime/gateway', () => ({
   getGateway: () => ({ handleTask })
 }));
 
@@ -25,7 +25,7 @@ function slackEvent(input: Record<string, unknown> = {}): Record<string, unknown
 }
 
 async function setup() {
-  const { getStore } = await import('../shared/server/persistence/store');
+  const { getStore } = await import('../app/server/persistence/store');
   const store = getStore();
   const workspace = store.saveInstall({
     provider: 'slack',
@@ -58,7 +58,7 @@ describe('handleSlackEventEnvelope', () => {
 
   it('routes a valid Slack event through the shared gateway path', async () => {
     await setup();
-    const { handleSlackEventEnvelope } = await import('../shared/server/channels/slack/events');
+    const { handleSlackEventEnvelope } = await import('../app/server/channels/slack/events');
 
     const result = await handleSlackEventEnvelope(slackEvent(), {
       rawPayload: JSON.stringify(slackEvent()),
@@ -78,7 +78,7 @@ describe('handleSlackEventEnvelope', () => {
 
   it('dedupes repeated Slack events before dispatching to the gateway', async () => {
     await setup();
-    const { handleSlackEventEnvelope } = await import('../shared/server/channels/slack/events');
+    const { handleSlackEventEnvelope } = await import('../app/server/channels/slack/events');
 
     await handleSlackEventEnvelope(slackEvent(), { source: 'socket' });
     const duplicate = await handleSlackEventEnvelope(slackEvent(), { source: 'http' });
@@ -87,15 +87,29 @@ describe('handleSlackEventEnvelope', () => {
     expect(handleTask).toHaveBeenCalledOnce();
   });
 
+  it('dedupes app_mention and message deliveries for the same Slack message', async () => {
+    await setup();
+    const { handleSlackEventEnvelope } = await import('../app/server/channels/slack/events');
+
+    await handleSlackEventEnvelope(slackEvent({ type: 'app_mention' }), { source: 'socket' });
+    const duplicate = await handleSlackEventEnvelope(
+      slackEvent({ type: 'message' }),
+      { source: 'socket' }
+    );
+
+    expect(duplicate).toMatchObject({ ok: true, ignored: true, reason: 'duplicate_event' });
+    expect(handleTask).toHaveBeenCalledOnce();
+  });
+
   it('ignores Slack events when that bot role is turned off', async () => {
     await setup();
-    const { getStore } = await import('../shared/server/persistence/store');
+    const { getStore } = await import('../app/server/persistence/store');
     const store = getStore();
     store.upsertAppSettings({
       ...store.getAppSettings(),
       setupDefaults: { botRoles: ['channel'], providerBotRoles: { slack: [], discord: [] } }
     });
-    const { handleSlackEventEnvelope } = await import('../shared/server/channels/slack/events');
+    const { handleSlackEventEnvelope } = await import('../app/server/channels/slack/events');
 
     const result = await handleSlackEventEnvelope(slackEvent(), { source: 'socket' });
 

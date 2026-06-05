@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
-const repoCli = join(repoRoot, 'shared/cli/murph');
+const repoCli = join(repoRoot, 'app/cli/murph');
 
 function createAppFixture() {
   const root = mkdtempSync(join(tmpdir(), 'murph-cli-start-'));
