@@ -16,14 +16,12 @@ The simplest download path is curl:
 ```bash
 curl -fsSL https://murph-agent.com/install.sh | bash
 murph setup
-murph start
 ```
 
 For a hosted Murph runtime, use Docker with a stable public URL:
 
 ```bash
 MURPH_APP_URL=https://agent.example.com \
-  docker compose -f deploy/docker-compose.yml up -d
 docker compose -f deploy/docker-compose.yml exec murph murph setup
 ```
 
