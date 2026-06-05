@@ -212,8 +212,7 @@ install_dependency_phase() {
 
 node_install_help() {
   cat <<'EOF'
-Murph needs Node.js 20 or newer.
-Node 20 is the CI target and recommended baseline.
+Murph needs Node.js 22 or newer.
 
 Install Node with your normal toolchain, then rerun the installer.
 
@@ -243,9 +242,9 @@ check_node() {
   major="${version#v}"
   major="${major%%.*}"
 
-  if ! [[ "$major" =~ ^[0-9]+$ ]] || [[ "$major" -lt 20 ]]; then
+  if ! [[ "$major" =~ ^[0-9]+$ ]] || [[ "$major" -lt 22 ]]; then
     node_install_help
-    fail "Node.js 20 or newer is required. Found $version."
+    fail "Node.js 22 or newer is required. Found $version."
   fi
 
   if ! have_command npm; then

@@ -49,7 +49,7 @@ node_ready() {
   have_command npm || return 1
   local major
   major="$(node_major)"
-  [[ -n "$major" && "$major" -ge 20 ]]
+  [[ -n "$major" && "$major" -ge 22 ]]
 }
 
 platform_id() {

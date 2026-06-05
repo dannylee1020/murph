@@ -10,9 +10,9 @@ Murph is installed as a local app plus one product-local `murph` CLI.
 ## Requirements
 
 - `curl`
-- Node.js 20+ and npm
+- Node.js 22+ and npm
 
-If Node.js 20+ or npm is missing, the installer downloads a Murph-managed Node/npm copy under `~/.murph/deps`. It does not install Node globally or modify your system package manager. Setup helpers such as the Slack CLI are installed after Murph itself is built.
+If Node.js 22+ or npm is missing, the installer downloads a Murph-managed Node/npm copy under `~/.murph/deps`. It does not install Node globally or modify your system package manager. Setup helpers such as the Slack CLI are installed after Murph itself is built.
 
 ## Install from the internet
 
