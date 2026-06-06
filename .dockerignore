@@ -7,9 +7,6 @@ npm-debug.log*
 
 tests/
 docs/**
-!docs/public/
-!docs/public/slack-manifest.yaml
-!docs/public/slack-channel-manifest.yaml
 
 Taskfile.yml
 CONTRIBUTING.md
@@ -20,5 +17,10 @@ config.example.yaml
 install.sh
 deploy/
 scripts/
+public/**
+!public/
+!public/slack-manifest.yaml
+!public/slack-channel-manifest.yaml
 themes/**
+!themes/
 !themes/murph-agent.json

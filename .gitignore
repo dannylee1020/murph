@@ -7,8 +7,6 @@ dist/
 # Framework/generated caches
 .svelte-kit/
 .vite/
-docs/public/install.sh
-docs/public/install-personal.sh
 
 # Runtime data
 data/

@@ -1,2 +1,7 @@
 .vitepress/cache
 .vitepress/dist
+public/install.sh
+public/install-personal.sh
+public/release.env
+public/slack-manifest.yaml
+public/slack-channel-manifest.yaml

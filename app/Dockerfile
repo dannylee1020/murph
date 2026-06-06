@@ -7,9 +7,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --include=dev
 
 COPY tsconfig.json tsconfig.server.json tsconfig.ui.json ./
-COPY app/runtime ./app/runtime
-COPY app/ui ./app/ui
-COPY shared ./shared
+COPY app ./app
 RUN npm run build
 
 RUN npm prune --omit=dev
@@ -26,14 +24,13 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
 COPY app/cli ./app/cli
-COPY shared/cli ./shared/cli
 COPY policies ./policies
 COPY skills/runtime ./skills/runtime
 COPY skills/agent ./skills/agent
 COPY themes/murph-agent.json ./themes/murph-agent.json
-COPY docs/public/slack-manifest.yaml docs/public/slack-channel-manifest.yaml ./docs/public/
+COPY public/slack-manifest.yaml public/slack-channel-manifest.yaml ./public/
 
-RUN chmod 0755 app/cli/murph shared/cli/murph \
+RUN chmod 0755 app/cli/murph \
   && install -m 0755 app/cli/murph /usr/local/bin/murph
 
 EXPOSE 5173

@@ -36,7 +36,7 @@ The fastest path is to create the app from Murph's manifest. Slack's manifest fl
 Use Murph's Slack manifest when Slack lets you create or update the app from a manifest:
 
 ```text
-docs/public/slack-channel-manifest.yaml
+public/slack-channel-manifest.yaml
 ```
 
 The legacy public manifest is a channel-bot compatibility alias:

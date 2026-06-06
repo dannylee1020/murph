@@ -62,8 +62,12 @@ function appDir(): string {
 
 function manifestPathForRole(role: BotRole): string {
   const root = appDir();
-  const rolePath = path.join(root, 'docs', 'public', 'slack-channel-manifest.yaml');
-  if (existsSync(rolePath)) return rolePath;
+  const publicRolePath = path.join(root, 'public', 'slack-channel-manifest.yaml');
+  if (role === 'channel' && existsSync(publicRolePath)) return publicRolePath;
+  const publicPath = path.join(root, 'public', 'slack-manifest.yaml');
+  if (existsSync(publicPath)) return publicPath;
+  const legacyRolePath = path.join(root, 'docs', 'public', 'slack-channel-manifest.yaml');
+  if (role === 'channel' && existsSync(legacyRolePath)) return legacyRolePath;
   return path.join(root, 'docs', 'public', 'slack-manifest.yaml');
 }
 

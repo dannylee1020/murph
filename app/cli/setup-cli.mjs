@@ -12,9 +12,9 @@ const murphUrl = process.env.MURPH_URL || `http://localhost:${process.env.MURPH_
 const murphHome = process.env.MURPH_HOME || path.join(homedir(), '.murph');
 const credentialsPath = process.env.MURPH_CREDENTIALS_PATH || path.join(murphHome, '.credentials');
 const configPath = process.env.MURPH_CONFIG_PATH || path.join(murphHome, 'config.yaml');
-const slackManifestPath = path.join(appDir, 'docs', 'public', 'slack-manifest.yaml');
+const slackManifestPath = resolvePublicFile('slack-manifest.yaml');
 const slackRoleManifestPaths = {
-  channel: path.join(appDir, 'docs', 'public', 'slack-channel-manifest.yaml')
+  channel: resolvePublicFile('slack-channel-manifest.yaml')
 };
 const slackApiBase = process.env.MURPH_SLACK_API_BASE || 'https://slack.com/api';
 const discordApiBase = process.env.MURPH_DISCORD_API_BASE || 'https://discord.com/api/v10';
@@ -33,6 +33,12 @@ const discordPermissionLabels = [
 const SETUP_BOT_ROLES = ['channel'];
 const SETUP_CHANNEL_PROVIDERS = ['slack', 'discord'];
 const rl = readline.createInterface({ input, output });
+
+function resolvePublicFile(filename) {
+  const publicPath = path.join(appDir, 'public', filename);
+  if (existsSync(publicPath)) return publicPath;
+  return path.join(appDir, 'docs', 'public', filename);
+}
 
 const args = process.argv.slice(2);
 const productEnv = process.env.MURPH_DISTRIBUTION;

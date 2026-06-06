@@ -70,9 +70,9 @@ function textResponse(): any & { result: () => { status: number; body: string; h
 async function setup(input: { productMode?: 'channel'; botRolesEnv?: string; skipSlackToken?: boolean } = {}) {
   vi.resetModules();
   const workspaceDir = mkdtempSync(join(tmpdir(), 'murph-setup-defaults-route-'));
-  mkdirSync(join(workspaceDir, 'docs/public'), { recursive: true });
-  writeFileSync(join(workspaceDir, 'docs/public/slack-manifest.yaml'), channelManifest);
-  writeFileSync(join(workspaceDir, 'docs/public/slack-channel-manifest.yaml'), channelManifest);
+  mkdirSync(join(workspaceDir, 'public'), { recursive: true });
+  writeFileSync(join(workspaceDir, 'public/slack-manifest.yaml'), channelManifest);
+  writeFileSync(join(workspaceDir, 'public/slack-channel-manifest.yaml'), channelManifest);
   process.env.MURPH_APP_DIR = workspaceDir;
   process.env.MURPH_CONFIG_PATH = join(workspaceDir, 'config.yaml');
   process.env.MURPH_SQLITE_PATH = join(workspaceDir, 'murph.sqlite');

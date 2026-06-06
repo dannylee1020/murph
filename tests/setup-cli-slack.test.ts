@@ -30,9 +30,9 @@ const channelManifest = [
 
 function createAppDir(): string {
   const appDir = mkdtempSync(path.join(tmpdir(), 'murph-setup-cli-'));
-  mkdirSync(path.join(appDir, 'docs/public'), { recursive: true });
-  writeFileSync(path.join(appDir, 'docs/public/slack-manifest.yaml'), channelManifest);
-  writeFileSync(path.join(appDir, 'docs/public/slack-channel-manifest.yaml'), channelManifest);
+  mkdirSync(path.join(appDir, 'public'), { recursive: true });
+  writeFileSync(path.join(appDir, 'public/slack-manifest.yaml'), channelManifest);
+  writeFileSync(path.join(appDir, 'public/slack-channel-manifest.yaml'), channelManifest);
   return appDir;
 }
 
