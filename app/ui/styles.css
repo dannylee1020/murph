@@ -1,30 +1,28 @@
 :root {
   color-scheme: light;
 
-  /* Field Watch: old paper, void ink, lume beige, amber action. */
-  --ink: #0d0d0b;
-  --ink-soft: #4d473c;
-  --muted: #6f6655;
-  --faint: #a99a7d;
-  --rule: rgb(13 13 11 / 14%);
-  --rule-strong: rgb(13 13 11 / 28%);
-  --paper: oklch(97.8% 0.01 78);
-  --surface: oklch(98.8% 0.006 78);
-  --sidebar: #f3ebdd;
-  --tint: oklch(94.6% 0.018 76);
+  --ink: #111827;
+  --ink-soft: #3f4858;
+  --muted: #697386;
+  --faint: #98a2b3;
+  --rule: #d9e1ec;
+  --rule-strong: #9aa7b8;
+  --paper: #ffffff;
+  --surface: #ffffff;
+  --sidebar: #f4f7ff;
+  --tint: #f6f8fc;
 
-  /* Accent — aged amber, used rarely as action punctuation. */
-  --accent: #d49a4a;
-  --accent-hover: #c98530;
-  --accent-soft: rgb(212 154 74 / 16%);
-  --accent-ink: #0d0d0b;
+  --accent: #0033ff;
+  --accent-fill: #0033ff;
+  --accent-hover: #1d4ed8;
+  --accent-soft: rgb(0 51 255 / 8%);
+  --accent-ink: #ffffff;
 
-  /* Status hues, kept muted. */
-  --ok: #3f7f5f;
-  --status-ok-dot: oklch(63% 0.18 153);
-  --status-ok-ring: color-mix(in oklch, var(--status-ok-dot), transparent 56%);
-  --warn: #b77b2d;
-  --danger: #a34a3b;
+  --ok: #0058be;
+  --status-ok-dot: #2170e4;
+  --status-ok-ring: rgb(33 112 228 / 28%);
+  --warn: #3d4550;
+  --danger: #ba1a1a;
 
   /* Type — same Geist family as the docs site. */
   --font-sans:
@@ -54,27 +52,28 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --ink: #f3ebdd;
-  --ink-soft: #e8d8b8;
-  --muted: #a99a7d;
-  --faint: #8d8f8a;
-  --rule: rgb(232 216 184 / 16%);
-  --rule-strong: rgb(232 216 184 / 32%);
-  --paper: #0d0d0b;
-  --surface: #1a1a17;
-  --sidebar: var(--surface);
-  --tint: #24231f;
+  --ink: #f8fafc;
+  --ink-soft: #e5e7eb;
+  --muted: #aab4c5;
+  --faint: #6f7b91;
+  --rule: #2c3a50;
+  --rule-strong: #526178;
+  --paper: #08111f;
+  --surface: #101b2d;
+  --sidebar: #0c1728;
+  --tint: #172235;
 
-  --accent: #d49a4a;
-  --accent-hover: #e8d8b8;
-  --accent-soft: rgb(212 154 74 / 20%);
-  --accent-ink: #0d0d0b;
+  --accent: #a4c9ff;
+  --accent-fill: #2563eb;
+  --accent-hover: #b4c5ff;
+  --accent-soft: rgb(37 99 235 / 24%);
+  --accent-ink: #eeefff;
 
-  --ok: #82c897;
-  --status-ok-dot: oklch(82% 0.18 150);
-  --status-ok-ring: color-mix(in oklch, var(--status-ok-dot), transparent 46%);
-  --warn: #d49a4a;
-  --danger: #ef9d8f;
+  --ok: #a4c9ff;
+  --status-ok-dot: #a4c9ff;
+  --status-ok-ring: rgb(164 201 255 / 34%);
+  --warn: #bbc6e7;
+  --danger: #ffb4ab;
 }
 
 * {
@@ -102,8 +101,8 @@ a {
 }
 
 ::selection {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--accent-soft);
+  color: var(--ink);
 }
 
 /* ---------- Buttons ---------- */
@@ -116,10 +115,10 @@ button,
   gap: 8px;
   height: 34px;
   padding: 0 14px;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--accent-fill);
   border-radius: 2px;
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--accent-fill);
+  color: var(--accent-ink);
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 500;
@@ -164,8 +163,8 @@ button.secondary,
 button.secondary:hover,
 .button.secondary:hover {
   background: transparent;
-  border-color: var(--ink);
-  color: var(--ink);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 button.ghost {
@@ -186,14 +185,14 @@ button:disabled {
   cursor: not-allowed;
 }
 
-:root[data-theme="dark"] button:not(.secondary):not(.ghost),
+:root[data-theme="dark"] button:not(.secondary):not(.ghost):not(.theme-option),
 :root[data-theme="dark"] .button:not(.secondary) {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
   color: var(--accent-ink);
 }
 
-:root[data-theme="dark"] button:not(.secondary):not(.ghost):hover,
+:root[data-theme="dark"] button:not(.secondary):not(.ghost):not(.theme-option):hover,
 :root[data-theme="dark"] .button:not(.secondary):hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
@@ -328,11 +327,14 @@ nav a {
   min-height: 38px;
   padding: 0 0;
   border-bottom: 1px solid var(--rule);
+  background: transparent;
   color: var(--muted);
   font-size: var(--text-sm);
   font-weight: 500;
   text-decoration: none;
-  transition: color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
 nav a::before {
@@ -347,15 +349,17 @@ nav a::before {
 }
 
 nav a:hover {
+  background: var(--tint);
   color: var(--ink);
 }
 
 nav a.active {
-  color: var(--ink);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 nav a.active::before {
-  background: var(--accent);
+  background: var(--accent-fill);
 }
 
 .sidebar-watch-status {
@@ -440,7 +444,7 @@ nav a.active::before {
 .theme-option.active {
   border-color: var(--accent);
   background: var(--accent-soft);
-  color: var(--accent-hover);
+  color: var(--accent);
 }
 
 /* ---------- Content + rhythm ---------- */
@@ -448,6 +452,7 @@ nav a.active::before {
 .content {
   width: min(var(--content-max), 100%);
   padding: 40px var(--gutter) 88px;
+  background: var(--paper);
 }
 
 .content > section + section {
@@ -460,7 +465,7 @@ nav a.active::before {
   max-width: none;
   margin-bottom: 32px;
   padding-bottom: 26px;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule-strong);
 }
 
 .console-head {
@@ -545,7 +550,7 @@ h2 {
   gap: 16px;
   margin-bottom: 18px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule-strong);
 }
 
 .section-head h2 {
@@ -599,8 +604,9 @@ p {
   margin: 0 0 34px;
   padding: 0;
   border: 1px solid var(--rule);
-  border-top-color: var(--ink);
+  border-top-color: var(--rule-strong);
   border-bottom: 1px solid var(--rule);
+  background: var(--surface);
 }
 
 .kpis > div {
@@ -686,9 +692,9 @@ p {
 .panel {
   padding: 16px;
   border: 1px solid var(--rule);
-  border-top-color: var(--ink);
+  border-top-color: var(--rule);
   border-radius: 0;
-  background: color-mix(in oklch, var(--paper), var(--surface) 36%);
+  background: var(--surface);
   box-shadow: none;
 }
 
@@ -700,6 +706,7 @@ p {
   margin: -16px -16px 16px;
   padding: 11px 16px 10px;
   border-bottom: 1px solid var(--rule);
+  background: var(--tint);
   font-size: 0.7rem;
   font-weight: 500;
   letter-spacing: 0.1em;
@@ -967,7 +974,7 @@ p {
   display: grid;
   gap: 8px;
   padding: 14px 0;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule-strong);
   border-bottom: 1px solid var(--rule);
   border-radius: 0;
   background: transparent;
@@ -1118,7 +1125,7 @@ table {
 
 th {
   padding: 12px 18px 10px 0;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule-strong);
   text-align: left;
   vertical-align: bottom;
   color: var(--muted);
@@ -1177,15 +1184,16 @@ tr:last-child td {
 .policy-editor-panel {
     min-width: 0;
     border: 1px solid var(--rule);
-    border-top-color: var(--ink);
+    border-top-color: var(--rule);
     padding: 16px;
-    background: color-mix(in oklch, var(--paper), var(--surface) 36%);
+    background: var(--surface);
 }
 
 .policy-editor-panel h2 {
     margin: -16px -16px 16px;
     padding: 11px 16px 10px;
     border-bottom: 1px solid var(--rule);
+    background: var(--tint);
     font-size: 0.7rem;
   font-weight: 500;
   letter-spacing: 0.1em;
@@ -1281,7 +1289,7 @@ code {
 
 .go-to-sleep-card {
   grid-column: 1 / -1;
-  border-top: 2px solid var(--ink);
+  border-top: 1px solid var(--rule-strong);
   padding: 20px;
   background: var(--surface);
 }
@@ -1322,7 +1330,7 @@ code {
   gap: 0;
   margin-bottom: 24px;
   border: 1px solid var(--rule);
-  border-top-color: var(--ink);
+  border-top-color: var(--rule-strong);
 }
 
 .summary-cell {
@@ -1444,9 +1452,9 @@ button.primary-large {
   font-weight: 500;
   border-radius: 2px;
   letter-spacing: 0.01em;
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+  border-color: var(--accent-fill);
 }
 
 button.primary-large:hover {
@@ -1456,8 +1464,8 @@ button.primary-large:hover {
 }
 
 :root[data-theme="dark"] button.primary-large {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
   color: var(--accent-ink);
 }
 
@@ -1820,7 +1828,7 @@ button.primary-large:hover {
 /* ---------- Disclosure (debug / detail reveals) ---------- */
 
 .disclosure {
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--rule);
   padding-top: 14px;
 }
 
@@ -2089,14 +2097,14 @@ button.primary-large:hover {
   width: min(680px, calc(100vw - 32px));
   max-height: min(720px, calc(100vh - 48px));
   padding: 0;
-  border: 1px solid var(--ink);
+  border: 1px solid var(--rule);
   border-radius: 0;
   background: var(--paper);
   color: var(--ink);
 }
 
 .modal::backdrop {
-  background: rgb(13 13 11 / 42%);
+  background: rgb(20 27 43 / 42%);
 }
 
 .modal-panel {
@@ -2111,7 +2119,7 @@ button.primary-large:hover {
   justify-content: space-between;
   gap: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 
 .modal-head h2 {
@@ -2200,8 +2208,8 @@ button.primary-large:hover {
   gap: 20px;
   align-items: center;
   padding: 18px var(--gutter);
-  border-bottom: 1px solid var(--ink);
-  background: color-mix(in oklch, var(--paper), var(--surface) 52%);
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
 }
 
 .setup-topbar > .button {
@@ -2317,7 +2325,7 @@ button.primary-large:hover {
 }
 
 .wizard-progress-segment.completed {
-  background: var(--ink);
+  background: var(--rule-strong);
 }
 
 .wizard-step {

@@ -1,23 +1,15 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 
-const theme = ref<'light' | 'dark'>('light');
 const copiedCommand = ref<string | null>(null);
 const installCommand = 'curl -fsSL https://murph-agent.com/install.sh | bash';
+let hadDarkTheme = false;
 let copiedResetTimer: ReturnType<typeof setTimeout> | undefined;
 
-function syncThemeFromDocument() {
+function forceLandingLightTheme() {
   if (typeof document === 'undefined') return;
-  theme.value = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-}
-
-function toggleTheme() {
-  if (typeof document === 'undefined') return;
-
-  const nextTheme = theme.value === 'dark' ? 'light' : 'dark';
-  document.documentElement.classList.toggle('dark', nextTheme === 'dark');
-  localStorage.setItem('vitepress-theme-appearance', nextTheme);
-  theme.value = nextTheme;
+  hadDarkTheme = document.documentElement.classList.contains('dark');
+  document.documentElement.classList.remove('dark');
 }
 
 async function copyCommand(command: string) {
@@ -32,10 +24,13 @@ async function copyCommand(command: string) {
   }, 900);
 }
 
-onMounted(syncThemeFromDocument);
+onMounted(forceLandingLightTheme);
 
 onBeforeUnmount(() => {
   if (copiedResetTimer) window.clearTimeout(copiedResetTimer);
+  if (typeof document !== 'undefined' && hadDarkTheme) {
+    document.documentElement.classList.add('dark');
+  }
 });
 </script>
 
@@ -53,37 +48,14 @@ onBeforeUnmount(() => {
         <div class="murph-home-actions">
           <a href="/docs/quickstart">Docs</a>
           <a class="murph-external-link" href="https://github.com/dannylee1020/murph">GitHub</a>
-          <span class="murph-nav-divider" aria-hidden="true"></span>
-          <span class="murph-theme-label">Theme</span>
-          <button
-            class="murph-theme-toggle"
-            type="button"
-            :aria-label="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
-            @click="toggleTheme"
-          >
-            <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M20.2 14.2A7 7 0 0 1 9.8 3.8a8 8 0 1 0 10.4 10.4Z" />
-            </svg>
-            <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="4" />
-              <path d="M12 2.5v2" />
-              <path d="M12 19.5v2" />
-              <path d="m4.6 4.6 1.4 1.4" />
-              <path d="m18 18 1.4 1.4" />
-              <path d="M2.5 12h2" />
-              <path d="M19.5 12h2" />
-              <path d="m4.6 19.4 1.4-1.4" />
-              <path d="m18 6 1.4-1.4" />
-            </svg>
-          </button>
         </div>
       </nav>
 
       <section class="murph-hero" aria-labelledby="hero-heading">
         <div class="murph-hero-inner">
-          <h1 id="hero-heading">Async coverage for teams across time zones.</h1>
+          <h1 id="hero-heading">Agent for teams across time zones.</h1>
           <p class="murph-lede">
-            Self-host Murph Team on a server you control. Start a session before you log off; Murph watches selected messenger channels, answers from connected context, and leaves every send, queue, and skip reviewable.
+            A private, extensible agent that lives on your server, uses your context, and covers for your team while offline.
           </p>
 
           <div class="murph-install" aria-label="Install Murph">
@@ -188,7 +160,7 @@ onBeforeUnmount(() => {
             </svg>
           </span>
           <h2>Self-hosted</h2>
-          <p>Run Team on a VPS, managed container service, or server you control. State, memory, config, and credentials stay there.</p>
+          <p>Run on a VPS, managed container service, or server you control. State, memory, config, and credentials stay yours.</p>
         </article>
         <article>
           <span class="murph-card-icon" aria-hidden="true">
