@@ -39,7 +39,7 @@ export default defineConfig({
         logo: '/img/murph-logo.svg',
         siteTitle: 'Murph',
         nav: [
-            { text: 'Docs', link: '/docs' },
+            { text: 'Docs', link: '/docs/quickstart' },
             { text: 'GitHub', link: 'https://github.com/dannylee1020/murph' },
         ],
         sidebar: {

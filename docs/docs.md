@@ -1,11 +1,12 @@
 ---
-layout: page
-title: Murph
-description: Self-hosted agent runtime for remote teams working across time zones.
-sidebar: false
-aside: false
-editLink: false
-lastUpdated: false
+layout: false
+title: Murph Docs
+description: Redirecting to Murph quickstart.
 ---
 
-<HomePage />
+<meta http-equiv="refresh" content="0; url=/docs/quickstart">
+<script>
+  window.location.replace('/docs/quickstart');
+</script>
+
+Redirecting to [Murph Quickstart](/docs/quickstart).

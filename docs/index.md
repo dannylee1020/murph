@@ -1,12 +1,11 @@
 ---
-layout: false
+layout: page
 title: Murph
-description: Redirecting to Murph docs.
+description: Self-hosted agent runtime for remote teams working across time zones.
+sidebar: false
+aside: false
+editLink: false
+lastUpdated: false
 ---
 
-<meta http-equiv="refresh" content="0; url=/docs">
-<script>
-  window.location.replace('/docs');
-</script>
-
-Redirecting to [Murph docs](/docs).
+<HomePage />
