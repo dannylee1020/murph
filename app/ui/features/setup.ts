@@ -1330,7 +1330,6 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
         params.get('success') === '1' &&
         !slackCliReturn
     ) {
-        setupNotice = `<div class="setup-success">Slack ${escapeHtml(returnedRole)} bot connected</div>`;
         if (!coverageSelected('slack', returnedRole)) {
             setupWizardState.selectedCoverage = [
                 ...setupWizardState.selectedCoverage,
@@ -1422,6 +1421,19 @@ export async function renderSetup(onComplete: () => Promise<void>): Promise<void
     setupWizardState.workdayEndHour =
         setup.murphConfig?.workdayEndHour ?? setupWizardState.workdayEndHour;
     ensureSetupProviderState(setup, defaults);
+
+    if (
+        returnedStep === 'slack' &&
+        params.get('success') === '1' &&
+        !slackCliReturn
+    ) {
+        const roleStatus = setup.slack.roles?.[returnedRole];
+        const workspace = setupProviderWorkspace(setup, 'slack', returnedRole);
+        setupNotice =
+            roleStatus?.installed && workspace
+                ? `<div class="setup-success">Slack ${escapeHtml(returnedRole)} bot connected</div>`
+                : '<div class="notice danger">Slack OAuth completed, but Murph could not read the saved Slack workspace. Reconnect Slack from this setup flow.</div>';
+    }
 
     if (slackCliReturn) {
         const failed = params.get('error') === 'slack_oauth_failed';

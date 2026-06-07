@@ -27,6 +27,25 @@ const channelManifest = [
   '  socket_mode_enabled: true',
   ''
 ].join('\n');
+const connectedChannelStatus = {
+  ok: true,
+  slack: {
+    installed: true,
+    workspace: {
+      externalWorkspaceId: 'T123',
+      name: 'Murph Test Workspace'
+    },
+    roles: {
+      channel: {
+        installed: true,
+        workspace: {
+          externalWorkspaceId: 'T123',
+          name: 'Murph Test Workspace'
+        }
+      }
+    }
+  }
+};
 
 function createAppDir(): string {
   const appDir = mkdtempSync(path.join(tmpdir(), 'murph-setup-cli-'));
@@ -39,7 +58,7 @@ function createAppDir(): string {
 function createFetchMock(
   appDir: string,
   slackPayload: unknown,
-  setupStatusPayloads: unknown[] = [{ ok: true, slack: { installed: true } }]
+  setupStatusPayloads: unknown[] = [connectedChannelStatus]
 ): { callsPath: string; mockPath: string; setupStatusesPath: string } {
   const callsPath = path.join(appDir, 'fetch-calls.jsonl');
   const payloadPath = path.join(appDir, 'slack-payload.json');
@@ -481,6 +500,29 @@ describe('setup CLI Slack app setup', () => {
     expect(readFileSync(openedUrlPath!, 'utf8').trim()).toBe('http://murph.test/api/slack/channel/install?source=cli&team=T123');
   });
 
+  it('does not complete Slack setup when install status lacks workspace identity', async () => {
+    const appDir = createAppDir();
+    const { result } = runSetupSlack(appDir, '', {
+      ok: true,
+      app_id: 'A123',
+      credentials: {
+        client_id: 'client-id',
+        client_secret: 'client-secret',
+        app_token: 'xapp-returned'
+      }
+    }, {
+      args: ['slack', '--non-interactive'],
+      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config', SLACK_TEAM_ID: 'T123' },
+      setupStatusPayloads: [
+        { ok: true, slack: { roles: { channel: { installed: true } } } }
+      ]
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr + result.stdout).toContain('Slack app installation is not complete.');
+    expect(result.stderr + result.stdout).not.toContain('channel bot is connected');
+  });
+
   it('does not block OAuth when an existing Slack workspace differs from the selected target', async () => {
     const appDir = createAppDir();
     const { result, openedUrlPath } = runSetupSlack(appDir, '\n', {
@@ -566,7 +608,10 @@ describe('setup CLI Slack app setup', () => {
       }
     }, {
       slackAuthList: 'First Workspace T111\nSecond Workspace T222\n',
-      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config' }
+      env: { MURPH_SLACK_CONFIG_TOKEN: 'xoxe-config' },
+      setupStatusPayloads: [
+        { ok: true, slack: { roles: { channel: { installed: true, workspace: { externalWorkspaceId: 'T222', name: 'Second Workspace' } } } } }
+      ]
     });
 
     expect(result.status, result.stderr + result.stdout).toBe(0);

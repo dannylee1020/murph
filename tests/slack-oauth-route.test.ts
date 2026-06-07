@@ -28,6 +28,24 @@ function response(): any & { result: () => { status: number; headers: Record<str
   };
 }
 
+function jsonResponse(): any & { result: () => { status: number; headers: Record<string, string>; body: any } } {
+  let status = 200;
+  let headers: Record<string, string> = {};
+  let body = '';
+  return {
+    writeHead(nextStatus: number, nextHeaders: Record<string, string>) {
+      status = nextStatus;
+      headers = nextHeaders;
+    },
+    end(nextBody = '') {
+      body = String(nextBody);
+    },
+    result() {
+      return { status, headers, body: body ? JSON.parse(body) : undefined };
+    }
+  };
+}
+
 async function setup(
   slackPayload: Record<string, unknown>,
   options: { userInfoPayload?: Record<string, unknown>; configYaml?: string } = {}
@@ -72,6 +90,7 @@ async function setup(
   }));
 
   const { slackRoutes } = await import('../app/server/routes/slack');
+  const { systemRoutes } = await import('../app/server/routes/system');
   const { dispatchRoute } = await import('../app/server/router');
   const { getStore } = await import('#app/server/persistence/store');
 
@@ -85,7 +104,17 @@ async function setup(
     return res.result();
   }
 
-  return { get, root, store: getStore(), tokenRequests };
+  async function getSetupStatus() {
+    const res = jsonResponse();
+    await dispatchRoute(systemRoutes, {
+      req: request(),
+      res,
+      url: new URL('/api/setup/status', 'http://localhost:5173')
+    });
+    return res.result();
+  }
+
+  return { get, getSetupStatus, root, store: getStore(), tokenRequests };
 }
 
 describe('Slack OAuth callback route', () => {
@@ -97,8 +126,11 @@ describe('Slack OAuth callback route', () => {
     delete process.env.MURPH_ENCRYPTION_KEY;
     delete process.env.SLACK_CLIENT_ID;
     delete process.env.SLACK_CLIENT_SECRET;
+    delete process.env.SLACK_APP_ID;
+    delete process.env.SLACK_CHANNEL_APP_ID;
     delete process.env.SLACK_PERSONAL_CLIENT_ID;
     delete process.env.SLACK_PERSONAL_CLIENT_SECRET;
+    delete process.env.SLACK_PERSONAL_APP_ID;
     delete process.env.OPENAI_API_KEY;
   });
 
@@ -190,6 +222,55 @@ describe('Slack OAuth callback route', () => {
         })
       ]
     });
+  });
+
+  it('keeps an existing-app OAuth install visible when Slack returns the authoritative app ID', async () => {
+    const { get, getSetupStatus, store } = await setup({
+      ok: true,
+      app_id: 'A-returned',
+      team: { id: 'T1', name: 'Murph Test' },
+      access_token: 'xoxb-test',
+      bot_user_id: 'UTZBOT',
+      authed_user: { id: 'U1', access_token: 'xoxp-test' }
+    }, {
+      userInfoPayload: {
+        ok: true,
+        user: {
+          id: 'U1',
+          profile: { display_name: 'Daniel' }
+        }
+      }
+    });
+    store.upsertBotAppConfig({
+      provider: 'slack',
+      role: 'channel',
+      appId: 'A-manual',
+      clientId: 'client-id',
+      eventsMode: 'socket'
+    });
+    process.env.SLACK_APP_ID = 'A-manual';
+    process.env.SLACK_CHANNEL_APP_ID = 'A-manual';
+
+    const result = await get('/api/slack/oauth/callback?code=abc&state=setup');
+    const status = await getSetupStatus();
+
+    expect(result.status).toBe(302);
+    expect(store.getBotAppConfig('slack', 'channel')).toEqual(expect.objectContaining({
+      appId: 'A-returned',
+      clientId: 'client-id'
+    }));
+    expect(process.env.SLACK_CHANNEL_APP_ID).toBe('A-returned');
+    expect(status.status).toBe(200);
+    expect(status.body.slack.roles.channel.installed).toBe(true);
+    expect(status.body.slack.roles.channel.ownerConfigured).toBe(true);
+    expect(status.body.slack.roles.channel.workspace).toEqual(expect.objectContaining({
+      externalWorkspaceId: 'T1',
+      name: 'Murph Test'
+    }));
+    expect(status.body.slack.workspace).toEqual(expect.objectContaining({
+      externalWorkspaceId: 'T1',
+      name: 'Murph Test'
+    }));
   });
 
   it('returns CLI-sourced workspace installs to the terminal completion page', async () => {

@@ -202,6 +202,27 @@ export class SlackService {
     return installation.status === 'active';
   }
 
+  private syncOAuthAppId(role: BotRole, appId?: string): void {
+    if (!appId?.trim()) return;
+    const trimmedAppId = appId.trim();
+    const existing = this.store.getBotAppConfig('slack', role);
+    this.store.upsertBotAppConfig({
+      provider: 'slack',
+      role,
+      appId: trimmedAppId,
+      clientId: existing?.clientId,
+      eventsMode: existing?.eventsMode,
+      metadata: existing?.metadata
+    });
+
+    if (role === 'personal') {
+      process.env.SLACK_PERSONAL_APP_ID = trimmedAppId;
+    } else {
+      process.env.SLACK_CHANNEL_APP_ID = trimmedAppId;
+      process.env.SLACK_APP_ID = trimmedAppId;
+    }
+  }
+
   private eventsMode(role: BotRole): 'http' | 'socket' {
     const configured = process.env.SLACK_EVENTS_MODE === 'http'
       ? 'http'
@@ -275,6 +296,7 @@ export class SlackService {
     }
 
     const appId = payload.app_id ?? this.appId(role);
+    this.syncOAuthAppId(role, appId);
     const workspace = this.store.saveInstall({
       provider: 'slack',
       externalWorkspaceId: payload.team.id,

@@ -1217,9 +1217,11 @@ function botInstallationWorkspace(status, provider, role = 'channel') {
 function slackWorkspaceMatches(status, workspace = null, role = 'channel') {
   const targetTeamId = workspace?.id || readSetupValue('SLACK_TEAM_ID');
   const roleInstalled = slackRoleStatus(status, role).installed ?? (role === 'channel' ? status.slack?.installed : false);
-  if (!targetTeamId || !roleInstalled) return Boolean(roleInstalled);
-  const connectedTeamId = slackConnectedWorkspace(status, role)?.externalWorkspaceId;
-  return !connectedTeamId || connectedTeamId === targetTeamId;
+  if (!roleInstalled) return false;
+  if (!targetTeamId) return true;
+  const connected = slackConnectedWorkspace(status, role);
+  const connectedTeamId = connected?.externalWorkspaceId || connected?.id;
+  return connectedTeamId === targetTeamId;
 }
 
 function slackWorkspaceMismatch(status, workspace = null, role = 'channel') {
