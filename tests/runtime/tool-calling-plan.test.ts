@@ -218,14 +218,14 @@ describe('buildRuntimeToolCallingPlan', () => {
     expect(plan.groundingDirective.required).toBe(false);
   });
 
-  it('does not expose memory page reads for stable requests when a memory index is present', () => {
+  it('does not treat memory artifacts as source evidence for stable requests', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
         thread: {
           ...context().thread,
           latestMessage: 'What did we decide about checkout launch?'
         },
-        artifacts: [{ id: 'memory-index', source: 'memory.tool_wiki.index', type: 'memory', title: 'Memory Index', text: 'path: wiki/threads/a.md' }]
+        artifacts: [{ id: 'memory-artifact', source: 'memory.linked_artifacts', type: 'memory', title: 'Thread Memory', text: 'Captured Notion evidence.' }]
       }),
       allTools,
       policy: policy()
@@ -236,14 +236,14 @@ describe('buildRuntimeToolCallingPlan', () => {
     expect(plan.retrievalToolNames).toEqual(['runtime.retrieve_all']);
   });
 
-  it('does not let the memory index count as source evidence or expose page reads for current requests', () => {
+  it('does not let memory artifacts count as source evidence for current requests', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
         thread: {
           ...context().thread,
           latestMessage: 'What is the current checkout launch status?'
         },
-        artifacts: [{ id: 'memory-index', source: 'memory.tool_wiki.index', type: 'memory', title: 'Memory Index', text: 'path: wiki/threads/a.md' }]
+        artifacts: [{ id: 'memory-artifact', source: 'memory.linked_artifacts', type: 'memory', title: 'Thread Memory', text: 'Captured Notion evidence.' }]
       }),
       allTools,
       policy: policy()
@@ -253,10 +253,10 @@ describe('buildRuntimeToolCallingPlan', () => {
     expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.retrieve_all']);
   });
 
-  it('does not let memory page artifacts satisfy source evidence', () => {
+  it('does not let linked memory artifacts satisfy source evidence', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
-        artifacts: [{ id: 'memory-page', source: 'memory.tool_wiki.page', type: 'memory', title: 'Memory Page', text: 'Captured Notion evidence.' }]
+        artifacts: [{ id: 'memory-page', source: 'memory.linked_artifacts', type: 'memory', title: 'Memory Page', text: 'Captured Notion evidence.' }]
       }),
       allTools,
       policy: policy()

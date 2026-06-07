@@ -11,6 +11,7 @@ import { addBotAppConfigs } from './010_add_bot_app_configs.js';
 import { teamScopedRuntime } from './011_team_scoped_runtime.js';
 import { addSourceIndexRuns } from './012_add_source_index_runs.js';
 import { dropRecurringJobs } from './013_drop_recurring_jobs.js';
+import { dropMemoryIndexRuns } from './014_drop_memory_index_runs.js';
 import type { Migration } from './types.js';
 
 export const migrations: Migration[] = [
@@ -26,5 +27,6 @@ export const migrations: Migration[] = [
   addBotAppConfigs,
   teamScopedRuntime,
   addSourceIndexRuns,
-  dropRecurringJobs
+  dropRecurringJobs,
+  dropMemoryIndexRuns
 ];

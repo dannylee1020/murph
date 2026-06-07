@@ -210,32 +210,6 @@ function artifactSourcesFromPayload(
         );
 }
 
-function artifactSourcesFromIndexSource(
-    payload: Record<string, unknown>,
-): Array<{ name: string; artifacts: number; titles: string[] }> {
-    if (!Array.isArray(payload.artifacts)) return [];
-    const grouped = new Map<
-        string,
-        { name: string; artifacts: number; titles: string[] }
-    >();
-    for (const artifact of payload.artifacts) {
-        const record = asRecord(artifact);
-        if (!record || typeof record.source !== 'string') continue;
-        if (record.source.startsWith('memory.')) continue;
-        const existing = grouped.get(record.source) ?? {
-            name: record.source,
-            artifacts: 0,
-            titles: [],
-        };
-        existing.artifacts += 1;
-        if (typeof record.title === 'string' && existing.titles.length < 5) {
-            existing.titles.push(record.title);
-        }
-        grouped.set(record.source, existing);
-    }
-    return [...grouped.values()];
-}
-
 export function contextRetrievalEntries(
     events: RunEventsPayload['events'],
 ): ContextRetrievalEntry[] {
@@ -248,14 +222,6 @@ export function contextRetrievalEntries(
                 mergeContextRetrievalEntry(entries, name);
             }
             for (const source of artifactSourcesFromPayload(payload)) {
-                mergeContextRetrievalEntry(entries, source.name, {
-                    artifacts: source.artifacts,
-                    titles: source.titles,
-                    status: source.artifacts > 0 ? 'ok' : 'empty',
-                });
-            }
-        } else if (event.type === 'agent.memory.index_source') {
-            for (const source of artifactSourcesFromIndexSource(payload)) {
                 mergeContextRetrievalEntry(entries, source.name, {
                     artifacts: source.artifacts,
                     titles: source.titles,

@@ -35,7 +35,6 @@ import * as briefing from './stores/briefing.js';
 import * as botAppConfig from './stores/bot-app-config.js';
 import * as botInstallation from './stores/bot-installation.js';
 import * as integrationCredentials from './stores/integration-credentials.js';
-import * as memoryIndex from './stores/memory-index.js';
 import * as memory from './stores/memory.js';
 import * as providerSettings from './stores/provider-settings.js';
 import * as reminder from './stores/reminder.js';
@@ -181,25 +180,6 @@ export class Store {
   }
   upsertThreadMemory(next: ThreadMemory): void {
     memory.upsertThreadMemory(this.db, next);
-  }
-  getMemoryIndexRun(runId: string): memoryIndex.MemoryIndexRunRecord | undefined {
-    return memoryIndex.getMemoryIndexRun(this.db, runId);
-  }
-  markMemoryIndexQueued(runId: string): memoryIndex.MemoryIndexRunRecord {
-    return memoryIndex.markMemoryIndexQueued(this.db, runId);
-  }
-  markMemoryIndexIndexed(
-    runId: string,
-    contentHash: string,
-    status?: Extract<memoryIndex.MemoryIndexRunStatus, 'indexed' | 'skipped'>
-  ): memoryIndex.MemoryIndexRunRecord {
-    return memoryIndex.markMemoryIndexIndexed(this.db, runId, contentHash, status);
-  }
-  markMemoryIndexFailed(runId: string, error: string): memoryIndex.MemoryIndexRunRecord {
-    return memoryIndex.markMemoryIndexFailed(this.db, runId, error);
-  }
-  listMemoryIndexBacklog(limit = 20): AgentRunRecord[] {
-    return memoryIndex.listMemoryIndexBacklog(this.db, limit);
   }
   startSourceIndexRun(input: { id: string; workspaceId: string; provider: string }): sourceIndex.SourceIndexRunRecord {
     return sourceIndex.startSourceIndexRun(this.db, input);

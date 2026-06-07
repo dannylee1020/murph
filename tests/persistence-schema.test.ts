@@ -50,9 +50,11 @@ describe('sqlite schema cleanup', () => {
       '010_add_bot_app_configs',
       '011_team_scoped_runtime',
       '012_add_source_index_runs',
-      '013_drop_recurring_jobs'
+      '013_drop_recurring_jobs',
+      '014_drop_memory_index_runs'
     ]);
     expect(tableExists(db, 'recurring_jobs')).toBe(false);
+    expect(tableExists(db, 'memory_index_runs')).toBe(false);
     expect(tableExists(db, 'runtime_refresh_state')).toBe(true);
     expect(columns(db, 'autopilot_sessions')).toEqual(expect.arrayContaining([
       'runtime_revision_json',
@@ -75,9 +77,11 @@ describe('sqlite schema cleanup', () => {
       '010_add_bot_app_configs',
       '011_team_scoped_runtime',
       '012_add_source_index_runs',
-      '013_drop_recurring_jobs'
+      '013_drop_recurring_jobs',
+      '014_drop_memory_index_runs'
     ]);
     expect(tableExists(db, 'recurring_jobs')).toBe(false);
+    expect(tableExists(db, 'memory_index_runs')).toBe(false);
     expect(columns(db, 'workspace_subscriptions')).toEqual(expect.arrayContaining([
       'policy_profile_name',
       'policy_mode'
@@ -230,6 +234,7 @@ describe('sqlite schema cleanup', () => {
     expect(tableExists(migrated, 'user_memory')).toBe(false);
     expect(tableExists(migrated, 'feedback_memory')).toBe(false);
     expect(tableExists(migrated, 'recurring_jobs')).toBe(false);
+    expect(tableExists(migrated, 'memory_index_runs')).toBe(false);
     expect(migrationIds(migrated)).toEqual([
       '001_create_current_schema',
       '002_simplify_local_first_schema',
@@ -243,7 +248,8 @@ describe('sqlite schema cleanup', () => {
       '010_add_bot_app_configs',
       '011_team_scoped_runtime',
       '012_add_source_index_runs',
-      '013_drop_recurring_jobs'
+      '013_drop_recurring_jobs',
+      '014_drop_memory_index_runs'
     ]);
     expect(columns(migrated, 'workspace_subscriptions')).toContain('policy_mode');
     expect(
