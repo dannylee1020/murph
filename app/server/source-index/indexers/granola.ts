@@ -34,9 +34,11 @@ export async function indexGranolaSource(workspaceId: string, limit = 25): Promi
         readTool: 'granola.read_meeting',
         readInput: { noteId: note.id },
         status: 'active',
+        summaryStatus: 'missing',
         tags: ['granola', ...note.attendees.slice(0, 8)]
       },
-      routingNotes: `Use this Granola meeting note for questions about "${note.title}", attendees, or meeting follow-up.`
+      routingNotes: `Use this Granola meeting note for questions about "${note.title}", attendees, or meeting follow-up.`,
+      contentPreview: note.summary
     };
     const result = await writeSourceIndexResource(resource);
     changedPaths.push(result.relativePath);

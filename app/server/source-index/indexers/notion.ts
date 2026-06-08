@@ -35,6 +35,7 @@ export async function indexNotionSource(workspaceId: string, limit = 25): Promis
         readTool: 'notion.read_page',
         readInput: { pageId: page.id, maxBlocks: 40 },
         status: 'active',
+        summaryStatus: 'missing',
         tags: ['notion', page.object]
       },
       routingNotes: `Use this Notion page for questions about "${page.title}" or related documentation.`

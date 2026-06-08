@@ -29,11 +29,10 @@ function resource(overrides: Partial<Parameters<typeof writeSourceIndexResource>
       readTool: 'github.read_issue',
       readInput: { repository: 'murph/murph', number: 42 },
       status: 'active',
+      summaryStatus: 'missing',
       tags: ['checkout', 'launch']
     },
-    summary: 'Checkout launch is blocked on payment callback verification.',
     routingNotes: 'Use this issue for checkout launch status questions.',
-    excerpt: 'Payment callback verification remains open.',
     ...overrides
   };
 }
@@ -42,6 +41,8 @@ describe('SourceIndexCatalog', () => {
   beforeEach(() => {
     vi.resetModules();
     process.env.MURPH_MEMORY_PATH = tempMemoryPath();
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it('writes versioned resource markdown using safe source-index paths', async () => {
@@ -59,13 +60,19 @@ describe('SourceIndexCatalog', () => {
     expect(existsSync(result.path)).toBe(true);
     const text = readFileSync(result.path, 'utf8');
     expect(text).toContain('schemaVersion: 1');
+    expect(text).toContain('summaryStatus: missing');
     expect(text).toContain('## Routing Notes');
+    expect(text).not.toContain('## Content Summary');
+    expect(text).not.toContain('## Content Preview');
     expect(text).not.toContain('## Summary');
     expect(text).not.toContain('## Excerpt');
   });
 
   it('loads bounded active hints for the requested workspace only', async () => {
-    await writeSourceIndexResource(resource());
+    await writeSourceIndexResource(resource({
+      contentSummary: 'Checkout launch is blocked on payment callback verification.',
+      contentPreview: 'Payment callback verification remains open.'
+    }));
     await writeSourceIndexResource(resource({
       metadata: {
         ...resource().metadata,
@@ -94,7 +101,7 @@ describe('SourceIndexCatalog', () => {
     const catalog = new SourceIndexCatalog();
     await catalog.reload();
 
-    const hints = catalog.hintsFor({
+    const hints = await catalog.hintsFor({
       workspaceId: 'workspace-1',
       query: 'what is blocking checkout launch?',
       maxChars: 240
@@ -104,14 +111,50 @@ describe('SourceIndexCatalog', () => {
     expect(hints[0]).toEqual(expect.objectContaining({
       provider: 'github',
       resourceType: 'issue',
+      id: 'h1',
       title: 'Checkout launch blocker',
       externalId: 'murph/murph#42',
       readTool: 'github.read_issue'
     }));
+    expect(hints[0].text).toContain('Summary: Checkout launch is blocked');
     expect(hints[0].text.length).toBeLessThanOrEqual(240);
   });
 
-  it('rejects unsupported frontmatter and ignores temp files', async () => {
+  it('preserves generated summaries when the source has not changed', async () => {
+    const first = await writeSourceIndexResource(resource({
+      metadata: {
+        ...resource().metadata,
+        summaryStatus: 'generated',
+        summaryUpdatedAt: '2026-06-02T21:00:00.000Z'
+      },
+      contentSummary: 'Checkout launch is blocked by callback verification.',
+      contentPreview: 'Payment callback verification remains open.'
+    }));
+
+    await writeSourceIndexResource(resource({
+      contentPreview: 'Payment callback verification remains open with newer routing text.'
+    }));
+
+    const text = readFileSync(first.path, 'utf8');
+    expect(text).toContain('summaryStatus: generated');
+    expect(text).toContain('summaryUpdatedAt: 2026-06-02T21:00:00.000Z');
+    expect(text).toContain('## Content Summary');
+    expect(text).toContain('Checkout launch is blocked by callback verification.');
+  });
+
+  it('skips model summaries when no model credentials are configured', async () => {
+    const result = await writeSourceIndexResource(resource({
+      contentPreview: 'Payment callback verification remains open.'
+    }));
+    const { summarizeChangedSourceIndexResources } = await import('../../app/server/source-index/summarizer');
+
+    await expect(summarizeChangedSourceIndexResources({
+      workspaceId: 'workspace-1',
+      changedPaths: [result.relativePath]
+    })).resolves.toEqual({ generated: 0, skipped: 1, failed: 0 });
+  });
+
+  it('skips unsupported frontmatter and ignores temp files', async () => {
     const result = await writeSourceIndexResource(resource());
     writeFileSync(`${result.path}.tmp`, [
       '---',
@@ -130,9 +173,10 @@ describe('SourceIndexCatalog', () => {
 
     const catalog = new SourceIndexCatalog();
     await catalog.reload();
-    expect(catalog.hintsFor({ workspaceId: 'workspace-1', query: 'checkout' })).toHaveLength(1);
+    await expect(catalog.hintsFor({ workspaceId: 'workspace-1', query: 'checkout' })).resolves.toHaveLength(1);
 
     writeFileSync(result.path, readFileSync(result.path, 'utf8').replace('schemaVersion: 1', 'schemaVersion: 99'));
-    await expect(catalog.reload()).rejects.toThrow(/unsupported schemaVersion/);
+    await catalog.reload();
+    await expect(catalog.hintsFor({ workspaceId: 'workspace-1', query: 'checkout' })).resolves.toHaveLength(0);
   });
 });

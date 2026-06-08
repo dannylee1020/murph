@@ -342,6 +342,7 @@ export interface ContextAssembly {
 }
 
 export interface SourceIndexHint {
+    id: string;
     provider: string;
     resourceType: string;
     title: string;
@@ -701,6 +702,14 @@ export interface AgentToolInventoryItem {
     knowledgeDomains?: string[];
     retrievalEligible?: boolean;
     retrieval?: ToolRetrievalConfig;
+    hintedRead?: {
+        hints: Array<{
+            id: string;
+            toolName: string;
+            input: Record<string, unknown>;
+            hint: SourceIndexHint;
+        }>;
+    };
 }
 
 export interface ModelProvider {

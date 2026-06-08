@@ -21,6 +21,7 @@ export interface RuntimeToolCallingPlan {
 }
 
 export const RUNTIME_RETRIEVE_ALL_TOOL_NAME = 'runtime.retrieve_all';
+export const RUNTIME_SOURCE_HINT_TOOL_NAME = 'runtime.read_source_hint';
 
 const RUNTIME_RETRIEVE_ALL_TOOL: AgentToolInventoryItem = {
   name: RUNTIME_RETRIEVE_ALL_TOOL_NAME,
@@ -82,6 +83,84 @@ function isSourceArtifact(artifact: ContextAssembly['artifacts'][number]): boole
   return !artifact.source.startsWith('memory.');
 }
 
+function hintInput(input: unknown): Record<string, unknown> | undefined {
+  return input && typeof input === 'object' && !Array.isArray(input)
+    ? input as Record<string, unknown>
+    : undefined;
+}
+
+function hintedReadTool(input: {
+  hints: ContextAssembly['sourceIndexHints'];
+  availableTools: AgentToolInventoryItem[];
+}): AgentToolInventoryItem | undefined {
+  const availableByName = new Map(input.availableTools.map((tool) => [tool.name, tool]));
+  const seen = new Set<string>();
+  const hintedReadOptions: NonNullable<AgentToolInventoryItem['hintedRead']>['hints'] = [];
+  const descriptions: string[] = [];
+
+  for (const [index, hint] of (input.hints ?? []).entries()) {
+    if (!hint.readTool) {
+      continue;
+    }
+
+    const definition = availableByName.get(hint.readTool);
+    const readInput = hintInput(hint.readInput);
+    if (!definition || definition.sideEffectClass !== 'read' || !readInput) {
+      continue;
+    }
+
+    const key = `${hint.readTool}:${JSON.stringify(readInput)}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+
+    const id = hint.id || `h${index + 1}`;
+    hintedReadOptions.push({
+      id,
+      toolName: hint.readTool,
+      input: readInput,
+      hint: { ...hint, id }
+    });
+    descriptions.push(`${id}: ${hint.provider} ${hint.resourceType} "${hint.title}"`);
+  }
+
+  if (hintedReadOptions.length === 0) {
+    return undefined;
+  }
+
+  const knowledgeDomains = [...new Set(hintedReadOptions.flatMap((option) =>
+    availableByName.get(option.toolName)?.knowledgeDomains ?? []
+  ))];
+
+  return {
+    name: RUNTIME_SOURCE_HINT_TOOL_NAME,
+    description: [
+      'Read one source-index hint by hintId.',
+      'Use this only when the selected hint matches the current request.',
+      `Available hints: ${descriptions.join('; ')}.`
+    ].join(' '),
+    sideEffectClass: 'read',
+    retrievalEligible: true,
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['hintId'],
+      properties: {
+        hintId: {
+          type: 'string',
+          enum: hintedReadOptions.map((option) => option.id),
+          description: 'The source-index hint id to read.'
+        }
+      }
+    },
+    knowledgeDomains,
+    hintedRead: {
+      hints: hintedReadOptions
+    }
+  };
+}
+
 /**
  * Lists every tool the agent is allowed to see for this run, gated only by:
  *   - workspace allowlist (`enabledOptionalTools`)
@@ -122,8 +201,13 @@ export function buildRuntimeToolCallingPlan(input: {
     sessionMode: input.sessionMode
   });
   const fanoutTools = availableTools.filter((tool) => retrievalToolNames.includes(tool.name));
+  const sourceHintTool = hintedReadTool({
+    hints: input.context.sourceIndexHints,
+    availableTools
+  });
   const modelTools = [
-    ...(fanoutTools.length > 0 ? [RUNTIME_RETRIEVE_ALL_TOOL] : [])
+    ...(sourceHintTool ? [sourceHintTool] : []),
+    ...(!sourceHintTool && fanoutTools.length > 0 ? [RUNTIME_RETRIEVE_ALL_TOOL] : [])
   ];
   const hasSourceArtifacts = input.context.artifacts.some(isSourceArtifact);
   const groundingDirective = input.policy?.requireGroundingForFacts && !hasSourceArtifacts
@@ -140,7 +224,7 @@ export function buildRuntimeToolCallingPlan(input: {
     availableTools: modelTools,
     retrievalToolNames: [
       ...modelTools
-        .filter((tool) => tool.name === RUNTIME_RETRIEVE_ALL_TOOL_NAME)
+        .filter((tool) => tool.name === RUNTIME_RETRIEVE_ALL_TOOL_NAME || tool.name === RUNTIME_SOURCE_HINT_TOOL_NAME)
         .map((tool) => tool.name)
     ],
     fanoutTools,

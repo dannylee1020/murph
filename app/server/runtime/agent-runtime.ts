@@ -309,7 +309,6 @@ export class AgentRuntime {
     }
     try {
       const catalog = getSourceIndexCatalog();
-      await catalog.reload();
       return catalog.hintsFor({ workspaceId, query });
     } catch (error) {
       console.warn('[runtime] failed to load source index hints:', error instanceof Error ? error.message : error);
@@ -358,7 +357,8 @@ export class AgentRuntime {
           skills: context.skills,
           availableTools: toolCallingPlan.availableTools,
           linkedArtifacts: context.linkedArtifacts,
-          artifacts: context.artifacts
+          artifacts: context.artifacts,
+          sourceIndexHints: context.sourceIndexHints
         },
         workspace,
         provider: provider.name,

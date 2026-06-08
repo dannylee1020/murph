@@ -36,9 +36,11 @@ export async function indexLinearSource(workspaceId: string, limit = 25): Promis
         readTool: 'linear.read_issue',
         readInput: { issueId: issue.id },
         status: 'active',
+        summaryStatus: 'missing',
         tags: ['linear', issue.identifier, issue.state ?? 'unknown', issue.team ?? '', issue.project ?? ''].filter(Boolean)
       },
-      routingNotes: `Use this Linear issue for questions about ${issue.identifier}, "${issue.title}", ${issue.state ?? 'unknown'} work, or ${issue.project ?? issue.team ?? 'related'} planning.`
+      routingNotes: `Use this Linear issue for questions about ${issue.identifier}, "${issue.title}", ${issue.state ?? 'unknown'} work, or ${issue.project ?? issue.team ?? 'related'} planning.`,
+      contentPreview: issue.description
     };
     const result = await writeSourceIndexResource(resource);
     changedPaths.push(result.relativePath);

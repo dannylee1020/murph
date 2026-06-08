@@ -50,6 +50,8 @@ describe('source index provider indexers', () => {
     const markdown = readFileSync(join(process.env.MURPH_MEMORY_PATH!, 'source-index', result.changedPaths[0]), 'utf8');
     expect(markdown).toContain('externalId: acme/app#42');
     expect(markdown).toContain('## Routing Notes');
+    expect(markdown).toContain('## Content Preview');
+    expect(markdown).toContain('Payment callback verification remains open.');
     expect(markdown).not.toContain('## Summary');
     expect(markdown).not.toContain('## Excerpt');
   });
@@ -73,6 +75,8 @@ describe('source index provider indexers', () => {
     expect(existsSync(markdownPath)).toBe(true);
     const markdown = readFileSync(markdownPath, 'utf8');
     expect(markdown).toContain('externalId: Launch.md');
+    expect(markdown).toContain('## Content Preview');
+    expect(markdown).toContain('Launch status lives here.');
     expect(markdown).not.toContain('Secret.md');
   });
 });

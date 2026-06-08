@@ -8,9 +8,12 @@ import type { SourceIndexHint } from '#app/types';
 export const SOURCE_INDEX_SCHEMA_VERSION = 1;
 export const SOURCE_INDEX_MAX_HINTS = 6;
 export const SOURCE_INDEX_MAX_HINT_CHARS = 1200;
+export const SOURCE_INDEX_MAX_PREVIEW_CHARS = 2000;
+export const SOURCE_INDEX_MAX_SUMMARY_CHARS = 1200;
 
 export type SourceIndexProvider = 'obsidian' | 'github' | 'notion' | 'linear' | 'granola' | string;
 export type SourceIndexStatus = 'active' | 'stale' | 'deleted' | 'unauthorized' | 'error';
+export type SourceIndexSummaryStatus = 'missing' | 'skipped' | 'generated' | 'failed';
 
 export interface SourceIndexResourceMeta {
   schemaVersion: typeof SOURCE_INDEX_SCHEMA_VERSION;
@@ -26,31 +29,21 @@ export interface SourceIndexResourceMeta {
   readTool?: string;
   readInput?: Record<string, unknown>;
   status: SourceIndexStatus;
+  summaryStatus?: SourceIndexSummaryStatus;
+  summaryUpdatedAt?: string;
   tags?: string[];
 }
 
 export interface SourceIndexResource {
   metadata: SourceIndexResourceMeta;
-  summary?: string;
   routingNotes?: string;
-  excerpt?: string;
+  contentSummary?: string;
+  contentPreview?: string;
 }
 
 export interface SourceIndexWriteResult {
   path: string;
   relativePath: string;
-}
-
-export interface SourceIndexGlobalIndexInput {
-  updatedAt: string;
-  resources: Array<{
-    provider: string;
-    workspaceId: string;
-    resourceType: string;
-    title: string;
-    status: SourceIndexStatus;
-    relativePath: string;
-  }>;
 }
 
 interface ParsedMarkdown {
@@ -115,7 +108,9 @@ function renderResource(resource: SourceIndexResource): string {
   return [
     yamlFrontmatter(resource.metadata),
     '',
-    section('Routing Notes', resource.routingNotes, 800)
+    section('Routing Notes', resource.routingNotes, 800),
+    resource.contentSummary ? section('Content Summary', resource.contentSummary, SOURCE_INDEX_MAX_SUMMARY_CHARS) : '',
+    resource.contentPreview ? section('Content Preview', resource.contentPreview, SOURCE_INDEX_MAX_PREVIEW_CHARS) : ''
   ].filter(Boolean).join('\n').trimEnd() + '\n';
 }
 
@@ -166,6 +161,13 @@ function parseStatus(value: unknown): SourceIndexStatus {
   throw new Error('Source index resource has invalid status');
 }
 
+function parseSummaryStatus(value: unknown): SourceIndexSummaryStatus | undefined {
+  if (value === 'missing' || value === 'skipped' || value === 'generated' || value === 'failed') {
+    return value;
+  }
+  return undefined;
+}
+
 function parseMetadata(value: unknown): SourceIndexResourceMeta {
   const record = asRecord(value);
   if (record.schemaVersion !== SOURCE_INDEX_SCHEMA_VERSION) {
@@ -185,6 +187,8 @@ function parseMetadata(value: unknown): SourceIndexResourceMeta {
     readTool: optionalString(record, 'readTool'),
     readInput: optionalInput(record.readInput),
     status: parseStatus(record.status),
+    summaryStatus: parseSummaryStatus(record.summaryStatus),
+    summaryUpdatedAt: optionalString(record, 'summaryUpdatedAt'),
     tags: optionalTags(record.tags)
   };
 }
@@ -235,9 +239,9 @@ function scoreResource(resource: SourceIndexResource, terms: string[], order: nu
     resource.metadata.provider,
     resource.metadata.resourceType,
     resource.metadata.tags?.join(' '),
-    resource.summary,
     resource.routingNotes,
-    resource.excerpt
+    resource.contentSummary,
+    resource.contentPreview
   ].filter(Boolean).join('\n').toLowerCase();
   let score = 0;
   for (const term of terms) {
@@ -252,11 +256,14 @@ function tokenize(value: string): string[] {
   return [...new Set(value.toLowerCase().split(/[^a-z0-9._#/-]+/i).map((term) => term.trim()).filter((term) => term.length >= 3))];
 }
 
-function toHint(resource: SourceIndexResource): SourceIndexHint {
+function toHint(resource: SourceIndexResource, id: string): SourceIndexHint {
   const text = [
     resource.routingNotes ? `Routing: ${resource.routingNotes}` : '',
+    resource.contentSummary ? `Summary: ${resource.contentSummary}` : '',
+    !resource.contentSummary && resource.contentPreview ? `Preview: ${resource.contentPreview}` : '',
   ].filter(Boolean).join('\n');
   return {
+    id,
     provider: resource.metadata.provider,
     resourceType: resource.metadata.resourceType,
     title: resource.metadata.title,
@@ -269,12 +276,58 @@ function toHint(resource: SourceIndexResource): SourceIndexHint {
   };
 }
 
+function canCarrySummary(existing: SourceIndexResource | undefined, next: SourceIndexResource): boolean {
+  return Boolean(
+    existing?.contentSummary &&
+    existing.metadata.sourceUpdatedAt === next.metadata.sourceUpdatedAt
+  );
+}
+
 export async function writeSourceIndexResource(resource: SourceIndexResource): Promise<SourceIndexWriteResult> {
   const root = await sourceIndexRoot();
   const relativePath = resourceRelativePath(resource.metadata);
   const filePath = assertInside(root, path.join(root, relativePath));
-  await writeAtomic(filePath, renderResource(resource));
+  let nextResource = resource;
+  try {
+    const parsed = parseMarkdown(await readFile(filePath, 'utf8'));
+    const existing: SourceIndexResource = {
+      metadata: parsed.metadata,
+      routingNotes: sectionText(parsed.body, 'Routing Notes'),
+      contentSummary: sectionText(parsed.body, 'Content Summary'),
+      contentPreview: sectionText(parsed.body, 'Content Preview')
+    };
+    if (!resource.contentSummary && canCarrySummary(existing, resource)) {
+      nextResource = {
+        ...resource,
+        metadata: {
+          ...resource.metadata,
+          summaryStatus: existing.metadata.summaryStatus,
+          summaryUpdatedAt: existing.metadata.summaryUpdatedAt
+        },
+        contentSummary: existing.contentSummary
+      };
+    }
+  } catch {
+    // New or malformed existing files should not block writing the fresh routing card.
+  }
+  await writeAtomic(filePath, renderResource(nextResource));
   return { path: filePath, relativePath };
+}
+
+export async function readSourceIndexResource(relativePath: string): Promise<SourceIndexResource | undefined> {
+  const root = await sourceIndexRoot();
+  const filePath = assertInside(root, path.join(root, relativePath));
+  try {
+    const parsed = parseMarkdown(await readFile(filePath, 'utf8'));
+    return {
+      metadata: parsed.metadata,
+      routingNotes: sectionText(parsed.body, 'Routing Notes'),
+      contentSummary: sectionText(parsed.body, 'Content Summary'),
+      contentPreview: sectionText(parsed.body, 'Content Preview')
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export async function markSourceIndexProviderResourcesStatus(input: {
@@ -288,7 +341,13 @@ export async function markSourceIndexProviderResourcesStatus(input: {
   const changed: SourceIndexWriteResult[] = [];
   for (const file of files) {
     const safePath = assertInside(root, file);
-    const parsed = parseMarkdown(await readFile(safePath, 'utf8'));
+    let parsed: ParsedMarkdown;
+    try {
+      parsed = parseMarkdown(await readFile(safePath, 'utf8'));
+    } catch (error) {
+      console.warn('[source-index] skipped malformed resource during status update:', error instanceof Error ? error.message : error);
+      continue;
+    }
     if (parsed.metadata.workspaceId !== input.workspaceId || parsed.metadata.provider !== input.provider) {
       continue;
     }
@@ -298,7 +357,9 @@ export async function markSourceIndexProviderResourcesStatus(input: {
         status: input.status,
         indexedAt: new Date().toISOString()
       },
-      routingNotes: sectionText(parsed.body, 'Routing Notes')
+      routingNotes: sectionText(parsed.body, 'Routing Notes'),
+      contentSummary: sectionText(parsed.body, 'Content Summary'),
+      contentPreview: sectionText(parsed.body, 'Content Preview')
     };
     await writeAtomic(safePath, renderResource(resource));
     changed.push({ path: safePath, relativePath: path.relative(root, safePath) });
@@ -306,32 +367,9 @@ export async function markSourceIndexProviderResourcesStatus(input: {
   return changed;
 }
 
-export async function writeSourceIndexGlobalIndex(input: SourceIndexGlobalIndexInput): Promise<SourceIndexWriteResult> {
-  const root = await sourceIndexRoot();
-  const relativePath = 'index.md';
-  const filePath = assertInside(root, path.join(root, relativePath));
-  const lines = [
-    '# Murph Source Index',
-    '',
-    `Updated: ${input.updatedAt}`,
-    '',
-    'This markdown catalog contains source-location routing metadata only. It is not factual grounding evidence.',
-    '',
-    ...input.resources.map((resource) => [
-      `- ${resource.title}`,
-      `  - provider: ${resource.provider}`,
-      `  - workspaceId: ${resource.workspaceId}`,
-      `  - resourceType: ${resource.resourceType}`,
-      `  - status: ${resource.status}`,
-      `  - path: ${resource.relativePath}`
-    ].join('\n'))
-  ];
-  await writeAtomic(filePath, `${lines.join('\n')}\n`);
-  return { path: filePath, relativePath };
-}
-
 export class SourceIndexCatalog {
   private resources: SourceIndexResource[] = [];
+  private loaded = false;
 
   async reload(): Promise<void> {
     const root = await sourceIndexRoot();
@@ -340,18 +378,28 @@ export class SourceIndexCatalog {
     const resources: SourceIndexResource[] = [];
     for (const file of files) {
       const safePath = assertInside(root, file);
-      const parsed = parseMarkdown(await readFile(safePath, 'utf8'));
+      let parsed: ParsedMarkdown;
+      try {
+        parsed = parseMarkdown(await readFile(safePath, 'utf8'));
+      } catch (error) {
+        console.warn('[source-index] skipped malformed resource:', error instanceof Error ? error.message : error);
+        continue;
+      }
       resources.push({
         metadata: parsed.metadata,
-        summary: sectionText(parsed.body, 'Summary'),
         routingNotes: sectionText(parsed.body, 'Routing Notes'),
-        excerpt: sectionText(parsed.body, 'Excerpt')
+        contentSummary: sectionText(parsed.body, 'Content Summary'),
+        contentPreview: sectionText(parsed.body, 'Content Preview')
       });
     }
     this.resources = resources;
+    this.loaded = true;
   }
 
-  hintsFor(input: { workspaceId: string; query: string; limit?: number; maxChars?: number }): SourceIndexHint[] {
+  async hintsFor(input: { workspaceId: string; query: string; limit?: number; maxChars?: number }): Promise<SourceIndexHint[]> {
+    if (!this.loaded) {
+      await this.reload();
+    }
     const terms = tokenize(input.query);
     if (terms.length === 0) {
       return [];
@@ -364,10 +412,13 @@ export class SourceIndexCatalog {
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score || a.resource.metadata.title.localeCompare(b.resource.metadata.title))
       .slice(0, maxHints)
-      .map(({ resource }) => ({
-        ...toHint(resource),
-        text: compactText(toHint(resource).text, maxChars)
-      }));
+      .map(({ resource }, index) => {
+        const hint = toHint(resource, `h${index + 1}`);
+        return {
+          ...hint,
+          text: compactText(hint.text, maxChars)
+        };
+      });
   }
 }
 

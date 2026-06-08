@@ -1,19 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { getStore } from '../persistence/store.js';
-import {
-  getSourceIndexCatalog,
-  writeSourceIndexGlobalIndex,
-  type SourceIndexStatus
-} from './catalog.js';
+import { getSourceIndexCatalog } from './catalog.js';
 import {
   getSourceIndexProvider,
   sourceIndexProviderIdsForCurrentRuntime,
   validateSourceIndexProvidersForCurrentRuntime
 } from './providers.js';
+import { summarizeChangedSourceIndexResources, type SourceIndexSummaryResult } from './summarizer.js';
 
 export interface SourceIndexRefreshResult {
   workspaceId: string;
   reason?: string;
+  summaries?: SourceIndexSummaryResult;
   runs: Array<{
     provider: string;
     status: string;
@@ -86,19 +84,12 @@ export class SourceIndexWorker {
           });
         }
       }
-      await writeSourceIndexGlobalIndex({
-        updatedAt: new Date().toISOString(),
-        resources: runs.flatMap((run) => run.changedPaths.map((relativePath) => ({
-          provider: run.provider,
-          workspaceId: request.workspaceId,
-          resourceType: 'resource',
-          title: relativePath,
-          status: run.status === 'indexed' ? 'active' as SourceIndexStatus : 'error' as SourceIndexStatus,
-          relativePath
-        })))
+      const summaries = await summarizeChangedSourceIndexResources({
+        workspaceId: request.workspaceId,
+        changedPaths: runs.flatMap((run) => run.changedPaths)
       });
       await getSourceIndexCatalog().reload();
-      return { workspaceId: request.workspaceId, reason: request.reason, runs };
+      return { workspaceId: request.workspaceId, reason: request.reason, summaries, runs };
     } finally {
       this.running = false;
     }

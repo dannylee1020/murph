@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,6 +26,8 @@ async function setup() {
   delete process.env.NOTION_API_KEY;
   delete process.env.LINEAR_API_KEY;
   delete process.env.GRANOLA_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
 
   const { getStore } = await import('../../app/server/persistence/store');
   const store = getStore();
@@ -50,6 +52,8 @@ describe('SourceIndexWorker', () => {
     delete process.env.NOTION_API_KEY;
     delete process.env.LINEAR_API_KEY;
     delete process.env.GRANOLA_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
   });
 
   it('refreshes markdown resources and stores only run observability in SQLite', async () => {
@@ -64,6 +68,7 @@ describe('SourceIndexWorker', () => {
       expect.objectContaining({ provider: 'notion', status: 'skipped', resourceCount: 0 }),
       expect.objectContaining({ provider: 'linear', status: 'skipped', resourceCount: 0 })
     ]));
+    expect(result.summaries).toEqual({ generated: 0, skipped: 0, failed: 0 });
     const runs = store.listSourceIndexRuns({ workspaceId: workspace.id });
     expect(runs.map((run) => run.provider)).toEqual(expect.arrayContaining(['github', 'notion', 'linear']));
     expect(runs.map((run) => run.provider)).not.toEqual(expect.arrayContaining(['obsidian', 'granola']));
@@ -72,8 +77,6 @@ describe('SourceIndexWorker', () => {
       .map((column) => column.name);
     expect(columns).not.toEqual(expect.arrayContaining(['title', 'external_id', 'metadata_json', 'content', 'summary']));
 
-    const sourceIndexPath = join(root, 'memory', 'source-index', 'index.md');
-    expect(existsSync(sourceIndexPath)).toBe(true);
-    expect(readFileSync(sourceIndexPath, 'utf8')).toContain('routing metadata only');
+    expect(existsSync(join(root, 'memory', 'source-index', 'index.md'))).toBe(false);
   });
 });

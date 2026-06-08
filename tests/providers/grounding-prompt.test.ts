@@ -85,13 +85,44 @@ describe('buildGroundingPrompt', () => {
 
   it('lists each available tool with its description', () => {
     const prompt = buildGroundingPrompt(context());
-    expect(prompt).toContain('Live retrieval is all-or-nothing');
+    expect(prompt).toContain('No usable source-index hint is available');
     expect(prompt).toContain('- notion.search (documentation): Search documentation');
+  });
+
+  it('renders hinted read tool guidance', () => {
+    const prompt = buildGroundingPrompt(context({
+      availableTools: [{
+        name: 'runtime.read_source_hint',
+        description: 'Read one source-index hint by hintId. Available hints: h1: notion page "Checkout launch readiness".',
+        sideEffectClass: 'read',
+        knowledgeDomains: ['documentation'],
+        hintedRead: {
+          hints: [{
+            id: 'h1',
+            toolName: 'notion.read_page',
+            input: { pageId: 'page-1', maxBlocks: 40 },
+            hint: {
+              id: 'h1',
+              provider: 'notion',
+              resourceType: 'page',
+              title: 'Checkout launch readiness',
+              externalId: 'page-1',
+              readTool: 'notion.read_page',
+              readInput: { pageId: 'page-1', maxBlocks: 40 },
+              text: 'Routing: checkout launch readiness.'
+            }
+          }]
+        }
+      }]
+    }));
+    expect(prompt).toContain('Source-index hints are available');
+    expect(prompt).toContain('Choose the matching hintId');
   });
 
   it('inserts a strict directive when grounding is required', () => {
     const prompt = buildGroundingPrompt(context(), requiredDirective);
     expect(prompt).toContain('First decide whether the triggerMessage is a real Murph request');
+    expect(prompt).toContain('call the best hinted read tool before drafting');
     expect(prompt).toContain('call runtime.retrieve_all exactly once before drafting');
   });
 

@@ -335,6 +335,33 @@ async function setupRuntime() {
       };
     }
   });
+  registry.register({
+    name: 'github.read_issue',
+    description: '',
+    sideEffectClass: 'read',
+    knowledgeDomains: ['code', 'documentation'],
+    retrievalEligible: false,
+    inputSchema: {
+      type: 'object',
+      required: ['repository', 'number'],
+      properties: {
+        repository: { type: 'string' },
+        number: { type: 'number' }
+      }
+    },
+    requiresWorkspaceEnablement: true,
+    async execute(input: { repository: string; number: number }): Promise<unknown> {
+      deterministicRetrievalLog.push(`github.read_issue:${input.repository}#${input.number}`);
+      return {
+        id: 'github:42',
+        repository: input.repository,
+        number: input.number,
+        title: 'Checkout launch readiness',
+        body: 'Checkout launch is blocked on mobile wallet failures.',
+        url: `https://github.test/${input.repository}/issues/${input.number}`
+      };
+    }
+  });
 
   contextSources.register({
     name: 'notion.thread_search',
@@ -646,6 +673,76 @@ describe('AgentRuntime model failure events', () => {
       ])
     );
     expect(result.context.linkedArtifacts).toContain('https://notion.test/page-1');
+  });
+
+	  it('uses source-index hinted read tools before retrieve-all fanout', async () => {
+	    testSkills = [githubSkill()];
+	    enabledContextSources = ['github.thread_search'];
+	    enabledOptionalTools = ['github.search', 'github.read_issue'];
+    runAgentLoopMock.mockImplementation(async (prompts, agentContext, config, emit) => {
+      expect(String(prompts[0].content)).toContain('Source-index hints are available');
+      expect(agentContext.tools?.map((tool: { name: string }) => tool.name)).toEqual(['runtime__read_source_hint']);
+      emit({ type: 'turn_start' });
+      await executeToolCall(
+        agentContext,
+        config,
+        emit,
+        'runtime.read_source_hint',
+        { hintId: 'h1' },
+        'call-hint'
+      );
+      return [finalAssistantMessage(fallbackDraft)];
+    });
+
+    const runtime = await setupRuntime();
+    const { writeSourceIndexResource, SOURCE_INDEX_SCHEMA_VERSION } = await import('#app/server/source-index/catalog');
+	    await writeSourceIndexResource({
+	      metadata: {
+	        schemaVersion: SOURCE_INDEX_SCHEMA_VERSION,
+        provider: 'github',
+        workspaceId: 'T1',
+        resourceType: 'issue',
+        externalId: 'acme/app#42',
+        title: 'Checkout launch readiness',
+        url: 'https://github.test/acme/app/issues/42',
+        indexedAt: new Date().toISOString(),
+        readTool: 'github.read_issue',
+        readInput: { repository: 'acme/app', number: 42 },
+        status: 'active',
+        tags: ['checkout', 'github']
+	      },
+	      routingNotes: 'Use this issue for checkout launch readiness questions.'
+	    });
+	    const result = await runtime.run(task({
+	      triggerMessage: {
+	        provider: 'slack',
+        userId: 'UASKER',
+        authorId: 'UASKER',
+        text: '<@UOWNER> is checkout launch ready?',
+        ts: '111.222',
+        messageId: '111.222'
+	      }
+	    }), session(), workspace());
+
+	    expect(deterministicRetrievalLog).toEqual(['github.read_issue:acme/app#42']);
+    expect(result.toolsUsed).toContain('github.read_issue');
+    expect(result.toolsUsed).not.toContain('runtime.retrieve_all');
+    expect(result.runtimeEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'agent.tool.requested',
+        payload: expect.objectContaining({
+          name: 'github.read_issue',
+          input: { repository: 'acme/app', number: 42 }
+        })
+      }),
+      expect.objectContaining({
+        type: 'agent.tool.completed',
+        payload: expect.objectContaining({
+          name: 'github.read_issue',
+          ok: true
+        })
+      })
+    ]));
   });
 
 });

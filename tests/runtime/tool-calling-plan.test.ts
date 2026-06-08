@@ -163,6 +163,64 @@ describe('buildRuntimeToolCallingPlan', () => {
     expect(plan.fanoutTools.map((t) => t.name)).toEqual(['notion.search']);
   });
 
+  it('exposes hinted read tools instead of retrieve-all when usable source index hints exist', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        skills: [skill({ groundingPolicy: 'required_when_no_artifacts' })],
+        sourceIndexHints: [{
+          id: 'h1',
+          provider: 'notion',
+          resourceType: 'page',
+          title: 'Checkout launch readiness',
+          externalId: 'page-1',
+          readTool: 'notion.read_page',
+          readInput: { pageId: 'page-1', maxBlocks: 40 },
+          tags: ['checkout'],
+          text: 'Routing: use this page for checkout launch questions.'
+        }]
+      }),
+      allTools
+    });
+
+    expect(plan.groundingDirective.required).toBe(true);
+    expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.read_source_hint']);
+    expect(plan.availableTools[0].inputSchema).toEqual(expect.objectContaining({
+      required: ['hintId'],
+      properties: expect.objectContaining({
+        hintId: expect.objectContaining({ enum: ['h1'] })
+      })
+    }));
+    expect(plan.availableTools[0].hintedRead?.hints).toEqual([{
+      id: 'h1',
+      toolName: 'notion.read_page',
+      input: { pageId: 'page-1', maxBlocks: 40 },
+      hint: expect.objectContaining({ title: 'Checkout launch readiness' })
+    }]);
+    expect(plan.retrievalToolNames).toEqual(['runtime.read_source_hint']);
+    expect(plan.fanoutTools.map((t) => t.name)).toEqual(['notion.search']);
+  });
+
+  it('falls back to retrieve-all when source index hints do not point to usable read tools', () => {
+    const plan = buildRuntimeToolCallingPlan({
+      context: context({
+        sourceIndexHints: [{
+          id: 'h1',
+          provider: 'notion',
+          resourceType: 'page',
+          title: 'Checkout launch readiness',
+          externalId: 'page-1',
+          readTool: 'notion.read_page',
+          tags: ['checkout'],
+          text: 'Routing: missing read input should not be callable.'
+        }]
+      }),
+      allTools
+    });
+
+    expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.retrieve_all']);
+    expect(plan.retrievalToolNames).toEqual(['runtime.retrieve_all']);
+  });
+
   it('does not require grounding when source artifacts already exist in the current run', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
@@ -269,6 +327,7 @@ describe('buildRuntimeToolCallingPlan', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
         sourceIndexHints: [{
+          id: 'h1',
           provider: 'github',
           resourceType: 'issue',
           title: 'Checkout launch blocker',
@@ -282,7 +341,6 @@ describe('buildRuntimeToolCallingPlan', () => {
       allTools,
       policy: policy()
     });
-
     expect(plan.groundingDirective.required).toBe(true);
     expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.retrieve_all']);
   });

@@ -102,6 +102,7 @@ describe('normalized retrieval requests', () => {
       ...releaseContext(),
       artifacts: [],
       sourceIndexHints: [{
+        id: 'h1',
         provider: 'github',
         resourceType: 'issue',
         title: '[TEST] Murph v0.9 Release Plan',

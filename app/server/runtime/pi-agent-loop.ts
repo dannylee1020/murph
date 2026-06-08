@@ -18,6 +18,8 @@ import type {
   Workspace
 } from '#app/types';
 
+type HintedReadOption = NonNullable<AgentToolInventoryItem['hintedRead']>['hints'][number];
+
 function textContent(text: string): Array<{ type: 'text'; text: string }> {
   return [{ type: 'text', text }];
 }
@@ -190,6 +192,38 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
   let toolCallsStarted = 0;
   let retrievalAttempted = false;
   const { aliasToRaw, rawToAlias } = buildToolAliasMaps(input.context.availableTools);
+  const availableToolByName = new Map(input.context.availableTools.map((tool) => [tool.name, tool]));
+  const hintedCalls = new Map<string, HintedReadOption>();
+  const hintIdFromArgs = (args: unknown): string | undefined => (
+    args && typeof args === 'object' && !Array.isArray(args) &&
+    'hintId' in args && typeof (args as { hintId?: unknown }).hintId === 'string'
+      ? (args as { hintId: string }).hintId
+      : undefined
+  );
+  const hintedReadOption = (rawName: string, args: unknown): HintedReadOption | undefined => {
+    const tool = availableToolByName.get(rawName);
+    const hintId = hintIdFromArgs(args);
+    return hintId && tool?.hintedRead
+      ? tool.hintedRead.hints.find((hint) => hint.id === hintId)
+      : undefined;
+  };
+  const toolCallId = (value: unknown): string | undefined => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+    const record = value as { id?: unknown; toolCallId?: unknown };
+    return typeof record.id === 'string'
+      ? record.id
+      : typeof record.toolCallId === 'string'
+        ? record.toolCallId
+        : undefined;
+  };
+  const eventToolName = (rawName: string, id?: string): string => (
+    id ? hintedCalls.get(id)?.toolName ?? rawName : rawName
+  );
+  const eventToolInput = (rawName: string, args: unknown, id?: string): unknown => (
+    id ? hintedCalls.get(id)?.input ?? args : args
+  );
 
   const tools: AgentTool[] = input.context.availableTools.map((tool) => ({
     name: rawToAlias.get(tool.name) ?? tool.name,
@@ -210,6 +244,29 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
         return {
           content: textContent(serializeForModel(result.output)),
           details: result.output
+        };
+      }
+
+      if (tool.hintedRead) {
+        const selected = hintedReadOption(tool.name, params);
+        if (!selected) {
+          throw new Error('Invalid source-index hint id');
+        }
+        hintedCalls.set(toolCallId, selected);
+        const output = await registry.execute(selected.toolName, selected.input, {
+          workspace: input.workspace,
+          task: input.context.task,
+          workspaceMemory: input.context.memory.workspace
+        });
+
+        toolsUsed.push(selected.toolName);
+        if (input.retrievalToolNames.includes(tool.name)) {
+          retrievalAttempted = true;
+        }
+
+        return {
+          content: textContent(serializeForModel(output)),
+          details: output
         };
       }
 
@@ -256,8 +313,8 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
         const rawName = rawToolName(toolCall.name, aliasToRaw);
         let definition;
 
-        if (rawName === RUNTIME_RETRIEVE_ALL_TOOL_NAME) {
-          definition = input.context.availableTools.find((available) => available.name === rawName);
+        if (rawName === RUNTIME_RETRIEVE_ALL_TOOL_NAME || availableToolByName.get(rawName)?.hintedRead) {
+          definition = availableToolByName.get(rawName);
         } else {
           try {
             definition = registry.get(rawName);
@@ -268,7 +325,7 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
 
         if (
           !definition ||
-          !input.context.availableTools.some((available) => available.name === rawName) ||
+          !availableToolByName.has(rawName) ||
           definition.sideEffectClass !== 'read'
         ) {
           return { block: true, reason: 'Tool is not available for model-directed read-only use' };
@@ -281,15 +338,41 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
         toolCallsStarted += 1;
         return undefined;
       },
-      afterToolCall: async ({ toolCall, result, isError }) => {
+      afterToolCall: async ({ toolCall, args, result, isError }) => {
         if (isError) {
           return undefined;
         }
 
         const rawName = rawToolName(toolCall.name, aliasToRaw);
+        const id = toolCallId(toolCall);
 
         if (rawName === RUNTIME_RETRIEVE_ALL_TOOL_NAME) {
           return undefined;
+        }
+
+        const selected = id ? hintedCalls.get(id) : hintedReadOption(rawName, args ?? (toolCall as { args?: unknown }).args);
+        if (selected) {
+          const hintedName = selected.toolName;
+          const enrichedOutput = await input.enrichToolOutput(
+            hintedName,
+            result.details,
+            toolsUsed,
+            runtimeEvents
+          );
+          if (
+            hintedName === 'notion.read_page' &&
+            enrichedOutput &&
+            typeof enrichedOutput === 'object' &&
+            'url' in enrichedOutput &&
+            typeof enrichedOutput.url === 'string'
+          ) {
+            input.linkThreadArtifact(enrichedOutput.url);
+            toolsUsed.push('memory.thread.link_artifact');
+          }
+          return {
+            content: textContent(serializeForModel(enrichedOutput)),
+            details: enrichedOutput
+          };
         }
 
         const enrichedOutput = await input.enrichToolOutput(rawName, result.details, toolsUsed, runtimeEvents);
@@ -323,13 +406,17 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
 
       if (event.type === 'tool_execution_start') {
         const rawName = rawToolName(event.toolName, aliasToRaw);
+        const selected = hintedReadOption(rawName, event.args);
+        if (selected) {
+          hintedCalls.set(event.toolCallId, selected);
+        }
         runtimeEvents.push({
           type: 'agent.tool.requested',
           payload: {
             id: event.toolCallId,
-            name: rawName,
+            name: eventToolName(rawName, event.toolCallId),
             reason: 'Model requested tool call',
-            input: event.args
+            input: eventToolInput(rawName, event.args, event.toolCallId)
           }
         });
         return;
@@ -337,18 +424,19 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
 
       if (event.type === 'tool_execution_end') {
         const rawName = rawToolName(event.toolName, aliasToRaw);
+        const completedName = eventToolName(rawName, event.toolCallId);
         runtimeEvents.push({
           type: 'agent.tool.completed',
           payload: event.isError
             ? {
                 id: event.toolCallId,
-                name: rawName,
+                name: completedName,
                 ok: false,
                 error: typeof event.result?.details === 'string' ? event.result.details : 'Tool execution failed'
               }
             : {
                 id: event.toolCallId,
-                name: rawName,
+                name: completedName,
                 ok: true,
                 outputSummary: outputSummary(event.result?.details)
               }
@@ -358,16 +446,17 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
 
       if (event.type === 'message_end' && event.message.role === 'toolResult') {
         const rawName = rawToolName(event.message.toolName, aliasToRaw);
+        const resultName = eventToolName(rawName, event.message.toolCallId);
         toolResults.push(event.message.isError
           ? {
               id: event.message.toolCallId,
-              name: rawName,
+              name: resultName,
               ok: false,
               error: extractToolError(event.message)
             }
           : {
               id: event.message.toolCallId,
-              name: rawName,
+              name: resultName,
               ok: true,
               output: truncateToolOutput(event.message.details)
             });

@@ -1,4 +1,4 @@
-import { readdir, readFile, realpath } from 'node:fs/promises';
+import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { obsidianVaultPath } from '#app/server/context-sources/obsidian';
 import {
@@ -58,6 +58,7 @@ export async function indexObsidianSource(workspaceId: string): Promise<Obsidian
     if (!text.trim()) {
       continue;
     }
+    const fileStat = await stat(realFile);
     const resource: SourceIndexResource = {
       metadata: {
         schemaVersion: SOURCE_INDEX_SCHEMA_VERSION,
@@ -67,14 +68,17 @@ export async function indexObsidianSource(workspaceId: string): Promise<Obsidian
         externalId: relativePath,
         title: noteTitle(realFile),
         url: `obsidian://open?path=${encodeURIComponent(realFile)}`,
+        sourceUpdatedAt: fileStat.mtime.toISOString(),
         indexedAt: new Date().toISOString(),
         scope: vault,
         readTool: 'obsidian.read_note',
         readInput: { path: relativePath },
         status: 'active',
+        summaryStatus: 'missing',
         tags: ['obsidian']
       },
-      routingNotes: `Use this note for questions about ${noteTitle(realFile)} or ${relativePath}.`
+      routingNotes: `Use this note for questions about ${noteTitle(realFile)} or ${relativePath}.`,
+      contentPreview: text
     };
     const result = await writeSourceIndexResource(resource);
     changedPaths.push(result.relativePath);

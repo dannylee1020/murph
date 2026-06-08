@@ -10,10 +10,17 @@ function describeAvailableTools(context: Pick<ContextAssembly, 'availableTools'>
 
   const lines = context.availableTools.map((tool) => {
     const domains = tool.knowledgeDomains?.length ? ` (${tool.knowledgeDomains.join(', ')})` : '';
+    if (tool.hintedRead) {
+      return `- ${tool.name}${domains}: ${tool.description} Choose the matching hintId; the runtime executes the stored live read input.`;
+    }
     return `- ${tool.name}${domains}: ${tool.description}`;
   });
+  const hasHintedTools = context.availableTools.some((tool) => tool.hintedRead);
+  const heading = hasHintedTools
+    ? 'Tools you may call. Source-index hints are available for this request; choose the most relevant hinted read tool before drafting factual replies.'
+    : 'Tools you may call. No usable source-index hint is available, so live retrieval is all-or-nothing: either call runtime.retrieve_all once for the current request, or call no live tools.';
   return [
-    'Tools you may call. Live retrieval is all-or-nothing: either call runtime.retrieve_all once for the current request, or call no live tools.',
+    heading,
     ...lines
   ].join('\n');
 }
@@ -23,9 +30,9 @@ function describeGroundingDirective(directive?: GroundingDirective): string {
     return 'If the provided context is already sufficient, answer without calling tools.';
   }
   if (directive.required) {
-    return `Grounding required for factual replies: ${directive.reason} First decide whether the triggerMessage is a real Murph request. If it is unrelated, random, or out of scope, return abstain without tools. If it is relevant and needs factual/current-state evidence, call runtime.retrieve_all exactly once before drafting. If results are weak or empty, explain what is missing and defer or ask.`;
+    return `Grounding required for factual replies: ${directive.reason} First decide whether the triggerMessage is a real Murph request. If it is unrelated, random, or out of scope, return abstain without tools. If hinted read tools are listed and a hint matches the request, call the best hinted read tool before drafting. If no hinted read tools are listed and factual/current-state evidence is needed, call runtime.retrieve_all exactly once before drafting. If results are weak or empty, explain what is missing and defer or ask.`;
   }
-  return `${directive.reason} First decide whether the triggerMessage is a real Murph request. If it is unrelated, random, or out of scope, return abstain without tools. If retrieval would materially improve a relevant answer, call runtime.retrieve_all exactly once.`;
+  return `${directive.reason} First decide whether the triggerMessage is a real Murph request. If it is unrelated, random, or out of scope, return abstain without tools. If hinted read tools are listed and a hint matches the request, call the best hinted read tool. If no hinted read tools are listed and retrieval would materially improve a relevant answer, call runtime.retrieve_all exactly once.`;
 }
 
 function describeMemoryBoundary(): string {

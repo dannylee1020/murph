@@ -79,9 +79,11 @@ export async function indexGitHubSource(workspaceId: string, limitPerRepository 
           readTool: kind === 'pull_request' ? 'github.read_pr' : 'github.read_issue',
           readInput: { repository, number: item.number },
           status: 'active',
+          summaryStatus: 'missing',
           tags: ['github', repository, item.state ?? 'unknown', kind]
         },
-        routingNotes: `Use this ${kind === 'pull_request' ? 'pull request' : 'issue'} for questions about ${repository}#${item.number}, ${item.title}, state ${item.state ?? 'unknown'}, or recent ${repository} activity.`
+        routingNotes: `Use this ${kind === 'pull_request' ? 'pull request' : 'issue'} for questions about ${repository}#${item.number}, ${item.title}, state ${item.state ?? 'unknown'}, or recent ${repository} activity.`,
+        contentPreview: item.body ?? undefined
       };
       const result = await writeSourceIndexResource(resource);
       changedPaths.push(result.relativePath);
