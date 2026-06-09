@@ -396,56 +396,6 @@ export type QueuePayload = {
     }>;
 };
 
-export type TriagePayload = {
-    session: {
-        id: string;
-        title: string;
-        mode: string;
-        status: string;
-        stoppedAt?: string;
-    } | null;
-    sessions: Array<{
-        id: string;
-        title: string;
-        mode: string;
-        status: string;
-        stoppedAt?: string;
-        triageItemCount?: number;
-    }>;
-    items: Array<{
-        id: string;
-        sessionId?: string;
-        threadTs: string;
-        channelId: string;
-        channelDisplay?: ChannelDisplay;
-        targetUserId?: string;
-        action: string;
-        disposition?: string;
-        reason: string;
-        message: string;
-        confidence?: number;
-        createdAt: string;
-        lifecycle?: Array<{
-            disposition: string;
-            label: string;
-            reason: string;
-            source: string;
-            createdAt: string;
-        }>;
-        contextSnapshot?: {
-            summary: string;
-            continuityCase: string;
-            thread: {
-                messages: Array<{
-                    ts: string;
-                    authorId?: string;
-                    text: string;
-                }>;
-            };
-        };
-    }>;
-};
-
 export type SessionsPayload = {
     sessions: Array<{ id: string; title: string; mode: string }>;
 };
@@ -458,15 +408,6 @@ export type AuditPayload = {
         disposition: string;
         policyReason: string;
         provider?: string;
-    }>;
-};
-
-export type TracesPayload = {
-    traces: Array<{
-        run: { id: string; sessionId?: string; status: string; taskId: string };
-        createdAt: string;
-        contextSummary: string;
-        executionResult: string;
     }>;
 };
 

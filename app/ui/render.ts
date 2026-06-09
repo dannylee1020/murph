@@ -3,7 +3,6 @@ import { renderDashboard } from './features/dashboard';
 import {
     renderActivity,
     renderReview,
-    renderTriage,
 } from './features/operations';
 import { renderSetup } from './features/setup';
 import { getJson } from './lib/api';
@@ -39,8 +38,6 @@ export async function renderMurph(): Promise<void> {
 
         if (pathname === '/review') {
             await renderReview();
-        } else if (pathname === '/triage') {
-            await renderTriage();
         } else if (
             pathname === '/activity' ||
             pathname === '/runs' ||

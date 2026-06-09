@@ -12,7 +12,6 @@ let sidebarActiveSessionCount: number | undefined;
 const navItems = [
     { href: '/', label: 'Home' },
     { href: '/review', label: 'Review' },
-    { href: '/triage', label: 'Triage' },
     { href: '/activity', label: 'Activity' },
     { href: '/admin', label: 'Admin' },
 ];

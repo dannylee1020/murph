@@ -601,14 +601,6 @@ export interface ReviewItem {
     createdAt: string;
 }
 
-export interface ReviewLifecycleEntry {
-    disposition: ActionDisposition;
-    label: string;
-    reason: string;
-    source: 'policy' | 'operator';
-    createdAt: string;
-}
-
 export interface ActionContextSnapshot {
     summary: string;
     continuityCase: ContinuityCase;
@@ -627,11 +619,6 @@ export interface ActionContextSnapshot {
             text: string;
         }>;
     };
-}
-
-export interface TriageItem extends ReviewItem {
-    contextSnapshot?: ActionContextSnapshot;
-    lifecycle?: ReviewLifecycleEntry[];
 }
 
 export interface ThreadStateRecord {

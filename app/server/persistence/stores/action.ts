@@ -3,11 +3,8 @@ import type {
   ActionContextSnapshot,
   ActionDisposition,
   ContinuityActionType,
-  ContinuityCase,
   ProviderName,
-  ReviewLifecycleEntry,
-  ReviewItem,
-  TriageItem
+  ReviewItem
 } from '#app/types';
 import type { Db } from './common.js';
 
@@ -43,14 +40,6 @@ interface ActionRow {
   created_at: string;
 }
 
-interface AuditLifecycleRow {
-  task_id: string;
-  disposition: ActionDisposition;
-  policy_reason: string;
-  model_reason: string;
-  created_at: string;
-}
-
 function mapAction(row: ActionRow): ReviewItem {
   return {
     id: row.id,
@@ -68,58 +57,6 @@ function mapAction(row: ActionRow): ReviewItem {
     contextSnapshot: parseContextSnapshot(row.context_snapshot_json),
     createdAt: row.created_at
   };
-}
-
-function lifecycleLabel(row: AuditLifecycleRow): string {
-  if (row.disposition === 'queued') {
-    return 'Queued by policy';
-  }
-  if (row.task_id.startsWith('review:') && row.disposition === 'auto_sent') {
-    return 'Approved and sent by operator';
-  }
-  if (row.task_id.startsWith('review:') && row.disposition === 'abstained') {
-    return 'Marked abstained by operator';
-  }
-  if (row.task_id.startsWith('review:')) {
-    return 'Resolved by operator';
-  }
-  return 'Recorded by policy';
-}
-
-function lifecycleReason(row: AuditLifecycleRow): string {
-  return row.task_id.startsWith('review:') ? row.policy_reason : row.policy_reason || row.model_reason;
-}
-
-function listReviewLifecycle(db: Db, row: ActionRow): ReviewLifecycleEntry[] {
-  const rows = db
-    .prepare(
-      `SELECT task_id, disposition, policy_reason, model_reason, created_at
-       FROM audit_entries
-       WHERE workspace_id = ?
-         AND thread_ts = ?
-         AND (session_id = ? OR (session_id IS NULL AND ? IS NULL))
-         AND (
-           task_id = ?
-           OR (disposition = 'queued' AND created_at >= ?)
-         )
-       ORDER BY created_at ASC`
-    )
-    .all(
-      row.workspace_id,
-      row.thread_ts,
-      row.session_id ?? null,
-      row.session_id ?? null,
-      `review:${row.id}`,
-      row.created_at
-    ) as AuditLifecycleRow[];
-
-  return rows.map((auditRow) => ({
-    disposition: auditRow.disposition,
-    label: lifecycleLabel(auditRow),
-    reason: lifecycleReason(auditRow),
-    source: auditRow.task_id.startsWith('review:') ? 'operator' : 'policy',
-    createdAt: auditRow.created_at
-  }));
 }
 
 function parseContextSnapshot(value: string | null | undefined): ActionContextSnapshot | undefined {
@@ -260,91 +197,4 @@ export function listReviewQueue(db: Db, workspaceId?: string, sessionId?: string
     .all(...args) as ActionRow[];
 
   return rows.map(mapAction);
-}
-
-export function listTriageItems(db: Db, workspaceId?: string, sessionId?: string, targetUserId?: string): TriageItem[] {
-  const args: string[] = [];
-  const where: string[] = [`ca.disposition IN ('auto_sent', 'abstained')`];
-
-  if (workspaceId) {
-    where.push(`ca.workspace_id = ?`);
-    args.push(workspaceId);
-  }
-
-  if (sessionId) {
-    where.push(`ca.session_id = ?`);
-    args.push(sessionId);
-  }
-
-  if (targetUserId) {
-    where.push(`ca.target_user_id = ?`);
-    args.push(targetUserId);
-  }
-
-  const rows = db
-    .prepare(
-      `SELECT ca.id, ca.workspace_id, ca.session_id, ca.thread_ts, ca.channel_id, ca.target_user_id,
-              ca.action_type, ca.disposition, ca.message, ca.reason, ca.confidence, ca.provider,
-              ca.context_snapshot_json, ca.created_at,
-              ts.summary AS fallback_summary, ts.continuity_case AS fallback_continuity_case
-       FROM continuity_actions ca
-       LEFT JOIN thread_states ts
-         ON ts.workspace_id = ca.workspace_id
-        AND ts.channel_id = ca.channel_id
-        AND ts.thread_ts = ca.thread_ts
-       WHERE ${where.join(' AND ')}
-       ORDER BY ca.created_at DESC`
-    )
-    .all(...args) as Array<ActionRow & {
-    fallback_summary?: string | null;
-    fallback_continuity_case?: ContinuityCase | null;
-  }>;
-
-  return rows.map((row) => {
-    const item = mapAction(row) as TriageItem;
-    item.contextSnapshot =
-      parseContextSnapshot(row.context_snapshot_json) ??
-      (row.fallback_summary
-        ? {
-            summary: row.fallback_summary,
-            continuityCase: row.fallback_continuity_case ?? 'unknown',
-            thread: {
-              channelId: row.channel_id,
-              threadTs: row.thread_ts,
-              messages: []
-            }
-          }
-        : undefined);
-    item.lifecycle = listReviewLifecycle(db, row);
-    return item;
-  });
-}
-
-export function countTriageItemsBySession(db: Db, workspaceId?: string, sessionIds: string[] = []): Map<string, number> {
-  if (sessionIds.length === 0) {
-    return new Map();
-  }
-
-  const args: string[] = [];
-  const where = [
-    `disposition IN ('auto_sent', 'abstained')`,
-    `session_id IN (${sessionIds.map(() => '?').join(', ')})`
-  ];
-  args.push(...sessionIds);
-
-  if (workspaceId) {
-    where.push(`workspace_id = ?`);
-    args.push(workspaceId);
-  }
-
-  const rows = db
-    .prepare(
-      `SELECT session_id, COUNT(*) AS count
-       FROM continuity_actions
-       WHERE ${where.join(' AND ')}
-       GROUP BY session_id`
-    )
-    .all(...args) as Array<{ session_id: string; count: number }>;
-
-  return new Map(rows.map((row) => [row.session_id, row.count]));
 }

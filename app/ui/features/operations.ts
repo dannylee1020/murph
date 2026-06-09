@@ -72,10 +72,8 @@ import type {
     MemberChoice,
     HomeWorkspaceChannelState,
     QueuePayload,
-    TriagePayload,
     SessionsPayload,
     AuditPayload,
-    TracesPayload,
     RunsPayload,
     RunEventsPayload,
     RecurringJobsPayload,
@@ -110,8 +108,6 @@ import {
     policyProfileDialog,
     policyProfileOptions,
     policySummary,
-    renderContextRetrievalDisclosure,
-    renderToolCallsDisclosure,
     sessionCreateErrorHtml,
     sessionErrorHtml,
     sessionFeedbackHtml,
@@ -184,237 +180,379 @@ export async function renderReview(): Promise<void> {
     );
 }
 
-function dispositionPill(disposition: string | undefined): string {
-    if (disposition === 'auto_sent')
-        return '<span class="pill pill-ok">Auto-sent</span>';
-    if (disposition === 'abstained')
-        return '<span class="pill pill-muted">Abstained</span>';
-    return `<span class="pill pill-muted">${escapeHtml(titleCase(disposition ?? 'unknown'))}</span>`;
+function runStatusTone(status: string): 'ok' | 'off' | 'warn' {
+    if (status === 'completed') return 'ok';
+    if (status === 'failed') return 'warn';
+    return 'off';
 }
 
-function renderReviewLifecycle(item: TriagePayload['items'][number]): string {
-    const lifecycle = item.lifecycle ?? [];
-    if (lifecycle.length === 0) {
-        return '';
-    }
-
-    return `
-        <div>
-          <dt>Lifecycle</dt>
-          <dd>
-            <ol class="review-lifecycle">
-              ${lifecycle
-                  .map(
-                      (entry) => `
-                <li>
-                  <span>${escapeHtml(entry.label)}</span>
-                  <time title="${escapeHtml(formatExactIso(entry.createdAt))}">${escapeHtml(formatRelative(entry.createdAt))}</time>
-                  <small>${escapeHtml(entry.reason || titleCase(entry.disposition))}</small>
-                </li>
-              `,
-                  )
-                  .join('')}
-            </ol>
-          </dd>
-        </div>
-    `;
+function formatRunDuration(startedAt: string, completedAt?: string): string {
+    if (!completedAt) return 'In progress';
+    const elapsedMs = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+    if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return '—';
+    if (elapsedMs < 1000) return `${elapsedMs}ms`;
+    const seconds = Math.round(elapsedMs / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remaining = seconds % 60;
+    return remaining ? `${minutes}m ${remaining}s` : `${minutes}m`;
 }
 
-function renderTriageItem(item: TriagePayload['items'][number]): string {
-    const messages = item.contextSnapshot?.thread.messages ?? [];
-    const excerpt = messages.at(-1)?.text ?? item.message ?? item.reason;
-    const confidence =
-        typeof item.confidence === 'number'
-            ? `${Math.round(item.confidence * 100)}%`
-            : '—';
-
-    return `
-    <article class="panel triage-item">
-      <h2>${dispositionPill(item.disposition)} <span>${escapeHtml(item.channelId)}</span><code>${escapeHtml(item.threadTs)}</code></h2>
-      <dl class="details">
-        <div><dt>Recorded</dt><dd title="${escapeHtml(formatExactIso(item.createdAt))}">${escapeHtml(formatRelative(item.createdAt))}</dd></div>
-        <div><dt>Action</dt><dd>${escapeHtml(titleCase(item.action))}</dd></div>
-        <div><dt>Confidence</dt><dd>${escapeHtml(confidence)}</dd></div>
-        <div><dt>Case</dt><dd>${escapeHtml(titleCase(item.contextSnapshot?.continuityCase ?? 'unknown'))}</dd></div>
-        <div><dt>Thread summary</dt><dd>${escapeHtml(item.contextSnapshot?.summary ?? 'No thread snapshot was captured for this action.')}</dd></div>
-        <div><dt>Thread excerpt</dt><dd>${escapeHtml(excerpt || 'No thread messages captured.')}</dd></div>
-        <div><dt>Murph response</dt><dd>${escapeHtml(item.message || 'No message drafted')}</dd></div>
-        <div><dt>Reason</dt><dd>${escapeHtml(item.reason)}</dd></div>
-        ${renderReviewLifecycle(item)}
-      </dl>
-    </article>
-  `;
+function runTargetLabel(run: RunsPayload['runs'][number]): string {
+    return channelDisplayLabel(run);
 }
 
-function renderTriageSessionLink(
-    session: TriagePayload['sessions'][number],
-    selectedSessionId: string | undefined,
+function runRow(
+    run: RunsPayload['runs'][number],
+    selectedRunId: string | undefined,
+    hrefBase: '/activity' | '/runs',
 ): string {
-    const isSelected = session.id === selectedSessionId;
-    const count = session.triageItemCount ?? 0;
+    const active = selectedRunId === run.id;
+    const href = active ? hrefBase : `${hrefBase}?id=${encodeURIComponent(run.id)}`;
+    const recorded = formatDateTime(run.startedAt).replace(',', ' ·');
     return `
-    <a
-      class="session-history-row ${isSelected ? 'active' : ''}"
-      href="/triage?sessionId=${escapeHtml(session.id)}"
-      data-link
-      ${isSelected ? 'aria-current="page"' : ''}
-    >
-      <strong>${escapeHtml(session.title)}</strong>
-      <span>${escapeHtml(sessionModeLabel(session.mode))} · ${escapeHtml(titleCase(session.status))}</span>
-      <span title="${escapeHtml(formatExactIso(session.stoppedAt))}">${escapeHtml(formatRelative(session.stoppedAt))}</span>
-      <small>${count} ${count === 1 ? 'action' : 'actions'}</small>
-    </a>
+    <li>
+      <a
+        class="list-row run-item ${active ? 'active' : ''}"
+        data-link
+        href="${escapeHtml(href)}"
+        aria-expanded="${active ? 'true' : 'false'}"
+        aria-controls="runtime-log-panel"
+        ${active ? 'aria-current="page"' : ''}
+      >
+        <span class="run-item-body">
+          <strong>${escapeHtml(runTargetLabel(run))}</strong>
+          <span>Task ${escapeHtml(run.taskId.slice(0, 12))} · ${escapeHtml(recorded)}</span>
+        </span>
+        ${consoleStateHtml(titleCase(run.status), runStatusTone(run.status))}
+      </a>
+    </li>
   `;
 }
 
-export async function renderTriage(): Promise<void> {
-    setTitle('Murph Triage');
-    loading('Triage');
-    const selectedSessionId = new URLSearchParams(window.location.search).get(
-        'sessionId',
-    );
-    const payload = await getJson<TriagePayload>(
-        `/api/gateway/triage${selectedSessionId ? `?sessionId=${encodeURIComponent(selectedSessionId)}` : ''}`,
-    );
-    const grouped = new Map<string, TriagePayload['items']>();
-    for (const item of payload.items) {
-        const items = grouped.get(item.channelId) ?? [];
-        items.push(item);
-        grouped.set(item.channelId, items);
-    }
+function eventPayloadSummary(payload: unknown): string {
+    if (!payload || typeof payload !== 'object') return 'No payload retained.';
+    const record = payload as Record<string, unknown>;
+    const candidate =
+        record.summary ??
+        record.reason ??
+        record.error ??
+        record.message ??
+        record.status ??
+        record.name;
+    if (typeof candidate === 'string' && candidate.trim()) return candidate;
+    const keys = Object.keys(record);
+    if (keys.length === 0) return 'Empty payload retained.';
+    return `Payload retained with ${keys.slice(0, 4).join(', ')}${keys.length > 4 ? `, and ${keys.length - 4} more` : ''}.`;
+}
 
-    shell(`
-    <section class="page-head console-head">
-      <div>
-        <p class="eyebrow">Morning catchup</p>
-        <h1>Triage</h1>
-        <p>${escapeHtml(
-            payload.session
-                ? `${payload.session.title} (${sessionModeLabel(payload.session.mode)})`
-                : 'No completed sessions yet.',
-        )}</p>
-      </div>
-      <span class="console-state">${payload.items.length} ${payload.items.length === 1 ? 'action' : 'actions'}</span>
-    </section>
+type RuntimeCheckpoint = {
+    key: string;
+    label: string;
+    tone: 'ok' | 'off' | 'warn';
+    at?: string;
+    summary: string;
+    meta?: string[];
+};
 
-    <section class="triage-layout">
-      <aside class="panel session-history">
-        <h2>Completed sessions</h2>
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : undefined;
+}
+
+function eventPayload(
+    event: RunEventsPayload['events'][number] | undefined,
+): Record<string, unknown> {
+    return asRecord(event?.payload) ?? {};
+}
+
+function firstRunEvent(
+    events: RunEventsPayload['events'],
+    type: string,
+): RunEventsPayload['events'][number] | undefined {
+    return events.find((event) => event.type === type);
+}
+
+function lastRunEvent(
+    events: RunEventsPayload['events'],
+    type: string,
+): RunEventsPayload['events'][number] | undefined {
+    return [...events].reverse().find((event) => event.type === type);
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+    return values.filter(
+        (value, index, all): value is string =>
+            Boolean(value) && all.indexOf(value) === index,
+    );
+}
+
+function valueLabel(value: unknown): string | undefined {
+    if (typeof value === 'string' && value.trim()) return value;
+    if (typeof value === 'number' || typeof value === 'boolean')
+        return String(value);
+    return undefined;
+}
+
+function percentLabel(value: unknown): string | undefined {
+    return typeof value === 'number' && Number.isFinite(value)
+        ? `${Math.round(value * 100)}%`
+        : undefined;
+}
+
+function shortList(values: string[], empty: string): string {
+    if (values.length === 0) return empty;
+    if (values.length <= 2) return values.join(', ');
+    return `${values.slice(0, 2).join(', ')} +${values.length - 2}`;
+}
+
+function finalPolicyEvent(
+    events: RunEventsPayload['events'],
+): RunEventsPayload['events'][number] | undefined {
+    const policies = events.filter((event) => event.type === 'agent.policy.decided');
+    return (
+        [...policies]
+            .reverse()
+            .find((event) => eventPayload(event).phase !== 'execution_classifier') ??
+        policies.at(-1)
+    );
+}
+
+function buildRuntimeCheckpoints(
+    run: RunsPayload['runs'][number],
+    events: RunEventsPayload['events'],
+): RuntimeCheckpoint[] {
+    const started = firstRunEvent(events, 'agent.run.started');
+    const context = firstRunEvent(events, 'agent.context.built');
+    const model = lastRunEvent(events, 'agent.model.completed');
+    const modelFailed = lastRunEvent(events, 'agent.model.failed');
+    const policy = finalPolicyEvent(events);
+    const queued = lastRunEvent(events, 'agent.action.queued');
+    const sent = lastRunEvent(events, 'agent.action.sent');
+    const completed = lastRunEvent(events, 'agent.run.completed');
+    const failed = lastRunEvent(events, 'agent.run.failed');
+    const contextPayload = eventPayload(context);
+    const modelPayload = eventPayload(model);
+    const policyPayload = eventPayload(policy);
+    const completedPayload = eventPayload(completed);
+    const failedPayload = eventPayload(failed);
+    const sourceIndexHints = Array.isArray(contextPayload.sourceIndexHints)
+        ? contextPayload.sourceIndexHints
+        : [];
+    const sourceIndexToolEvents = events.filter((event) => {
+        const payload = eventPayload(event);
+        return (
+            (event.type === 'agent.tool.requested' ||
+                event.type === 'agent.tool.completed') &&
+            payload.routedVia === 'source_index'
+        );
+    });
+    const toolCompleted = events.filter(
+        (event) => event.type === 'agent.tool.completed',
+    );
+    const toolRequested = events.filter(
+        (event) => event.type === 'agent.tool.requested',
+    );
+    const failedTools = toolCompleted.filter(
+        (event) => eventPayload(event).ok === false,
+    );
+    const toolNames = uniqueStrings(
+        toolCompleted.map((event) => valueLabel(eventPayload(event).name)),
+    );
+    const actionEvent = queued ?? sent;
+    const actionPayload = eventPayload(actionEvent);
+    const executionResult =
+        valueLabel(completedPayload.executionResult) ??
+        valueLabel(failedPayload.error);
+
+    return [
+        {
+            key: 'triggered',
+            label: 'Triggered',
+            tone: 'ok',
+            at: started?.createdAt ?? run.startedAt,
+            summary: `Message matched ${runTargetLabel(run)} coverage.`,
+            meta: [`Thread ${run.threadTs ?? '—'}`],
+        },
+        {
+            key: 'started',
+            label: 'Started',
+            tone: 'ok',
+            at: run.startedAt,
+            summary: 'Murph started an agent run.',
+            meta: [`Task ${run.taskId.slice(0, 12)}`],
+        },
+        {
+            key: 'memory',
+            label: 'Memory recalled',
+            tone:
+                sourceIndexHints.length > 0 || sourceIndexToolEvents.length > 0
+                    ? 'ok'
+                    : 'off',
+            at: context?.createdAt,
+            summary:
+                sourceIndexHints.length > 0 || sourceIndexToolEvents.length > 0
+                    ? `Source index recalled ${sourceIndexHints.length} ${sourceIndexHints.length === 1 ? 'hint' : 'hints'} for routing.`
+                    : 'No source-index hints were used for this run.',
+            meta: [
+                `${sourceIndexToolEvents.length} routed ${sourceIndexToolEvents.length === 1 ? 'tool event' : 'tool events'}`,
+                `${valueLabel(contextPayload.artifacts) ?? '0'} ${valueLabel(contextPayload.artifacts) === '1' ? 'artifact' : 'artifacts'}`,
+            ],
+        },
+        {
+            key: 'tools',
+            label: 'Tools called',
+            tone: failedTools.length > 0 ? 'warn' : toolCompleted.length > 0 ? 'ok' : 'off',
+            at: toolCompleted.at(-1)?.createdAt ?? toolRequested.at(-1)?.createdAt,
+            summary:
+                toolCompleted.length > 0
+                    ? `${toolCompleted.length} ${toolCompleted.length === 1 ? 'tool completed' : 'tools completed'}${failedTools.length > 0 ? `, ${failedTools.length} failed` : ''}.`
+                    : 'No external tools were called.',
+            meta: [
+                shortList(toolNames, 'No tool names recorded'),
+                `${toolRequested.length} requested`,
+            ],
+        },
+        {
+            key: 'draft',
+            label: 'Draft created',
+            tone: modelFailed ? 'warn' : model ? 'ok' : 'off',
+            at: model?.createdAt ?? modelFailed?.createdAt,
+            summary: model
+                ? `Drafted ${valueLabel(modelPayload.action) ?? 'an action'}.`
+                : modelFailed
+                  ? eventPayloadSummary(modelFailed.payload)
+                  : 'No draft was created.',
+            meta: [
+                percentLabel(modelPayload.confidence)
+                    ? `${percentLabel(modelPayload.confidence)} confidence`
+                    : 'Confidence not recorded',
+                valueLabel(modelPayload.provider) ?? 'Provider not recorded',
+            ],
+        },
+        {
+            key: 'policy',
+            label: 'Policy applied',
+            tone: policy ? 'ok' : 'off',
+            at: policy?.createdAt,
+            summary: policy
+                ? `Policy ${valueLabel(policyPayload.disposition) ?? valueLabel(policyPayload.execution) ?? 'decided the outcome'}.`
+                : 'No policy decision was recorded.',
+            meta: [
+                titleCase(valueLabel(policyPayload.execution) ?? 'No execution recorded'),
+                valueLabel(policyPayload.reason) ?? 'No reason recorded',
+            ],
+        },
+        {
+            key: 'outcome',
+            label: queued ? 'Queued' : sent ? 'Sent' : 'Outcome',
+            tone: failed ? 'warn' : actionEvent || completed ? 'ok' : 'off',
+            at: actionEvent?.createdAt ?? completed?.createdAt ?? failed?.createdAt,
+            summary: queued
+                ? 'Queued for operator review.'
+                : sent
+                  ? 'Sent automatically after policy approval.'
+                  : executionResult ?? 'No outbound action was recorded.',
+            meta: [
+                valueLabel(actionPayload.action)
+                    ? `Action: ${valueLabel(actionPayload.action)}`
+                    : 'No action recorded',
+                valueLabel(actionPayload.itemId)
+                    ? `Item ${valueLabel(actionPayload.itemId)?.slice(0, 8)}`
+                    : 'No item id',
+            ],
+        },
+        {
+            key: 'finished',
+            label: 'Finished',
+            tone: failed || run.status === 'failed' ? 'warn' : completed || run.completedAt ? 'ok' : 'off',
+            at: completed?.createdAt ?? failed?.createdAt ?? run.completedAt,
+            summary: failed
+                ? valueLabel(failedPayload.error) ?? 'Run failed.'
+                : completed
+                  ? valueLabel(completedPayload.executionResult) ??
+                    'Run completed.'
+                  : 'Run is still in progress.',
+            meta: [
+                formatRunDuration(run.startedAt, run.completedAt),
+                titleCase(run.status),
+            ],
+        },
+    ];
+}
+
+function checkpointLogEntry(
+    checkpoint: RuntimeCheckpoint,
+): string {
+    const meta = (checkpoint.meta ?? []).filter(Boolean);
+    return `
+    <li class="run-log-entry checkpoint-${escapeHtml(checkpoint.key)}">
+      <div class="run-log-entry-meta">
         ${
-            payload.sessions.length === 0
-                ? '<p class="empty">Completed sleep sessions will appear here after Murph stops or expires a session.</p>'
-                : `<div class="session-history-list">
-                ${payload.sessions.map((session) => renderTriageSessionLink(session, payload.session?.id)).join('')}
-              </div>`
+            checkpoint.at
+                ? `<time class="run-log-time" title="${escapeHtml(formatExactIso(checkpoint.at))}">${escapeHtml(formatRelative(checkpoint.at))}</time>`
+                : '<span class="run-log-time">—</span>'
         }
-      </aside>
-
-      <section class="triage-detail stack">
+      </div>
+      <div class="run-log-event">
+        <h3>
+          <span
+            class="run-log-step-indicator run-log-step-indicator-${escapeHtml(checkpoint.tone)}"
+            aria-hidden="true"
+          ></span>
+          <span>${escapeHtml(checkpoint.label)}</span>
+        </h3>
+        <p>${escapeHtml(checkpoint.summary)}</p>
         ${
-            payload.session
-                ? `<article class="panel selected-session-summary">
-                <h2>${escapeHtml(payload.session.title)}</h2>
-                <dl class="details">
-                  <div><dt>Mode</dt><dd>${escapeHtml(sessionModeLabel(payload.session.mode))}</dd></div>
-                  <div><dt>Status</dt><dd>${escapeHtml(titleCase(payload.session.status))}</dd></div>
-                  <div><dt>Stopped</dt><dd title="${escapeHtml(formatExactIso(payload.session.stoppedAt))}">${escapeHtml(formatRelative(payload.session.stoppedAt))}</dd></div>
-                  <div><dt>Recorded</dt><dd>${payload.items.length} ${payload.items.length === 1 ? 'action' : 'actions'}</dd></div>
-                </dl>
-              </article>`
+            meta.length > 0
+                ? `<div class="run-log-entry-notes">${meta
+                      .slice(0, 2)
+                      .map((item) => `<span>${escapeHtml(item)}</span>`)
+                      .join('')}</div>`
                 : ''
         }
-
-        ${
-            payload.items.length === 0
-                ? '<article class="panel"><p class="empty">No auto-sent or abstained actions were recorded for this session.</p></article>'
-                : [...grouped.entries()]
-                      .map(
-                          ([channelId, items]) => `
-                    <section class="stack channel-triage-group">
-                      <div class="section-head">
-                        <h2>${escapeHtml(channelId)}</h2>
-                        <span class="section-meta">${items.length} ${items.length === 1 ? 'item' : 'items'}</span>
-                      </div>
-                      ${items.map(renderTriageItem).join('')}
-                    </section>
-                  `,
-                      )
-                      .join('')
-        }
-      </section>
-    </section>
-  `);
+      </div>
+    </li>
+  `;
 }
 
-async function renderAudit(): Promise<void> {
-    setTitle('Murph Decisions');
-    loading('Decision Log');
-    const [auditPayload, tracePayload] = await Promise.all([
-        getJson<AuditPayload>('/api/gateway/audit'),
-        getJson<TracesPayload>('/api/gateway/traces'),
-    ]);
-
-    shell(`
-    <section class="page-head">
-      <p class="eyebrow">Decision record</p>
-      <h1>Decision Log</h1>
-      <p>Policy outcomes, operator actions, and execution traces.</p>
-    </section>
-
-    <section class="panel">
-      <h2>Policy Records</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Time</th><th>Session</th><th>Action</th><th>Outcome</th><th>Note</th></tr>
-          </thead>
-          <tbody>
-            ${
-                auditPayload.records.length === 0
-                    ? '<tr><td colspan="5" class="empty">Policy decisions and operator outcomes appear here after any Slack-triggered run.</td></tr>'
-                    : auditPayload.records
-                          .map(
-                              (record) => `
-                        <tr>
-                          <td title="${escapeHtml(formatExactIso(record.createdAt))}">${escapeHtml(formatRelative(record.createdAt))}</td>
-                          <td>${escapeHtml(record.sessionId ?? '—')}</td>
-                          <td>${escapeHtml(titleCase(record.action))}</td>
-                          <td>${escapeHtml(titleCase(record.disposition))}</td>
-                          <td>${escapeHtml(record.provider ? `${record.provider}: ${record.policyReason}` : record.policyReason)}</td>
-                        </tr>
-                      `,
-                          )
-                          .join('')
-            }
-          </tbody>
-        </table>
+function runLogInspector(
+    run: RunsPayload['runs'][number] | undefined,
+    events: RunEventsPayload['events'],
+): string {
+    if (!run) {
+        return `
+      <article class="panel run-log-panel empty-run-log collapsed-run-log" id="runtime-log-panel">
+        <header class="run-log-panel-title">
+          <h2>Runtime log</h2>
+        </header>
+        <p class="empty">Select a run to inspect checkpoints.</p>
+      </article>
+    `;
+    }
+    const checkpoints = buildRuntimeCheckpoints(run, events);
+    return `
+    <article class="panel run-log-panel" id="runtime-log-panel">
+      <header class="run-log-panel-title">
+        <div>
+          <h2>Runtime log</h2>
+          <p>${escapeHtml(runTargetLabel(run))}</p>
+        </div>
+        ${consoleStateHtml(titleCase(run.status), runStatusTone(run.status))}
+      </header>
+      <div class="run-log-head">
+        <p>Enough detail to check what happened without reading the full event transcript.</p>
+        <div class="run-log-meta">
+          <span><strong>Task</strong> ${escapeHtml(run.taskId.slice(0, 14))}</span>
+          <span><strong>Duration</strong> ${escapeHtml(formatRunDuration(run.startedAt, run.completedAt))}</span>
+        </div>
       </div>
-    </section>
-
-    <section class="stack">
-      <h2>Decision Traces</h2>
-      ${
-          tracePayload.traces.length === 0
-              ? '<article class="panel"><p class="empty">Decision traces collect here as the agent runs; each is a compact projection of a run transcript.</p></article>'
-              : tracePayload.traces
-                    .map(
-                        (trace) => `
-                  <article class="panel">
-                    <h3>${escapeHtml(trace.run.taskId)}</h3>
-                    <dl class="details">
-                      <div><dt>Session</dt><dd>${escapeHtml(trace.run.sessionId ?? '—')}</dd></div>
-                      <div><dt>Status</dt><dd>${escapeHtml(titleCase(trace.run.status))}</dd></div>
-                      <div><dt>Context</dt><dd>${escapeHtml(trace.contextSummary)}</dd></div>
-                      <div><dt>Execution</dt><dd>${escapeHtml(trace.executionResult)}</dd></div>
-                      <div><dt>Recorded</dt><dd title="${escapeHtml(formatExactIso(trace.createdAt))}">${escapeHtml(formatRelative(trace.createdAt))}</dd></div>
-                    </dl>
-                  </article>
-                `,
-                    )
-                    .join('')
-      }
-    </section>
-  `);
+      <section class="run-log-timeline-section" aria-label="Checkpoint timeline">
+        <ol class="run-log-timeline">${checkpoints.map((checkpoint) => checkpointLogEntry(checkpoint)).join('')}</ol>
+      </section>
+    </article>
+  `;
 }
 
 async function renderRuns(): Promise<void> {
@@ -439,59 +577,19 @@ async function renderRuns(): Promise<void> {
       <p>Select a run to inspect its ordered agent events.</p>
     </section>
 
-    <section class="grid two">
-      <article class="panel">
-        <h2>Recent Runs</h2>
+    <section class="activity-grid">
+      <article class="panel activity-runs-panel">
+        <header class="activity-panel-title">
+          <h2>Recent runs</h2>
+        </header>
         ${
             runsPayload.runs.length === 0
                 ? '<p class="empty">Agent runs appear here once a Slack event triggers the gateway.</p>'
-                : `<ul class="list">${runsPayload.runs
-                      .map((run) => {
-                          const isActive =
-                              selectedRun && selectedRun.id === run.id;
-                          const channelLabel = channelDisplayLabel(run);
-                          const channelTitle = channelDisplayTitle(run);
-                          return `
-                    <li>
-                      <a
-                        class="list-row run-item ${isActive ? 'active' : ''}"
-                        data-link
-                        href="/runs?id=${escapeHtml(run.id)}"
-                        ${isActive ? 'aria-current="true"' : ''}
-                      >
-                        <strong>${escapeHtml(run.taskId)}</strong>
-                        <span title="${escapeHtml(channelTitle)}">${escapeHtml(titleCase(run.status))} · ${escapeHtml(channelLabel)}</span>
-                        <span title="${escapeHtml(formatExactIso(run.startedAt))}">${escapeHtml(formatRelative(run.startedAt))}</span>
-                      </a>
-                    </li>
-                  `;
-                      })
-                      .join('')}</ul>`
+                : `<ul class="list">${runsPayload.runs.map((run) => runRow(run, selectedRun?.id, '/runs')).join('')}</ul>`
         }
       </article>
 
-      <article class="panel">
-        <h2>${selectedRun ? `Events — ${escapeHtml(selectedRun.taskId)}` : 'Events'}</h2>
-        ${
-            !selectedRun
-                ? '<p class="empty">Pick a run on the left to see the event transcript.</p>'
-                : eventsPayload.events.length === 0
-                  ? '<p class="empty">This run has no events yet.</p>'
-                  : `<ul class="list">${eventsPayload.events
-                        .map(
-                            (event) => `
-                      <li>
-                        <div class="list-row event-row">
-                          <strong>${escapeHtml(event.sequence)}. ${escapeHtml(titleCase(event.type.replace(/^agent\./, '')))}</strong>
-                          <span title="${escapeHtml(formatExactIso(event.createdAt))}">${escapeHtml(formatRelative(event.createdAt))} · ${escapeHtml(event.type)}</span>
-                          <pre class="event-payload">${escapeHtml(JSON.stringify(event.payload, null, 2))}</pre>
-                        </div>
-                      </li>
-                    `,
-                        )
-                        .join('')}</ul>`
-        }
-      </article>
+      ${runLogInspector(selectedRun, eventsPayload.events)}
     </section>
   `);
 }
@@ -499,10 +597,9 @@ async function renderRuns(): Promise<void> {
 export async function renderActivity(): Promise<void> {
     setTitle('Murph Activity');
     loading('Activity');
-    const [runsPayload, auditPayload, tracePayload] = await Promise.all([
+    const [runsPayload, auditPayload] = await Promise.all([
         getJson<RunsPayload>('/api/gateway/runs'),
         getJson<AuditPayload>('/api/gateway/audit'),
-        getJson<TracesPayload>('/api/gateway/traces'),
     ]);
 
     const requestedId = new URL(window.location.href).searchParams.get('id');
@@ -521,74 +618,25 @@ export async function renderActivity(): Promise<void> {
       <div>
         <p class="eyebrow">Activity log</p>
         <h1>Activity</h1>
-        <p>Runs, decisions, and traces from Murph's operations.</p>
+        <p>Runs, tool use, policy decisions, and final outcomes from Murph's operations.</p>
       </div>
       <span class="console-state">${runsPayload.runs.length} ${runsPayload.runs.length === 1 ? 'run' : 'runs'}</span>
     </section>
 
-    <section class="grid two activity-grid">
-      <article class="panel">
-        <h2>Recent Runs</h2>
+    <section class="activity-grid">
+      <article class="panel activity-runs-panel">
+        <header class="activity-panel-title">
+          <h2>Recent runs</h2>
+        </header>
         ${
             runsPayload.runs.length === 0
                 ? '<p class="empty">Agent runs appear here once a message triggers the gateway.</p>'
-                : `<ul class="list">${runsPayload.runs
-                      .map((run) => {
-                          const isActive =
-                              selectedRun && selectedRun.id === run.id;
-                          return `
-                    <li>
-                      <a
-                        class="list-row run-item ${isActive ? 'active' : ''}"
-                        data-link
-                        href="/activity?id=${escapeHtml(run.id)}"
-                        ${isActive ? 'aria-current="true"' : ''}
-                      >
-                        <strong>${escapeHtml(run.taskId)}</strong>
-                        <span>${escapeHtml(titleCase(run.status))} · ${escapeHtml(run.channelId)}</span>
-                        <span title="${escapeHtml(formatExactIso(run.startedAt))}">${escapeHtml(formatRelative(run.startedAt))}</span>
-                      </a>
-                    </li>
-                  `;
-                      })
-                      .join('')}</ul>`
+                : `<ul class="list">${runsPayload.runs.map((run) => runRow(run, selectedRun?.id, '/activity')).join('')}</ul>`
         }
       </article>
 
-      ${
-          selectedRun
-              ? `
-            <article class="panel event-panel">
-              <h2>Events — ${escapeHtml(selectedRun.taskId)}</h2>
-              <dl class="details">
-                <div><dt>Channel</dt><dd title="${escapeHtml(channelDisplayTitle(selectedRun))}">${escapeHtml(channelDisplayLabel(selectedRun))}</dd></div>
-                <div><dt>Thread</dt><dd><code>${escapeHtml(selectedRun.threadTs)}</code></dd></div>
-              </dl>
-              ${
-                  eventsPayload.events.length === 0
-                      ? '<p class="empty">This run has no events yet.</p>'
-                      : `<ul class="list">${eventsPayload.events
-                            .map(
-                                (event) => `
-                          <li>
-                            <div class="list-row event-row">
-                              <strong>${escapeHtml(event.sequence)}. ${escapeHtml(titleCase(event.type.replace(/^agent\./, '')))}</strong>
-                              <span title="${escapeHtml(formatExactIso(event.createdAt))}">${escapeHtml(formatRelative(event.createdAt))} · ${escapeHtml(event.type)}</span>
-                              <pre class="event-payload">${escapeHtml(JSON.stringify(event.payload, null, 2))}</pre>
-                            </div>
-                          </li>
-                        `,
-                            )
-                            .join('')}</ul>`
-              }
-            </article>
-          `
-              : ''
-      }
+      ${runLogInspector(selectedRun, eventsPayload.events)}
     </section>
-
-    ${selectedRun ? renderContextRetrievalDisclosure(eventsPayload.events) : ''}
-    ${selectedRun ? renderToolCallsDisclosure(eventsPayload.events) : ''}
 
     <section class="panel">
       <h2>Policy Decisions</h2>
@@ -620,32 +668,5 @@ export async function renderActivity(): Promise<void> {
         </table>
       </div>
     </section>
-
-    ${
-        tracePayload.traces.length > 0
-            ? `
-          <section class="stack">
-            <h2>Decision Traces</h2>
-            ${tracePayload.traces
-                .slice(0, 10)
-                .map(
-                    (trace) => `
-                  <article class="panel">
-                    <h3>${escapeHtml(trace.run.taskId)}</h3>
-                    <dl class="details">
-                      <div><dt>Session</dt><dd>${escapeHtml(trace.run.sessionId ?? '—')}</dd></div>
-                      <div><dt>Status</dt><dd>${escapeHtml(titleCase(trace.run.status))}</dd></div>
-                      <div><dt>Context</dt><dd>${escapeHtml(trace.contextSummary)}</dd></div>
-                      <div><dt>Execution</dt><dd>${escapeHtml(trace.executionResult)}</dd></div>
-                      <div><dt>Recorded</dt><dd title="${escapeHtml(formatExactIso(trace.createdAt))}">${escapeHtml(formatRelative(trace.createdAt))}</dd></div>
-                    </dl>
-                  </article>
-                `,
-                )
-                .join('')}
-          </section>
-        `
-            : ''
-    }
   `);
 }

@@ -37,7 +37,7 @@ At a high level, the runtime loop is:
 7. The model drafts a proposed action such as reply, ask, redirect, defer, remind, or abstain.
 8. Policy classification and deterministic policy gates decide whether the action may send, must queue for review, or should abstain.
 9. Murph executes the allowed action or creates a review item.
-10. Run events, tool results, policy decisions, and final outcomes are stored for triage, audit, and optional operator exports.
+10. Run events, tool results, policy decisions, and final outcomes are stored for activity review, audit, and optional operator exports.
 
 This is why source access, policy, and session scope matter. Murph is useful when it can answer from the current thread or connected sources and conservative when it cannot.
 
@@ -123,17 +123,17 @@ Policy covers autonomy, sensitive topics, blocked actions, high-risk skill conte
 
 Use [Policy](/docs/policy) for profiles, modes, and customization.
 
-## Triage and audit
+## Activity and audit
 
 Every run leaves an audit trail. Murph records the trigger, context assembly, selected skills, tool calls, model output, policy decision, final action, and any review item.
 
-After a session, triage shows what Murph sent, queued, skipped, or failed. This is the operator feedback loop: review early sessions, tighten policy or channel scope, then widen autonomy only when behavior is predictable.
+Activity shows what Murph sent, queued, skipped, or failed, with a compact run timeline for source-index recall, tool calls, draft creation, policy, and outcome. This is the operator feedback loop: review early sessions, tighten policy or channel scope, then widen autonomy only when behavior is predictable.
 
 ## Control surfaces
 
 Murph has three control surfaces:
 
-- [Browser UI](/docs/usage/browser-ui) for setup, sessions, status, triage, and review.
+- [Browser UI](/docs/usage/browser-ui) for setup, sessions, status, activity, and review.
 - [CLI](/docs/usage/cli) for setup, process control, health checks, credentials, and policy.
 - [Murph Agent](/docs/usage/murph-agent) for guided local help with setup, debugging, policy, and scoped extension work.
 

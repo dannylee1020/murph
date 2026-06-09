@@ -71,10 +71,8 @@ import type {
     MemberChoice,
     HomeWorkspaceChannelState,
     QueuePayload,
-    TriagePayload,
     SessionsPayload,
     AuditPayload,
-    TracesPayload,
     RunsPayload,
     RunEventsPayload,
     RecurringJobsPayload,
@@ -237,7 +235,7 @@ function providerModesDialog(): string {
               <p class="eyebrow" id="provider-modes-eyebrow">Coverage</p>
               <h2 id="provider-modes-title">Manage coverage</h2>
             </div>
-            <button type="button" class="icon-button close-provider-modes" aria-label="Close">×</button>
+            <button type="button" class="ghost close-provider-modes" aria-label="Close provider coverage">Close</button>
           </div>
           <p class="modal-intro">Turn off this provider's coverage for the current distribution. This does not uninstall the app or remove saved credentials.</p>
           <form class="form compact-form" id="provider-modes-form">
@@ -419,17 +417,19 @@ export async function renderSettings(): Promise<void> {
       </article>
     </section>
 
-    <section class="integration-section">
+    <section class="integration-section managed-sources-section">
       <div class="section-head">
-        <h2>Integrations</h2>
-        <span class="section-meta">${integrationsPayload.integrations.length} sources</span>
+        <h2>Managed sources</h2>
+        <span class="section-meta">${integrationsPayload.integrations.filter((integration) => integration.status === 'connected').length} of ${integrationsPayload.integrations.length} connected</span>
       </div>
-      <p class="section-copy">Connect optional sources ${escapeHtml(runtimeLabel)} can use for grounded replies.</p>
+      <p class="section-copy">Sources are searched before ${escapeHtml(runtimeLabel)} drafts a reply.</p>
       ${
           selectedWorkspaceId
-              ? `<div class="grid two">
+              ? `<article class="panel managed-sources-panel">
+            <ul class="source-list">
             ${integrationsPayload.integrations.map((i) => integrationCard(i, integrationsPayload.workspaceId)).join('')}
-          </div>`
+            </ul>
+          </article>`
               : '<p class="empty">Connect a Slack workspace or Discord server before adding sources.</p>'
       }
     </section>
@@ -705,9 +705,10 @@ export async function renderSettings(): Promise<void> {
         if (repoStep) repoStep.hidden = false;
         if (providerEl) providerEl.textContent = 'GitHub';
         if (titleEl) titleEl.textContent = 'Choose repositories';
-        if (descriptionEl)
-            descriptionEl.textContent =
-                'Choose the repositories Murph can search when grounding replies with GitHub context.';
+        if (descriptionEl) {
+            descriptionEl.textContent = '';
+            descriptionEl.hidden = true;
+        }
         dialog?.showModal();
         await loadGithubRepositories();
     });
@@ -856,8 +857,10 @@ export async function renderSettings(): Promise<void> {
                 if (providerEl) providerEl.textContent = name;
                 if (titleEl)
                     titleEl.textContent = `${integration.status === 'connected' ? 'Update' : 'Connect'} ${name}`;
-                if (descriptionEl)
+                if (descriptionEl) {
                     descriptionEl.textContent = integration.description;
+                    descriptionEl.hidden = false;
+                }
                 if (labelEl)
                     labelEl.textContent =
                         integration.credentialLabel ?? 'API key';

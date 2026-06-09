@@ -440,7 +440,7 @@ describe('Gateway session-first policy', () => {
     }));
   });
 
-  it('shows policy queue and operator approval in triage lifecycle', async () => {
+  it('records policy queue and operator approval through review state and audit', async () => {
     const { gateway, store, workspace } = await setup({
       policyExecution: {
         execution: 'queue',
@@ -454,25 +454,23 @@ describe('Gateway session-first policy', () => {
 
     await gateway.handleReviewAction(queued.id, { action: 'approve_send' });
 
-    const triageItems = store.listTriageItems(workspace.id, queued.sessionId);
-    expect(triageItems[0]).toEqual(expect.objectContaining({
+    expect(store.getReviewItem(queued.id)).toEqual(expect.objectContaining({
       id: queued.id,
       disposition: 'auto_sent'
     }));
-    expect(triageItems[0].lifecycle).toEqual([
+
+    const auditEntries = store.listAudit(workspace.id);
+    expect(auditEntries).toEqual(expect.arrayContaining([
       expect.objectContaining({
         disposition: 'queued',
-        label: 'Queued by policy',
-        source: 'policy',
-        reason: 'Policy manual-review mode queues actions by default'
+        policyReason: 'Policy manual-review mode queues actions by default'
       }),
       expect.objectContaining({
+        taskId: `review:${queued.id}`,
         disposition: 'auto_sent',
-        label: 'Approved and sent by operator',
-        source: 'operator',
-        reason: 'Operator approved queued action'
+        policyReason: 'Operator approved queued action'
       })
-    ]);
+    ]));
   });
 
   it('approves queued Discord replies with provider-specific thread metadata', async () => {

@@ -551,30 +551,6 @@ export const gatewayRoutes: Route[] = [
 
     sendJson(res, { events: getStore().listAgentRunEvents(params.id) });
   }),
-  route('GET', '/api/gateway/triage', ({ res, url }) => {
-    const store = getStore();
-    const workspaceId = url.searchParams.get('workspaceId') ?? undefined;
-    const requestedSessionId = url.searchParams.get('sessionId') ?? undefined;
-    const sessions = store.listCompletedSessions(workspaceId, 20);
-    const triageCounts = store.countTriageItemsBySession(workspaceId, sessions.map((completedSession) => completedSession.id));
-    const session = requestedSessionId
-      ? store.getSessionById(requestedSessionId)
-      : sessions[0];
-
-    if (requestedSessionId && (!session || (workspaceId && session.workspaceId !== workspaceId))) {
-      sendJson(res, { ok: false, error: 'not_found' }, 404);
-      return;
-    }
-
-    sendJson(res, {
-      session: session ?? null,
-      sessions: sessions.map((completedSession) => ({
-        ...completedSession,
-        triageItemCount: triageCounts.get(completedSession.id) ?? 0
-      })),
-      items: session ? store.listTriageItems(workspaceId, session.id).map(withChannelDisplay) : []
-    });
-  }),
   route('GET', '/api/gateway/queue', ({ res, url }) => {
     sendJson(res, {
       queue: getStore().listReviewQueue(

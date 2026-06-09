@@ -25,9 +25,9 @@ Keep auto-send off until you have reviewed how Murph drafts, grounds, queues, an
 
 Use `yolo` only after setup and early sessions behave the way you expect. It is intentionally permissive for action autonomy, but factual replies still need source grounding and relevant read-only tool use.
 
-## Review triage
+## Review activity
 
-Check triage after each early session. Triage shows the message, context, tool calls, policy decision, and final action.
+Check Activity after each early session. Activity shows the run timeline, source-index recall, tool calls, draft creation, policy decision, and final outcome.
 
 ## Treat Memory As Context
 

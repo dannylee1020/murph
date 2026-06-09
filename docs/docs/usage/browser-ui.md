@@ -44,9 +44,9 @@ The stop time is interpreted in the selected timezone and enforced by the local 
 
 Sessions started from current config continue to track policy and setup changes. Sessions created with explicit policy or channel-scope overrides keep those explicit choices.
 
-## Triage
+## Activity
 
-Use triage after a session to review what Murph sent, queued, skipped, or failed.
+Use Activity after or during a session to inspect what Murph sent, queued, skipped, or failed. Activity shows the run timeline for source-index recall, tool calls, draft creation, policy, and final outcome.
 
 ## Review
 
@@ -54,6 +54,6 @@ Use review when policy queues a reply or a session needs human approval before s
 
 ## Admin dashboard
 
-Murph has one admin dashboard for team members who operate the shared runtime. Use it to configure integrations, policy, sessions, review, triage, and runtime monitoring.
+Murph has one admin dashboard for team members who operate the shared runtime. Use it to configure integrations, policy, sessions, review, activity, and runtime monitoring.
 
 Murph does not expose per-user `/me` dashboards or member dashboard links. Keep the admin UI behind the host boundary you trust, such as localhost, LAN, VPN, firewall, or a reverse proxy.

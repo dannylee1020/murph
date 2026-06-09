@@ -74,7 +74,7 @@ Common profiles include `title_keywords`, `work_item`, `code_review`, `email_thr
 
 ## Tool names
 
-Use source-prefixed names such as `jira.search` or `docs.search` so tool purpose is clear in traces and triage.
+Use source-prefixed names such as `jira.search` or `docs.search` so tool purpose is clear in activity logs and review.
 
 ## Extending search and fetch
 

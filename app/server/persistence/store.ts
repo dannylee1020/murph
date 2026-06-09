@@ -18,7 +18,6 @@ import type {
   ReminderRecord,
   ReviewItem,
   SessionStatus,
-  TriageItem,
   ThreadMemory,
   ThreadStateRecord,
   UserMemory,
@@ -279,12 +278,6 @@ export class Store {
   }
   listReviewQueue(workspaceId?: string, sessionId?: string, targetUserId?: string): ReviewItem[] {
     return action.listReviewQueue(this.db, workspaceId, sessionId, targetUserId);
-  }
-  listTriageItems(workspaceId?: string, sessionId?: string, targetUserId?: string): TriageItem[] {
-    return action.listTriageItems(this.db, workspaceId, sessionId, targetUserId);
-  }
-  countTriageItemsBySession(workspaceId?: string, sessionIds: string[] = []): Map<string, number> {
-    return action.countTriageItemsBySession(this.db, workspaceId, sessionIds);
   }
 
   // Audit

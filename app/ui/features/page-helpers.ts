@@ -72,10 +72,8 @@ import type {
     MemberChoice,
     HomeWorkspaceChannelState,
     QueuePayload,
-    TriagePayload,
     SessionsPayload,
     AuditPayload,
-    TracesPayload,
     RunsPayload,
     RunEventsPayload,
     RecurringJobsPayload,
@@ -1148,7 +1146,7 @@ export function integrationCredentialDialog(workspaceId: string): string {
           <div class="github-repo-picker" data-workspace-id="${escapeHtml(workspaceId)}">
             <label class="github-repo-filter-label">
               <span>Filter repositories</span>
-              <input type="search" class="github-repo-filter" placeholder="Search owner/repo" autocomplete="off" />
+              <input id="github-repo-filter" name="githubRepoFilter" type="search" class="github-repo-filter" placeholder="Search owner/repo" autocomplete="off" />
             </label>
             <div class="github-repo-list"><p class="empty">Repositories load after GitHub connects.</p></div>
             <p class="modal-error" id="github-repo-error" hidden></p>
@@ -1209,39 +1207,28 @@ export function integrationCard(
         : '';
 
     const detailRows: string[] = [];
+    const contextRows: string[] = [];
     if (connected) {
         if (integration.metadata.account) {
-            detailRows.push(
-                `<div><dt>Account</dt><dd>${escapeHtml(integration.metadata.account)}</dd></div>`,
-            );
+            contextRows.push(`Account: ${integration.metadata.account}`);
         } else if (
             integration.provider === 'obsidian' &&
             integration.metadata.vaultPath
         ) {
-            detailRows.push(
-                `<div><dt>Vault</dt><dd>${escapeHtml(integration.metadata.vaultPath)}</dd></div>`,
-            );
+            contextRows.push(`Vault: ${integration.metadata.vaultPath}`);
         } else if (integration.source === 'env') {
-            detailRows.push(
-                `<div><dt>Source</dt><dd>Connected from server env</dd></div>`,
-            );
-            detailRows.push(
-                `<div><dt>Env key</dt><dd><code>${escapeHtml(integration.envKey)}</code></dd></div>`,
-            );
+            contextRows.push('Connected from server env');
+            contextRows.push(`Env key: ${integration.envKey}`);
         } else if (integration.metadata.masked) {
-            detailRows.push(
-                `<div><dt>Key</dt><dd>${escapeHtml(integration.metadata.masked)}</dd></div>`,
-            );
+            contextRows.push(`Key: ${integration.metadata.masked}`);
         }
         if (integration.metadata.validatedAt) {
-            detailRows.push(
-                `<div><dt>Validated</dt><dd>${escapeHtml(formatRelative(integration.metadata.validatedAt))}</dd></div>`,
+            contextRows.push(
+                `Validated ${formatRelative(integration.metadata.validatedAt)}`,
             );
         }
         if (integration.provider === 'github') {
-            detailRows.push(
-                `<div><dt>Repositories</dt><dd>${escapeHtml(githubRepositorySummary(integration))}</dd></div>`,
-            );
+            contextRows.push(`Repositories: ${githubRepositorySummary(integration)}`);
         }
     } else {
         const authLabel =
@@ -1250,19 +1237,17 @@ export function integrationCard(
                 : integration.authType === 'path'
                   ? 'Vault path'
                   : integration.authType === 'oauth'
-                    ? 'OAuth'
-                    : 'API key';
-        detailRows.push(
-            `<div><dt>Auth</dt><dd>${escapeHtml(authLabel)}</dd></div>`,
-        );
+                  ? 'OAuth'
+                  : 'API key';
+        if (integration.status !== 'reconnect_required') {
+            detailRows.push(authLabel);
+        }
         if (integration.tools.length > 0) {
             const toolsLabel =
                 integration.tools.length === 1
                     ? '1 tool'
                     : `${integration.tools.length} tools`;
-            detailRows.push(
-                `<div><dt>Adds</dt><dd>${escapeHtml(toolsLabel)}</dd></div>`,
-            );
+            detailRows.push(`Adds ${toolsLabel}`);
         }
     }
 
@@ -1281,17 +1266,49 @@ export function integrationCard(
                 : `<a class="button" href="${escapeHtml(installHref)}">${connected || integration.status === 'reconnect_required' ? 'Reconnect' : 'Connect with Google'}</a>`
             : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${primaryLabel}</button>`;
 
+    const tone =
+        connected
+            ? 'ok'
+            : integration.status === 'reconnect_required'
+              ? 'warn'
+              : 'off';
+    const stateLine =
+        connected
+            ? contextRows[0] ?? 'Connected'
+            : integration.status === 'reconnect_required'
+              ? 'Reconnect required'
+              : 'Not connected';
+    const contextLine =
+        connected && contextRows.length > 1
+            ? contextRows.slice(1).join(' · ')
+            : detailRows.join(' · ') || integration.description;
+    const contextLineHtml =
+        connected && contextRows.length > 1
+            ? contextRows
+                  .slice(1)
+                  .map((row) => {
+                      const envPrefix = 'Env key: ';
+                      if (row.startsWith(envPrefix)) {
+                          return `${envPrefix}<code>${escapeHtml(row.slice(envPrefix.length))}</code>`;
+                      }
+                      return escapeHtml(row);
+                  })
+                  .join(' · ')
+            : escapeHtml(contextLine);
+
     return `
-    <article class="panel panel-status">
-      <h2><span class="status-dot ${connected ? 'ok' : 'off'}" aria-hidden="true"></span>${escapeHtml(integration.name)}</h2>
-      <p>${escapeHtml(integration.description)}</p>
-      <dl class="details">${detailRows.join('')}</dl>
-      <div class="actions integration-actions">
+    <li class="source-row status-${tone}">
+      <div class="source-main">
+        <strong><span class="status-dot ${tone}" aria-hidden="true"></span>${escapeHtml(integration.name)}</strong>
+        <span>${escapeHtml(stateLine)}</span>
+        <p class="source-context">${contextLineHtml}</p>
+      </div>
+      <div class="source-actions integration-actions">
         ${primaryCta}
         ${integration.canDisconnect ? `<button type="button" class="secondary disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
         ${connected && integration.provider === 'github' ? '<button type="button" class="secondary manage-github-repos" aria-label="Manage GitHub repositories">Manage repositories</button>' : ''}
       </div>
-    </article>
+    </li>
   `;
 }
 
