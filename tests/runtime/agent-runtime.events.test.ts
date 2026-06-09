@@ -732,14 +732,29 @@ describe('AgentRuntime model failure events', () => {
         type: 'agent.tool.requested',
         payload: expect.objectContaining({
           name: 'github.read_issue',
-          input: { repository: 'acme/app', number: 42 }
+          input: { repository: 'acme/app', number: 42 },
+          routedVia: 'source_index',
+          sourceIndexHint: expect.objectContaining({
+            id: 'h1',
+            provider: 'github',
+            resourceType: 'issue',
+            title: 'Checkout launch readiness',
+            externalId: 'acme/app#42',
+            readTool: 'github.read_issue'
+          })
         })
       }),
       expect.objectContaining({
         type: 'agent.tool.completed',
         payload: expect.objectContaining({
           name: 'github.read_issue',
-          ok: true
+          ok: true,
+          routedVia: 'source_index',
+          sourceIndexHint: expect.objectContaining({
+            id: 'h1',
+            externalId: 'acme/app#42',
+            readTool: 'github.read_issue'
+          })
         })
       })
     ]));

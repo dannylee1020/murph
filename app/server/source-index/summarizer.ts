@@ -144,7 +144,7 @@ async function summarizeWithModel(resource: SourceIndexResource, text: string): 
   const response = await client.chat.completions.create({
     model: env.agentModel,
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: 180
+    max_completion_tokens: 180
   });
   return compact(response.choices[0]?.message?.content ?? '', SOURCE_INDEX_MAX_SUMMARY_CHARS);
 }

@@ -70,6 +70,18 @@ export function sourceIndexSafeSegment(value: string): string {
   return readable ? `${readable}-${hash}` : hash;
 }
 
+function sourceIndexReadableSegment(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    return 'unknown';
+  }
+  return normalized
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'unknown';
+}
+
 async function sourceIndexRoot(): Promise<string> {
   const root = await ensureMemoryRoot();
   const sourceRoot = path.join(root, 'source-index');
@@ -87,6 +99,16 @@ function assertInside(root: string, candidate: string): string {
 }
 
 function resourceRelativePath(metadata: Pick<SourceIndexResourceMeta, 'workspaceId' | 'provider' | 'resourceType' | 'externalId'>): string {
+  return path.join(
+    'providers',
+    sourceIndexReadableSegment(metadata.provider),
+    'workspaces',
+    sourceIndexReadableSegment(metadata.workspaceId),
+    `${sourceIndexReadableSegment(metadata.resourceType)}-${sourceIndexSafeSegment(metadata.externalId)}.md`
+  );
+}
+
+function legacyResourceRelativePath(metadata: Pick<SourceIndexResourceMeta, 'workspaceId' | 'provider' | 'resourceType' | 'externalId'>): string {
   return path.join(
     'workspaces',
     sourceIndexSafeSegment(metadata.workspaceId),
@@ -214,6 +236,21 @@ function sectionText(body: string, title: string): string | undefined {
   return match?.[1]?.trim() || undefined;
 }
 
+async function readSourceIndexResourceAt(root: string, relativePath: string): Promise<SourceIndexResource | undefined> {
+  const filePath = assertInside(root, path.join(root, relativePath));
+  try {
+    const parsed = parseMarkdown(await readFile(filePath, 'utf8'));
+    return {
+      metadata: parsed.metadata,
+      routingNotes: sectionText(parsed.body, 'Routing Notes'),
+      contentSummary: sectionText(parsed.body, 'Content Summary'),
+      contentPreview: sectionText(parsed.body, 'Content Preview')
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 async function walkMarkdown(root: string, files: string[]): Promise<void> {
   const entries = await readdir(root, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') {
@@ -283,32 +320,36 @@ function canCarrySummary(existing: SourceIndexResource | undefined, next: Source
   );
 }
 
+function resourceKey(resource: SourceIndexResource): string {
+  return [
+    resource.metadata.workspaceId,
+    resource.metadata.provider,
+    resource.metadata.resourceType,
+    resource.metadata.externalId
+  ].join('\0');
+}
+
+function isProviderFirstRelativePath(relativePath: string): boolean {
+  return relativePath.split(path.sep)[0] === 'providers';
+}
+
 export async function writeSourceIndexResource(resource: SourceIndexResource): Promise<SourceIndexWriteResult> {
   const root = await sourceIndexRoot();
   const relativePath = resourceRelativePath(resource.metadata);
   const filePath = assertInside(root, path.join(root, relativePath));
   let nextResource = resource;
-  try {
-    const parsed = parseMarkdown(await readFile(filePath, 'utf8'));
-    const existing: SourceIndexResource = {
-      metadata: parsed.metadata,
-      routingNotes: sectionText(parsed.body, 'Routing Notes'),
-      contentSummary: sectionText(parsed.body, 'Content Summary'),
-      contentPreview: sectionText(parsed.body, 'Content Preview')
+  const existing = await readSourceIndexResourceAt(root, relativePath) ??
+    await readSourceIndexResourceAt(root, legacyResourceRelativePath(resource.metadata));
+  if (!resource.contentSummary && canCarrySummary(existing, resource)) {
+    nextResource = {
+      ...resource,
+      metadata: {
+        ...resource.metadata,
+        summaryStatus: existing?.metadata.summaryStatus,
+        summaryUpdatedAt: existing?.metadata.summaryUpdatedAt
+      },
+      contentSummary: existing?.contentSummary
     };
-    if (!resource.contentSummary && canCarrySummary(existing, resource)) {
-      nextResource = {
-        ...resource,
-        metadata: {
-          ...resource.metadata,
-          summaryStatus: existing.metadata.summaryStatus,
-          summaryUpdatedAt: existing.metadata.summaryUpdatedAt
-        },
-        contentSummary: existing.contentSummary
-      };
-    }
-  } catch {
-    // New or malformed existing files should not block writing the fresh routing card.
   }
   await writeAtomic(filePath, renderResource(nextResource));
   return { path: filePath, relativePath };
@@ -316,18 +357,7 @@ export async function writeSourceIndexResource(resource: SourceIndexResource): P
 
 export async function readSourceIndexResource(relativePath: string): Promise<SourceIndexResource | undefined> {
   const root = await sourceIndexRoot();
-  const filePath = assertInside(root, path.join(root, relativePath));
-  try {
-    const parsed = parseMarkdown(await readFile(filePath, 'utf8'));
-    return {
-      metadata: parsed.metadata,
-      routingNotes: sectionText(parsed.body, 'Routing Notes'),
-      contentSummary: sectionText(parsed.body, 'Content Summary'),
-      contentPreview: sectionText(parsed.body, 'Content Preview')
-    };
-  } catch {
-    return undefined;
-  }
+  return await readSourceIndexResourceAt(root, relativePath);
 }
 
 export async function markSourceIndexProviderResourcesStatus(input: {
@@ -337,7 +367,7 @@ export async function markSourceIndexProviderResourcesStatus(input: {
 }): Promise<SourceIndexWriteResult[]> {
   const root = await sourceIndexRoot();
   const files: string[] = [];
-  await walkMarkdown(path.join(root, 'workspaces'), files);
+  await walkMarkdown(root, files);
   const changed: SourceIndexWriteResult[] = [];
   for (const file of files) {
     const safePath = assertInside(root, file);
@@ -374,8 +404,12 @@ export class SourceIndexCatalog {
   async reload(): Promise<void> {
     const root = await sourceIndexRoot();
     const files: string[] = [];
-    await walkMarkdown(path.join(root, 'workspaces'), files);
-    const resources: SourceIndexResource[] = [];
+    await walkMarkdown(root, files);
+    const resourcesByKey = new Map<string, {
+      resource: SourceIndexResource;
+      order: number;
+      providerFirst: boolean;
+    }>();
     for (const file of files) {
       const safePath = assertInside(root, file);
       let parsed: ParsedMarkdown;
@@ -385,14 +419,27 @@ export class SourceIndexCatalog {
         console.warn('[source-index] skipped malformed resource:', error instanceof Error ? error.message : error);
         continue;
       }
-      resources.push({
+      const resource: SourceIndexResource = {
         metadata: parsed.metadata,
         routingNotes: sectionText(parsed.body, 'Routing Notes'),
         contentSummary: sectionText(parsed.body, 'Content Summary'),
         contentPreview: sectionText(parsed.body, 'Content Preview')
-      });
+      };
+      const relativePath = path.relative(root, safePath);
+      const providerFirst = isProviderFirstRelativePath(relativePath);
+      const key = resourceKey(resource);
+      const existing = resourcesByKey.get(key);
+      if (!existing || (providerFirst && !existing.providerFirst)) {
+        resourcesByKey.set(key, {
+          resource,
+          order: existing?.order ?? resourcesByKey.size,
+          providerFirst
+        });
+      }
     }
-    this.resources = resources;
+    this.resources = [...resourcesByKey.values()]
+      .sort((a, b) => a.order - b.order)
+      .map((entry) => entry.resource);
     this.loaded = true;
   }
 

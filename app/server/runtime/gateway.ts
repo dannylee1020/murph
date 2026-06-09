@@ -389,7 +389,15 @@ export class Gateway {
       summary: context.summary,
       artifacts: context.artifacts.length,
       contextSources: context.contextSources,
-      artifactSources: artifactSourceSummaries(context.artifacts)
+      artifactSources: artifactSourceSummaries(context.artifacts),
+      sourceIndexHints: (context.sourceIndexHints ?? []).map((hint) => ({
+        id: hint.id,
+        provider: hint.provider,
+        resourceType: hint.resourceType,
+        title: hint.title,
+        externalId: hint.externalId,
+        readTool: hint.readTool
+      }))
     });
     this.emitRunEvent(run.id, 'agent.skill.selected', {
       skills: runResult.selectedSkillNames,

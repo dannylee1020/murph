@@ -224,6 +224,19 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
   const eventToolInput = (rawName: string, args: unknown, id?: string): unknown => (
     id ? hintedCalls.get(id)?.input ?? args : args
   );
+  const sourceIndexPayload = (selected: HintedReadOption | undefined): Record<string, unknown> => selected
+    ? {
+        routedVia: 'source_index',
+        sourceIndexHint: {
+          id: selected.id,
+          provider: selected.hint.provider,
+          resourceType: selected.hint.resourceType,
+          title: selected.hint.title,
+          externalId: selected.hint.externalId,
+          readTool: selected.toolName
+        }
+      }
+    : {};
 
   const tools: AgentTool[] = input.context.availableTools.map((tool) => ({
     name: rawToAlias.get(tool.name) ?? tool.name,
@@ -410,13 +423,15 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
         if (selected) {
           hintedCalls.set(event.toolCallId, selected);
         }
+        const selectedForEvent = selected ?? hintedCalls.get(event.toolCallId);
         runtimeEvents.push({
           type: 'agent.tool.requested',
           payload: {
             id: event.toolCallId,
-            name: eventToolName(rawName, event.toolCallId),
+            name: selectedForEvent?.toolName ?? rawName,
             reason: 'Model requested tool call',
-            input: eventToolInput(rawName, event.args, event.toolCallId)
+            input: selectedForEvent?.input ?? eventToolInput(rawName, event.args, event.toolCallId),
+            ...sourceIndexPayload(selectedForEvent)
           }
         });
         return;
@@ -425,6 +440,7 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
       if (event.type === 'tool_execution_end') {
         const rawName = rawToolName(event.toolName, aliasToRaw);
         const completedName = eventToolName(rawName, event.toolCallId);
+        const selected = hintedCalls.get(event.toolCallId);
         runtimeEvents.push({
           type: 'agent.tool.completed',
           payload: event.isError
@@ -432,13 +448,15 @@ export async function runGroundingLoop(input: GroundingLoopInput): Promise<{
                 id: event.toolCallId,
                 name: completedName,
                 ok: false,
-                error: typeof event.result?.details === 'string' ? event.result.details : 'Tool execution failed'
+                error: typeof event.result?.details === 'string' ? event.result.details : 'Tool execution failed',
+                ...sourceIndexPayload(selected)
               }
             : {
                 id: event.toolCallId,
                 name: completedName,
                 ok: true,
-                outputSummary: outputSummary(event.result?.details)
+                outputSummary: outputSummary(event.result?.details),
+                ...sourceIndexPayload(selected)
               }
         });
         return;
