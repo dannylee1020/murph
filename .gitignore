@@ -44,3 +44,5 @@ scripts/*
 !scripts/install-deps.sh
 !scripts/prune-install.sh
 images/
+PRODUCT.md
+DESIGN.md
