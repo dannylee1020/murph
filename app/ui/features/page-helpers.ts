@@ -1251,20 +1251,14 @@ export function integrationCard(
         }
     }
 
-    const primaryLabel = connected
-        ? integration.source === 'env'
-            ? 'Override'
-            : 'Reconnect'
-        : integration.status === 'reconnect_required'
-          ? 'Reconnect'
-          : 'Connect';
-    const primaryCta =
-        integration.authType === 'oauth' && installHref
-            ? integration.provider === 'google' &&
-              !integration.metadata.oauthConfigured
-                ? `<button type="button" class="configure-google-oauth" data-install-href="${escapeHtml(installHref)}">${connected || integration.status === 'reconnect_required' ? 'Reconnect' : 'Connect with Google'}</button>`
-                : `<a class="button" href="${escapeHtml(installHref)}">${connected || integration.status === 'reconnect_required' ? 'Reconnect' : 'Connect with Google'}</a>`
-            : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">${primaryLabel}</button>`;
+    const primaryCta = connected
+        ? ''
+        : integration.authType === 'oauth' && installHref
+          ? integration.provider === 'google' &&
+            !integration.metadata.oauthConfigured
+              ? `<button type="button" class="configure-google-oauth" data-install-href="${escapeHtml(installHref)}">Connect with Google</button>`
+              : `<a class="button" href="${escapeHtml(installHref)}">Connect with Google</a>`
+          : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">Connect</button>`;
 
     const tone =
         connected
@@ -1272,16 +1266,19 @@ export function integrationCard(
             : integration.status === 'reconnect_required'
               ? 'warn'
               : 'off';
-    const stateLine =
+    const statusLabel =
         connected
-            ? contextRows[0] ?? 'Connected'
+            ? 'Connected'
             : integration.status === 'reconnect_required'
               ? 'Reconnect required'
               : 'Not connected';
+    const primaryLine = connected
+        ? contextRows[0] ?? integration.description
+        : detailRows[0] ?? integration.description;
     const contextLine =
         connected && contextRows.length > 1
             ? contextRows.slice(1).join(' · ')
-            : detailRows.join(' · ') || integration.description;
+            : detailRows.slice(1).join(' · ');
     const contextLineHtml =
         connected && contextRows.length > 1
             ? contextRows
@@ -1299,14 +1296,14 @@ export function integrationCard(
     return `
     <li class="source-row status-${tone}">
       <div class="source-main">
-        <strong><span class="status-dot ${tone}" aria-hidden="true"></span>${escapeHtml(integration.name)}</strong>
-        <span>${escapeHtml(stateLine)}</span>
-        <p class="source-context">${contextLineHtml}</p>
+        <strong><span class="status-dot ${tone}" aria-hidden="true"></span>${escapeHtml(integration.name)}<span class="visually-hidden">, ${escapeHtml(statusLabel)}</span></strong>
+        <span>${escapeHtml(primaryLine)}</span>
+        ${contextLineHtml ? `<p class="source-context">${contextLineHtml}</p>` : ''}
       </div>
-      <div class="source-actions integration-actions">
+      <div class="source-actions">
+        ${connected && integration.provider === 'github' ? '<button type="button" class="secondary manage-github-repos" aria-label="Manage GitHub repositories">Manage repositories</button>' : ''}
         ${primaryCta}
         ${integration.canDisconnect ? `<button type="button" class="secondary disconnect-integration" data-provider="${escapeHtml(integration.provider)}">Disconnect</button>` : ''}
-        ${connected && integration.provider === 'github' ? '<button type="button" class="secondary manage-github-repos" aria-label="Manage GitHub repositories">Manage repositories</button>' : ''}
       </div>
     </li>
   `;

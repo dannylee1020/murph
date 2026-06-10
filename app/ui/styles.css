@@ -3226,6 +3226,18 @@ button.primary-large:hover {
   overflow: hidden;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .source-list {
   display: grid;
   gap: 0;
@@ -3236,9 +3248,9 @@ button.primary-large:hover {
 
 .source-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) 168px;
   gap: 24px;
-  align-items: center;
+  align-items: start;
   padding: 18px 20px;
   border-bottom: 1px solid var(--rule);
 }
@@ -3247,22 +3259,10 @@ button.primary-large:hover {
   border-bottom: 0;
 }
 
-.source-row.status-warn {
-  background: var(--danger-soft);
-}
-
-.source-row.status-ok .status-dot.ok {
-  background: var(--status-ok-dot);
-}
-
-.source-main,
-.source-actions {
+.source-main {
   display: grid;
   min-width: 0;
-}
-
-.source-main {
-  gap: 6px;
+  gap: 4px;
 }
 
 .source-main strong {
@@ -3285,39 +3285,39 @@ button.primary-large:hover {
 .source-context {
   margin: 0;
   max-width: 76ch;
-  color: var(--muted);
-  font-size: var(--text-xs);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
+.source-context {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
 .source-actions {
-  gap: 6px;
-  justify-items: end;
+  display: grid;
+  grid-auto-rows: minmax(32px, auto);
+  gap: 8px;
+  width: 168px;
+  justify-self: end;
+  align-self: center;
 }
 
 .source-actions button,
 .source-actions .button {
-  width: max-content;
-  max-width: 100%;
+  min-height: 32px;
+  width: 100%;
+  min-width: 0;
   padding-inline: 12px;
+  justify-content: flex-start;
   white-space: normal;
-  text-align: center;
+  text-align: left;
 }
 
-.source-row-note {
-  margin: 2px 0 0;
-  max-width: none;
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
-
-.source-row-note.ok {
-  color: color-mix(in oklch, var(--ok), var(--ink) 16%);
-}
-
-.source-row-note.danger {
-  color: color-mix(in oklch, var(--danger), var(--ink) 12%);
+.source-actions .secondary {
+  background: var(--surface);
 }
 
 .setup-banner {
@@ -3428,12 +3428,16 @@ button.primary-large:hover {
   }
 
   .source-actions {
-    justify-items: stretch;
+    width: 100%;
+    justify-self: stretch;
+    align-self: stretch;
   }
 
   .source-actions button,
   .source-actions .button {
     width: 100%;
+    justify-content: center;
+    white-space: normal;
   }
 
   .app-shell {
