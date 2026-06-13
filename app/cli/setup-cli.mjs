@@ -154,8 +154,6 @@ const SECRET_KEY_MAP = {
   DISCORD_CHANNEL_CLIENT_SECRET: ['discord', 'channel_client_secret'],
   DISCORD_PERSONAL_BOT_TOKEN: ['discord', 'personal_bot_token'],
   DISCORD_PERSONAL_CLIENT_SECRET: ['discord', 'personal_client_secret'],
-  GOOGLE_ACCESS_TOKEN: ['google', 'access_token'],
-  GOOGLE_CLIENT_SECRET: ['google', 'client_secret'],
   GITHUB_PAT: ['github', 'api_key'],
   NOTION_API_KEY: ['notion', 'api_key'],
   GRANOLA_API_KEY: ['granola', 'api_key'],

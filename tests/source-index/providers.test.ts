@@ -6,7 +6,7 @@ describe('source index provider resolution', () => {
     delete process.env.MURPH_DISTRIBUTION;
   });
 
-  it('uses only team-available non-Google providers in team runtime', async () => {
+  it('uses only team-available providers in team runtime', async () => {
     process.env.MURPH_DISTRIBUTION = 'team';
     const { sourceIndexProviderIdsForCurrentRuntime } = await import('../../app/server/source-index/providers');
 
@@ -20,7 +20,7 @@ describe('source index provider resolution', () => {
     expect(sourceIndexProviderIdsForCurrentRuntime()).toEqual(['github', 'notion', 'linear']);
   });
 
-  it('rejects Google in the team-only runtime', async () => {
+  it('rejects unsupported providers in the team-only runtime', async () => {
     process.env.MURPH_DISTRIBUTION = 'personal';
     const { validateSourceIndexProvidersForCurrentRuntime } = await import('../../app/server/source-index/providers');
 

@@ -6,6 +6,7 @@ describe('runtime route composition', () => {
     const paths = murphRoutes().map((route) => route.path);
 
     expect(paths.some((path) => path.startsWith('/api/me/'))).toBe(false);
+    expect(paths.some((path) => path.startsWith('/api/google'))).toBe(false);
     expect(paths).not.toContain('/api/gateway/subscriptions');
     expect(paths).not.toContain('/api/gateway/subscriptions/:userId/dashboard-link');
   });

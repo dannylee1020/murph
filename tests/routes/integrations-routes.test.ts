@@ -49,9 +49,6 @@ async function setup(options: { githubPat?: string; linearApiKey?: string; distr
   }
   process.env.NOTION_API_KEY = '';
   process.env.OBSIDIAN_VAULT_PATH = '';
-  process.env.GOOGLE_ACCESS_TOKEN = '';
-  process.env.GOOGLE_CLIENT_ID = '';
-  process.env.GOOGLE_CLIENT_SECRET = '';
   process.env.LINEAR_API_KEY = options.linearApiKey ?? '';
   mkdirSync(join(murphHome, 'plugins'), { recursive: true });
 

@@ -19,7 +19,6 @@ async function setup(options: {
   process.env.NOTION_API_KEY = options.notionApiKey ?? '';
   process.env.LINEAR_API_KEY = options.linearApiKey ?? '';
   process.env.GITHUB_PAT = '';
-  process.env.GOOGLE_ACCESS_TOKEN = '';
   process.env.GRANOLA_API_KEY = '';
   process.env.OBSIDIAN_VAULT_PATH = '';
 
@@ -213,7 +212,6 @@ describe('integration capability wiring', () => {
 
   it('reconcileIntegrationCapabilitiesForWorkspace does not enable personal-only integrations in Murph runtime', async () => {
     const { store, workspace } = await setup();
-    process.env.GOOGLE_ACCESS_TOKEN = 'google-token';
     process.env.GRANOLA_API_KEY = 'granola-token';
     process.env.OBSIDIAN_VAULT_PATH = mkdtempSync(join(tmpdir(), 'murph-obsidian-team-'));
     const { registerBuiltInIntegrationAdapters } = await import('#app/server/integrations/register-builtins');
@@ -225,10 +223,8 @@ describe('integration capability wiring', () => {
     reconcileIntegrationCapabilitiesForWorkspace(workspace.id);
 
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
-    expect(memory.enabledOptionalTools).not.toContain('gmail.search');
     expect(memory.enabledOptionalTools).not.toContain('granola.search');
     expect(memory.enabledOptionalTools).not.toContain('obsidian.search');
-    expect(memory.enabledContextSources).not.toContain('gmail.thread_search');
     expect(memory.enabledContextSources).not.toContain('granola.thread_search');
     expect(memory.enabledContextSources).not.toContain('obsidian.thread_search');
   });

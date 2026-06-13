@@ -423,17 +423,6 @@ function githubSkill(): SkillManifest {
   };
 }
 
-function googleSkill(): SkillManifest {
-  return {
-    ...notionSkill(),
-    name: 'google-workspace',
-    contextSourceNames: ['gmail.thread_search'],
-    knowledgeDomains: ['email', 'calendar', 'team'],
-    groundingPolicy: 'required_when_no_artifacts',
-    priority: 115
-  };
-}
-
 function task(overrides: Partial<ContinuityTask> = {}): ContinuityTask {
   return {
     id: 'task-1',

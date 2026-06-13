@@ -67,10 +67,6 @@ export interface MurphConfig {
     github?: {
       repositories?: string[];
     };
-    google?: {
-      clientId?: string;
-      calendarId?: string;
-    };
     obsidian?: {
       vaultPath?: string;
     };
@@ -111,8 +107,6 @@ const CONFIG_KEY_SETTERS: Record<string, (config: Record<string, unknown>, value
   NOTION_VERSION: (config, value) => setPath(config, ['integrations', 'notion', 'version'], value),
   NOTION_MAX_RESULTS: (config, value) => setPath(config, ['integrations', 'notion', 'maxResults'], numberFromString(value)),
   GITHUB_REPOSITORIES: (config, value) => setPath(config, ['integrations', 'github', 'repositories'], csvFromString(value)),
-  GOOGLE_CLIENT_ID: (config, value) => setPath(config, ['integrations', 'google', 'clientId'], value),
-  GOOGLE_CALENDAR_ID: (config, value) => setPath(config, ['integrations', 'google', 'calendarId'], value),
   OBSIDIAN_VAULT_PATH: (config, value) => setPath(config, ['integrations', 'obsidian', 'vaultPath'], value),
   MURPH_WEB_SEARCH_BACKEND: (config, value) => setPath(config, ['integrations', 'webSearch', 'backend'], value === 'brave' ? 'brave' : 'tavily'),
   MURPH_FILE_READ_ALLOWED_ROOTS: (config, value) => setPath(config, ['integrations', 'localTools', 'fileReadAllowedRoots'], csvFromString(value)),
@@ -400,7 +394,6 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
   const integrations = isRecord(raw.integrations) ? raw.integrations : {};
   const notion = isRecord(integrations.notion) ? integrations.notion : {};
   const github = isRecord(integrations.github) ? integrations.github : {};
-  const google = isRecord(integrations.google) ? integrations.google : {};
   const obsidian = isRecord(integrations.obsidian) ? integrations.obsidian : {};
   const webSearch = isRecord(integrations.webSearch) ? integrations.webSearch : {};
   const localTools = isRecord(integrations.localTools) ? integrations.localTools : {};
@@ -489,10 +482,6 @@ export function readMurphConfig(cwd = process.cwd()): MurphConfig {
       },
       github: {
         repositories: stringArray(github.repositories)
-      },
-      google: {
-        clientId: stringValue(google.clientId),
-        calendarId: stringValue(google.calendarId)
       },
       obsidian: {
         vaultPath: stringValue(obsidian.vaultPath)

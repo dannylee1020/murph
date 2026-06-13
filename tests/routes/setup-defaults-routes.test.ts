@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -113,8 +113,6 @@ async function setup(input: { productMode?: 'channel'; botRolesEnv?: string; ski
   delete process.env.DISCORD_PERSONAL_BOT_TOKEN;
   delete process.env.DISCORD_PERSONAL_CLIENT_ID;
   delete process.env.DISCORD_PERSONAL_CLIENT_SECRET;
-  delete process.env.GOOGLE_CLIENT_ID;
-  delete process.env.GOOGLE_CLIENT_SECRET;
 
   vi.doMock('#app/server/runtime/bootstrap', () => ({
     ensureRuntimeInitialized: vi.fn().mockResolvedValue(undefined)
@@ -1140,19 +1138,18 @@ describe('setup defaults routes', () => {
     expect(response.body.discord.roles.channel.installed).toBe(false);
   });
 
-  it('stores Google OAuth client settings through setup config', async () => {
+  it('rejects Google OAuth client settings through setup config', async () => {
     const { request } = await setup();
 
     const response = await request('POST', '/api/setup/config', {
       GOOGLE_CLIENT_ID: 'google-client-id',
       GOOGLE_CLIENT_SECRET: 'google-client-secret'
     });
-    const { getRuntimeEnv } = await import('#app/server/util/env');
 
-    expect(response.status).toBe(200);
-    expect(response.body.updated).toEqual(expect.arrayContaining(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']));
-    expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).toContain('clientId: google-client-id');
-    expect(getRuntimeEnv().googleClientId).toBe('google-client-id');
-    expect(getRuntimeEnv().googleClientSecret).toBe('google-client-secret');
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('Unsupported setup key: GOOGLE_CLIENT_ID');
+    if (existsSync(process.env.MURPH_CONFIG_PATH!)) {
+      expect(readFileSync(process.env.MURPH_CONFIG_PATH!, 'utf8')).not.toContain('google-client-id');
+    }
   });
 });

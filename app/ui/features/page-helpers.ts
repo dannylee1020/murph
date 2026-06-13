@@ -1161,42 +1161,6 @@ export function integrationCredentialDialog(workspaceId: string): string {
   `;
 }
 
-export function googleOAuthDialog(workspaceId: string): string {
-    const redirectUri = `${window.location.origin}/api/google/oauth/callback`;
-    return `
-    <dialog class="modal" id="google-oauth-dialog">
-      <div class="modal-panel">
-        <div class="modal-head">
-          <div>
-            <p class="eyebrow">Google</p>
-            <h2>OAuth setup</h2>
-          </div>
-          <button type="button" class="ghost close-google-oauth" aria-label="Close Google setup">Close</button>
-        </div>
-        <p class="modal-intro">Add the OAuth client values before connecting Gmail and Calendar.</p>
-        <dl class="details modal-details">
-          <div><dt>Redirect URI</dt><dd><code>${escapeHtml(redirectUri)}</code></dd></div>
-        </dl>
-        <form class="form" id="google-oauth-form" data-workspace-id="${escapeHtml(workspaceId)}">
-          <label>
-            <span>Client ID</span>
-            <input name="clientId" autocomplete="off" required />
-          </label>
-          <label>
-            <span>Client secret</span>
-            <input type="password" name="clientSecret" autocomplete="off" required />
-          </label>
-          <p class="modal-error" id="google-oauth-error" hidden></p>
-          <div class="actions">
-            <button type="button" class="secondary close-google-oauth">Cancel</button>
-            <button type="submit">Save and connect</button>
-          </div>
-        </form>
-      </div>
-    </dialog>
-  `;
-}
-
 export function integrationCard(
     integration: IntegrationStatusPayload['integrations'][number],
     workspaceId: string,
@@ -1254,10 +1218,7 @@ export function integrationCard(
     const primaryCta = connected
         ? ''
         : integration.authType === 'oauth' && installHref
-          ? integration.provider === 'google' &&
-            !integration.metadata.oauthConfigured
-              ? `<button type="button" class="configure-google-oauth" data-install-href="${escapeHtml(installHref)}">Connect with Google</button>`
-              : `<a class="button" href="${escapeHtml(installHref)}">Connect with Google</a>`
+          ? `<a class="button" href="${escapeHtml(installHref)}">Connect</a>`
           : `<button type="button" class="connect-integration" data-provider="${escapeHtml(integration.provider)}">Connect</button>`;
 
     const tone =

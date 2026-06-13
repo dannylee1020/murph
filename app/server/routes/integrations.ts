@@ -76,9 +76,6 @@ async function refreshIntegrations(workspaceId?: string) {
 }
 
 function triggerSourceIndexProvider(provider: string, reason: string): void {
-  if (provider === 'google') {
-    return;
-  }
   void (async () => {
     for (const workspace of getStore().listWorkspaces()) {
       await getSourceIndexScheduler().triggerWorkspace({
@@ -93,9 +90,6 @@ function triggerSourceIndexProvider(provider: string, reason: string): void {
 }
 
 async function markSourceIndexProviderUnauthorized(provider: string): Promise<void> {
-  if (provider === 'google') {
-    return;
-  }
   try {
     for (const workspace of getStore().listWorkspaces()) {
       await markSourceIndexProviderResourcesStatus({
@@ -172,14 +166,10 @@ function statusFor(provider: string, workspaceId: string) {
     : undefined;
   const effectiveCredential = effectiveIntegrationCredential(definition, workspaceId);
   const { envValue, local, source } = effectiveCredential;
-  const env = getRuntimeEnv();
   const reconnectRequired = !source && (
     stored?.status === 'connected' ||
     (stored?.status === 'error' && stored.errorMessage === MISSING_INTEGRATION_CREDENTIAL_MESSAGE)
   );
-  const oauthConfigured = provider === 'google'
-    ? Boolean(env.googleClientId && env.googleClientSecret)
-    : undefined;
   const metadata = definition.credentialKind === 'config_path' && pathStatus?.configured
     ? { ...(stored?.metadata ?? {}), vaultPath: pathStatus.vaultPath }
     : source === 'credentials'
@@ -210,9 +200,7 @@ function statusFor(provider: string, workspaceId: string) {
     canDisconnect: source === 'credentials' || source === 'config' || reconnectRequired,
     metadata: provider === 'github'
       ? { ...metadata, repositories: githubRepositories, needsRepoScope: source ? (githubRepositories ?? []).length === 0 : false }
-      : oauthConfigured === undefined
-        ? metadata
-        : { ...metadata, oauthConfigured },
+      : metadata,
     errorMessage: reconnectRequired
       ? MISSING_INTEGRATION_CREDENTIAL_MESSAGE
       : stored?.errorMessage

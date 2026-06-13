@@ -95,7 +95,7 @@ Secrets are stored in plaintext at `~/.murph/.credentials` on the runtime host w
 
 > **Runtime-host credential storage**
 >
-> Murph writes `~/.murph/.credentials` with `0600` permissions, so only the runtime-host user account can read it. For self-hosted installs, credentials are not uploaded to Murph-run servers. They only leave the runtime host when Murph uses them to call the providers you connected, such as Slack, GitHub, Google, OpenAI, or Anthropic. If you run Murph on a VPS or cloud VM, that machine is the runtime host and must be trusted with the configured credentials.
+> Murph writes `~/.murph/.credentials` with `0600` permissions, so only the runtime-host user account can read it. For self-hosted installs, credentials are not uploaded to Murph-run servers. They only leave the runtime host when Murph uses them to call the providers you connected, such as Slack, GitHub, Notion, Linear, OpenAI, or Anthropic. If you run Murph on a VPS or cloud VM, that machine is the runtime host and must be trusted with the configured credentials.
 
 ## Core runtime-host settings
 

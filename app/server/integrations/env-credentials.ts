@@ -9,8 +9,7 @@ const envCredentials = new Map<string, EnvCredentialEntry>([
   ['github', { envKey: 'GITHUB_PAT' }],
   ['linear', { envKey: 'LINEAR_API_KEY' }],
   ['notion', { envKey: 'NOTION_API_KEY' }],
-  ['granola', { envKey: 'GRANOLA_API_KEY' }],
-  ['google', { envKey: 'GOOGLE_ACCESS_TOKEN' }]
+  ['granola', { envKey: 'GRANOLA_API_KEY' }]
 ]);
 
 export function registerEnvCredential(provider: string, envKey: string, reader?: EnvCredentialReader): void {

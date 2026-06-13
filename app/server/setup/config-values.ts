@@ -19,8 +19,6 @@ const SETUP_SECRET_KEYS: Record<string, { provider: string; key: string }> = {
   DISCORD_CLIENT_SECRET: { provider: 'discord', key: 'client_secret' },
   DISCORD_CHANNEL_BOT_TOKEN: { provider: 'discord', key: 'channel_bot_token' },
   DISCORD_CHANNEL_CLIENT_SECRET: { provider: 'discord', key: 'channel_client_secret' },
-  GOOGLE_ACCESS_TOKEN: { provider: 'google', key: 'access_token' },
-  GOOGLE_CLIENT_SECRET: { provider: 'google', key: 'client_secret' },
   GITHUB_PAT: { provider: 'github', key: 'api_key' },
   NOTION_API_KEY: { provider: 'notion', key: 'api_key' },
   GRANOLA_API_KEY: { provider: 'granola', key: 'api_key' },

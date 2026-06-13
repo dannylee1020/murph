@@ -92,7 +92,6 @@ import {
     calculateDurationHours,
     channelSummaryLabel,
     getTimezoneOptions,
-    googleOAuthDialog,
     homeChannelGroups,
     homeCoverageSummaryHtml,
     integrationCard,

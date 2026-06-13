@@ -92,7 +92,6 @@ import {
     channelSummaryLabel,
     combinedChannelSummary,
     getTimezoneOptions,
-    googleOAuthDialog,
     homeChannelGroups,
     integrationCard,
     integrationCredentialDialog,
@@ -256,14 +255,8 @@ export async function renderSettings(): Promise<void> {
 
     const params = new URLSearchParams(window.location.search);
     let settingsNotice = '';
-    if (params.get('error') === 'google_not_configured') {
-        settingsNotice =
-            '<div class="notice danger">Google OAuth is not configured. Open the Google card and add the client ID and client secret.</div>';
-    } else if (params.get('error')) {
+    if (params.get('error')) {
         settingsNotice = `<div class="notice danger">${escapeHtml(params.get('error'))}</div>`;
-    } else if (params.get('google') === 'connected') {
-        settingsNotice =
-            '<div class="notice success">Google account connected.</div>';
     }
     if (settingsNotice) {
         history.replaceState(null, '', '/settings');
@@ -435,7 +428,6 @@ export async function renderSettings(): Promise<void> {
     </section>
 
     ${integrationCredentialDialog(integrationsPayload.workspaceId)}
-    ${googleOAuthDialog(integrationsPayload.workspaceId)}
     ${policyProfileDialog(policyConfig.profiles, policyConfig.selectedProfileName)}
     ${providerModesDialog()}
   `);
@@ -950,101 +942,6 @@ export async function renderSettings(): Promise<void> {
             if (submitButton) submitButton.disabled = false;
         }
     });
-
-    app.querySelectorAll<HTMLButtonElement>('.close-google-oauth').forEach(
-        (button) => {
-            button.addEventListener('click', () => {
-                app.querySelector<HTMLDialogElement>(
-                    '#google-oauth-dialog',
-                )?.close();
-            });
-        },
-    );
-
-    app.querySelector<HTMLDialogElement>(
-        '#google-oauth-dialog',
-    )?.addEventListener('click', (event) => {
-        if (event.target === event.currentTarget) {
-            (event.currentTarget as HTMLDialogElement).close();
-        }
-    });
-
-    app.querySelectorAll<HTMLButtonElement>('.configure-google-oauth').forEach(
-        (button) => {
-            button.addEventListener('click', () => {
-                const form =
-                    app.querySelector<HTMLFormElement>('#google-oauth-form');
-                const dialog = app.querySelector<HTMLDialogElement>(
-                    '#google-oauth-dialog',
-                );
-                const error = form?.querySelector<HTMLElement>(
-                    '#google-oauth-error',
-                );
-                if (!form || !dialog) {
-                    return;
-                }
-                form.reset();
-                form.dataset.workspaceId = integrationsPayload.workspaceId;
-                form.dataset.installHref =
-                    button.dataset.installHref ??
-                    `/api/google/install?workspaceId=${encodeURIComponent(integrationsPayload.workspaceId)}`;
-                if (error) {
-                    error.hidden = true;
-                    error.textContent = '';
-                }
-                dialog.showModal();
-                form.querySelector<HTMLInputElement>(
-                    'input[name="clientId"]',
-                )?.focus();
-            });
-        },
-    );
-
-    app.querySelector<HTMLFormElement>('#google-oauth-form')?.addEventListener(
-        'submit',
-        async (event) => {
-            event.preventDefault();
-            const form = event.currentTarget as HTMLFormElement;
-            const formData = new FormData(form);
-            const clientId = String(formData.get('clientId') ?? '').trim();
-            const clientSecret = String(
-                formData.get('clientSecret') ?? '',
-            ).trim();
-            const error = form.querySelector<HTMLElement>(
-                '#google-oauth-error',
-            );
-            const submitButton = form.querySelector<HTMLButtonElement>(
-                'button[type="submit"]',
-            );
-            if (!clientId || !clientSecret) {
-                return;
-            }
-            if (error) {
-                error.hidden = true;
-                error.textContent = '';
-            }
-            if (submitButton) submitButton.disabled = true;
-
-            try {
-                await postJson('/api/setup/config', {
-                    GOOGLE_CLIENT_ID: clientId,
-                    GOOGLE_CLIENT_SECRET: clientSecret,
-                });
-                window.location.href =
-                    form.dataset.installHref ??
-                    `/api/google/install?workspaceId=${encodeURIComponent(form.dataset.workspaceId ?? integrationsPayload.workspaceId)}`;
-            } catch (errorValue) {
-                if (error) {
-                    error.textContent =
-                        errorValue instanceof Error
-                            ? errorValue.message
-                            : 'Google OAuth settings could not be saved.';
-                    error.hidden = false;
-                }
-                if (submitButton) submitButton.disabled = false;
-            }
-        },
-    );
 
     app.querySelectorAll<HTMLButtonElement>('.disconnect-integration').forEach(
         (button) => {

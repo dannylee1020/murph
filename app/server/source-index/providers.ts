@@ -44,7 +44,7 @@ export function sourceIndexProviderIdsForCurrentRuntime(): string[] {
   const { distribution } = getRuntimeEnv();
   return listIntegrations({ distribution })
     .map((integration) => integration.provider)
-    .filter((provider) => provider !== 'google' && Boolean(PROVIDERS[provider]));
+    .filter((provider) => Boolean(PROVIDERS[provider]));
 }
 
 export function getSourceIndexProvider(provider: string): SourceIndexProviderDefinition | undefined {

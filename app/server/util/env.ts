@@ -41,10 +41,6 @@ export interface RuntimeEnv {
   githubRepositories: string[];
   obsidianVaultPath?: string;
   granolaApiKey?: string;
-  googleAccessToken?: string;
-  googleClientId?: string;
-  googleClientSecret?: string;
-  googleCalendarId: string;
   webSearchBackend: 'tavily' | 'brave';
   tavilyApiKey?: string;
   braveSearchApiKey?: string;
@@ -178,10 +174,6 @@ export function getRuntimeEnv(): RuntimeEnv {
       ? process.env.OBSIDIAN_VAULT_PATH
       : config.integrations?.obsidian?.vaultPath,
     granolaApiKey: envOrSecret('GRANOLA_API_KEY', 'granola', 'api_key'),
-    googleAccessToken: envOrSecret('GOOGLE_ACCESS_TOKEN', 'google', 'access_token'),
-    googleClientId: process.env.GOOGLE_CLIENT_ID ?? config.integrations?.google?.clientId,
-    googleClientSecret: envOrSecret('GOOGLE_CLIENT_SECRET', 'google', 'client_secret'),
-    googleCalendarId: envOrConfigString('GOOGLE_CALENDAR_ID', config.integrations?.google?.calendarId, 'primary'),
     webSearchBackend: process.env.MURPH_WEB_SEARCH_BACKEND === 'brave'
       ? 'brave'
       : process.env.MURPH_WEB_SEARCH_BACKEND === 'tavily'

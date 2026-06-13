@@ -3,7 +3,6 @@ import { getRuntimeEnv } from '#app/server/util/env';
 import type { CredentialRecord } from '#app/server/credentials/local-store';
 import type { IntegrationDefinition } from './registry.js';
 import { integrationAvailableFor, listIntegrations, readEnvCredential } from './registry.js';
-import { findGoogleOAuthRecord } from './google-oauth.js';
 import {
   globalIntegrationCredential,
   integrationCredentialKey,
@@ -124,11 +123,9 @@ export function effectiveIntegrationCredential(
     ? pathStatus.vaultPath
     : readEnvCredential(definition.provider);
   const key = integrationCredentialKey(definition);
-  const local = definition.provider === 'google'
-    ? findGoogleOAuthRecord(workspaceId) ?? globalIntegrationCredential('google', 'access_token')
-    : definition.credentialKind === 'config_path'
-      ? undefined
-      : globalIntegrationCredential(definition.provider, key);
+  const local = definition.credentialKind === 'config_path'
+    ? undefined
+    : globalIntegrationCredential(definition.provider, key);
   const source = local ? 'credentials' : pathStatus?.source ?? (envValue ? 'env' : undefined);
 
   return { local, envValue, source };
