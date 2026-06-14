@@ -26,9 +26,7 @@ name: engineering
 description: Engineering coverage for technical status, incidents, releases, and implementation threads.
 blockedTopics: compensation, performance reviews, legal advice
 alwaysQueueTopics: production incidents, security vulnerabilities, data loss
-blockedActions:
 mode: manual_review
-requireGroundingForFacts: yes
 preferAskWhenUncertain: yes
 notes: cite technical evidence, avoid changing commitments
 ---
@@ -47,14 +45,14 @@ Use `mode` for new profiles. `allowAutoSend` is accepted only for old profile fi
 | `name` | Stable profile name. Defaults to filename. |
 | `description` | Profile summary shown in setup surfaces. |
 | `blockedTopics` | Comma-separated topics that force abstain. |
-| `alwaysQueueTopics` | Comma-separated topics that force review. |
-| `blockedActions` | Comma-separated action types to block. |
+| `alwaysQueueTopics` | Comma-separated guarded topics that can draft but must go to review. |
 | `mode` or `executionMode` | Default execution mode: `manual_review` or `auto_send_low_risk`. |
 | `allowAutoSend` | Legacy fallback only when `mode` is missing. Do not use for new profiles. |
-| `requireGroundingForFacts` | Whether factual replies should require grounding attempts. |
 | `preferAskWhenUncertain` | Whether uncertainty should bias toward asking or queueing. |
 | `notes` | Comma-separated classifier and agent notes. |
 | `scopedRules` | Optional JSON for narrower rule overrides. |
+
+Runtime grounding is always required for factual replies and is not configurable through policy metadata.
 
 ## Runtime order
 

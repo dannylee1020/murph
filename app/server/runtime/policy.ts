@@ -51,9 +51,7 @@ function applyControls(base: CompiledPolicy, controls: PolicyControls): Compiled
   return normalizeCompiledPolicy({
     blockedTopics: unique([...base.blockedTopics, ...(controls.blockedTopics ?? [])]),
     alwaysQueueTopics: unique([...base.alwaysQueueTopics, ...(controls.alwaysQueueTopics ?? [])]),
-    blockedActions: [...new Set([...base.blockedActions, ...(controls.blockedActions ?? [])])],
     executionMode,
-    requireGroundingForFacts: controls.requireGroundingForFacts ?? base.requireGroundingForFacts,
     preferAskWhenUncertain: controls.preferAskWhenUncertain ?? base.preferAskWhenUncertain,
     allowAutoSend: executionMode === 'auto_send_low_risk',
     notesForAgent: unique([...base.notesForAgent, ...(controls.notesForAgent ?? [])]),
@@ -154,16 +152,6 @@ export function evaluatePolicy(
       disposition: 'abstained',
       execution: 'abstain',
       reason: 'Dry-run mode records the decision without side effects'
-    };
-  }
-
-  if (compiledPolicy?.blockedActions.includes(action.type)) {
-    return {
-      allowed: false,
-      downgradedTo: 'abstain',
-      disposition: 'abstained',
-      execution: 'abstain',
-      reason: `Policy blocks ${action.type} actions`
     };
   }
 

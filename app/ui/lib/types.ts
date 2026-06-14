@@ -1,9 +1,7 @@
 export type CompiledPolicyPayload = {
     blockedTopics: string[];
     alwaysQueueTopics: string[];
-    blockedActions: string[];
     executionMode: string;
-    requireGroundingForFacts: boolean;
     preferAskWhenUncertain: boolean;
     allowAutoSend: boolean;
     notesForAgent: string[];

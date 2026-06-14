@@ -12,7 +12,7 @@ describe('policy compiler', () => {
     expect(profile.name).toBe('builtin-manual_review');
     expect(profile.compiled.executionMode).toBe('manual_review');
     expect(profile.compiled.allowAutoSend).toBe(false);
-    expect(profile.compiled.requireGroundingForFacts).toBe(true);
+    expect(profile.compiled.preferAskWhenUncertain).toBe(true);
   });
 
   it('parses override patches without clobbering unrelated fields', () => {
@@ -21,7 +21,7 @@ describe('policy compiler', () => {
     const merged = mergeCompiledPolicy(base, patch);
 
     expect(merged.alwaysQueueTopics).toContain('pricing');
-    expect(merged.requireGroundingForFacts).toBe(base.requireGroundingForFacts);
+    expect(merged.preferAskWhenUncertain).toBe(base.preferAskWhenUncertain);
     expect(merged.executionMode).toBe('manual_review');
     expect(merged.allowAutoSend).toBe(false);
   });
@@ -44,9 +44,7 @@ describe('policy compiler', () => {
       compiled: {
         blockedTopics: ['legal'],
         alwaysQueueTopics: ['launch decisions'],
-        blockedActions: [],
         executionMode: 'manual_review' as const,
-        requireGroundingForFacts: true,
         preferAskWhenUncertain: true,
         allowAutoSend: false,
         notesForAgent: []

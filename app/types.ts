@@ -195,9 +195,7 @@ export interface PolicyProfile {
 export interface PolicyControls {
     blockedTopics?: string[];
     alwaysQueueTopics?: string[];
-    blockedActions?: ContinuityActionType[];
     executionMode?: PolicyExecutionMode;
-    requireGroundingForFacts?: boolean;
     preferAskWhenUncertain?: boolean;
     allowAutoSend?: boolean;
     notesForAgent?: string[];
@@ -217,9 +215,7 @@ export interface ScopedPolicyRule {
 export interface CompiledPolicy {
     blockedTopics: string[];
     alwaysQueueTopics: string[];
-    blockedActions: ContinuityActionType[];
     executionMode: PolicyExecutionMode;
-    requireGroundingForFacts: boolean;
     preferAskWhenUncertain: boolean;
     allowAutoSend: boolean;
     notesForAgent: string[];

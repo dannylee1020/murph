@@ -55,9 +55,7 @@ function session(mode: AutopilotSession['mode']): AutopilotSession {
   const compiledPolicy = {
     blockedTopics: [],
     alwaysQueueTopics: [],
-    blockedActions: [],
     executionMode: mode === 'auto_send_low_risk' ? 'auto_send_low_risk' as const : 'manual_review' as const,
-    requireGroundingForFacts: false,
     preferAskWhenUncertain: true,
     allowAutoSend: mode === 'auto_send_low_risk',
     notesForAgent: []
@@ -116,9 +114,7 @@ function yoloPolicy(): CompiledPolicy {
   return {
     blockedTopics: [],
     alwaysQueueTopics: [],
-    blockedActions: [],
     executionMode: 'auto_send_low_risk',
-    requireGroundingForFacts: true,
     preferAskWhenUncertain: false,
     allowAutoSend: true,
     notesForAgent: ['use every materially relevant read-only retrieval and context tool before answering factual questions']
@@ -175,9 +171,7 @@ describe('evaluatePolicy', () => {
     const policySession = sessionWithPolicy({
       blockedTopics: [],
       alwaysQueueTopics: ['launch decisions'],
-      blockedActions: [],
       executionMode: 'manual_review',
-      requireGroundingForFacts: true,
       preferAskWhenUncertain: true,
       allowAutoSend: false,
       notesForAgent: []
@@ -194,9 +188,7 @@ describe('evaluatePolicy', () => {
       sessionWithPolicy({
         blockedTopics: [],
         alwaysQueueTopics: [],
-        blockedActions: [],
         executionMode: 'auto_send_low_risk',
-        requireGroundingForFacts: false,
         preferAskWhenUncertain: false,
         allowAutoSend: true,
         notesForAgent: [],
@@ -286,9 +278,7 @@ describe('evaluatePolicy', () => {
         sessionWithPolicy({
           blockedTopics: ['payroll'],
           alwaysQueueTopics: [],
-          blockedActions: [],
           executionMode: 'auto_send_low_risk',
-          requireGroundingForFacts: true,
           preferAskWhenUncertain: true,
           allowAutoSend: true,
           notesForAgent: []

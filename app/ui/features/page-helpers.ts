@@ -526,12 +526,7 @@ export function policySummary(
     const rows = [
         ['Selected profile', profileName],
         ['Execution mode', policyExecutionModeLabel(compiled.executionMode)],
-        [
-            'Grounding',
-            compiled.requireGroundingForFacts
-                ? 'Required for factual replies'
-                : 'Not required',
-        ],
+        ['Grounding', 'Required for factual replies'],
         ['Review topics', compiled.alwaysQueueTopics.join(', ') || 'None'],
         ['Blocked topics', compiled.blockedTopics.join(', ') || 'None'],
     ];

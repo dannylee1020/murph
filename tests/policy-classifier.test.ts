@@ -64,8 +64,6 @@ function session(): AutopilotSession {
       compiled: {
         blockedTopics: [],
         alwaysQueueTopics: [],
-        blockedActions: [],
-        requireGroundingForFacts: false,
         preferAskWhenUncertain: true,
         allowAutoSend: true,
         notesForAgent: []

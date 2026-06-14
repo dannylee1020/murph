@@ -2,10 +2,8 @@ name: engineering
 description: Engineering coverage for technical status, incidents, releases, and implementation threads.
 blockedTopics: compensation, performance reviews, legal advice, confidential employee matters
 alwaysQueueTopics: production incidents, security vulnerabilities, data loss, release rollbacks, database migrations, access requests, secrets, architecture decisions
-blockedActions:
 mode: manual_review
 allowAutoSend: no
-requireGroundingForFacts: yes
 preferAskWhenUncertain: yes
 notes: cite technical evidence, avoid changing commitments, queue risky operational decisions
 ---

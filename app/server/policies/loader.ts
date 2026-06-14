@@ -55,9 +55,7 @@ function parseCompiledPolicy(metadata: Record<string, string>, body: string): Co
   return normalizeCompiledPolicy({
     blockedTopics: parseCsv(metadata.blockedTopics).map((item) => item.toLowerCase()),
     alwaysQueueTopics: parseCsv(metadata.alwaysQueueTopics).map((item) => item.toLowerCase()),
-    blockedActions: parseCsv(metadata.blockedActions) as CompiledPolicy['blockedActions'],
     executionMode,
-    requireGroundingForFacts: parseBoolean(metadata.requireGroundingForFacts, true),
     preferAskWhenUncertain: parseBoolean(metadata.preferAskWhenUncertain, true),
     allowAutoSend: executionMode === 'auto_send_low_risk',
     notesForAgent: [...parseCsv(metadata.notes).map((item) => item.toLowerCase()), ...bodyNotes],

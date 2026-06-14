@@ -333,8 +333,7 @@ export class AgentRuntime {
     const toolCallingPlan = buildRuntimeToolCallingPlan({
       context,
       allTools: this.tools.list(),
-      sessionMode: session.mode,
-      policy: session.policy?.compiled
+      sessionMode: session.mode
     });
     const postLoopEvidence: PostLoopEvidence = {
       artifacts: [],

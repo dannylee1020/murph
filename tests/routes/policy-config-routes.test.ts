@@ -127,7 +127,7 @@ describe('policy configuration routes', () => {
     expect(response.body.selectedProfileName).toBe('builtin-manual_review');
     expect(response.body.mode).toBe('manual_review');
     expect(response.body.compiled.executionMode).toBe('manual_review');
-    expect(response.body.compiled.requireGroundingForFacts).toBe(true);
+    expect(response.body.compiled.preferAskWhenUncertain).toBe(true);
   });
 
   it('saves local policy profile selection', async () => {
@@ -159,7 +159,6 @@ describe('policy configuration routes', () => {
     expect(response.body.compiled).toEqual(expect.objectContaining({
       executionMode: 'auto_send_low_risk',
       allowAutoSend: true,
-      requireGroundingForFacts: true,
       preferAskWhenUncertain: false
     }));
   });

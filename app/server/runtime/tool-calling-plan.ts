@@ -1,6 +1,5 @@
 import type {
   AgentToolInventoryItem,
-  CompiledPolicy,
   ContextAssembly,
   SessionMode,
   ToolInventoryItem,
@@ -193,7 +192,6 @@ export function buildRuntimeToolCallingPlan(input: {
   context: ContextAssembly;
   allTools: ToolInventoryItem[];
   sessionMode?: SessionMode;
-  policy?: CompiledPolicy;
 }): RuntimeToolCallingPlan {
   const { availableTools, retrievalToolNames } = listAvailableTools({
     allTools: input.allTools,
@@ -210,10 +208,10 @@ export function buildRuntimeToolCallingPlan(input: {
     ...(!sourceHintTool && fanoutTools.length > 0 ? [RUNTIME_RETRIEVE_ALL_TOOL] : [])
   ];
   const hasSourceArtifacts = input.context.artifacts.some(isSourceArtifact);
-  const groundingDirective = input.policy?.requireGroundingForFacts && !hasSourceArtifacts
+  const groundingDirective = !hasSourceArtifacts
     ? {
         required: true,
-        reason: 'Runtime grounding configuration requires retrieval before drafting factual replies because no current-run source evidence is present.'
+        reason: 'Runtime grounding requires retrieval before drafting factual replies because no current-run source evidence is present.'
       }
     : buildGroundingDirective({
         skills: input.context.skills,

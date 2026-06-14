@@ -38,14 +38,14 @@ name: custom
 description: My custom policy.
 blockedTopics: payroll details, legal advice
 alwaysQueueTopics: pricing, customer commitments
-blockedActions:
 mode: manual_review
-requireGroundingForFacts: yes
 preferAskWhenUncertain: yes
 notes: keep replies concise, avoid promises
 ---
 Extra instructions for Murph when this profile is active.
 ```
+
+`blockedTopics` are hard stops that make Murph abstain. `alwaysQueueTopics` are guarded topics: Murph can draft, but the result must go to operator review. Grounding for factual replies is always required by the runtime, so it is not a policy field.
 
 Use the CLI to inspect, preview, and select profiles:
 

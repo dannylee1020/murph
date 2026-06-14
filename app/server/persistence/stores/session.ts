@@ -64,9 +64,7 @@ function mapSession(row: SessionRow): AutopilotSession {
         compiled: {
           blockedTopics: [],
           alwaysQueueTopics: [],
-          blockedActions: [],
           executionMode: 'manual_review',
-          requireGroundingForFacts: true,
           preferAskWhenUncertain: true,
           allowAutoSend: false,
           notesForAgent: []

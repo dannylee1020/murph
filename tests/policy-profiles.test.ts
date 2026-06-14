@@ -12,10 +12,8 @@ function writePolicy(root: string, name: string, description = 'Test policy'): v
       `description: ${description}`,
       'blockedTopics:',
       'alwaysQueueTopics: custom review',
-      'blockedActions:',
       'mode: manual_review',
       'allowAutoSend: no',
-      'requireGroundingForFacts: yes',
       'preferAskWhenUncertain: yes',
       'notes: user policy note',
       '---',
@@ -57,11 +55,9 @@ describe('policy profile loader', () => {
 
     expect(yolo?.compiled).toEqual(expect.objectContaining({
       allowAutoSend: true,
-      requireGroundingForFacts: true,
       preferAskWhenUncertain: false,
       blockedTopics: [],
       alwaysQueueTopics: [],
-      blockedActions: [],
       notesForAgent: expect.arrayContaining([
         expect.stringContaining('read-only retrieval and context tool')
       ])

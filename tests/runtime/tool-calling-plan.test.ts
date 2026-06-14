@@ -3,7 +3,7 @@ import {
   buildRuntimeToolCallingPlan,
   listAvailableTools
 } from '../../app/server/runtime/tool-calling-plan';
-import type { CompiledPolicy, ContextAssembly, SkillManifest, ToolInventoryItem, WorkspaceMemory } from '../../app/types';
+import type { ContextAssembly, SkillManifest, ToolInventoryItem, WorkspaceMemory } from '../../app/types';
 
 const workspaceMemory: WorkspaceMemory = {
   workspaceId: 'workspace',
@@ -33,19 +33,6 @@ function tool(input: Partial<ToolInventoryItem> & Pick<ToolInventoryItem, 'name'
     optional: false,
     source: 'test',
     ...input
-  };
-}
-
-function policy(overrides: Partial<CompiledPolicy> = {}): CompiledPolicy {
-  return {
-    blockedTopics: [],
-    alwaysQueueTopics: [],
-    blockedActions: [],
-    requireGroundingForFacts: true,
-    preferAskWhenUncertain: false,
-    allowAutoSend: true,
-    notesForAgent: [],
-    ...overrides
   };
 }
 
@@ -251,26 +238,24 @@ describe('buildRuntimeToolCallingPlan', () => {
     expect(plan.groundingDirective.required).toBe(true);
   });
 
-  it('marks grounding required when selected policy requires factual grounding', () => {
+  it('marks grounding required by runtime when no source evidence exists', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context(),
-      allTools,
-      policy: policy()
+      allTools
     });
 
     expect(plan.groundingDirective.required).toBe(true);
-    expect(plan.groundingDirective.reason).toMatch(/Runtime grounding configuration/);
+    expect(plan.groundingDirective.reason).toMatch(/Runtime grounding requires retrieval/);
     expect(plan.retrievalToolNames).toEqual(['runtime.retrieve_all']);
     expect(plan.fanoutTools.map((t) => t.name)).toEqual(['notion.search']);
   });
 
-  it('does not require policy grounding when source artifacts already exist', () => {
+  it('does not require runtime grounding when source artifacts already exist', () => {
     const plan = buildRuntimeToolCallingPlan({
       context: context({
         artifacts: [{ id: 'a1', source: 'notion', type: 'document', title: 'Checkout', text: 'ready' }]
       }),
-      allTools,
-      policy: policy()
+      allTools
     });
 
     expect(plan.groundingDirective.required).toBe(false);
@@ -285,8 +270,7 @@ describe('buildRuntimeToolCallingPlan', () => {
         },
         artifacts: [{ id: 'memory-artifact', source: 'memory.linked_artifacts', type: 'memory', title: 'Thread Memory', text: 'Captured Notion evidence.' }]
       }),
-      allTools,
-      policy: policy()
+      allTools
     });
 
     expect(plan.groundingDirective.required).toBe(true);
@@ -303,8 +287,7 @@ describe('buildRuntimeToolCallingPlan', () => {
         },
         artifacts: [{ id: 'memory-artifact', source: 'memory.linked_artifacts', type: 'memory', title: 'Thread Memory', text: 'Captured Notion evidence.' }]
       }),
-      allTools,
-      policy: policy()
+      allTools
     });
 
     expect(plan.groundingDirective.required).toBe(true);
@@ -316,8 +299,7 @@ describe('buildRuntimeToolCallingPlan', () => {
       context: context({
         artifacts: [{ id: 'memory-page', source: 'memory.linked_artifacts', type: 'memory', title: 'Memory Page', text: 'Captured Notion evidence.' }]
       }),
-      allTools,
-      policy: policy()
+      allTools
     });
 
     expect(plan.groundingDirective.required).toBe(true);
@@ -338,8 +320,7 @@ describe('buildRuntimeToolCallingPlan', () => {
           text: 'Checkout launch is blocked on callback verification.'
         }]
       }),
-      allTools,
-      policy: policy()
+      allTools
     });
     expect(plan.groundingDirective.required).toBe(true);
     expect(plan.availableTools.map((t) => t.name)).toEqual(['runtime.retrieve_all']);

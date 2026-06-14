@@ -201,8 +201,6 @@ async function setup(
       compiled: {
         blockedTopics: [],
         alwaysQueueTopics: [],
-        blockedActions: [],
-        requireGroundingForFacts: false,
         preferAskWhenUncertain: true,
         allowAutoSend: overrides.sessionMode === 'auto_send_low_risk',
         notesForAgent: []

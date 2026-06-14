@@ -19,9 +19,7 @@ name: default
 description: Generic safe profile for local-first Murph coverage.
 blockedTopics: payroll details, compensation, performance reviews, legal advice
 alwaysQueueTopics: customer escalations, company commitments, deadlines, pricing
-blockedActions:
 mode: manual_review
-requireGroundingForFacts: yes
 preferAskWhenUncertain: yes
 notes: keep replies short, avoid commitments, queue ambiguous decisions
 ---
@@ -34,16 +32,16 @@ Queue anything that commits the operator or changes priorities.
 - `name`: Profile name shown in the UI and stored on new sessions.
 - `description`: Short UI description.
 - `blockedTopics`: Comma-separated topics that force abstain when they appear in the latest thread message.
-- `alwaysQueueTopics`: Comma-separated topics that force operator review instead of direct send.
-- `blockedActions`: Comma-separated action verbs from `reply, ask, redirect, defer, remind, abstain`.
+- `alwaysQueueTopics`: Comma-separated guarded topics that can draft but must go to operator review instead of direct send.
 - `mode`: `manual_review` or `auto_send_low_risk`. This is the profile's default autonomy posture.
 - `allowAutoSend`: Legacy `yes/no` or `true/false` metadata. It is still read only when `mode` is missing. Do not use it in new profiles.
-- `requireGroundingForFacts`: `yes/no` or `true/false`. This is consumed by runtime grounding, not by the policy authorization gate.
 - `preferAskWhenUncertain`: `yes/no` or `true/false`.
 - `notes`: Comma-separated short instructions appended to agent notes.
 - `scopedRules`: Optional JSON array of channel/intent/action scoped rules.
 
 The body below `---` is also appended to `notesForAgent`, one non-empty line at a time.
+
+Runtime grounding is always on for factual replies and is not configurable in policy profiles.
 
 ## How Profiles Are Chosen
 
