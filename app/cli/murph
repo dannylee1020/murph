@@ -49,6 +49,7 @@ Commands:
   credentials <cmd>    List and inspect local credentials.
   admin <cmd>          Open the Murph admin dashboard.
   agent [prompt]       Chat with Murph's setup and plugin agent.
+  monitor <command>    Monitor selected channels during coverage sessions.
   policy <command>     List, preview, and save policy configuration.
   logs [-f]            Show runtime logs.
   open                 Open Murph setup in a browser.
@@ -230,8 +231,8 @@ pretty_json() {
 }
 
 require_http_api() {
-  have_command curl || fail "curl is required for murph policy."
-  have_command node || fail "node is required for murph policy."
+  have_command curl || fail "curl is required for Murph HTTP commands."
+  have_command node || fail "node is required for Murph HTTP commands."
   health_check || fail "Murph is not running at $MURPH_URL. Start it with: murph start --background"
 }
 
@@ -580,6 +581,333 @@ policy_command() {
       ;;
     *)
       policy_usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+monitor_usage() {
+  cat <<'EOF'
+Usage: murph monitor [command] [options]
+
+Commands:
+  status [--json]
+      Show active coverage sessions.
+
+  start [--until HH:MM] [--timezone TZ] [--duration HOURS]
+        [--mode manual_review|dry_run|auto_send_low_risk]
+        [--workspace ID] [--channels all|ID,ID] [--title TEXT] [--json]
+      Monitor selected channels from saved setup defaults, with optional overrides.
+
+  stop [--session ID|--all] [--json]
+      Stop one active coverage session, a specific session, or all sessions.
+EOF
+}
+
+monitor_status() {
+  local json=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json)
+        json=true
+        shift
+        ;;
+      *)
+        fail "Unknown monitor status option: $1"
+        ;;
+    esac
+  done
+
+  require_http_api
+  MURPH_MONITOR_JSON="$json" MURPH_URL="$MURPH_URL" node <<'NODE'
+async function request(path, options = {}) {
+  const response = await fetch(`${process.env.MURPH_URL}${path}`, options);
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(payload.error || text || `Request failed: ${path}`);
+  return payload;
+}
+
+function formatSession(session) {
+  const scope = Array.isArray(session.channelScope) && session.channelScope.length > 0
+    ? session.channelScope.join(',')
+    : 'all accessible channels';
+  return `- ${session.id} | ${session.title} | ${session.mode} | until ${session.endsAt} | ${scope}`;
+}
+
+try {
+  const payload = await request('/api/gateway/sessions');
+  if (process.env.MURPH_MONITOR_JSON === 'true') {
+    console.log(JSON.stringify(payload, null, 2));
+  } else if (!payload.sessions?.length) {
+    console.log('No active coverage sessions.');
+  } else {
+    console.log(`Active coverage sessions: ${payload.sessions.length}`);
+    for (const session of payload.sessions) console.log(formatSession(session));
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+NODE
+}
+
+monitor_start() {
+  local until="" timezone="" duration="" mode="" workspace="" channels="" title="" json=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --until)
+        until="${2:-}"
+        [[ -n "$until" ]] || fail "--until requires HH:MM."
+        shift 2
+        ;;
+      --timezone)
+        timezone="${2:-}"
+        [[ -n "$timezone" ]] || fail "--timezone requires a value."
+        shift 2
+        ;;
+      --duration)
+        duration="${2:-}"
+        [[ "$duration" =~ ^[0-9]+([.][0-9]+)?$ ]] || fail "--duration requires a number of hours."
+        shift 2
+        ;;
+      --mode)
+        mode="${2:-}"
+        case "$mode" in
+          manual_review|dry_run|auto_send_low_risk) ;;
+          *) fail "--mode must be manual_review, dry_run, or auto_send_low_risk." ;;
+        esac
+        shift 2
+        ;;
+      --workspace)
+        workspace="${2:-}"
+        [[ -n "$workspace" ]] || fail "--workspace requires an id."
+        shift 2
+        ;;
+      --channels)
+        channels="${2:-}"
+        [[ -n "$channels" ]] || fail "--channels requires all or comma-separated ids."
+        shift 2
+        ;;
+      --title)
+        title="${2:-}"
+        [[ -n "$title" ]] || fail "--title requires text."
+        shift 2
+        ;;
+      --json)
+        json=true
+        shift
+        ;;
+      *)
+        fail "Unknown monitor start option: $1"
+        ;;
+    esac
+  done
+
+  require_http_api
+  MURPH_MONITOR_UNTIL="$until" \
+  MURPH_MONITOR_TIMEZONE="$timezone" \
+  MURPH_MONITOR_DURATION="$duration" \
+  MURPH_MONITOR_MODE="$mode" \
+  MURPH_MONITOR_WORKSPACE="$workspace" \
+  MURPH_MONITOR_CHANNELS="$channels" \
+  MURPH_MONITOR_TITLE="$title" \
+  MURPH_MONITOR_JSON="$json" \
+  MURPH_URL="$MURPH_URL" node <<'NODE'
+async function request(path, options = {}) {
+  const response = await fetch(`${process.env.MURPH_URL}${path}`, options);
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    const message = payload.message || payload.error || text || `Request failed: ${path}`;
+    const error = new Error(message);
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+function workspacesFromSetup(setup) {
+  if (Array.isArray(setup.channelWorkspaces) && setup.channelWorkspaces.length > 0) return setup.channelWorkspaces;
+  return [setup.slack?.workspace, setup.discord?.workspace].filter(Boolean);
+}
+
+function ownerForWorkspace(workspace, defaults, workspaceCount) {
+  const configured = defaults.workspaceOwners?.find((owner) => owner.workspaceId === workspace.id);
+  if (configured?.ownerUserId) return configured.ownerUserId;
+  const legacyApplies = defaults.workspaceId ? defaults.workspaceId === workspace.id : workspaceCount <= 1;
+  return legacyApplies ? defaults.ownerUserId : undefined;
+}
+
+function defaultChannelsForWorkspace(workspace, defaults, workspaceCount) {
+  const configured = defaults.workspaceChannels?.find((entry) => entry.workspaceId === workspace.id);
+  if (configured) {
+    return configured.channelScopeMode === 'all_accessible'
+      ? []
+      : (configured.selectedChannels ?? []).map((channel) => channel.id);
+  }
+  const legacyApplies = defaults.workspaceId ? defaults.workspaceId === workspace.id : workspaceCount <= 1;
+  if (!legacyApplies) return [];
+  return defaults.channelScopeMode === 'all_accessible'
+    ? []
+    : (defaults.selectedChannels ?? []).map((channel) => channel.id);
+}
+
+try {
+  const [setup, defaultsPayload] = await Promise.all([
+    request('/api/setup/status'),
+    request('/api/setup/defaults')
+  ]);
+  const defaults = defaultsPayload.defaults ?? {};
+  const workspaces = workspacesFromSetup(setup);
+  if (workspaces.length === 0) throw new Error('No channel workspace is connected. Run: murph setup slack or murph setup discord');
+
+  const workspaceFilter = process.env.MURPH_MONITOR_WORKSPACE;
+  const selectedWorkspaces = workspaceFilter
+    ? workspaces.filter((workspace) => workspace.id === workspaceFilter)
+    : workspaces;
+  if (selectedWorkspaces.length === 0) throw new Error(`Unknown workspace: ${workspaceFilter}`);
+
+  const channelOverride = process.env.MURPH_MONITOR_CHANNELS;
+  const targets = selectedWorkspaces.map((workspace) => {
+    const channelScope = channelOverride
+      ? (channelOverride === 'all' ? [] : channelOverride.split(',').map((entry) => entry.trim()).filter(Boolean))
+      : defaultChannelsForWorkspace(workspace, defaults, workspaces.length);
+    return {
+      workspaceId: workspace.id,
+      ownerUserId: ownerForWorkspace(workspace, defaults, workspaces.length),
+      channelScope
+    };
+  });
+
+  const body = {
+    title: process.env.MURPH_MONITOR_TITLE || 'CLI coverage',
+    targets
+  };
+  if (process.env.MURPH_MONITOR_MODE) body.mode = process.env.MURPH_MONITOR_MODE;
+  if (process.env.MURPH_MONITOR_UNTIL) {
+    body.stopLocalTime = process.env.MURPH_MONITOR_UNTIL;
+    if (process.env.MURPH_MONITOR_TIMEZONE) body.timezone = process.env.MURPH_MONITOR_TIMEZONE;
+  } else if (process.env.MURPH_MONITOR_DURATION) {
+    body.durationHours = Number(process.env.MURPH_MONITOR_DURATION);
+  }
+
+  const payload = await request('/api/gateway/sessions/bulk', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (process.env.MURPH_MONITOR_JSON === 'true') {
+    console.log(JSON.stringify(payload, null, 2));
+  } else {
+    const sessions = payload.sessions ?? [];
+    console.log(`Started ${sessions.length} coverage session${sessions.length === 1 ? '' : 's'}.`);
+    for (const session of sessions) {
+      console.log(`- ${session.id} | ${session.title} | ${session.mode} | until ${session.endsAt}`);
+    }
+  }
+} catch (error) {
+  if (process.env.MURPH_MONITOR_JSON === 'true' && error?.payload) {
+    console.error(JSON.stringify(error.payload, null, 2));
+  } else {
+    console.error(error instanceof Error ? error.message : String(error));
+  }
+  process.exit(1);
+}
+NODE
+}
+
+monitor_stop() {
+  local session_id="" all=false json=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --session)
+        session_id="${2:-}"
+        [[ -n "$session_id" ]] || fail "--session requires an id."
+        shift 2
+        ;;
+      --all)
+        all=true
+        shift
+        ;;
+      --json)
+        json=true
+        shift
+        ;;
+      *)
+        fail "Unknown monitor stop option: $1"
+        ;;
+    esac
+  done
+  [[ -z "$session_id" || "$all" == false ]] || fail "Use either --session ID or --all, not both."
+
+  require_http_api
+  MURPH_MONITOR_SESSION="$session_id" \
+  MURPH_MONITOR_ALL="$all" \
+  MURPH_MONITOR_JSON="$json" \
+  MURPH_URL="$MURPH_URL" node <<'NODE'
+async function request(path, options = {}) {
+  const response = await fetch(`${process.env.MURPH_URL}${path}`, options);
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(payload.error || text || `Request failed: ${path}`);
+  return payload;
+}
+
+try {
+  const sessionsPayload = await request('/api/gateway/sessions');
+  const sessions = sessionsPayload.sessions ?? [];
+  let targets = [];
+  if (process.env.MURPH_MONITOR_SESSION) {
+    targets = [{ id: process.env.MURPH_MONITOR_SESSION }];
+  } else if (process.env.MURPH_MONITOR_ALL === 'true') {
+    targets = sessions;
+  } else if (sessions.length === 1) {
+    targets = sessions;
+  } else if (sessions.length === 0) {
+    throw new Error('No active coverage sessions.');
+  } else {
+    throw new Error(`Multiple active sessions found. Use --all or --session ID. Active ids: ${sessions.map((session) => session.id).join(', ')}`);
+  }
+
+  const stopped = [];
+  for (const session of targets) {
+    const payload = await request(`/api/gateway/sessions/${encodeURIComponent(session.id)}/stop`, { method: 'POST' });
+    stopped.push(payload.session ?? { id: session.id });
+  }
+
+  if (process.env.MURPH_MONITOR_JSON === 'true') {
+    console.log(JSON.stringify({ ok: true, sessions: stopped }, null, 2));
+  } else {
+    console.log(`Stopped ${stopped.length} coverage session${stopped.length === 1 ? '' : 's'}.`);
+    for (const session of stopped) console.log(`- ${session.id}`);
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+NODE
+}
+
+monitor_command() {
+  local subcommand="${1:-status}"
+  shift || true
+  case "$subcommand" in
+    status)
+      monitor_status "$@"
+      ;;
+    start)
+      monitor_start "$@"
+      ;;
+    stop)
+      monitor_stop "$@"
+      ;;
+    help|-h|--help)
+      monitor_usage
+      ;;
+    *)
+      monitor_usage >&2
       exit 1
       ;;
   esac
@@ -948,6 +1276,9 @@ case "$command" in
     ;;
   agent)
     agent_command "$@"
+    ;;
+  monitor)
+    monitor_command "$@"
     ;;
   policy)
     policy_command "$@"

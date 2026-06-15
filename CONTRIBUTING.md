@@ -28,7 +28,7 @@ npm test
 If you change docs, also run:
 
 ```bash
-npm run docs:build
+npm run docs
 ```
 
 ## Pull requests

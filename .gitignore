@@ -40,9 +40,11 @@ pnpm-debug.log*
 !app/team/ui/index.html
 !app/personal/ui/index.html
 scripts/*
+!scripts/dev.mjs
 !scripts/install-lib.sh
 !scripts/install-deps.sh
 !scripts/prune-install.sh
+!scripts/sync-docs-public.mjs
 images/
 PRODUCT.md
 DESIGN.md

@@ -9,9 +9,9 @@ Murph stores non-secret process settings in `~/.murph/config.yaml`, runtime-host
 
 The runtime host is the machine running Murph: your laptop, a VPS, a home server, or another host you control. In V1, config, credentials, SQLite, bot ingress, and agent execution are colocated on that host. Murph supports shared messenger channel coverage.
 
-## Setup wizard
+## CLI-first setup
 
-Use the CLI setup wizard for normal configuration:
+Use the CLI setup wizard for normal OSS configuration:
 
 ```bash
 murph setup
@@ -40,13 +40,13 @@ murph setup policy
 murph setup status
 ```
 
-Use `murph setup slack` or `murph setup discord` to connect the shared channel bot. The browser setup wizard always includes channel selection for remote-team coverage.
+Use `murph setup slack` or `murph setup discord` to connect the shared channel bot. The browser setup page is a status and command surface; it does not replace the CLI setup workflow.
 
-The schedule timezone is used when starting a session from Home. Murph computes the session stop time on the server and expires the session at the configured workday start in that timezone.
+The schedule timezone is used when starting a session from Coverage or `murph monitor`. Murph computes the session stop time on the server and expires the session at the configured workday start in that timezone.
 
 ## AI providers
 
-Murph supports OpenAI and Anthropic. At least one provider key is required. Use `murph setup provider` or the browser setup flow to save provider keys into `~/.murph/.credentials`.
+Murph supports OpenAI and Anthropic. At least one provider key is required. Use `murph setup provider` to save provider keys into `~/.murph/.credentials`.
 
 Runtime replies and `murph agent` share the same provider/model by default. Normal setup writes non-secret model defaults into `~/.murph/config.yaml`:
 
@@ -178,6 +178,8 @@ New sessions inherit the selected profile's mode by default. Use a session-level
 There is no separate `policy.mode` config value. To change the default execution mode, select a different profile or edit the selected profile's `mode`.
 
 Use [Policy](/docs/policy) for custom profiles. Murph Agent is the preferred path for creating or changing custom policy; direct profile files live in `~/.murph/policies/*.md`.
+
+The OSS Admin page shows the selected profile and effective behavior, but policy changes belong to `murph policy` or `murph agent`.
 
 ## Local health
 

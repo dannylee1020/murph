@@ -18,22 +18,12 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:server": "npm run build:server && npm run start",
-    "dev:ui": "vite --config app/ui/vite.config.ts",
-    "watch:server": "tsc -p tsconfig.server.json --watch --preserveWatchOutput",
-    "build": "npm run build:server && npm run build:ui",
-    "build:server": "tsc -p tsconfig.server.json",
-    "build:ui": "vite build --config app/ui/vite.config.ts",
-    "start": "node dist/app/runtime/server.js",
-    "preview": "npm run start",
-    "architecture:map": "node scripts/generate-architecture-map.mjs",
-    "docs:sync-public": "mkdir -p docs/public && cp install.sh docs/public/install.sh && cp public/release.env public/slack-manifest.yaml public/slack-channel-manifest.yaml docs/public/",
-    "docs:dev": "npm run docs:sync-public && vitepress dev docs",
-    "docs:build": "npm run docs:sync-public && vitepress build docs",
-    "docs:start": "vitepress preview docs",
-    "check": "npm run build:server && tsc -p tsconfig.ui.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "check": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
+    "build": "tsc -p tsconfig.server.json && vite build --config app/ui/vite.config.ts",
+    "start": "node dist/app/runtime/server.js",
+    "docs": "node scripts/sync-docs-public.mjs && vitepress build docs",
+    "docs:dev": "node scripts/sync-docs-public.mjs && vitepress dev docs"
   },
   "devDependencies": {
     "@types/node": "^22.19.19",

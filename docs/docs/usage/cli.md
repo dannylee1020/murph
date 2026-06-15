@@ -7,6 +7,8 @@ description: Use the murph command-line interface.
 
 Murph installs one product-local CLI for normal use. `murph` controls the shared messenger channel runtime.
 
+Murph OSS is CLI-first. Use the browser dashboard for Coverage, Review, Activity, and read-only Admin inspection. Use `murph setup`, `murph monitor`, `murph policy`, and `murph agent` for configuration and advanced control.
+
 ## Setup commands
 
 ```bash
@@ -51,6 +53,20 @@ murph open
 
 Use these commands to run Murph locally and inspect the local process.
 
+## Monitor commands
+
+```bash
+murph monitor
+murph monitor status
+murph monitor start
+murph monitor start --until 09:00 --timezone America/Los_Angeles
+murph monitor start --duration 4 --mode dry_run --channels C123,C456
+murph monitor stop
+murph monitor stop --all
+```
+
+Use `murph monitor` to script coverage sessions from the terminal. Without flags, `monitor` shows active sessions and `monitor start` uses saved setup defaults. Use `--workspace`, `--channels`, `--mode`, `--until`, `--timezone`, and `--duration` for one-off overrides. Use `--json` on any monitor subcommand when another tool needs the raw API response.
+
 ## Admin commands
 
 ```bash
@@ -58,6 +74,8 @@ murph admin url
 ```
 
 Use `murph admin url` to print the admin dashboard URL for the current runtime host.
+
+The OSS Admin page is inspect-only. It shows setup, policy, and integration state, then points back to CLI and Murph Agent commands for changes.
 
 ## Health commands
 

@@ -31,7 +31,7 @@ npm test
 Run the docs build when docs change:
 
 ```bash
-npm run docs:build
+npm run docs
 ```
 
 ## Pull requests
