@@ -40,6 +40,64 @@ interface GitHubIssueResponse {
 
 interface GitHubPullResponse extends GitHubIssueResponse {
   merged_at?: string | null;
+  draft?: boolean;
+  updated_at?: string | null;
+  additions?: number;
+  deletions?: number;
+  changed_files?: number;
+  commits?: number;
+}
+
+interface GitHubUserResponse {
+  login?: string;
+}
+
+interface GitHubPullFileResponse {
+  filename: string;
+  status?: string;
+  additions?: number;
+  deletions?: number;
+  patch?: string;
+}
+
+interface GitHubPullCommitResponse {
+  sha: string;
+  html_url?: string;
+  commit?: {
+    message?: string;
+    author?: {
+      name?: string;
+      date?: string;
+    };
+    committer?: {
+      name?: string;
+      date?: string;
+    };
+  };
+  author?: GitHubUserResponse | null;
+}
+
+interface GitHubCommentResponse {
+  id: number;
+  body?: string | null;
+  html_url?: string;
+  created_at?: string;
+  updated_at?: string;
+  user?: GitHubUserResponse | null;
+}
+
+interface GitHubReviewResponse {
+  id: number;
+  body?: string | null;
+  html_url?: string;
+  state?: string;
+  submitted_at?: string;
+  user?: GitHubUserResponse | null;
+}
+
+interface GitHubReviewCommentResponse extends GitHubCommentResponse {
+  path?: string;
+  diff_hunk?: string;
 }
 
 export interface GitHubSearchResult {
@@ -63,6 +121,14 @@ export interface GitHubReadResult {
   kind: 'issue' | 'pull_request';
   state?: string;
   mergedAt?: string | null;
+  draft?: boolean;
+  changedFiles?: number;
+  commitCount?: number;
+  commentCount?: number;
+  reviewCount?: number;
+  reviewCommentCount?: number;
+  activityTrailDays?: number;
+  readErrors?: string[];
 }
 
 export type GitHubResult = GitHubSearchResult | GitHubReadResult;
@@ -84,6 +150,10 @@ export interface GitHubSearchDiagnostics {
 
 const DEEP_READ_LIMIT = 3;
 const SEARCH_VARIANT_LIMIT = 4;
+const ACTIVITY_TRAIL_DAYS = 7;
+const ACTIVITY_TRAIL_MS = ACTIVITY_TRAIL_DAYS * 24 * 60 * 60 * 1000;
+const MAX_PR_FILES = 6;
+const MAX_ACTIVITY_ITEMS = 6;
 const RANKING_ONLY_TERMS = new Set([
   'blocked',
   'blocker',
@@ -105,6 +175,113 @@ function parseRepositoryName(repositoryUrl: string): string {
 
 function compactText(value: string | null | undefined, maxLength = 4000): string {
   return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function compactMultiline(value: string | null | undefined, maxLength = 6000): string {
+  return (value ?? '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function firstLine(value: string | null | undefined, maxLength = 220): string {
+  return compactText(value, maxLength).split('\n')[0] ?? '';
+}
+
+function actorName(user?: GitHubUserResponse | null, fallback?: string): string {
+  return user?.login ?? fallback ?? 'unknown';
+}
+
+function recentItems<T>(items: T[], getDate: (item: T) => string | null | undefined): T[] {
+  return items
+    .map((item) => ({ item, timestamp: Date.parse(getDate(item) ?? '') }))
+    .filter(({ timestamp }) => Number.isFinite(timestamp) && Date.now() - timestamp <= ACTIVITY_TRAIL_MS)
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .map(({ item }) => item)
+    .slice(0, MAX_ACTIVITY_ITEMS);
+}
+
+function renderPullRequestBody(
+  repository: string,
+  pull: GitHubPullResponse,
+  related: {
+    files: GitHubPullFileResponse[];
+    commits: GitHubPullCommitResponse[];
+    comments: GitHubCommentResponse[];
+    reviews: GitHubReviewResponse[];
+    reviewComments: GitHubReviewCommentResponse[];
+  },
+  readErrors: string[]
+): string {
+  const recentCommits = recentItems(
+    related.commits,
+    (commit) => commit.commit?.committer?.date ?? commit.commit?.author?.date
+  );
+  const recentComments = recentItems(related.comments, (comment) => comment.updated_at ?? comment.created_at);
+  const recentReviews = recentItems(related.reviews, (review) => review.submitted_at);
+  const recentReviewComments = recentItems(
+    related.reviewComments,
+    (comment) => comment.updated_at ?? comment.created_at
+  );
+  const lines: string[] = [
+    `Pull request ${repository}#${pull.number}: ${pull.title}`,
+    `State: ${pull.state ?? 'unknown'}; merged: ${pull.merged_at ? 'yes' : 'no'}; draft: ${pull.draft ? 'yes' : 'no'}; updated: ${pull.updated_at ?? 'unknown'}`,
+    `PR metadata: ${pull.changed_files ?? related.files.length} changed files; ${pull.commits ?? related.commits.length} commits; +${pull.additions ?? 'unknown'} -${pull.deletions ?? 'unknown'}`
+  ];
+
+  const body = compactMultiline(pull.body, 2400);
+  if (body) {
+    lines.push('', 'PR body:', body);
+  }
+
+  if (related.files.length > 0) {
+    lines.push('', 'Changed files:');
+    for (const file of related.files.slice(0, MAX_PR_FILES)) {
+      lines.push(`- ${file.filename} (${file.status ?? 'modified'}, +${file.additions ?? 0} -${file.deletions ?? 0})`);
+      const patch = compactMultiline(file.patch, 900);
+      if (patch) {
+        lines.push(`  Patch excerpt:\n${patch}`);
+      }
+    }
+  }
+
+  if (recentCommits.length > 0) {
+    lines.push('', `Recent commits in last ${ACTIVITY_TRAIL_DAYS} days:`);
+    for (const commit of recentCommits) {
+      const sha = commit.sha.slice(0, 7);
+      const date = commit.commit?.committer?.date ?? commit.commit?.author?.date ?? 'unknown date';
+      lines.push(`- ${sha} by ${actorName(commit.author, commit.commit?.author?.name)} on ${date}: ${firstLine(commit.commit?.message)}`);
+    }
+  }
+
+  if (recentComments.length > 0) {
+    lines.push('', `Recent issue comments in last ${ACTIVITY_TRAIL_DAYS} days:`);
+    for (const comment of recentComments) {
+      lines.push(`- ${actorName(comment.user)} on ${comment.updated_at ?? comment.created_at ?? 'unknown date'}: ${firstLine(comment.body)}`);
+    }
+  }
+
+  if (recentReviews.length > 0) {
+    lines.push('', `Recent reviews in last ${ACTIVITY_TRAIL_DAYS} days:`);
+    for (const review of recentReviews) {
+      lines.push(`- ${actorName(review.user)} ${review.state ?? 'reviewed'} on ${review.submitted_at ?? 'unknown date'}: ${firstLine(review.body)}`);
+    }
+  }
+
+  if (recentReviewComments.length > 0) {
+    lines.push('', `Recent review comments in last ${ACTIVITY_TRAIL_DAYS} days:`);
+    for (const comment of recentReviewComments) {
+      const location = comment.path ? `${comment.path}: ` : '';
+      lines.push(`- ${actorName(comment.user)} on ${comment.updated_at ?? comment.created_at ?? 'unknown date'}: ${location}${firstLine(comment.body)}`);
+    }
+  }
+
+  if (readErrors.length > 0) {
+    lines.push('', 'Read notes:', ...readErrors.map((error) => `- ${error}`));
+  }
+
+  return compactMultiline(lines.join('\n'), 9000);
 }
 
 function normalizeRepositories(values: unknown): string[] {
@@ -411,8 +588,50 @@ export class GitHubService {
       throw new Error('GITHUB_PAT is not configured');
     }
 
-    const payload = await this.fetchJson<GitHubPullResponse>(`https://api.github.com/repos/${repository}/pulls/${number}`, credential);
-    return readItemToResult(repository, payload, 'pull_request');
+    const pull = await this.fetchJson<GitHubPullResponse>(`https://api.github.com/repos/${repository}/pulls/${number}`, credential);
+    const readErrors: string[] = [];
+    const fetchRelated = async <T>(label: string, path: string): Promise<T[]> => {
+      try {
+        return await this.fetchJson<T[]>(`https://api.github.com/repos/${repository}/${path}`, credential);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        readErrors.push(`${label} could not be read: ${message}`);
+        return [];
+      }
+    };
+    const [files, commits, comments, reviews, reviewComments] = await Promise.all([
+      fetchRelated<GitHubPullFileResponse>('Changed files', `pulls/${number}/files`),
+      fetchRelated<GitHubPullCommitResponse>('Commits', `pulls/${number}/commits`),
+      fetchRelated<GitHubCommentResponse>('Issue comments', `issues/${number}/comments`),
+      fetchRelated<GitHubReviewResponse>('Reviews', `pulls/${number}/reviews`),
+      fetchRelated<GitHubReviewCommentResponse>('Review comments', `pulls/${number}/comments`)
+    ]);
+    const related = {
+      files,
+      commits,
+      comments,
+      reviews,
+      reviewComments
+    };
+    const base = readItemToResult(repository, pull, 'pull_request');
+    return {
+      ...base,
+      body: renderPullRequestBody(repository, pull, related, readErrors),
+      draft: pull.draft,
+      changedFiles: pull.changed_files ?? files.length,
+      commitCount: recentItems(
+        commits,
+        (commit) => commit.commit?.committer?.date ?? commit.commit?.author?.date
+      ).length,
+      commentCount: recentItems(comments, (comment) => comment.updated_at ?? comment.created_at).length,
+      reviewCount: recentItems(reviews, (review) => review.submitted_at).length,
+      reviewCommentCount: recentItems(
+        reviewComments,
+        (comment) => comment.updated_at ?? comment.created_at
+      ).length,
+      activityTrailDays: ACTIVITY_TRAIL_DAYS,
+      readErrors: readErrors.length > 0 ? readErrors : undefined
+    };
   }
 
   private async fetchRecentResults(

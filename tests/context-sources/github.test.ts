@@ -3,6 +3,32 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+function okJson(payload: unknown) {
+  return {
+    ok: true,
+    json: async () => payload
+  };
+}
+
+function recentIso(): string {
+  return new Date(Date.now() - 60 * 60 * 1000).toISOString();
+}
+
+function oldIso(): string {
+  return new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function emptyPullRelatedResponse(pathname: string, number = 99) {
+  const paths = [
+    `/repos/acme/app/pulls/${number}/files`,
+    `/repos/acme/app/pulls/${number}/commits`,
+    `/repos/acme/app/issues/${number}/comments`,
+    `/repos/acme/app/pulls/${number}/reviews`,
+    `/repos/acme/app/pulls/${number}/comments`
+  ];
+  return paths.includes(pathname) ? okJson([]) : null;
+}
+
 describe('GitHubService', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -15,6 +41,21 @@ describe('GitHubService', () => {
   it('searches GitHub issues and pull requests and maps results', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const parsed = new URL(url);
+      if (parsed.pathname === '/repos/acme/app/pulls/99/files') {
+        return okJson([
+          {
+            filename: 'app/runtime.ts',
+            status: 'modified',
+            additions: 12,
+            deletions: 2,
+            patch: 'Implementation notes: tighten launch readiness checks.'
+          }
+        ]);
+      }
+      const related = emptyPullRelatedResponse(parsed.pathname);
+      if (related) {
+        return related;
+      }
       if (parsed.pathname === '/repos/acme/app/issues/42') {
         return {
           ok: true,
@@ -98,6 +139,7 @@ describe('GitHubService', () => {
     const requestedUrl = new URL((fetch as any).mock.calls[0][0]);
     expect(requestedUrl.searchParams.get('q')).toBe('checkout launch repo:acme/app');
     expect(result.diagnostics.searchQueries).toContain('checkout launch repo:acme/app');
+    expect(pullRequest?.body).toContain('Implementation notes: tighten launch readiness checks.');
   });
 
   it('requires repository scope before runtime search', async () => {
@@ -115,6 +157,10 @@ describe('GitHubService', () => {
   it('uses resilient GitHub search for thread grounding and returns issues and pull requests', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const parsed = new URL(url);
+      const related = emptyPullRelatedResponse(parsed.pathname);
+      if (related) {
+        return related;
+      }
       if (parsed.pathname === '/repos/acme/app/issues/42') {
         return {
           ok: true,
@@ -264,17 +310,24 @@ describe('GitHubService', () => {
   });
 
   it('reads issues by repository and number', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 101,
-        number: 42,
-        title: 'Fix checkout wallet bug',
-        body: 'The wallet flow fails on mobile.',
-        html_url: 'https://github.com/acme/app/issues/42',
-        repository_url: 'https://api.github.com/repos/acme/app',
-        state: 'open'
-      })
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === '/repos/acme/app/issues/42') {
+        return okJson({
+          id: 101,
+          number: 42,
+          title: 'Fix checkout wallet bug',
+          body: 'The wallet flow fails on mobile.',
+          html_url: 'https://github.com/acme/app/issues/42',
+          repository_url: 'https://api.github.com/repos/acme/app',
+          state: 'open'
+        });
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({ message: 'not found' })
+      };
     }));
 
     const { getGitHubService } = await import('#app/server/context-sources/github');
@@ -289,5 +342,135 @@ describe('GitHubService', () => {
         state: 'open'
       })
     );
+    const requestedPaths = (fetch as any).mock.calls.map((call: any[]) => new URL(call[0]).pathname);
+    expect(requestedPaths).toEqual(['/repos/acme/app/issues/42']);
+  });
+
+  it('reads pull requests with changed files and a seven day activity trail', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === '/repos/acme/app/pulls/99') {
+        return okJson({
+          id: 102,
+          number: 99,
+          title: 'Launch readiness PR',
+          body: 'Pre-launch cleanup',
+          html_url: 'https://github.com/acme/app/pull/99',
+          repository_url: 'https://api.github.com/repos/acme/app',
+          state: 'open',
+          merged_at: null,
+          draft: true,
+          updated_at: recentIso(),
+          additions: 20,
+          deletions: 4,
+          changed_files: 1,
+          commits: 2
+        });
+      }
+      if (parsed.pathname === '/repos/acme/app/pulls/99/files') {
+        return okJson([
+          {
+            filename: 'app/team-runtime.ts',
+            status: 'modified',
+            additions: 20,
+            deletions: 4,
+            patch: 'Implementation notes: remove subscriber-owned routing assumptions.'
+          }
+        ]);
+      }
+      if (parsed.pathname === '/repos/acme/app/pulls/99/commits') {
+        return okJson([
+          {
+            sha: 'abcdef123456',
+            commit: {
+              message: 'Scope runtime to team sessions',
+              author: { name: 'Danny', date: recentIso() },
+              committer: { name: 'Danny', date: recentIso() }
+            },
+            author: { login: 'dannylee1020' }
+          },
+          {
+            sha: '999999999999',
+            commit: {
+              message: 'Old implementation note',
+              author: { name: 'Danny', date: oldIso() },
+              committer: { name: 'Danny', date: oldIso() }
+            },
+            author: { login: 'dannylee1020' }
+          }
+        ]);
+      }
+      if (parsed.pathname === '/repos/acme/app/issues/99/comments') {
+        return okJson([
+          {
+            id: 1,
+            body: 'Rollout is waiting on OAuth validation.',
+            created_at: recentIso(),
+            updated_at: recentIso(),
+            user: { login: 'alex' }
+          },
+          {
+            id: 2,
+            body: 'Old comment should not be included.',
+            created_at: oldIso(),
+            updated_at: oldIso(),
+            user: { login: 'alex' }
+          }
+        ]);
+      }
+      if (parsed.pathname === '/repos/acme/app/pulls/99/reviews') {
+        return okJson([
+          {
+            id: 3,
+            body: 'Approved after runtime coverage check.',
+            state: 'APPROVED',
+            submitted_at: recentIso(),
+            user: { login: 'sam' }
+          }
+        ]);
+      }
+      if (parsed.pathname === '/repos/acme/app/pulls/99/comments') {
+        return okJson([
+          {
+            id: 4,
+            body: 'This helper should stay narrow.',
+            path: 'app/team-runtime.ts',
+            created_at: recentIso(),
+            updated_at: recentIso(),
+            user: { login: 'riley' }
+          }
+        ]);
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({ message: 'not found' })
+      };
+    }));
+
+    const { getGitHubService } = await import('#app/server/context-sources/github');
+    const github = getGitHubService();
+    const result = await github.readPullRequest('acme/app', 99);
+
+    expect(result).toEqual(expect.objectContaining({
+      repository: 'acme/app',
+      number: 99,
+      kind: 'pull_request',
+      draft: true,
+      changedFiles: 1,
+      commitCount: 1,
+      commentCount: 1,
+      reviewCount: 1,
+      reviewCommentCount: 1,
+      activityTrailDays: 7
+    }));
+    expect(result.body).toContain('Pre-launch cleanup');
+    expect(result.body).toContain('Implementation notes: remove subscriber-owned routing assumptions.');
+    expect(result.body).toContain('Scope runtime to team sessions');
+    expect(result.body).toContain('Rollout is waiting on OAuth validation.');
+    expect(result.body).toContain('Approved after runtime coverage check.');
+    expect(result.body).toContain('This helper should stay narrow.');
+    expect(result.body).not.toContain('Old implementation note');
+    expect(result.body).not.toContain('Old comment should not be included.');
   });
 });
