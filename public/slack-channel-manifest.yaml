@@ -16,6 +16,7 @@ oauth_config:
       - chat:write
       - groups:history
       - groups:read
+      - users:write
     user:
       - search:read
 settings:

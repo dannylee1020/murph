@@ -8,11 +8,13 @@ import { getStore } from '#app/server/persistence/store';
 import { getToolRegistry } from '#app/server/capabilities/tool-registry';
 import { getRuntimeEnv } from '#app/server/util/env';
 import { getSourceIndexScheduler } from '../source-index/scheduler.js';
+import { runScheduleHeartbeat } from './scheduler.js';
 import { evaluatePolicy } from '#app/server/runtime/policy';
 import { classifyPolicyExecution } from '#app/server/runtime/policy-classifier';
 import { outputSummary } from '#app/server/runtime/tool-output';
 import { refreshRuntimeState, withRuntimeRunLock } from '#app/server/runtime/refresh';
 import { resolveSubscriberPolicy } from '#app/server/runtime/subscriber-policy';
+import { syncSlackPresenceForSessions, syncSlackPresenceForWorkspace } from './slack-presence.js';
 import type {
   ActionContextSnapshot,
   AgentToolResult,
@@ -151,7 +153,7 @@ export class Gateway {
 
     const { heartbeatIntervalMs } = getRuntimeEnv();
     this.heartbeatHandle = this.startHeartbeat(heartbeatIntervalMs);
-    this.reconcileSessionExpirations();
+    void this.runHeartbeat();
     void getSourceIndexScheduler().tick('startup');
   }
 
@@ -166,7 +168,8 @@ export class Gateway {
     const { runEventRetentionDays } = getRuntimeEnv();
     const cutoff = new Date(Date.now() - Math.max(1, runEventRetentionDays) * 24 * 60 * 60 * 1000).toISOString();
     this.store.pruneOldRunEvents(cutoff);
-    this.expireDueSessions(nowIso);
+    await this.expireDueSessions(nowIso);
+    await runScheduleHeartbeat(new Date(nowIso));
     const reminders = this.store.listDueReminders(nowIso);
 
     for (const reminder of reminders) {
@@ -202,16 +205,17 @@ export class Gateway {
     void getSourceIndexScheduler().tick('heartbeat');
   }
 
-  reconcileSessionExpirations(nowIso = new Date().toISOString()): void {
-    this.expireDueSessions(nowIso);
+  async reconcileSessionExpirations(nowIso = new Date().toISOString()): Promise<void> {
+    await this.expireDueSessions(nowIso);
   }
 
-  private expireDueSessions(nowIso: string): AutopilotSession[] {
+  private async expireDueSessions(nowIso: string): Promise<AutopilotSession[]> {
     const expired = this.store.expireDueSessions(nowIso);
     for (const session of expired) {
       emitControlPlaneEvent({ type: 'session.updated', session });
       emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
     }
+    await syncSlackPresenceForSessions(expired);
     return expired;
   }
 
@@ -277,7 +281,7 @@ export class Gateway {
   private async handleTaskForWorkspace(task: ContinuityTask, workspace: Workspace): Promise<AuditRecord> {
     const workspaceMemory = this.memory.getWorkspaceMemory(workspace.id);
 
-    let session = this.resolveSession(task, workspace.id);
+    let session = await this.resolveSession(task, workspace.id);
     let createdDirectSessionId: string | undefined;
 
     if (!session) {
@@ -632,7 +636,7 @@ export class Gateway {
     return audit;
   }
 
-  private resolveSession(task: ContinuityTask, workspaceId: string): AutopilotSession | undefined {
+  private async resolveSession(task: ContinuityTask, workspaceId: string): Promise<AutopilotSession | undefined> {
     const explicit = task.sessionId ? this.store.getSessionById(task.sessionId) : undefined;
 
     if (
@@ -648,6 +652,7 @@ export class Gateway {
 
     if (session?.endsAt && session.endsAt <= new Date().toISOString()) {
       this.store.stopSession(session.id, 'expired');
+      await syncSlackPresenceForWorkspace(session.workspaceId);
       return undefined;
     }
 

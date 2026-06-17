@@ -51,7 +51,8 @@ describe('sqlite schema cleanup', () => {
       '011_team_scoped_runtime',
       '012_add_source_index_runs',
       '013_drop_recurring_jobs',
-      '014_drop_memory_index_runs'
+      '014_drop_memory_index_runs',
+      '015_add_session_source'
     ]);
     expect(tableExists(db, 'recurring_jobs')).toBe(false);
     expect(tableExists(db, 'memory_index_runs')).toBe(false);
@@ -60,7 +61,8 @@ describe('sqlite schema cleanup', () => {
       'runtime_revision_json',
       'last_runtime_refresh_at',
       'policy_binding',
-      'channel_scope_binding'
+      'channel_scope_binding',
+      'source'
     ]));
     const { runMigrations } = await import('#app/server/persistence/migrator');
     runMigrations(db, sqlitePath);
@@ -78,7 +80,8 @@ describe('sqlite schema cleanup', () => {
       '011_team_scoped_runtime',
       '012_add_source_index_runs',
       '013_drop_recurring_jobs',
-      '014_drop_memory_index_runs'
+      '014_drop_memory_index_runs',
+      '015_add_session_source'
     ]);
     expect(tableExists(db, 'recurring_jobs')).toBe(false);
     expect(tableExists(db, 'memory_index_runs')).toBe(false);
@@ -223,7 +226,8 @@ describe('sqlite schema cleanup', () => {
       'runtime_revision_json',
       'last_runtime_refresh_at',
       'policy_binding',
-      'channel_scope_binding'
+      'channel_scope_binding',
+      'source'
     ]));
     expect(columns(migrated, 'integration_connections')).not.toContain('credential_encrypted');
     expect(tableExists(migrated, 'runtime_refresh_state')).toBe(true);
@@ -249,7 +253,8 @@ describe('sqlite schema cleanup', () => {
       '011_team_scoped_runtime',
       '012_add_source_index_runs',
       '013_drop_recurring_jobs',
-      '014_drop_memory_index_runs'
+      '014_drop_memory_index_runs',
+      '015_add_session_source'
     ]);
     expect(columns(migrated, 'workspace_subscriptions')).toContain('policy_mode');
     expect(

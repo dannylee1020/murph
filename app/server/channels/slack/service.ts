@@ -47,6 +47,11 @@ interface ChatPostMessageResponse {
   ts?: string;
 }
 
+interface SlackApiResponse {
+  ok: boolean;
+  error?: string;
+}
+
 interface ConversationsOpenResponse {
   ok: boolean;
   error?: string;
@@ -154,6 +159,8 @@ export interface SlackInstallResult {
   authedUser?: SlackMember;
 }
 
+export type SlackPresence = 'auto' | 'away';
+
 export class SlackService {
   private get store() {
     return getStore();
@@ -253,7 +260,7 @@ export class SlackService {
     const redirectUri = `${appUrl}/api/slack/oauth/callback`;
     const scope = role === 'personal'
       ? 'chat:write,im:history,im:write'
-      : 'app_mentions:read,channels:history,channels:read,channels:join,chat:write,commands,groups:history,groups:read';
+      : 'app_mentions:read,channels:history,channels:read,channels:join,chat:write,commands,groups:history,groups:read,users:write';
     const params = new URLSearchParams({
       client_id: clientId,
       scope,
@@ -569,6 +576,22 @@ export class SlackService {
 
   async postReply(workspace: Workspace, thread: ThreadRef, text: string): Promise<void> {
     await this.postMessage(workspace, thread.channelId, text, thread.threadTs, thread.botInstallationId);
+  }
+
+  async setPresence(workspace: Workspace, presence: SlackPresence): Promise<void> {
+    const response = await fetch('https://slack.com/api/users.setPresence', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${this.getBotTokenForRole(workspace, 'channel')}`,
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({ presence })
+    });
+    const payload = (await response.json()) as SlackApiResponse;
+
+    if (!payload.ok) {
+      throw new Error(payload.error ?? 'Failed to set Slack presence');
+    }
   }
 
   async postMessage(workspace: Workspace, channelId: string, text: string, threadTs?: string, botInstallationId?: string): Promise<{ ts?: string }> {

@@ -128,7 +128,7 @@ export function readSecret(provider: string, key: string, ref: SecretRef = {}): 
   candidates.sort((a, b) => {
     const aScore = Number(Boolean(a.workspaceId)) + Number(Boolean(a.externalWorkspaceId)) + Number(Boolean(a.botInstallationId)) + Number(Boolean(a.userId));
     const bScore = Number(Boolean(b.workspaceId)) + Number(Boolean(b.externalWorkspaceId)) + Number(Boolean(b.botInstallationId)) + Number(Boolean(b.userId));
-    return bScore - aScore;
+    return bScore - aScore || b.updatedAt.localeCompare(a.updatedAt);
   });
 
   return candidates[0]?.value.trim();
@@ -155,11 +155,14 @@ export function writeSecret(provider: string, key: string, value: string, option
 
   const file = readCredentialFile();
   const now = new Date().toISOString();
-  const existing = file.credentials.find((record) => (
+  const matches = file.credentials.filter((record) => (
     record.provider === provider &&
     record.key === key &&
     exactRefMatches(record, options)
   ));
+  const createdAt = matches
+    .map((record) => record.createdAt)
+    .sort()[0] ?? now;
 
   const next: CredentialRecord = {
     provider,
@@ -170,15 +173,16 @@ export function writeSecret(provider: string, key: string, value: string, option
     botInstallationId: options.botInstallationId,
     userId: options.userId,
     metadata: options.metadata,
-    createdAt: existing?.createdAt ?? now,
+    createdAt,
     updatedAt: now
   };
 
-  if (existing) {
-    Object.assign(existing, next);
-  } else {
-    file.credentials.push(next);
-  }
+  file.credentials = file.credentials.filter((record) => !(
+    record.provider === provider &&
+    record.key === key &&
+    exactRefMatches(record, options)
+  ));
+  file.credentials.push(next);
 
   writeCredentialFile(file);
   return next;

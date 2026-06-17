@@ -220,6 +220,9 @@ export class Store {
   stopSession(id: string, status: SessionStatus = 'stopped'): void {
     session.stopSession(this.db, id, status);
   }
+  stopScheduledSessions(workspaceId: string, nowIso?: string): AutopilotSession[] {
+    return session.stopScheduledSessions(this.db, workspaceId, nowIso);
+  }
   expireDueSessions(nowIso: string): AutopilotSession[] {
     return session.expireDueSessions(this.db, nowIso);
   }

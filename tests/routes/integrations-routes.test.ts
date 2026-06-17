@@ -302,6 +302,38 @@ describe('integration routes', () => {
     expect(memory.enabledContextSources).toContain('github.thread_search');
   });
 
+  it('reconnects GitHub by replacing the global credential record', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ login: 'octo-user' })
+    }));
+    const { request, store, workspace } = await setup();
+
+    await request('POST', '/api/integrations/github/connect', {
+      workspaceId: workspace.id,
+      credential: 'ghp_old_token'
+    });
+    const response = await request('POST', '/api/integrations/github/connect', {
+      workspaceId: workspace.id,
+      credential: 'ghp_new_token'
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration).toEqual(expect.objectContaining({
+      provider: 'github',
+      status: 'connected',
+      source: 'credentials'
+    }));
+    const { listSecrets, readSecret } = await import('#app/server/credentials/local-store');
+    const records = listSecrets().filter((record) => record.provider === 'github' && record.key === 'api_key' && !record.workspaceId);
+    expect(records).toHaveLength(1);
+    expect(readSecret('github', 'api_key')).toBe('ghp_new_token');
+    expect(store.getIntegrationConnection(workspace.id, 'github')).toEqual(expect.objectContaining({
+      status: 'connected',
+      errorMessage: undefined
+    }));
+  });
+
   it('makes Notion tools available to another channel workspace after one connect', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -329,6 +361,46 @@ describe('integration routes', () => {
       source: 'credentials'
     }));
     const memory = store.getOrCreateWorkspaceMemory(discordWorkspace.id);
+    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['notion.search', 'notion.read_page']));
+    expect(memory.enabledContextSources).toContain('notion.thread_search');
+  });
+
+  it('reconnects Notion by replacing the global credential record', async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      json: async () => ({
+        name: init?.headers && typeof init.headers === 'object' && 'authorization' in init.headers
+          ? String((init.headers as Record<string, string>).authorization).replace('Bearer ', '')
+          : 'murph-adapter'
+      })
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { request, store, workspace } = await setup();
+
+    await request('POST', '/api/integrations/notion/connect', {
+      workspaceId: workspace.id,
+      credential: 'secret_notion_old'
+    });
+    const response = await request('POST', '/api/integrations/notion/connect', {
+      workspaceId: workspace.id,
+      credential: 'secret_notion_new'
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration).toEqual(expect.objectContaining({
+      provider: 'notion',
+      status: 'connected',
+      source: 'credentials'
+    }));
+    const { listSecrets, readSecret } = await import('#app/server/credentials/local-store');
+    const records = listSecrets().filter((record) => record.provider === 'notion' && record.key === 'api_key' && !record.workspaceId);
+    expect(records).toHaveLength(1);
+    expect(readSecret('notion', 'api_key')).toBe('secret_notion_new');
+    expect(store.getIntegrationConnection(workspace.id, 'notion')).toEqual(expect.objectContaining({
+      status: 'connected',
+      errorMessage: undefined
+    }));
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['notion.search', 'notion.read_page']));
     expect(memory.enabledContextSources).toContain('notion.thread_search');
   });
@@ -399,6 +471,80 @@ describe('integration routes', () => {
     const memory = store.getOrCreateWorkspaceMemory(workspace.id);
     expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['linear.search_issues', 'linear.read_issue']));
     expect(memory.enabledContextSources).toContain('linear.thread_search');
+  });
+
+  it('reconnects Linear by replacing the global credential record', async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const authorization = init?.headers && typeof init.headers === 'object' && 'Authorization' in init.headers
+        ? String((init.headers as Record<string, string>).Authorization)
+        : 'lin_api_key';
+      return {
+        ok: true,
+        json: async () => ({ data: { viewer: { name: authorization, email: 'linear@example.com' } } })
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { request, store, workspace } = await setup();
+
+    await request('POST', '/api/integrations/linear/connect', {
+      workspaceId: workspace.id,
+      credential: 'lin_old_key'
+    });
+    const response = await request('POST', '/api/integrations/linear/connect', {
+      workspaceId: workspace.id,
+      credential: 'lin_new_key'
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration).toEqual(expect.objectContaining({
+      provider: 'linear',
+      status: 'connected',
+      source: 'credentials'
+    }));
+    const { listSecrets, readSecret } = await import('#app/server/credentials/local-store');
+    const records = listSecrets().filter((record) => record.provider === 'linear' && record.key === 'api_key' && !record.workspaceId);
+    expect(records).toHaveLength(1);
+    expect(readSecret('linear', 'api_key')).toBe('lin_new_key');
+    expect(store.getIntegrationConnection(workspace.id, 'linear')).toEqual(expect.objectContaining({
+      status: 'connected',
+      errorMessage: undefined
+    }));
+    const memory = store.getOrCreateWorkspaceMemory(workspace.id);
+    expect(memory.enabledOptionalTools).toEqual(expect.arrayContaining(['linear.search_issues', 'linear.read_issue']));
+    expect(memory.enabledContextSources).toContain('linear.thread_search');
+  });
+
+  it('recovers a missing-credential error connection after successful reconnect', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: 'murph-adapter' })
+    }));
+    const { request, store, workspace } = await setup();
+    store.saveIntegrationConnection({
+      workspaceId: workspace.id,
+      provider: 'notion',
+      credentialKind: 'api_key',
+      status: 'error',
+      errorMessage: 'Local credential is missing. Reconnect this integration.',
+      metadata: { masked: '****gone' }
+    });
+
+    const response = await request('POST', '/api/integrations/notion/connect', {
+      workspaceId: workspace.id,
+      credential: 'secret_notion_reconnected'
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration).toEqual(expect.objectContaining({
+      provider: 'notion',
+      status: 'connected',
+      source: 'credentials'
+    }));
+    expect(response.body.integration).not.toHaveProperty('errorMessage');
+    expect(store.getIntegrationConnection(workspace.id, 'notion')).toEqual(expect.objectContaining({
+      status: 'connected',
+      errorMessage: undefined
+    }));
   });
 
   it('reports global credentials before env fallback when both are present', async () => {

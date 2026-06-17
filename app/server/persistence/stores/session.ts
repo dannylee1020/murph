@@ -4,6 +4,7 @@ import type {
   SessionChannelScopeBinding,
   SessionMode,
   SessionPolicyBinding,
+  SessionSource,
   SessionStatus,
   UserPolicyProfile
 } from '#app/types';
@@ -17,6 +18,7 @@ export interface SessionInput {
   title: string;
   mode: SessionMode;
   channelScope: string[];
+  source?: SessionSource;
   policyProfileName?: string;
   policyOverrideRaw?: string;
   policy?: UserPolicyProfile;
@@ -34,6 +36,7 @@ interface SessionRow {
   title: string;
   mode: SessionMode;
   status: SessionStatus;
+  source?: SessionSource;
   channel_scope_json: string;
   policy_profile_name?: string;
   policy_override_raw?: string;
@@ -82,6 +85,7 @@ function mapSession(row: SessionRow): AutopilotSession {
     title: row.title,
     mode: row.mode,
     status: row.status,
+    source: row.source ?? 'manual',
     channelScope: parseJsonArray(row.channel_scope_json),
     policyProfileName: row.policy_profile_name ?? undefined,
     policyOverrideRaw: row.policy_override_raw ?? undefined,
@@ -104,6 +108,7 @@ export function createSession(db: Db, input: SessionInput): AutopilotSession {
     title: input.title,
     mode: input.mode,
     status: 'active',
+    source: input.source ?? 'manual',
     channelScope: input.channelScope,
     policyProfileName: input.policyProfileName,
     policyOverrideRaw: input.policyOverrideRaw,
@@ -118,10 +123,10 @@ export function createSession(db: Db, input: SessionInput): AutopilotSession {
 
   db.prepare(
     `INSERT INTO autopilot_sessions (
-      id, workspace_id, owner_user_id, title, mode, status, channel_scope_json,
+      id, workspace_id, owner_user_id, title, mode, status, source, channel_scope_json,
       policy_profile_name, policy_override_raw, policy_json, runtime_revision_json,
       last_runtime_refresh_at, policy_binding, channel_scope_binding, started_at, ends_at, stopped_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     session.id,
     session.workspaceId,
@@ -129,6 +134,7 @@ export function createSession(db: Db, input: SessionInput): AutopilotSession {
     session.title,
     session.mode,
     session.status,
+    session.source,
     JSON.stringify(session.channelScope),
     session.policyProfileName ?? null,
     session.policyOverrideRaw ?? null,
@@ -150,7 +156,7 @@ export function getSessionById(db: Db, id: string): AutopilotSession | undefined
     .prepare(
       `SELECT id, workspace_id, owner_user_id, title, mode, status, channel_scope_json,
               policy_profile_name, policy_override_raw, policy_json, runtime_revision_json,
-              last_runtime_refresh_at, policy_binding, channel_scope_binding, started_at, ends_at, stopped_at
+              last_runtime_refresh_at, policy_binding, channel_scope_binding, source, started_at, ends_at, stopped_at
        FROM autopilot_sessions WHERE id = ?`
     )
     .get(id) as SessionRow | undefined;
@@ -244,6 +250,22 @@ export function stopSession(db: Db, id: string, status: SessionStatus = 'stopped
     new Date().toISOString(),
     id
   );
+}
+
+export function stopScheduledSessions(db: Db, workspaceId: string, nowIso = new Date().toISOString()): AutopilotSession[] {
+  const active = db
+    .prepare(`SELECT * FROM autopilot_sessions WHERE workspace_id = ? AND status = 'active' AND source = 'schedule'`)
+    .all(workspaceId) as SessionRow[];
+  db.prepare(
+    `UPDATE autopilot_sessions
+     SET status = 'stopped', stopped_at = COALESCE(stopped_at, ?)
+     WHERE workspace_id = ? AND status = 'active' AND source = 'schedule'`
+  ).run(nowIso, workspaceId);
+  return active.map((row) => ({
+    ...mapSession(row),
+    status: 'stopped' as const,
+    stoppedAt: row.stopped_at ?? nowIso
+  }));
 }
 
 export function expireDueSessions(db: Db, nowIso: string): AutopilotSession[] {

@@ -25,6 +25,8 @@ import { requireMatchingSetupOwner } from '#app/server/setup/owner-identity';
 import { getToolRegistry } from '#app/server/capabilities/tool-registry';
 import { readMurphConfig, updateMurphPolicyConfig } from '#app/server/setup/config-file';
 import { refreshRuntimeState } from '#app/server/runtime/refresh';
+import { syncSlackPresenceForWorkspace } from '../runtime/slack-presence.js';
+import { resolveSessionMode, sessionModeFromPolicyMode } from '../runtime/session-policy.js';
 import type {
   ChannelDisplay,
   ChannelEnsureMemberResult,
@@ -73,17 +75,6 @@ type PreparedSessionTarget = {
   channelScope: string[];
   autoJoined: Array<{ id: string; name?: string }>;
 };
-
-function sessionModeFromPolicyMode(mode: PolicyExecutionMode): SessionMode {
-  return mode;
-}
-
-function resolveSessionMode(inputMode: SessionMode | undefined, policyMode: PolicyExecutionMode): SessionMode {
-  if (!inputMode) return sessionModeFromPolicyMode(policyMode);
-  if (inputMode === 'dry_run') return 'dry_run';
-  if (inputMode === 'manual_review') return 'manual_review';
-  return policyMode === 'auto_send_low_risk' ? 'auto_send_low_risk' : 'manual_review';
-}
 
 function workspaceDescriptor(workspace: Workspace) {
   return {
@@ -271,6 +262,11 @@ async function prepareSessionTarget(input: SessionCreateInput): Promise<
 
 async function createPreparedSession(target: PreparedSessionTarget, input: SessionCreateInput) {
   const store = getStore();
+  const stopped = store.stopScheduledSessions(target.workspace.id);
+  for (const session of stopped) {
+    emitControlPlaneEvent({ type: 'session.updated', session });
+    emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
+  }
   const policyPayload = await policyConfigPayload();
   const mode = resolveSessionMode(input.mode, policyPayload.mode);
   const policy = buildUserPolicyProfile({
@@ -292,7 +288,8 @@ async function createPreparedSession(target: PreparedSessionTarget, input: Sessi
     endsAt: resolveSessionEndsAt(input)
   });
   emitControlPlaneEvent({ type: 'session.updated', session });
-  gateway.reconcileSessionExpirations();
+  await syncSlackPresenceForWorkspace(target.workspace.id);
+  await gateway.reconcileSessionExpirations();
   return session;
 }
 
@@ -366,7 +363,7 @@ async function handleSse(req: IncomingMessage, res: ServerResponse): Promise<voi
 
 export const gatewayRoutes: Route[] = [
   route('GET', '/api/gateway/summary', async ({ res }) => {
-    gateway.reconcileSessionExpirations();
+    await gateway.reconcileSessionExpirations();
     sendJson(res, await getGatewaySnapshot());
   }),
   route('GET', '/api/gateway/policy-profiles', async ({ res }) => {
@@ -582,8 +579,8 @@ export const gatewayRoutes: Route[] = [
       sendJson(res, { ok: false, error: error instanceof Error ? error.message : 'review_action_failed' }, 400);
     }
   }),
-  route('GET', '/api/gateway/sessions', ({ res, url }) => {
-    gateway.reconcileSessionExpirations();
+  route('GET', '/api/gateway/sessions', async ({ res, url }) => {
+    await gateway.reconcileSessionExpirations();
     sendJson(res, {
       sessions: getStore().listActiveSessions(url.searchParams.get('workspaceId') ?? undefined)
     });
@@ -676,7 +673,7 @@ export const gatewayRoutes: Route[] = [
       briefing: getStore().getSessionBriefing(params.id)
     });
   }),
-  route('POST', '/api/gateway/sessions/:id/stop', ({ res, params }) => {
+  route('POST', '/api/gateway/sessions/:id/stop', async ({ res, params }) => {
     const store = getStore();
     const existing = store.getSessionById(params.id);
 
@@ -691,7 +688,8 @@ export const gatewayRoutes: Route[] = [
     if (session) {
       emitControlPlaneEvent({ type: 'session.updated', session });
       emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
-      gateway.reconcileSessionExpirations();
+      await syncSlackPresenceForWorkspace(session.workspaceId);
+      await gateway.reconcileSessionExpirations();
     }
 
     sendJson(res, {

@@ -4,6 +4,7 @@ import { requireMatchingSetupOwner } from '#app/server/setup/owner-identity';
 import { readMurphConfig } from '#app/server/setup/config-file';
 import { loadPolicyProfiles, normalizePolicyProfileName } from '#app/server/policies/loader';
 import { builtinPolicyProfile } from '#app/server/runtime/policy-compiler';
+import { syncSlackPresenceForWorkspace } from '../runtime/slack-presence.js';
 import type { PolicyExecutionMode, SessionMode } from '#app/types';
 import { readForm, redirect } from '../http.js';
 import { route, type Route } from '../router.js';
@@ -55,6 +56,12 @@ async function createSessionFromInput(input: {
     displayName: input.ownerUserId
   });
 
+  const stopped = store.stopScheduledSessions(workspace.id);
+  for (const session of stopped) {
+    emitControlPlaneEvent({ type: 'session.updated', session });
+    emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
+  }
+
   const policyMode = await selectedPolicyMode();
   const mode = resolveSessionMode(input.mode, policyMode);
   const session = store.createSession({
@@ -73,11 +80,12 @@ async function createSessionFromInput(input: {
     endsAt: new Date(Date.now() + input.durationHours * 60 * 60 * 1000).toISOString()
   });
   emitControlPlaneEvent({ type: 'session.updated', session });
+  await syncSlackPresenceForWorkspace(workspace.id);
 
   return { ok: true, session };
 }
 
-function stopSession(sessionId: string): void {
+async function stopSession(sessionId: string): Promise<void> {
   const store = getStore();
   const existing = store.getSessionById(sessionId);
 
@@ -91,6 +99,7 @@ function stopSession(sessionId: string): void {
   if (session) {
     emitControlPlaneEvent({ type: 'session.updated', session });
     emitControlPlaneEvent({ type: 'briefing.ready', sessionId: session.id });
+    await syncSlackPresenceForWorkspace(session.workspaceId);
   }
 }
 
@@ -124,7 +133,7 @@ export const formRoutes: Route[] = [
     const sessionId = String(formData.get('sessionId') ?? '').trim();
 
     if (sessionId) {
-      stopSession(sessionId);
+      await stopSession(sessionId);
     }
 
     redirect(res, '/', 303);

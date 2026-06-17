@@ -32,6 +32,8 @@ export type PolicyExecutionMode = 'manual_review' | 'auto_send_low_risk';
 
 export type SessionStatus = 'active' | 'stopped' | 'expired';
 
+export type SessionSource = 'manual' | 'schedule';
+
 export type SessionPolicyBinding = 'config' | 'explicit';
 
 export type SessionChannelScopeBinding = 'setup_defaults' | 'explicit';
@@ -767,6 +769,7 @@ export interface AutopilotSession {
     title: string;
     mode: SessionMode;
     status: SessionStatus;
+    source: SessionSource;
     channelScope: string[];
     policyProfileName?: string;
     policyOverrideRaw?: string;

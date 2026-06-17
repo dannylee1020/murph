@@ -12,6 +12,7 @@ import { teamScopedRuntime } from './011_team_scoped_runtime.js';
 import { addSourceIndexRuns } from './012_add_source_index_runs.js';
 import { dropRecurringJobs } from './013_drop_recurring_jobs.js';
 import { dropMemoryIndexRuns } from './014_drop_memory_index_runs.js';
+import { addSessionSource } from './015_add_session_source.js';
 import type { Migration } from './types.js';
 
 export const migrations: Migration[] = [
@@ -28,5 +29,6 @@ export const migrations: Migration[] = [
   teamScopedRuntime,
   addSourceIndexRuns,
   dropRecurringJobs,
-  dropMemoryIndexRuns
+  dropMemoryIndexRuns,
+  addSessionSource
 ];

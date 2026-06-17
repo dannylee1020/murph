@@ -54,6 +54,14 @@ async function setup(results: ChannelResult[] = []) {
       getMember: vi.fn()
     })
   }));
+  const setPresence = vi.fn().mockResolvedValue(undefined);
+  vi.doMock('#app/server/channels/slack/service', () => ({
+    getSlackService: () => ({
+      canReadBotToken: vi.fn().mockReturnValue(true),
+      hasUnreadableInstall: vi.fn().mockReturnValue(false),
+      setPresence
+    })
+  }));
 
   const { getStore } = await import('#app/server/persistence/store');
   const { writeSecret } = await import('#app/server/credentials/local-store');
@@ -88,7 +96,7 @@ async function setup(results: ChannelResult[] = []) {
     return res.result();
   }
 
-  return { post, store, workspace, ensureMember, updateMurphPolicyConfig };
+  return { post, store, workspace, ensureMember, setPresence, updateMurphPolicyConfig };
 }
 
 describe('POST /api/gateway/sessions', () => {
@@ -118,6 +126,7 @@ describe('POST /api/gateway/sessions', () => {
     vi.restoreAllMocks();
     vi.doUnmock('#app/server/runtime/bootstrap');
     vi.doUnmock('#app/server/capabilities/channel-registry');
+    vi.doUnmock('#app/server/channels/slack/service');
     vi.resetModules();
     vi.useRealTimers();
     restoreEnv();
@@ -126,13 +135,14 @@ describe('POST /api/gateway/sessions', () => {
   afterEach(() => {
     vi.doUnmock('#app/server/runtime/bootstrap');
     vi.doUnmock('#app/server/capabilities/channel-registry');
+    vi.doUnmock('#app/server/channels/slack/service');
     vi.resetModules();
     vi.useRealTimers();
     restoreEnv();
   });
 
   it('creates ownerless team sessions scoped to selected channels', async () => {
-    const { post, store, workspace, ensureMember } = await setup([
+    const { post, store, workspace, ensureMember, setPresence } = await setup([
       { channelId: 'C1', name: 'support', status: 'already_member' }
     ]);
 
@@ -149,8 +159,57 @@ describe('POST /api/gateway/sessions', () => {
       ownerUserId: undefined,
       title: 'Murph agent',
       mode: 'manual_review',
+      source: 'manual',
       channelScope: ['C1']
     });
+    expect(setPresence).toHaveBeenCalledWith(expect.objectContaining({ id: workspace.id }), 'auto');
+  });
+
+  it('manual session creation stops active scheduled coverage first', async () => {
+    const { post, store, workspace } = await setup([
+      { channelId: 'C1', name: 'support', status: 'already_member' }
+    ]);
+    const scheduled = store.createSession({
+      workspaceId: workspace.id,
+      title: 'Scheduled coverage',
+      mode: 'manual_review',
+      source: 'schedule',
+      channelScope: ['C1'],
+      endsAt: '2030-06-09T02:00:00.000Z'
+    });
+
+    const response = await post({
+      workspaceId: workspace.id,
+      channelScope: ['C1']
+    });
+
+    expect(response.status).toBe(201);
+    expect(store.getSessionById(scheduled.id)).toMatchObject({ status: 'stopped', source: 'schedule' });
+    expect(store.listActiveSessions(workspace.id)).toHaveLength(1);
+    expect(store.listActiveSessions(workspace.id)[0]).toMatchObject({ source: 'manual' });
+  });
+
+  it('keeps Slack bot online until final channel session stops', async () => {
+    const { post, workspace, setPresence } = await setup([
+      { channelId: 'C1', name: 'support', status: 'already_member' },
+      { channelId: 'C2', name: 'sales', status: 'already_member' }
+    ]);
+
+    const first = await post({
+      workspaceId: workspace.id,
+      channelScope: ['C1']
+    });
+    const second = await post({
+      workspaceId: workspace.id,
+      channelScope: ['C2']
+    });
+
+    setPresence.mockClear();
+    await post({}, `/api/gateway/sessions/${first.body.session.id}/stop`);
+    expect(setPresence).toHaveBeenLastCalledWith(expect.objectContaining({ id: workspace.id }), 'auto');
+
+    await post({}, `/api/gateway/sessions/${second.body.session.id}/stop`);
+    expect(setPresence).toHaveBeenLastCalledWith(expect.objectContaining({ id: workspace.id }), 'away');
   });
 
   it('reports public channels the bot auto-joined', async () => {

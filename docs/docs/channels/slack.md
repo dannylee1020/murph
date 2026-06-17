@@ -77,6 +77,7 @@ For the channel bot, in **OAuth & Permissions** -> **Scopes**, verify these bot 
 - `commands`
 - `groups:history`
 - `groups:read`
+- `users:write`
 
 Verify this user token scope:
 

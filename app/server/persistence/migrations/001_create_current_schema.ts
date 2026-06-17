@@ -83,6 +83,7 @@ export const createCurrentSchema: Migration = {
         title TEXT NOT NULL,
         mode TEXT NOT NULL,
         status TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'manual',
         channel_scope_json TEXT NOT NULL,
         policy_profile_name TEXT,
         policy_override_raw TEXT,
