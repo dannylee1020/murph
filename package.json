@@ -23,6 +23,7 @@
     "build": "tsc -p tsconfig.server.json && vite build --config app/ui/vite.config.ts",
     "start": "node dist/app/runtime/server.js",
     "docs": "node scripts/sync-docs-public.mjs && vitepress build docs",
+    "docs:build": "node scripts/sync-docs-public.mjs && vitepress build docs",
     "docs:dev": "node scripts/sync-docs-public.mjs && vitepress dev docs"
   },
   "devDependencies": {
